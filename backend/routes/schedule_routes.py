@@ -2,13 +2,15 @@ import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
-from models import db, ScheduledTask, GiteaServer, Backup, RestoreTask, ScheduleLog
+from models import db, ScheduledTask, ScheduleLog
+from services.schedule_progress import schedule_progress_for_response
+from services.schedule_runner import claim_schedule_task, start_schedule_task_thread
 
 schedule_bp = Blueprint('schedule', __name__)
 
 
 def task_to_dict(t):
-    return {
+    data = {
         'id': t.id,
         'name': t.name,
         'enabled': t.enabled,
@@ -22,6 +24,8 @@ def task_to_dict(t):
         'last_log': t.last_log,
         'created_at': t.created_at.isoformat() if t.created_at else None,
     }
+    data.update(schedule_progress_for_response(t))
+    return data
 
 
 @schedule_bp.route('/schedules', methods=['GET'])
@@ -82,117 +86,61 @@ def delete_schedule(tid):
 @schedule_bp.route('/schedules/<int:tid>/run', methods=['POST'])
 @login_required
 def run_schedule(tid):
-    t = ScheduledTask.query.get_or_404(tid)
-    if t.last_run_at:
-        seconds = (datetime.utcnow() - t.last_run_at).total_seconds()
-        if seconds < 300:
-            remaining = int(300 - seconds)
-            return jsonify({'error': f'5 分钟内已执行过，请等待 {remaining} 秒', 'cooldown': True}), 400
-    t.last_status = 'running'
-    t.last_run_at = datetime.utcnow()
-    db.session.commit()
-    import threading
-    from services.gitea_service import do_backup, do_restore, test_server_connection
+    ScheduledTask.query.get_or_404(tid)
+    ok, task, message = claim_schedule_task(tid)
+    if not ok:
+        return jsonify({'error': message, 'cooldown': '等待' in message}), 400
+    start_schedule_task_thread(tid, started_at=task.last_run_at)
+    return jsonify(task_to_dict(task))
 
-    def run():
-        from app import create_app
-        from services.alert_service import on_backup_completed, on_restore_completed
-        app = create_app()
-        with app.app_context():
-            t2 = ScheduledTask.query.get(tid)
-            t2.last_status = 'running'
-            t2.last_run_at = datetime.utcnow()
-            db.session.commit()
 
-            try:
-                target_ids = json.loads(t2.target_ids or '[]')
-                now = datetime.utcnow()
-                import re
-                source = GiteaServer.query.get(t2.source_server_id)
-                safe_name = re.sub(r'[^A-Za-z0-9]', '', source.name) if source else 'server'
-                filename = f'gitea-dump-sched-{safe_name}-{now.strftime("%Y%m%d-%H%M%S")}.zip'
-                backup = Backup(
-                    source_server_id=t2.source_server_id,
-                    filename=filename,
-                    file_path='',
-                    status='running',
-                    source_api_token=source.api_token if source else '',
-                    source_server_name=source.name if source else '',
-                    started_at=now,
-                )
-                db.session.add(backup)
-                db.session.commit()
-                do_backup(backup.id)
+def _schedule_log_steps(log_entry, restore_results):
+    steps = []
+    first_log_part = (log_entry.log or '').split(';')[0].strip()
+    backup_status = log_entry.backup_status or log_entry.status
+    backup_detail = ''
+    if log_entry.backup_error:
+        backup_detail = '备份失败: ' + log_entry.backup_error
+    elif log_entry.backup_filename:
+        backup_detail = '备份完成: ' + log_entry.backup_filename
+    elif first_log_part:
+        backup_detail = first_log_part
+    else:
+        backup_detail = '-'
 
-                backup = Backup.query.get(backup.id)
-                if not backup or backup.status != 'success':
-                    backup_err = backup.error_msg if backup else 'unknown'
-                    on_backup_completed(t2.source_server_id, False, backup_err, backup_id=backup.id if backup else 0)
-                    raise Exception('备份失败: ' + backup_err)
+    steps.append({
+        'stage': '备份',
+        'target': '',
+        'status': backup_status,
+        'detail': backup_detail,
+        'backup_id': log_entry.backup_id,
+        'started_at': log_entry.started_at.isoformat() if log_entry.started_at else None,
+        'completed_at': log_entry.completed_at.isoformat() if log_entry.completed_at and not restore_results else None,
+    })
 
-                on_backup_completed(t2.source_server_id, True, backup_id=backup.id)
+    for result in restore_results:
+        status = result.get('status') or 'unknown'
+        target = result.get('target') or ''
+        error = result.get('error') or ''
+        detail = error if status == 'failed' else '成功'
+        steps.append({
+            'stage': '恢复',
+            'target': target,
+            'status': status,
+            'detail': detail,
+            'restore_task_id': result.get('restore_task_id'),
+            'started_at': result.get('started_at'),
+            'completed_at': result.get('completed_at'),
+        })
 
-                logs = [f'备份完成: {backup.filename}']
-                restore_results = []
+    return steps
 
-                for tid2 in target_ids:
-                    ts = GiteaServer.query.get(tid2)
-                    rt = RestoreTask(
-                        backup_id=backup.id,
-                        target_server_id=tid2,
-                        target_server_name=ts.name if ts else '',
-                        status='running',
-                        started_at=datetime.utcnow(),
-                    )
-                    db.session.add(rt)
-                    db.session.commit()
-                    do_restore(rt.id)
-                    rt = RestoreTask.query.get(rt.id)
-                    ts = GiteaServer.query.get(tid2)
-                    ts_name = ts.name if ts else str(tid2)
-                    info = {'target': ts_name, 'status': rt.status if rt else 'unknown'}
-                    if rt and rt.status == 'success':
-                        logs.append(f'恢复成功: {ts_name}')
-                        on_restore_completed(tid2, True, task_id=rt.id)
-                    else:
-                        info['error'] = (rt.error_msg if rt else '')[:200]
-                        logs.append(f'恢复失败: {ts_name} - {info["error"]}')
-                        on_restore_completed(tid2, False, info['error'], task_id=rt.id if rt else 0)
-                        if ts:
-                            ok, _ = test_server_connection(ts)
-                            ts.status = 'online' if ok else 'offline'
-                            db.session.commit()
-                    restore_results.append(info)
 
-                all_ok = all(r['status'] == 'success' for r in restore_results)
-                t2.last_status = 'success' if all_ok else 'failed'
-                t2.last_log = '; '.join(logs)
-                db.session.add(ScheduleLog(
-                    schedule_task_id=tid,
-                    status='success' if all_ok else 'failed',
-                    log=t2.last_log,
-                    backup_status='success',
-                    restore_results=json.dumps(restore_results, ensure_ascii=False),
-                    started_at=now,
-                    completed_at=datetime.utcnow(),
-                ))
-            except Exception as e:
-                t2.last_status = 'failed'
-                t2.last_log = str(e)[:500]
-                db.session.add(ScheduleLog(
-                    schedule_task_id=tid,
-                    status='failed',
-                    log=t2.last_log,
-                    backup_status='failed',
-                    restore_results='[]',
-                    started_at=now,
-                    completed_at=datetime.utcnow(),
-                ))
-            db.session.commit()
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    return jsonify({'ok': True})
+def _load_restore_results(raw):
+    try:
+        return json.loads(raw) if raw else []
+    except Exception:
+        return []
 
 
 @schedule_bp.route('/schedules/<int:tid>/logs', methods=['GET'])
@@ -200,12 +148,20 @@ def run_schedule(tid):
 def get_schedule_logs(tid):
     logs = ScheduleLog.query.filter_by(schedule_task_id=tid)\
         .order_by(ScheduleLog.started_at.desc()).limit(20).all()
-    return jsonify([{
-        'id': l.id,
-        'status': l.status,
-        'log': l.log,
-        'backup_status': l.backup_status,
-        'restore_results': json.loads(l.restore_results) if l.restore_results else [],
-        'started_at': l.started_at.isoformat() if l.started_at else None,
-        'completed_at': l.completed_at.isoformat() if l.completed_at else None,
-    } for l in logs])
+    result = []
+    for log_entry in logs:
+        restore_results = _load_restore_results(log_entry.restore_results)
+        result.append({
+            'id': log_entry.id,
+            'status': log_entry.status,
+            'log': log_entry.log,
+            'backup_status': log_entry.backup_status,
+            'backup_id': log_entry.backup_id,
+            'backup_filename': log_entry.backup_filename,
+            'backup_error': log_entry.backup_error,
+            'restore_results': restore_results,
+            'steps': _schedule_log_steps(log_entry, restore_results),
+            'started_at': log_entry.started_at.isoformat() if log_entry.started_at else None,
+            'completed_at': log_entry.completed_at.isoformat() if log_entry.completed_at else None,
+        })
+    return jsonify(result)

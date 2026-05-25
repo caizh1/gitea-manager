@@ -51,48 +51,48 @@ export default {
 <style scoped>
 .login-container {
   display: flex; justify-content: center; align-items: center; height: 100vh;
-  background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #f5576c, #4facfe, #00f2fe);
-  background-size: 400% 400%; animation: gradientFlow 12s ease infinite;
+  background: var(--gradient-bg);
   position: relative; overflow: hidden;
 }
 .login-container::before {
-  content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-  background: radial-gradient(circle at 30% 40%, rgba(255,255,255,0.15) 0%, transparent 50%),
-              radial-gradient(circle at 70% 60%, rgba(255,255,255,0.1) 0%, transparent 40%);
+  content: ''; position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 28% 32%, rgba(255,255,255,0.42) 0, rgba(255,255,255,0.18) 22%, transparent 42%),
+    radial-gradient(circle at 70% 66%, rgba(255,255,255,0.34) 0, rgba(255,255,255,0.14) 20%, transparent 38%);
   pointer-events: none;
 }
 .login-orb {
-  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.4;
+  position: absolute; border-radius: 46% 54% 50% 50%; opacity: 0.78;
   pointer-events: none;
+  background: rgba(255,255,255,0.26);
+  box-shadow: inset 26px 32px 92px rgba(255,255,255,0.74), inset -24px -30px 78px rgba(148,163,184,0.14);
 }
-.login-orb-1 { width: 500px; height: 500px; top: -10%; left: -5%; background: #667eea; animation: float1 8s ease-in-out infinite; }
-.login-orb-2 { width: 400px; height: 400px; bottom: -10%; right: -5%; background: #f093fb; animation: float2 6s ease-in-out infinite 1s; }
-.login-orb-3 { width: 300px; height: 300px; top: 40%; left: 60%; background: #4facfe; animation: float3 10s ease-in-out infinite 2s; }
+.login-orb-1 { width: 460px; height: 460px; top: -10%; left: -4%; animation: float1 8s ease-in-out infinite; }
+.login-orb-2 { width: 360px; height: 360px; bottom: -10%; right: -3%; animation: float2 6s ease-in-out infinite 1s; }
+.login-orb-3 { width: 240px; height: 240px; top: 48%; left: 62%; animation: float3 10s ease-in-out infinite 2s; }
 @keyframes float1 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-30px); } }
 @keyframes float2 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(20px); } }
 @keyframes float3 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
 
 .login-card {
-  width: 420px; padding: 48px 40px; border-radius: 20px;
-  background: rgba(255,255,255,0.72); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255,255,255,0.35); box-shadow: 0 16px 48px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.5);
+  width: 420px; padding: 48px 40px; border-radius: 28px;
+  background: rgba(255,255,255,0.68); backdrop-filter: blur(42px) saturate(190%); -webkit-backdrop-filter: blur(42px) saturate(190%);
+  border: 1px solid rgba(255,255,255,0.76); box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 26px 70px rgba(15,23,42,0.14);
   animation: fadeInUp 0.6s ease; position: relative; z-index: 1;
 }
 .login-title {
-  text-align: center; font-size: 26px; font-weight: 700; margin-bottom: 8px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+  text-align: center; font-size: 26px; font-weight: 760; margin-bottom: 8px;
+  color: var(--text-primary);
 }
-.login-subtitle { text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+.login-subtitle { text-align: center; color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; }
 .login-form :deep(.el-input__wrapper) {
-  background: rgba(255,255,255,0.6) !important;
-  border-radius: 10px !important; padding: 4px 12px !important;
+  background: rgba(255,255,255,0.66) !important;
+  border-radius: 16px !important; padding: 4px 12px !important;
 }
 .login-btn {
   width: 100%; height: 44px !important; font-size: 15px !important; font-weight: 600 !important;
-  border-radius: 10px !important;
+  border-radius: 16px !important;
 }
-.login-error { color: #ef4444; text-align: center; margin-top: 8px; font-size: 13px; }
-.login-footer { text-align: center; margin-top: 20px; font-size: 12px; color: #9ca3af; }
+.login-error { color: var(--color-danger); text-align: center; margin-top: 8px; font-size: 13px; }
+.login-footer { text-align: center; margin-top: 20px; font-size: 12px; color: var(--text-muted); }
 </style>

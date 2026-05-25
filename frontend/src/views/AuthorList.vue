@@ -124,7 +124,8 @@ export default {
 .author-cell { display: flex; align-items: center; gap: 10px; }
 .author-avatar {
   width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
-  background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+  background: rgba(0,122,255,0.12); color: var(--color-primary);
+  border: 1px solid rgba(0,122,255,0.16);
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 700;
 }
@@ -136,7 +137,7 @@ export default {
   width: 22px; height: 22px; border-radius: 5px; font-size: 11px; font-weight: 700;
   background: rgba(0,0,0,0.04); color: #6b7280;
 }
-.rank-top { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+.rank-top { background: rgba(0,122,255,0.12); color: var(--color-primary); }
 
 .text-muted { color: #d1d5db; }
 .empty-state { text-align: center; padding: 40px; color: #9ca3af; font-size: 13px; }

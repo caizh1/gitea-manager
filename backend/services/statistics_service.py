@@ -163,7 +163,6 @@ def collect_statistics(server_id):
 
         commits = _get_repo_commits(server, owner, repo_name)
         commit_count = len(commits)
-        all_repo_commits[full_name] = commits
 
         last_sha = commits[0].get('sha', '') if commits else ''
         last_date = None

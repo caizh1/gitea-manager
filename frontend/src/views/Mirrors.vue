@@ -243,7 +243,7 @@ export default {
 }
 .mirror-path { display: flex; align-items: center; gap: 10px; }
 .mirror-server-name { font-size: 16px; font-weight: 700; color: #1a1a2e; }
-.mirror-arrow { font-size: 18px; color: #667eea; font-weight: 700; }
+.mirror-arrow { font-size: 18px; color: var(--color-primary); font-weight: 700; }
 .mirror-card-info { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 14px; }
 .mirror-info-item { font-size: 13px; color: #6b7280; }
 .mirror-fail { color: #ef4444 !important; font-weight: 600; }

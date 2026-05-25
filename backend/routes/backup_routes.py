@@ -49,7 +49,7 @@ def create_backup():
     now = datetime.utcnow()
     import re
     safe_name = re.sub(r'[^A-Za-z0-9]', '', server.name) or 'server'
-    filename = f'gitea-dump-{safe_name}-{now.strftime("%Y%m%d-%H%M%S")}.zip'
+    filename = f'gitea-dump-{safe_name}-{now.strftime("%Y%m%d-%H%M%S-%f")}.zip'
     file_path = ''  # Set after backup completes
 
     backup = Backup(

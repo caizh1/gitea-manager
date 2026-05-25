@@ -21,19 +21,20 @@
       <el-table :data="tasks" stripe v-loading="loading" @expand-change="loadLogs" style="width:100%">
         <el-table-column type="expand">
           <template #default="{ row }">
-            <div v-if="logsCache[row.id] && logsCache[row.id].length" style="padding:0 20px 10px">
-              <el-table :data="flatLogs(logsCache[row.id])" :key="row.id + '-' + logsCache[row.id].length" size="small">
+            <div v-if="logsCache[row.id]" style="padding:0 20px 10px">
+              <el-table v-if="logsCache[row.id].length" :data="flatLogs(logsCache[row.id])" :key="row.id + '-' + logsCache[row.id].length" size="small">
                 <el-table-column label="时间" width="160">
                   <template #default="{ row: lr }">{{ fmt(lr.started_at) }}</template>
                 </el-table-column>
-                <el-table-column prop="stage" label="阶段" width="70" />
+                <el-table-column prop="stage" label="阶段" width="130" />
                 <el-table-column label="状态" width="80">
                   <template #default="{ row: lr }">
-                    <el-tag :type="lr.status === 'success' ? 'success' : 'danger'" size="small">{{ lr.status }}</el-tag>
+                    <el-tag :type="statusType(lr.status)" size="small">{{ lr.status }}</el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column prop="detail" label="详情" min-width="300" show-overflow-tooltip />
               </el-table>
+              <div v-else class="log-empty">暂无执行历史</div>
             </div>
             <div v-else style="padding:10px 20px;color:#9ca3af">加载中...</div>
           </template>
@@ -60,11 +61,31 @@
         </el-table-column>
         <el-table-column prop="last_status" label="上次" width="80">
           <template #default="{ row }">
-            <el-tag v-if="row.last_status" :type="row.last_status === 'success' ? 'success' : 'danger'" size="small">{{ row.last_status }}</el-tag>
+            <el-tag v-if="row.last_status" :type="statusType(row.last_status)" size="small">{{ row.last_status }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="last_run_at" label="上次执行" width="150">
           <template #default="{ row }">{{ row.last_run_at ? new Date(row.last_run_at).toLocaleString() : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="进度" min-width="260">
+          <template #default="{ row }">
+            <div v-if="row.last_status === 'running'" class="schedule-progress">
+              <div class="progress-header">
+                <span class="progress-label">{{ scheduleProgressLabel(row) }}</span>
+                <span class="progress-pct">{{ scheduleProgressPct(row) }}%</span>
+              </div>
+              <el-progress
+                :percentage="scheduleProgressPct(row)"
+                :status="scheduleProgressStatus(row)"
+                :stroke-width="7"
+                :show-text="false"
+              />
+              <div v-if="scheduleProgressDetail(row)" class="progress-detail">
+                {{ scheduleProgressDetail(row) }}
+              </div>
+            </div>
+            <span v-else class="text-muted">-</span>
+          </template>
         </el-table-column>
         <el-table-column prop="last_log" label="日志" min-width="150" show-overflow-tooltip />
         <el-table-column label="操作" width="240" fixed="right">
@@ -130,6 +151,7 @@ export default {
     const isEdit = ref(false)
     const editingId = ref(null)
     const logsCache = ref({})
+    const expandedTaskIds = ref(new Set())
     let pollTimer = null
     const now = ref(Date.now())
     const clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
@@ -156,12 +178,49 @@ export default {
       return m
     })
 
-    function loadData() {
-      loading.value = true
+    function hasRunningTasks(list = tasks.value) {
+      return list.some(t => t.last_status === 'running')
+    }
+
+    function syncPolling() {
+      if (hasRunningTasks()) {
+        if (!pollTimer) {
+          pollTimer = setInterval(() => loadData({ silent: true }), 2000)
+        }
+      } else if (pollTimer) {
+        clearInterval(pollTimer)
+        pollTimer = null
+      }
+    }
+
+    function notifyFinished(prevRunning) {
+      tasks.value.forEach(t => {
+        if (!prevRunning.has(t.id) || t.last_status === 'running') return
+        if (t.last_status === 'success') {
+          ElMessage.success(`${t.name} — 执行完成`)
+        } else if (t.last_status === 'failed') {
+          ElMessage.error(t.last_log || `${t.name} — 执行失败`)
+        }
+      })
+    }
+
+    function refreshExpandedLogs() {
+      expandedTaskIds.value.forEach(id => fetchLogs(id))
+    }
+
+    function loadData(options = {}) {
+      const silent = Boolean(options.silent)
+      const prevRunning = new Set(tasks.value.filter(t => t.last_status === 'running').map(t => t.id))
+      if (!silent) loading.value = true
       Promise.all([api.get('/schedules'), api.get('/servers')]).then(([tRes, sRes]) => {
         tasks.value = tRes.data
         servers.value = sRes.data
-      }).finally(() => { loading.value = false })
+        notifyFinished(prevRunning)
+        syncPolling()
+        refreshExpandedLogs()
+      }).finally(() => {
+        if (!silent) loading.value = false
+      })
     }
 
     function openDialog(row) {
@@ -190,7 +249,10 @@ export default {
     }
 
     function deleteTask(row) {
-      api.delete(`/schedules/${row.id}`).then(() => { loadData() })
+      api.delete(`/schedules/${row.id}`).then(() => {
+        expandedTaskIds.value.delete(row.id)
+        loadData()
+      })
     }
 
     function toggleEnabled(row) {
@@ -199,23 +261,7 @@ export default {
 
     function runNow(row) {
       api.post(`/schedules/${row.id}/run`).then(() => {
-        loadData()
-        pollTimer = setInterval(() => {
-          api.get('/schedules').then(res => {
-            tasks.value = res.data
-            const t = tasks.value.find(i => i.id === row.id)
-            if (t && t.last_status !== 'running' && pollTimer) {
-              clearInterval(pollTimer)
-              pollTimer = null
-              if (t.last_status === 'success') {
-                ElMessage.success(`${t.name} — 执行完成`)
-              } else {
-                ElMessage.error(t.last_log || '执行失败')
-                loadData()
-              }
-            }
-          })
-        }, 2000)
+        loadData({ silent: true })
       }).catch(err => {
         loadData()
         ElMessage.error(err.response?.data?.error || '请求失败')
@@ -235,13 +281,45 @@ export default {
       return s > 0 ? `请等待 ${s} 秒` : ''
     }
 
+    function statusType(status) {
+      if (status === 'success') return 'success'
+      if (status === 'running') return 'warning'
+      return 'danger'
+    }
+
+    function scheduleProgressPct(row) {
+      return Math.max(0, Math.min(Number(row.progress_percent || 0), 100))
+    }
+
+    function scheduleProgressLabel(row) {
+      return row.progress_label || '正在执行定时任务'
+    }
+
+    function scheduleProgressDetail(row) {
+      return row.progress_detail || ''
+    }
+
+    function scheduleProgressStatus(row) {
+      if ((row.progress_stage || '').includes('failed')) return 'exception'
+      if (row.last_status === 'failed') return 'exception'
+      if (row.last_status === 'success' && scheduleProgressPct(row) >= 100) return 'success'
+      return ''
+    }
+
+    function fetchLogs(taskId) {
+      logsCache.value = { ...logsCache.value, [taskId]: logsCache.value[taskId] || [] }
+      return api.get(`/schedules/${taskId}/logs`).then(res => {
+        logsCache.value = { ...logsCache.value, [taskId]: res.data }
+      })
+    }
+
     function loadLogs(row, expandedRows) {
       const expanded = expandedRows.some(r => r.id === row.id)
-      if (expanded && !logsCache.value[row.id]) {
-        logsCache.value = { ...logsCache.value, [row.id]: [] }
-        api.get(`/schedules/${row.id}/logs`).then(res => {
-          logsCache.value = { ...logsCache.value, [row.id]: res.data }
-        })
+      if (expanded) {
+        expandedTaskIds.value.add(row.id)
+        fetchLogs(row.id)
+      } else {
+        expandedTaskIds.value.delete(row.id)
       }
     }
 
@@ -250,11 +328,22 @@ export default {
     function flatLogs(logs) {
       const rows = []
       logs.forEach(l => {
+        if (l.steps && l.steps.length) {
+          l.steps.forEach(step => {
+            rows.push({
+              started_at: step.started_at || l.started_at,
+              stage: step.target ? `${step.stage}：${step.target}` : step.stage,
+              status: step.status,
+              detail: step.detail || '-',
+            })
+          })
+          return
+        }
         rows.push({
           started_at: l.started_at,
           stage: '备份',
           status: l.backup_status || l.status,
-          detail: l.log ? l.log.split(';')[0] : '-',
+          detail: l.backup_error ? `备份失败: ${l.backup_error}` : (l.log ? l.log.split(';')[0] : '-'),
         })
         const restores = l.restore_results || []
         restores.forEach(r => {
@@ -273,7 +362,8 @@ export default {
     return { tasks, loading, saving, dialogVisible, isEdit, form,
              primaryServers, backupServers, serverNameMap, logsCache, criticalAlert,
              loadData, openDialog, saveTask, deleteTask, toggleEnabled, runNow,
-              pad, loadLogs, fmt, flatLogs, now, isCooldown, cooldownTip }
+              pad, loadLogs, fmt, flatLogs, now, isCooldown, cooldownTip, statusType,
+              scheduleProgressPct, scheduleProgressLabel, scheduleProgressDetail, scheduleProgressStatus }
   },
 }
 </script>
@@ -291,4 +381,25 @@ export default {
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+
+.schedule-progress {
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.48); border: 1px solid rgba(0,122,255,0.12);
+}
+.progress-header {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  margin-bottom: 5px;
+}
+.progress-label {
+  min-width: 0; font-size: 12px; font-weight: 600; color: #1a1a2e;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.progress-pct { font-size: 12px; color: var(--color-primary); font-weight: 700; flex-shrink: 0; }
+.progress-detail {
+  margin-top: 5px; font-size: 11px; color: #6b7280; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-all;
+}
+.log-empty { padding: 14px 0; color: #9ca3af; font-size: 12px; text-align: center; }
+.text-muted { color: #d1d5db; }
 </style>

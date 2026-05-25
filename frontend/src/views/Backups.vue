@@ -30,6 +30,15 @@
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="错误原因" min-width="240" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="row.status === 'failed' && row.error_msg">
+              <span class="error-summary">{{ shortError(row.error_msg) }}</span>
+              <el-button size="small" type="danger" text @click="showError(row)">查看</el-button>
+            </template>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="started_at" label="开始时间" width="170">
           <template #default="{ row }">{{ fmt(row.started_at) }}</template>
         </el-table-column>
@@ -58,6 +67,16 @@
         <el-button type="primary" @click="createBackup" :loading="creating">开始备份</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog title="备份失败原因" v-model="errorDialogVisible" width="720px">
+      <div v-if="selectedErrorBackup" class="error-dialog">
+        <div class="error-meta">
+          <span>{{ selectedErrorBackup.filename }}</span>
+          <span>{{ fmt(selectedErrorBackup.started_at) }}</span>
+        </div>
+        <pre class="error-content">{{ selectedErrorBackup.error_msg }}</pre>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -73,6 +92,8 @@ export default {
     const creating = ref(false)
     const showCreateDialog = ref(false)
     const selectedServerId = ref(null)
+    const errorDialogVisible = ref(false)
+    const selectedErrorBackup = ref(null)
 
     const primaryServers = ref([])
 
@@ -103,6 +124,17 @@ export default {
       api.delete(`/backups/${row.id}`).then(() => { load() })
     }
 
+    function shortError(message) {
+      if (!message) return ''
+      const firstLine = message.split('\n').find(Boolean) || message
+      return firstLine.length > 90 ? firstLine.slice(0, 90) + '...' : firstLine
+    }
+
+    function showError(row) {
+      selectedErrorBackup.value = row
+      errorDialogVisible.value = true
+    }
+
     function formatSize(bytes) {
       if (!bytes) return '-'
       if (bytes < 1024) return bytes + ' B'
@@ -121,7 +153,9 @@ export default {
     onMounted(load)
 
     return { backups, loading, creating, showCreateDialog, selectedServerId, primaryServers,
-             load, createBackup, downloadBackup, deleteBackup, formatSize, statusType, fmt }
+             errorDialogVisible, selectedErrorBackup,
+             load, createBackup, downloadBackup, deleteBackup, shortError, showError,
+             formatSize, statusType, fmt }
   },
 }
 </script>
@@ -139,4 +173,15 @@ export default {
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+.error-summary { color: #ef4444; font-size: 12px; vertical-align: middle; }
+.text-muted { color: #d1d5db; }
+.error-dialog { display: flex; flex-direction: column; gap: 12px; }
+.error-meta {
+  display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #6b7280;
+}
+.error-content {
+  margin: 0; padding: 14px; border-radius: 10px; max-height: 420px; overflow: auto;
+  background: rgba(239,68,68,0.04); border: 1px solid rgba(239,68,68,0.12);
+  color: #1a1a2e; font-size: 12px; line-height: 1.55; white-space: pre-wrap;
+}
 </style>

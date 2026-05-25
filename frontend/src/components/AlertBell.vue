@@ -1,6 +1,6 @@
 <template>
   <div class="alert-bell-wrapper">
-    <span v-if="latestAlert" class="alert-latest-text" :class="{ 'text-danger': activeCount > 0 }">
+    <span v-if="latestAlert" class="alert-latest-text" :class="{ 'text-danger': activeCount > 0 && latestAlert }">
       {{ latestAlert.alert_type === 'backup_failed' ? '备份失败' : '恢复失败' }}: {{ latestAlert.server_name }}
     </span>
     <span v-else class="alert-latest-text">无告警</span>
@@ -53,8 +53,9 @@ export default {
 
     function loadSummary() {
       api.get('/alerts/summary').then(res => {
-        activeCount.value = res.data.active_count
-        latestAlert.value = res.data.latest_alert
+        activeCount.value = res.data.active_count || 0
+        const latest = res.data.latest_alert
+        latestAlert.value = latest && latest.status === 'active' ? latest : null
       }).catch(() => {})
     }
 
@@ -147,14 +148,14 @@ export default {
 }
 
 .bell-icon-wrap:hover .bell-icon {
-  color: #667eea;
+  color: var(--color-primary);
 }
 
 .bell-badge {
   position: absolute;
   top: -4px;
   right: -4px;
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: var(--color-danger);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -164,7 +165,7 @@ export default {
   border-radius: 9px;
   text-align: center;
   padding: 0 4px;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 8px 18px rgba(255, 59, 48, 0.24);
 }
 
 .alert-panel-header {

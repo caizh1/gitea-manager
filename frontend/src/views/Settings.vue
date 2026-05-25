@@ -21,12 +21,15 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { inject, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { api } from '../api'
 
 export default {
   setup() {
+    const router = useRouter()
+    const refreshSettingsState = inject('refreshSettingsState', null)
     const hostIp = ref('')
     const saving = ref(false)
 
@@ -37,9 +40,19 @@ export default {
     }
 
     function save() {
+      const value = hostIp.value.trim()
+      if (!value) {
+        ElMessage.warning('请填写本机 IP')
+        return
+      }
       saving.value = true
-      api.post('/settings', { host_ip: hostIp.value }).then(() => {
+      api.post('/settings', { host_ip: value }).then((res) => {
+        hostIp.value = res.data.host_ip || value
+        if (refreshSettingsState) {
+          refreshSettingsState()
+        }
         ElMessage.success('保存成功')
+        router.push('/dashboard')
       }).finally(() => { saving.value = false })
     }
 

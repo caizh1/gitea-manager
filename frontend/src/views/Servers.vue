@@ -211,6 +211,6 @@ export default {
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
-.clickable-name { color: #667eea; cursor: pointer; font-weight: 500; transition: color 0.2s; }
-.clickable-name:hover { color: #764ba2; }
+.clickable-name { color: var(--color-primary); cursor: pointer; font-weight: 600; transition: color 0.2s; }
+.clickable-name:hover { color: #005ecb; }
 </style>

@@ -74,6 +74,8 @@ class TaskManager:
                             verify_restore(task_id)
                         except Exception as e:
                             logging.warning('[TaskManager] 恢复验证失败: %s', e)
+                            from services.restore_progress import update_restore_progress
+                            update_restore_progress(task, 'verify_failed', 'Commit ID 验证失败', 100, str(e)[:500])
                             v = RestoreVerification.query.filter_by(restore_task_id=task_id).first()
                             if v and v.status == 'running':
                                 v.status = 'failed'

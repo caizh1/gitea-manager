@@ -9,9 +9,11 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--gradient-bg);
+  color: var(--text-primary);
 }
 
 @keyframes gradientFlow {
@@ -36,8 +38,8 @@ body {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 8px rgba(67, 233, 123, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(67, 233, 123, 0.6); }
+  0%, 100% { box-shadow: 0 0 8px rgba(52, 199, 89, 0.22); }
+  50% { box-shadow: 0 0 16px rgba(52, 199, 89, 0.42); }
 }
 
 ::-webkit-scrollbar {
@@ -64,7 +66,7 @@ body {
   -webkit-backdrop-filter: var(--blur);
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), var(--shadow-sm);
   transition: all 0.3s ease;
   overflow: hidden;
 }
@@ -78,7 +80,7 @@ body {
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   border: 1px solid var(--glass-border-dark);
-  color: #e0e0e0;
+  color: var(--text-primary);
 }
 
 .page-enter-active {
@@ -95,7 +97,7 @@ body {
   background: var(--glass-bg) !important;
   backdrop-filter: var(--blur) !important;
   -webkit-backdrop-filter: var(--blur) !important;
-  box-shadow: var(--shadow-sm) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), var(--shadow-sm) !important;
   transition: all 0.3s ease !important;
 }
 
@@ -104,7 +106,7 @@ body {
 }
 
 .el-card__header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
 }
 
 .el-dialog {
@@ -113,12 +115,12 @@ body {
   backdrop-filter: var(--blur-heavy) !important;
   -webkit-backdrop-filter: var(--blur-heavy) !important;
   border: 1px solid var(--glass-border) !important;
-  box-shadow: var(--shadow-lg) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), var(--shadow-lg) !important;
   overflow: hidden;
 }
 
 .el-dialog__header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
   padding: 20px 24px 16px !important;
 }
 
@@ -137,8 +139,8 @@ body {
 }
 
 .el-overlay {
-  backdrop-filter: blur(4px) !important;
-  -webkit-backdrop-filter: blur(4px) !important;
+  backdrop-filter: blur(12px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
 }
 
 .el-table {
@@ -147,7 +149,7 @@ body {
 }
 
 .el-table th.el-table__cell {
-  background: rgba(102, 126, 234, 0.04) !important;
+  background: rgba(255, 255, 255, 0.38) !important;
   color: var(--text-muted) !important;
   font-weight: 600 !important;
   font-size: 12px !important;
@@ -157,15 +159,15 @@ body {
 }
 
 .el-table td.el-table__cell {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05) !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
-  background: rgba(102, 126, 234, 0.015) !important;
+  background: rgba(255, 255, 255, 0.32) !important;
 }
 
 .el-table__body tr:hover > td.el-table__cell {
-  background: rgba(102, 126, 234, 0.04) !important;
+  background: rgba(0, 122, 255, 0.06) !important;
 }
 
 .el-table--border .el-table__cell {
@@ -181,20 +183,20 @@ body {
   background: var(--gradient-primary) !important;
   border: none !important;
   border-radius: var(--radius-xs) !important;
-  box-shadow: 0 2px 10px rgba(102, 126, 234, 0.25) !important;
+  box-shadow: 0 8px 22px rgba(0, 122, 255, 0.22) !important;
   transition: all 0.25s ease !important;
 }
 
 .el-button--primary:hover {
-  box-shadow: 0 4px 18px rgba(102, 126, 234, 0.4) !important;
+  box-shadow: 0 12px 28px rgba(0, 122, 255, 0.30) !important;
   transform: translateY(-1px);
 }
 
 .el-button--success {
-  background: var(--gradient-green) !important;
+  background: linear-gradient(180deg, rgba(52, 199, 89, 0.96), rgba(39, 174, 96, 0.96)) !important;
   border: none !important;
   border-radius: var(--radius-xs) !important;
-  box-shadow: 0 2px 10px rgba(67, 233, 123, 0.25) !important;
+  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.22) !important;
 }
 
 .el-button--danger {
@@ -204,21 +206,22 @@ body {
 .el-button {
   border-radius: var(--radius-xs) !important;
   transition: all 0.25s ease !important;
+  font-weight: 600 !important;
 }
 
 .el-input__wrapper {
   border-radius: var(--radius-sm) !important;
-  background: rgba(255, 255, 255, 0.6) !important;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08) inset !important;
+  background: rgba(255, 255, 255, 0.68) !important;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset, inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
   transition: all 0.25s ease !important;
 }
 
 .el-input__wrapper:hover {
-  box-shadow: 0 0 0 1px rgba(102, 126, 234, 0.3) inset !important;
+  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.26) inset, inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
 }
 
 .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 1px var(--color-primary) inset, 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+  box-shadow: 0 0 0 1px var(--color-primary) inset, 0 0 0 4px rgba(0, 122, 255, 0.10) !important;
 }
 
 .el-select .el-input__wrapper {
@@ -231,7 +234,7 @@ body {
 }
 
 .el-tag {
-  border-radius: 6px !important;
+  border-radius: 999px !important;
   border: none !important;
   font-weight: 600 !important;
   letter-spacing: 0.3px !important;

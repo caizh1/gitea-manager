@@ -49,6 +49,7 @@
           <span class="progress-pct">{{ progressPct }}%</span>
         </div>
         <el-progress :percentage="progressPct" :status="progressStatus" :stroke-width="8" />
+        <div v-if="progressDetail" class="progress-detail">{{ progressDetail }}</div>
       </div>
     </div>
 
@@ -135,16 +136,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 
-const PROGRESS_STAGES = [
-  { label: '准备恢复', pct: 5 },
-  { label: '上传备份数据', pct: 20 },
-  { label: '停止 Gitea 服务', pct: 30 },
-  { label: '覆盖数据文件', pct: 50 },
-  { label: '恢复数据库', pct: 75 },
-  { label: '启动 Gitea 服务', pct: 90 },
-  { label: '验证 Commit ID', pct: 100 },
-]
-
 export default {
   setup() {
     const backups = ref([])
@@ -155,6 +146,8 @@ export default {
     const selectedTargetId = ref(null)
     let pollTimer = null
     const progressStage = ref(0)
+    const progressInfo = ref({ label: '', percent: 0, detail: '', stage: '' })
+    const currentTaskId = ref(null)
     const verifyDialogVisible = ref(false)
     const verifyData = ref(null)
 
@@ -167,12 +160,35 @@ export default {
       return '⚠️ 检测到 PostgreSQL 相关恢复失败！目标服务器可能数据损坏，请立即登录检查！'
     })
 
-    const progressPct = computed(() => PROGRESS_STAGES[progressStage.value]?.pct || 0)
-    const progressLabel = computed(() => PROGRESS_STAGES[progressStage.value]?.label || '')
+    const progressPct = computed(() => progressInfo.value.percent || 0)
+    const progressLabel = computed(() => progressInfo.value.label || '')
+    const progressDetail = computed(() => progressInfo.value.detail || '')
     const progressStatus = computed(() => {
-      if (progressStage.value >= PROGRESS_STAGES.length - 1) return 'success'
+      if ((progressInfo.value.stage || '').includes('failed')) return 'exception'
+      if (progressPct.value >= 100) return 'success'
       return ''
     })
+
+    function updateProgressFromTask(task) {
+      if (!task) return
+      progressInfo.value = {
+        label: task.progress_label || (task.status === 'running' ? '正在恢复' : ''),
+        percent: task.progress_percent || (task.status === 'success' ? 100 : 0),
+        detail: task.progress_detail || '',
+        stage: task.progress_stage || '',
+      }
+      progressStage.value = progressInfo.value.label ? 1 : 0
+    }
+
+    function resetProgressLater(delay = 2000) {
+      setTimeout(() => {
+        restoring.value = false
+        progressStage.value = 0
+        progressInfo.value = { label: '', percent: 0, detail: '', stage: '' }
+        currentTaskId.value = null
+        load()
+      }, delay)
+    }
 
     function load() {
       Promise.all([api.get('/backups'), api.get('/servers'), api.get('/restore-tasks')])
@@ -185,57 +201,48 @@ export default {
 
     function doRestore() {
       restoring.value = true
-      progressStage.value = 0
-      let stageIdx = 0
-      const stageTimer = setInterval(() => {
-        stageIdx++
-        if (stageIdx < PROGRESS_STAGES.length - 1) {
-          progressStage.value = stageIdx
-        }
-      }, 8000)
+      progressStage.value = 1
+      progressInfo.value = { label: '正在创建恢复任务', percent: 3, detail: '', stage: 'create_task' }
 
       api.post('/restore', {
         backup_id: selectedBackupId.value,
         target_server_id: selectedTargetId.value,
-      }).then(() => {
+      }).then((res) => {
+        currentTaskId.value = res.data.id
         selectedBackupId.value = null
         selectedTargetId.value = null
         load()
         pollTimer = setInterval(() => {
           api.get('/restore-tasks').then(res => {
             tasks.value = res.data
-            const running = tasks.value.some(t => t.status === 'running')
-            if (!running) {
+            const current = tasks.value.find(t => t.id === currentTaskId.value)
+            updateProgressFromTask(current)
+            if (!current || current.status === 'failed') {
               clearInterval(pollTimer)
-              clearInterval(stageTimer)
               pollTimer = null
-              const lastTask = tasks.value[0]
-              if (lastTask && lastTask.status === 'success') {
-                progressStage.value = PROGRESS_STAGES.length - 2
-                const verifyPoll = setInterval(() => {
-                  api.get(`/restore-tasks/${lastTask.id}/verification`).then(vRes => {
-                    if (vRes.data.status === 'success' || vRes.data.status === 'failed') {
-                      clearInterval(verifyPoll)
-                      progressStage.value = PROGRESS_STAGES.length - 1
-                      setTimeout(() => {
-                        restoring.value = false
-                        progressStage.value = 0
-                        load()
-                      }, 2000)
-                    }
-                  })
-                }, 3000)
-              } else {
-                restoring.value = false
-                progressStage.value = 0
+              if (current && current.status === 'failed') {
+                progressInfo.value = {
+                  label: current.progress_label || '恢复失败',
+                  percent: current.progress_percent || 100,
+                  detail: current.error_msg || current.progress_detail || '',
+                  stage: 'failed',
+                }
               }
+              resetProgressLater(4000)
+              return
+            }
+            if (current.status === 'success' && ['success', 'failed'].includes(current.verification_status)) {
+              clearInterval(pollTimer)
+              pollTimer = null
+              updateProgressFromTask(current)
+              resetProgressLater(2500)
             }
           })
         }, 2000)
       }).catch(() => {
         restoring.value = false
         progressStage.value = 0
-        clearInterval(stageTimer)
+        progressInfo.value = { label: '', percent: 0, detail: '', stage: '' }
       })
     }
 
@@ -281,7 +288,7 @@ export default {
              selectedBackupId, selectedTargetId,
              successBackups, backupServers, criticalAlert,
              doRestore, load, formatSize, statusType, fmt,
-             progressStage, progressPct, progressLabel, progressStatus,
+              progressStage, progressPct, progressLabel, progressDetail, progressStatus,
              verifyDialogVisible, verifyData, triggerVerify, showVerify }
   },
 }
@@ -303,18 +310,19 @@ export default {
 
 .restore-progress {
   margin-top: 16px; padding: 16px; border-radius: 10px;
-  background: rgba(102,126,234,0.04); border: 1px solid rgba(102,126,234,0.1);
+  background: rgba(255,255,255,0.48); border: 1px solid rgba(0,122,255,0.12);
 }
 .progress-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
 }
 .progress-label { font-size: 13px; font-weight: 600; color: #1a1a2e; }
-.progress-pct { font-size: 13px; color: #667eea; font-weight: 700; }
+.progress-pct { font-size: 13px; color: var(--color-primary); font-weight: 700; }
+.progress-detail { margin-top: 8px; font-size: 12px; color: #6b7280; word-break: break-all; }
 
 .v-ok { color: #10b981; cursor: pointer; font-weight: 600; }
 .v-fail { color: #ef4444; cursor: pointer; font-weight: 600; }
 .v-running { color: #f59e0b; }
-.v-pending { color: #667eea; cursor: pointer; font-weight: 600; }
+.v-pending { color: var(--color-primary); cursor: pointer; font-weight: 600; }
 .v-pending:hover { text-decoration: underline; }
 
 .verify-summary {

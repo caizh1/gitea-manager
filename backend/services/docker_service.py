@@ -11,10 +11,10 @@ def _get_client():
     return _client
 
 
-def local_exec(container_name, cmd, user=None):
+def local_exec(container_name, cmd, user=None, workdir=None):
     client = _get_client()
     container = client.containers.get(container_name)
-    exit_code, output = container.exec_run(cmd, user=user)
+    exit_code, output = container.exec_run(cmd, user=user, workdir=workdir)
     return exit_code, output.decode('utf-8', errors='replace')
 
 

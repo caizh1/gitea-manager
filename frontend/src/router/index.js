@@ -7,6 +7,7 @@ const routes = [
   { path: '/backups', component: () => import('../views/Backups.vue') },
   { path: '/restore', component: () => import('../views/Restore.vue') },
   { path: '/mirrors', component: () => import('../views/Mirrors.vue') },
+  { path: '/commit-gates', component: () => import('../views/CommitGates.vue') },
   { path: '/statistics/authors', component: () => import('../views/AuthorList.vue') },
   { path: '/statistics/authors/:name', component: () => import('../views/AuthorDetail.vue') },
   { path: '/statistics', component: () => import('../views/Statistics.vue') },

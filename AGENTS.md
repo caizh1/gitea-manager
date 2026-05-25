@@ -1,14 +1,16 @@
-# Gitea Manager — AGENTS.md
+# Gitea Manager - AGENTS.md
 
-本文档供 AI Agent 在新会话中快速理解项目全貌，无需重新探索代码结构。
+本文档是给 AI coding agent 使用的项目入口说明，目标是让一个全新的 session 能快速理解当前代码库、部署约束和容易踩坑的地方。
+
+**命名说明：** 文件应继续叫 `AGENTS.md`。这是 Codex/AI agent 常用的约定入口名，适合放工程上下文和协作规则；面向普通使用者的说明继续放在 `README.md`。
 
 ---
 
 ## 1. 项目概述
 
-Gitea Manager 是一个 Web 管理面板，用于统一管理多台 Gitea 服务器的备份、恢复和定时调度。
+Gitea Manager 是一个 Web 管理面板，用于统一管理多台 Gitea 服务器的备份、恢复、定时调度、镜像同步、统计分析、提交消息门禁和全局告警。
 
-**核心功能：** 服务器管理 · 一键备份 · 灵活恢复 · 定时调度 · 统计分析 · 镜像管理 · 全局告警 · 系统设置
+**核心功能：** 服务器管理 · 一键备份 · 灵活恢复 · 定时调度 · 统计分析 · 镜像管理 · 提交消息门禁 · 全局告警 · 系统设置
 
 **技术栈：**
 
@@ -16,357 +18,304 @@ Gitea Manager 是一个 Web 管理面板，用于统一管理多台 Gitea 服务
 |------|------|
 | 前端 | Vue 3 + Element Plus + Axios + Vite |
 | 后端 | Python Flask + SQLAlchemy + Gunicorn |
-| 数据库 | SQLite（`data/gitea-manager.db`，自动创建） |
-| 部署 | Docker Compose（nginx + python 容器） |
-| 通信 | REST API + Paramiko (SSH) + Docker SDK |
+| 数据库 | SQLite, 默认 `data/gitea-manager.db`, 启动时自动创建和迁移 |
+| 部署 | Docker Compose, frontend nginx + backend gunicorn |
+| 外部通信 | REST API + Paramiko SSH + Docker SDK + Gitea REST API |
 
 ---
 
-## 2. 架构全景图
+## 2. 架构与运行方式
 
 ```
-浏览器 (http://<IP>:5480)
-  │
-  ▼
-┌──────────────────────────────────────┐
-│  frontend (nginx :80 → 宿主机 :5480)  │
-│  ├─ /           → SPA (Vue Router)    │
-│  ├─ /api/*      → proxy_pass backend  │
-│  └─ /index.html → 兜底 (history mode) │
-└────────────┬─────────────────────────┘
-             │ Docker network
-             ▼
-┌──────────────────────────────────────┐
-│  backend (gunicorn :5000)            │
-│  ├─ routes/           API 路由层      │
-│  ├─ services/         业务逻辑层      │
-│  ├─ models.py         数据模型        │
-│  ├─ auth.py           认证 (Flask-Login)│
-│  └─ config.py         配置 (环境变量)  │
-│                                      │
-│  外部交互:                            │
-│  ├─ SQLite DB         本地数据持久化   │
-│  ├─ SSH (Paramiko)    远程服务器操作   │
-│  ├─ Docker SDK        本地容器操作     │
-│  └─ Gitea REST API    获取服务器信息   │
-└──────────────────────────────────────┘
+浏览器 http://<IP>:5480
+  |
+  v
+frontend nginx
+  |-- /           -> Vue SPA, history mode
+  |-- /api/*      -> proxy_pass backend:5000
+  |-- /index.html -> SPA fallback
+  |
+  v
+backend gunicorn
+  |-- routes/     -> Flask Blueprint API
+  |-- services/   -> 备份、恢复、调度、镜像、统计、提交门禁等业务逻辑
+  |-- models.py   -> SQLAlchemy 模型
+  |-- auth.py     -> Flask-Login
+  |-- app.py      -> create_app(), 迁移, 蓝图注册, scheduler 启动
 ```
-
-**端口映射：**
 
 | 服务 | 容器内端口 | 宿主机端口 |
-|------|----------|-----------|
-| 前端 nginx | 80 | 5480 |
-| 后端 gunicorn | 5000 | 5000 |
+|------|------------|------------|
+| frontend nginx | 80 | 5480 |
+| backend gunicorn | 5000 | 5000 |
+
+后端容器挂载 `data/`、SSH key 和 Docker socket。Docker socket 用于操作本机 Gitea/PostgreSQL 容器；远程服务器通过 SSH 执行 Docker 命令和传输文件。
 
 ---
 
-## 3. 数据模型
+## 3. 数据模型速览
 
-```
-┌─────────────────┐     ┌──────────────────┐
-│   GiteaServer    │◄────│     Backup       │
-│─────────────────│     │──────────────────│
-│ id (PK)         │     │ id (PK)          │
-│ name            │     │ source_server_id  │──FK→ GiteaServer
-│ role (primary/  │     │ filename          │
-│   backup)       │     │ file_path         │
-│ host            │     │ file_size         │
-│ ssh_port        │     │ status (running/  │
-│ ssh_user        │     │   success/failed) │
-│ gitea_container │     │ error_msg         │
-│ pg_container    │     │ started_at        │
-│ pg_dbname       │     │ completed_at      │
-│ pg_user         │     └────────┬─────────┘
-│ gitea_port      │              │
-│ gitea_url       │              │ FK
-│ api_token       │              ▼
-│ status          │     ┌──────────────────┐
-│ version         │     │   RestoreTask    │
-│ repo_count      │     │──────────────────│
-│ user_count      │     │ id (PK)          │
-│ is_local        │     │ backup_id (FK)    │
-│ disk_usage      │     │ target_server_id  │──FK→ GiteaServer
-│ created_at      │     │ status           │
-└────────┬────────┘     │ error_msg        │
-         │              │ started_at       │
-         │ FK           │ completed_at     │
-         ▼              └──────────────────┘
-┌─────────────────┐     ┌──────────────────┐
-│ ScheduledTask   │     │   ScheduleLog    │
-│─────────────────│     │──────────────────│
-│ id (PK)         │     │ id (PK)          │
-│ name            │     │ schedule_task_id  │──FK→ ScheduledTask
-│ enabled         │     │ status           │
-│ source_server_id │──FK │ log              │
-│ target_ids (JSON)│    │ backup_status    │
-│ schedule_hour   │     │ restore_results  │
-│ schedule_minute │     │   (JSON)         │
-│ last_run_at     │     │ started_at       │
-│ last_status     │     │ completed_at     │
-│ last_log        │     └──────────────────┘
-│ created_at      │
-└─────────────────┘
+所有 ORM 模型集中在 `backend/models.py`，启动时 `app.py` 会执行 `db.create_all()` 和一组幂等 SQL 迁移，兼容旧 SQLite 数据库。
 
-┌─────────────────┐
-│    Setting      │     ┌──────────────────┐
-│─────────────────│     │   User (虚拟)     │
-│ key (PK)        │     │──────────────────│
-│ value           │     │ id = 1 (硬编码)   │
-└─────────────────┘     │ 密码存于 Setting   │
-  admin_password        │ (admin_password)  │
-  host_ip               └──────────────────┘
-```
+| 模型 | 作用 |
+|------|------|
+| `GiteaServer` | Gitea 服务器连接信息、角色、容器名、API token、状态和资源信息 |
+| `Backup` | 备份记录，关联源服务器，保存文件名、路径、状态、失败原因、源 token 快照 |
+| `RestoreTask` | 恢复任务，关联备份和目标服务器，包含 `progress_*` 实时进度字段 |
+| `ScheduledTask` | 定时任务，源服务器 + 多个目标服务器 JSON，包含 `progress_*`、`current_backup_id`、`current_restore_task_id` 和恢复序号 |
+| `ScheduleLog` | 每次调度执行日志，含 `backup_id`、`backup_filename`、`backup_error`、`restore_results` |
+| `Setting` / `User` | `Setting` 存管理员密码和 `host_ip`；`User` 是 Flask-Login 虚拟用户，固定 id=1 |
+| `RepoStatistics` / `CommitStatistics` / `AuthorStatistics` | 仓库、提交趋势、作者贡献统计 |
+| `MirrorConfig` / `MirrorRepoStatus` | Gitea 镜像配置和单仓库同步状态 |
+| `RestoreVerification` / `BackupRepoCommit` | 备份时采集 commit 校验集，恢复后验证目标仓库 commit ID |
+| `CommitMessageRule` / `CommitGateAssignment` | 提交消息规则和仓库应用状态 |
+| `Alert` | 全局告警，记录备份/恢复/镜像等失败事件 |
 
-**表关系说明：**
-- `GiteaServer` — 核心实体，存储 Gitea 服务器的连接信息和运行状态
-- `Backup` → `GiteaServer`（多对一）：一个服务器可以有多个备份记录
-- `RestoreTask` → `Backup` + `GiteaServer`：恢复任务同时关联备份文件和目标服务器
-- `ScheduledTask` → `GiteaServer`（多对一）：定时任务指定一个源服务器和多个目标服务器（JSON）
-- `ScheduleLog` → `ScheduledTask`（多对一）：每次调度执行的日志
-- `Setting` — 键值存储，存管理员密码（bcrypt）和本机 IP
-- `User` — 不存储到数据库，硬编码 id=1，通过 `Setting.admin_password` 验证
-- `RepoStatistics` → `GiteaServer`（多对一）：每个仓库的统计数据（提交数、代码行、语言分布等）
-- `CommitStatistics` → `GiteaServer`（多对一）：按时间段的提交统计（月/季/半年/年）
-- `AuthorStatistics` → `GiteaServer`（多对一）：每个作者在每个仓库的统计（提交数、新增行、删除行），UniqueConstraint(server_id, author_name, repo_name)
-- `Alert` → `GiteaServer`（多对一）：全局告警记录
-- `MirrorConfig` → `GiteaServer`×2：镜像同步配置（源服务器→目标服务器）
-- `MirrorRepoStatus` → `MirrorConfig`（多对一）：每个仓库的镜像状态
-- `RestoreVerification` → `RestoreTask`（多对一）：恢复验证结果
-- `BackupRepoCommit` → `Backup`（多对一）：每次备份中每个仓库的 commit ID 校验集
+重要关系：
+
+- `Backup.source_server_id -> GiteaServer.id`
+- `RestoreTask.backup_id -> Backup.id`, `RestoreTask.target_server_id -> GiteaServer.id`
+- `ScheduledTask.source_server_id -> GiteaServer.id`, `target_ids` 用 JSON 保存多个目标服务器 id
+- `ScheduleLog.schedule_task_id -> ScheduledTask.id`
+- `MirrorConfig` 同时关联源服务器和目标服务器
+- `CommitGateAssignment` 以 `(server_id, repo_name)` 保证一个仓库只有一条门禁应用记录
 
 ---
 
-## 4. 文件清单
+## 4. 后端结构
 
-### 4.1 顶层文件
-
-| 文件 | 用途 |
-|------|------|
-| `docker-compose.yml` | 定义 backend + frontend 两个服务，挂载 data 目录、SSH 密钥、Docker socket |
-| `deploy.sh` | 一键部署脚本：创建目录 → docker compose build → up -d → 健康检查 → 打印访问信息 |
-| `README.md` | 项目说明文档，面向使用者 |
-| `AGENTS.md` | 本文件 |
-| `.gitignore` | 排除 node_modules、__pycache__、*.db、data/backups/、dist/ |
-
-### 4.2 后端（`backend/`）
-
-#### 入口与配置
+### 4.1 入口与配置
 
 | 文件 | 用途 |
 |------|------|
-| `app.py` | **应用工厂 `create_app()`**。初始化 Flask、SQLAlchemy、CORS、认证；执行数据库迁移（`db.create_all()` + 原始 SQL ALTER）；种子化默认管理员密码；注册 6 个路由蓝图；添加 `before_request` 钩子（未配 host_ip 则拦截写操作）；启动后台调度器 |
-| `run.py` | 本地开发入口，调用 `create_app()` 启动 Flask dev server (`:5000`, debug=True) |
-| `config.py` | 读取环境变量提供配置：`DATABASE_URL`、`BACKUP_DIR`、`SSH_KEY_PATH`、`SECRET_KEY`、`INIT_PASSWORD` |
-| `auth.py` | Flask-Login 集成。`init_auth(app)` 绑定 LoginManager，`Auth.login(password)` 验证 bcrypt 密码 |
-| `models.py` | **所有 ORM 模型**。6 个 SQLAlchemy 模型类 + `db` 实例 + `get_setting()`/`set_setting()` 辅助函数 |
-| `requirements.txt` | Python 依赖清单 |
-| `Dockerfile` | 基于私有仓库 python:3.11-slim，通过 wheels/ 离线安装依赖，CMD gunicorn 2 workers |
-| `.dockerignore` | 排除 __pycache__、*.pyc、.env |
+| `backend/app.py` | 应用工厂 `create_app()`；初始化 Flask、SQLAlchemy、CORS、认证；执行数据库迁移；注册蓝图；检查 `host_ip`；启动 scheduler |
+| `backend/run.py` | 本地 Flask dev server 入口，监听 `:5000` |
+| `backend/config.py` | 环境变量配置：`DATABASE_URL`、`BACKUP_DIR`、`SSH_KEY_PATH`、`SECRET_KEY`、`INIT_PASSWORD` |
+| `backend/auth.py` | Flask-Login 集成和密码校验 |
+| `backend/models.py` | 全部 SQLAlchemy 模型和 `get_setting()` / `set_setting()` |
+| `backend/Dockerfile` | 基于私有 Python 镜像，使用 `backend/wheels/` 离线安装依赖，Gunicorn 默认 2 workers |
 
-#### 路由层（`backend/routes/`）
+### 4.2 API 蓝图
 
-所有路由 Blueprint 前缀为 `/api`，均需登录（除登录接口外）。
+所有业务 API 前缀为 `/api`，除登录/session 外需要登录。
 
 | 文件 | 蓝图 | 主要端点 |
-|------|------|---------|
-| `routes/__init__.py` | — | 空文件，声明 package |
-| `routes/auth_routes.py` | `auth_bp` | `GET /session`（检查登录）、`POST /login`、`POST /logout` |
-| `routes/server_routes.py` | `server_bp` | CRUD 服务器（`GET/POST /servers`, `GET/PUT/DELETE /servers/<id>`）；`POST /servers/<id>/check`（测试连接）；`POST /servers/<id>/refresh`（刷新信息）；`GET /servers/<id>/detail`（详情含日志） |
-| `routes/backup_routes.py` | `backup_bp` | `GET /backups`（列表）、`POST /backups`（创建备份 → 异步执行）、`DELETE /backups/<id>`、`GET /backups/<id>/download` |
-| `routes/restore_routes.py` | `restore_bp` | `GET /restore-tasks`（列表）、`POST /restore`（创建恢复任务 → 异步执行） |
-| `routes/schedule_routes.py` | `schedule_bp` | CRUD 定时任务、`POST /schedules/<id>/run`（手动触发，含 5 分钟冷却）、`GET /schedules/<id>/logs` |
-| `routes/settings_routes.py` | `settings_bp` | `GET /settings`（获取 host_ip）、`POST /settings`（更新 host_ip） |
+|------|------|----------|
+| `auth_routes.py` | `auth_bp` | `GET /session`, `POST /login`, `POST /logout` |
+| `server_routes.py` | `server_bp` | 服务器 CRUD、连接测试、刷新信息、删除影响检查、详情 |
+| `backup_routes.py` | `backup_bp` | `GET/POST /backups`, 删除备份, 下载备份 |
+| `restore_routes.py` | `restore_bp` | 恢复任务列表、创建恢复、恢复验证、备份 commit 列表 |
+| `schedule_routes.py` | `schedule_bp` | 定时任务 CRUD、手动执行、执行日志和 `steps` |
+| `settings_routes.py` | `settings_bp` | 读取/更新 `host_ip` |
+| `alert_routes.py` | `alert_bp` | 告警列表、摘要、清除告警 |
+| `dashboard_routes.py` | `dashboard_bp` | 仪表盘最近活动 |
+| `mirror_routes.py` | `mirror_bp` | 镜像配置 CRUD、初始化、同步、单仓库同步、状态 |
+| `statistics_routes.py` | `statistics_bp` | 概览、提交趋势、仓库排行、作者排行、作者详情和刷新 |
+| `commit_gate_routes.py` | `commit_gate_bp` | 提交规则 CRUD、仓库列表、应用/移除门禁、规则测试 |
 
-#### 业务逻辑层（`backend/services/`）
+### 4.3 服务层
 
-| 文件 | 核心类/函数 | 用途 |
-|------|------------|------|
-| `services/__init__.py` | — | 空文件，声明 package |
-| `services/gitea_service.py` | `do_backup(backup_id)`, `do_restore(task_id)`, `fetch_server_info(server)`, `test_server_connection(server)`, `get_server_detail(server)` | **核心业务逻辑**（560行）。处理备份（本地 Docker 操作 / 远程 SSH+SFTP）、恢复、服务器状态检测 |
-| `services/ssh_service.py` | `class SSHService` | Paramiko 封装：`exec()`（远程执行命令）、`get_file()`/`put_file()`（SFTP 传输）、`test_connection()` |
-| `services/docker_service.py` | `local_exec()`, `local_cp_from()`, `local_cp_to()` | 本地 Docker SDK 操作：在容器内执行命令、从/向容器复制文件 |
-| `services/scheduler_service.py` | `start_scheduler(app)` | 后台调度器。守护线程每 60 秒检查 `ScheduledTask`，匹配当前 UTC 时刻即触发执行 |
-| `services/task_manager.py` | `class TaskManager` | 异步任务管理器。`run_backup()` / `run_restore()` 在独立线程中执行耗时操作，HTTP 请求立即返回 |
-
-#### 离线依赖（`backend/wheels/`）
-
-预下载的 Python wheel 文件，用于离线环境 pip install（`--no-index --find-links=/tmp/wheels/`）。
-
-包含：Flask、Flask-CORS、Flask-Login、Flask-SQLAlchemy、SQLAlchemy、Paramiko、Cryptography、Requests、Gunicorn、Docker SDK、bcrypt、greenlet、cffi、pycparser、PyNaCl、urllib3、certifi、charset-normalizer、idna、MarkupSafe、Jinja2、Werkzeug、click、blinker、itsdangerous、packaging、typing_extensions 等。
-
-### 4.3 前端（`frontend/`）
-
-#### 入口与配置
-
-| 文件 | 用途 |
+| 文件 | 作用 |
 |------|------|
-| `index.html` | HTML 入口，标题"Gitea 管理系统" |
-| `main.js` | Vue 应用启动：注册 Element Plus、全局图标、Vue Router |
-| `App.vue` | **根组件**。认证状态管理、侧边栏+顶栏布局、host_ip 未配置时阻断提示 |
-| `vite.config.js` | Vite 配置，端口 5173，代理 `/api` → `localhost:5000` |
-| `router/index.js` | Vue Router 路由表（7 个页面，懒加载） |
-| `api/index.js` | Axios 实例配置：`baseURL=/api`, `withCredentials=true`，401 自动刷新页面 |
-| `package.json` | 依赖清单和脚本（`npm run dev` / `npm run build`） |
-| `nginx.conf` | 生产环境 nginx 配置：SPA history 模式 + `/api` 代理到 `backend:5000`，超时 600s |
-| `Dockerfile` | 基于 nginx，COPY dist/ + nginx.conf，**不在容器内构建** |
-| `.dockerignore` | 排除源码和依赖文件，仅保留 dist/ |
-
-#### 页面组件（`frontend/src/views/`）
-
-| 文件 | 路由 | 功能描述 |
-|------|------|---------|
-| `Login.vue` | —（未认证时显示） | 6 色动态渐变背景 + 浮动光球 + 毛玻璃卡片，输入密码登录 |
-| `Dashboard.vue` | `/dashboard` | 统计卡片（在线数、备份数、恢复成功率、调度数）+ 服务器卡片网格，支持快速备份/恢复 |
-| `Servers.vue` | `/servers` | 服务器列表表格，添加/编辑/删除对话框，测试连接按钮 |
-| `ServerDetail.vue` | `/servers/:id` | 单服务器详情：信息卡片、资源用量、容器日志、备份/恢复历史 |
-| `Backups.vue` | `/backups` | 备份列表表格，创建备份对话框，下载/删除操作 |
-| `Restore.vue` | `/restore` | 恢复执行表单 + 恢复历史表格，双重确认，轮询运行中的任务 |
-| `Schedule.vue` | `/schedules` | 定时任务列表，展开行显示执行日志，创建/编辑/手动触发/删除，实时冷却倒计时 |
-| `Statistics.vue` | `/statistics` | 统计分析：概览卡片、提交趋势图（Canvas）、仓库/作者排名、代码文档比、语言分布 |
-| `AuthorList.vue` | `/statistics/authors` | 作者贡献排行列表（搜索、排序、点击跳转详情） |
-| `AuthorDetail.vue` | `/statistics/authors/:name` | 作者详情：统计卡片、提交趋势图、仓库贡献明细表（占比条） |
-| `Mirrors.vue` | `/mirrors` | 镜像同步管理：配置 CRUD、创建镜像、同步、仓库详情 |
-| `Settings.vue` | `/settings` | 系统设置表单，目前仅配置本机 IP |
+| `gitea_service.py` | 核心备份/恢复/服务器检测逻辑；本地 Docker 和远程 SSH 两套路径 |
+| `task_manager.py` | 普通备份/恢复的异步线程入口 |
+| `schedule_runner.py` | 定时任务共享 runner；手动执行和后台调度共用；包含数据库原子 claim |
+| `schedule_progress.py` | 定时任务总进度写入和响应聚合，恢复阶段会读取当前 `RestoreTask.progress_*` |
+| `scheduler_service.py` | 后台调度线程，每 60 秒扫描启用任务，到点后先 claim 再执行 |
+| `restore_progress.py` | 恢复任务进度写入 helper |
+| `commit_service.py` | 备份采集仓库 commit 集，恢复后做 commit ID 验证 |
+| `commit_gate_service.py` | 规则测试、仓库查询、安装/移除 Gitea `pre-receive.d/gitea-manager-commit-msg` hook |
+| `mirror_service.py` | 镜像配置、创建镜像、同步和状态更新 |
+| `statistics_service.py` | 仓库/提交/作者统计采集和查询 |
+| `alert_service.py` | 失败事件告警记录和清除 |
+| `ssh_service.py` | Paramiko 封装：远程命令、SFTP 上传/下载、连接测试 |
+| `docker_service.py` | 本地 Docker SDK 封装：容器执行、文件复制 |
 
 ---
 
-## 5. 关键工作流
+## 5. 前端结构
 
-### 5.1 备份流程
+### 5.1 入口
+
+| 文件 | 用途 |
+|------|------|
+| `frontend/src/main.js` | Vue 应用启动，注册 Element Plus、图标和 Router |
+| `frontend/src/App.vue` | 根布局：认证状态、侧边栏、顶栏面包屑、全局 `AlertBell`、未配置 `host_ip` 时阻断写操作入口 |
+| `frontend/src/router/index.js` | Vue Router 路由表 |
+| `frontend/src/api/index.js` | Axios 实例，`baseURL=/api`，`withCredentials=true`，401 自动刷新 |
+| `frontend/vite.config.js` | Vite dev server `:5173`，代理 `/api` 到 `localhost:5000` |
+| `frontend/nginx.conf` | 生产 nginx，SPA fallback 和 `/api` 反代 |
+
+`App.vue` 的导航细节：
+
+- `/servers/:id` 高亮“服务器管理”。
+- 所有 `/statistics...` 子路由都高亮“统计分析”。
+- 统计分析深层面包屑为 `首页 / 统计分析 / 作者贡献排行 / 作者名`，并保留 `server_id` query。
+- 顶栏包含全局告警铃铛和退出登录按钮。
+
+### 5.2 页面组件
+
+| 文件 | 路由 | 功能 |
+|------|------|------|
+| `Login.vue` | 未认证时显示 | 登录页 |
+| `Dashboard.vue` | `/dashboard` | 统计卡片、服务器卡片、最近活动、快捷操作 |
+| `Servers.vue` | `/servers` | 服务器列表、添加/编辑/删除、连接测试 |
+| `ServerDetail.vue` | `/servers/:id` | 单服务器详情、资源信息、日志、备份/恢复历史 |
+| `Backups.vue` | `/backups` | 备份列表、创建/下载/删除；failed 行显示错误原因并支持完整错误弹窗 |
+| `Restore.vue` | `/restore` | 恢复表单、恢复历史、恢复进度条、验证入口 |
+| `Schedule.vue` | `/schedules` | 定时任务列表、running 进度条、展开执行日志 `steps`、手动执行、编辑、删除、运行中轮询 |
+| `Mirrors.vue` | `/mirrors` | 镜像配置、初始化、同步、仓库状态 |
+| `CommitGates.vue` | `/commit-gates` | 提交消息规则、仓库门禁应用/移除、规则测试 |
+| `Statistics.vue` | `/statistics` | 概览、提交趋势、仓库排行、作者排行、语言和代码/文档分布 |
+| `AuthorList.vue` | `/statistics/authors` | 作者贡献排行列表，支持搜索、排序和跳转详情 |
+| `AuthorDetail.vue` | `/statistics/authors/:name` | 作者详情、趋势图、仓库贡献明细 |
+| `Settings.vue` | `/settings` | 系统设置，目前主要配置本机 IP |
+
+---
+
+## 6. 关键工作流
+
+### 6.1 备份
 
 ```
 POST /api/backups { source_server_id }
-  │
-  ├─► 创建 Backup 记录 (status=running)
-  │
-  └─► task_manager.run_backup(backup_id)  [新线程]
-       │
-       ├─ 本地服务器？
-       │   ├─ docker exec <gitea_container> gitea dump -c ... → 生成 ZIP
-       │   ├─ docker cp 从容器复制 ZIP 到宿主 data/backups/
-       │   └─ 如果本地 Docker 失败 → 回退到远程模式
-       │
-       └─ 远程服务器？
-           ├─ SSH.exec("docker exec gitea dump ...")
-           ├─ SSH.exec("docker cp ...") → 复制到远程宿主
-           └─ SSH.get_file() (SFTP) → 下载到本地 data/backups/
+  -> 创建 Backup(status=running)
+  -> task_manager.run_backup(backup_id)
+  -> do_backup(backup_id)
 ```
 
-### 5.2 恢复流程
+要点：
+
+- 备份文件名包含高精度时间后缀，避免本地 `data/backups` 产物覆盖。
+- 容器内临时文件名包含 `backup.id`，形如 `/tmp/gitea-manager-backup-<id>-<filename>`，避免并发任务同名冲突。
+- 本地服务器优先用 Docker SDK 执行和拷贝，失败时会尝试走远程 SSH 路径。
+- 远程服务器通过 SSH 在目标机器执行 `docker exec gitea dump`、`docker cp`，再 SFTP 下载到本机。
+- 失败详情写入 `Backup.error_msg`，备份管理页会直接展示简短原因，并可弹窗查看完整 stdout/stderr。
+- 备份成功后会采集仓库 commit 校验集到 `BackupRepoCommit`，供恢复后验证。
+
+### 6.2 恢复
 
 ```
 POST /api/restore { backup_id, target_server_id }
-  │
-  ├─► 创建 RestoreTask (status=running)
-  │
-  └─► task_manager.run_restore(task_id)
-       │
-       ├─ 本地目标？
-       │   ├─ docker stop gitea
-       │   ├─ 解压备份 ZIP
-       │   ├─ docker cp 覆盖 repos/ app.ini
-       │   ├─ docker exec pg dropdb + createdb
-       │   ├─ docker exec psql 导入 SQL
-       │   ├─ docker exec gitea regenerate hooks
-       │   ├─ docker exec gitea regenerate keys
-       │   └─ docker start gitea
-       │
-       └─ 远程目标？
-           ├─ SSH.put_file() 上传 ZIP
-           ├─ SSH.exec("docker stop gitea")
-           ├─ SSH.exec("rm -rf ...") + unzip
-           ├─ SSH.exec("docker cp ...") 拷贝文件
-           ├─ SSH.exec("docker exec pg dropdb/createdb/psql")
-           ├─ SSH.exec("docker exec gitea regenerate hooks/keys")
-           └─ SSH.exec("docker start gitea")
+  -> 创建 RestoreTask(status=running)
+  -> task_manager.run_restore(task_id)
+  -> do_restore(task_id)
 ```
 
-### 5.3 定时调度
+要点：
+
+- 只有 `Backup.status == success` 的备份允许恢复。
+- 恢复过程会持续更新 `RestoreTask.progress_stage`、`progress_label`、`progress_percent`、`progress_detail`。
+- 本地和远程恢复都会停止目标 Gitea、解压备份、覆盖仓库/配置、重建或导入 PostgreSQL、修复权限、重新生成 hooks/keys、启动 Gitea。
+- 恢复接近完成后执行 commit ID 验证，结果写入 `RestoreVerification`；失败时进度会进入 `verify_failed`。
+
+### 6.3 定时调度
 
 ```
-start_scheduler(app) → 守护线程循环（每 60s）
-  │
-  └─► 遍历所有 enabled=True 的 ScheduledTask
-       │
-       ├─ current_utc.hour == schedule_hour？
-       ├─ current_utc.minute == schedule_minute？
-       └─ last_run_at 超过 5 分钟？
-           │
-           └─► 执行备份 (source_server) → 遍历 target_ids → 逐个恢复
-               ├─ 创建 ScheduleLog
-               ├─ do_backup(source_server_id)
-               ├─ for each target_id: do_restore()
-               └─ 更新 ScheduleLog (status/log/backup_status/restore_results)
+start_scheduler(app)
+  -> 每 60 秒扫描 enabled ScheduledTask
+  -> 当前 UTC hour/minute 匹配
+  -> claim_schedule_task(task_id)
+  -> run_schedule_task(task_id)
 ```
 
-### 5.4 认证流程
+要点：
+
+- Gunicorn 使用 2 workers，每个 worker 都可能启动 scheduler 线程，因此必须依赖数据库原子 claim 去重。
+- `schedule_runner.claim_schedule_task()` 使用条件 `UPDATE` 抢占任务，要求任务不在 running 且超过 5 分钟冷却窗口。
+- 手动“立即执行”和后台 scheduler 都必须 claim 成功才进入 runner；claim 失败时返回“任务正在运行或冷却中”。
+- runner 会先备份源服务器，再按 `target_ids` 逐台恢复。
+- 总进度写在 `ScheduledTask.progress_*`，恢复阶段会根据 `current_restore_task_id` 读取当前 `RestoreTask.progress_*` 并折算到整条任务进度。
+- `/api/schedules/<id>/logs` 返回兼容旧字段，并新增 `steps` 数组；前端优先渲染 `steps`，每次执行拆成“备份”和每个“恢复”步骤。
+- `Schedule.vue` 在存在 running 任务时每 2 秒刷新列表，同时刷新已展开行日志，避免日志缓存停留在旧结果。
+
+### 6.4 提交消息门禁
+
+提交门禁由 `commit_gate_service.py` 安装到 Gitea 裸仓库：
 
 ```
-用户输入密码 → POST /api/login
-  │
-  └─► Auth.login(password)
-       ├─ Setting.query.get('admin_password')
-       └─ check_password_hash(stored_hash, input)
-
-首次启动时：
-  db.create_all() → 检查 admin_password 是否存在
-  → 不存在 → User.set_password(INIT_PASSWORD)
-  → Setting(key='admin_password', value=bcrypt_hash)
+/data/git/repositories/<owner>/<repo>.git/hooks/pre-receive.d/gitea-manager-commit-msg
 ```
+
+要点：
+
+- 规则使用 `grep -E` 语法，默认规则类似 `[ID-123] type(scope): subject`。
+- 门禁是服务器端 `pre-receive` hook 方案，主要拦截 Git push 新增的 commit。
+- Gitea 网页编辑、PR 合并等路径是否触发，取决于 Gitea 实际 hook 调度链，不能简单等同于“本地 push 限制”或“PR 合并限制”。
+- 排查门禁是否生效时，同时检查仓库实际路径大小写、`hooks/pre-receive` wrapper、`hooks/pre-receive.d/gitea-manager-commit-msg` 文件、执行权限和 owner。
+- UI 中 `Hook installed` 只代表文件安装成功，不代表目标 Gitea 版本一定会执行 `pre-receive.d` 下的脚本。
+
+### 6.5 认证与 host_ip
+
+- 登录接口验证 `Setting.admin_password`，首次启动若不存在则用 `INIT_PASSWORD` 初始化。
+- 默认管理员密码为 `admin123`，生产环境必须通过环境变量修改。
+- `app.py` 的 `before_request` 会阻止部分写操作，直到 `Settings.vue` 配置 `host_ip`。
+- 读接口、登录、设置读取等不会被 `host_ip` 阻断。
+
+### 6.6 告警、镜像、统计
+
+- `alert_service.py` 记录备份、恢复、镜像等失败事件，`AlertBell.vue` 在全局顶栏显示摘要。
+- `mirror_service.py` 通过 Gitea API 和远程命令管理镜像配置、初始化和同步。
+- `statistics_service.py` 采集仓库、提交周期和作者贡献数据；作者详情路径较深，所以全局面包屑承担定位和跳转。
 
 ---
 
-## 6. 环境约束（重要！）
+## 7. 离线环境与依赖约束
 
-- **纯离线 Linux 目标环境**，无法访问外网（无 npm/pip 源）
-- Docker 基础镜像来自私有仓库 `10.10.5.21:5001`（目标环境可访问）
-- 后端 Python 依赖通过 `backend/wheels/` 离线安装（Dockerfile 已配置 `--no-index --find-links`）
-- 前端通过预构建的 `frontend/dist/` 部署（Dockerfile 直接 COPY 到 nginx，不在容器内构建）
-- **打包时必须包含 `frontend/dist/` 和 `backend/wheels/`**
+- 目标 Linux 环境可能完全离线，不能依赖 npm/pip 外网源。
+- Docker 基础镜像来自私有仓库 `10.10.5.21:5001`，目标环境需要能访问该仓库。
+- 后端依赖通过 `backend/wheels/` 离线安装，Dockerfile 已使用 `--no-index --find-links=/tmp/wheels/`。
+- 前端容器不构建源码，只 COPY `frontend/dist/` 到 nginx。
+- 打包部署时必须包含 `frontend/dist/` 和 `backend/wheels/`。
+- `.gitignore` 通常会忽略 `frontend/dist/`、`data/backups/`、数据库文件、缓存和 `node_modules/`。
 
 ---
 
-## 7. 开发命令
+## 8. 常用命令
 
 ```bash
-# === 后端 ===
+# 后端本地开发
 cd backend
-pip install -r requirements.txt    # 注意：在线环境可直接安装，离线环境需预先下载 wheels
-python run.py                      # 启动 Flask dev server, :5000
+pip install -r requirements.txt
+python run.py
 
-# === 前端 ===
+# 前端本地开发
 cd frontend
 npm install
-npm run dev                        # Vite dev server, :5173, 代理 /api → localhost:5000
-npm run build                      # 构建 dist/ （离线环境必须在开发机完成此步）
+npm run dev
 
-# === Docker ===
-docker compose build               # 构建镜像
-docker compose up -d               # 启动服务
-docker compose ps                  # 检查运行状态
-docker compose logs backend        # 查看后端日志
-docker compose logs frontend       # 查看前端日志
+# 前端生产构建，离线部署前必须执行
+cd frontend
+npm run build
+
+# Docker 部署
+docker compose build
+docker compose up -d
+docker compose ps
+docker compose logs backend
+docker compose logs frontend
 ```
 
----
+后端语法检查可用：
 
-## 8. UI 设计风格
+```bash
+python -m py_compile backend/app.py backend/models.py backend/routes/*.py backend/services/*.py
+```
 
-Apple 毛玻璃风格。
-
-**核心视觉特征：**
-- 毛玻璃效果：`backdrop-filter: blur(24px)` + 半透明白色背景
-- 渐变色系：蓝紫 `#667eea→#764ba2`、青绿 `#43e97b→#38f9d7`、粉橙 `#fa709a→#fee140`、紫粉 `#a18cd1→#fbc2eb`
-- 登录页：6 色动态渐变背景 + 浮动光球
-- 侧边栏：深色半透明 + 渐变 Logo + 发光 active 条
-- 内容区：渐变底色 + 页面切换动画
+Windows PowerShell 下通配符传给 Python 可能不会自动展开，必要时用 PowerShell 先枚举文件再调用。
 
 ---
 
 ## 9. 打包与部署
 
-### 打包命令（在项目目录内执行）
+代码变更后，如果要交付离线部署包，先构建前端：
+
+```bash
+cd frontend
+npm run build
+```
+
+然后在项目目录外或项目目录内打包，包内直接平铺 `frontend/`、`backend/`、`data/` 等目录，不加外层目录：
 
 ```bash
 tar czf gitea-manager.tar.gz \
@@ -377,51 +326,38 @@ tar czf gitea-manager.tar.gz \
   frontend backend data docker-compose.yml deploy.sh AGENTS.md README.md
 ```
 
-解压后直接平铺为 `frontend/`、`backend/`、`data/` 等，没有外层目录包裹。
-
-**排除说明：**
-- `.git` — 版本控制历史
-- `__pycache__` — Python 缓存
-- `node_modules` — 前端依赖（Dockerfile 不使用，前端容器只用 dist/）
-
-**包含说明（必须）：**
-- `frontend/dist/` — **必须包含**，离线环境无法 `vite build`
-- `backend/wheels/` — **必须包含**，离线环境无法 `pip install`
-
-### Linux 端部署
+Linux 端部署：
 
 ```bash
-mkdir -p gitea-manager && cd gitea-manager
+mkdir -p gitea-manager
+cd gitea-manager
 tar xzf ../gitea-manager.tar.gz
 bash deploy.sh
 ```
 
-部署后访问 `http://<服务器IP>:5480`，默认密码 `admin123`（首次登录后请修改）。
+---
+
+## 10. UI 风格
+
+整体是 Apple 毛玻璃风格：
+
+- 大量半透明白色背景、`backdrop-filter: blur(...)`、细边框和柔和阴影。
+- 登录页使用动态渐变和浮动光效。
+- 侧边栏为浅色毛玻璃，active 项有蓝色强调。
+- 内容区使用渐变底色、玻璃卡片和页面切换动画。
+- 表格型业务页面应保持信息密度，避免做成营销落地页。
+- 既有 Element Plus 组件优先复用，图标优先用 `@element-plus/icons-vue`。
 
 ---
 
-## 10. 默认凭据与安全
+## 11. 新 session 接手注意事项
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| 管理员密码 | `admin123` | 通过 `INIT_PASSWORD` 环境变量设置 |
-| Flask Secret | `change-me-in-production` | 通过 `SECRET_KEY` 环境变量设置 |
-| SSH 密钥 | `~/.ssh/id_rsa` | 通过 `SSH_KEY_PATH` 环境变量设置 |
-| 数据库 | SQLite `data/gitea-manager.db` | 首次启动自动创建 |
-
-**生产环境务必修改 `SECRET_KEY` 和 `INIT_PASSWORD`。**
-
----
-
-## 11. 注意事项
-
-- `app.py:30` 的 `db.create_all()` 使用了 `try/except OperationalError` 包裹，因此首次启动时数据库自动创建
-- `app.py:33-45` 包含原始 SQL 迁移语句（ALTER TABLE 添加列等），这些需要在对已有数据库升级时执行（幂等设计）
-- `routes/server_routes.py` 中创建服务器时会**立即**测试连接并获取信息，超时或失败不会回滚记录
-- `routes/backup_routes.py` 的下载端点使用 `send_file` 直接返回备份文件
-- `routes/restore_routes.py` 的恢复端点要求备份状态必须为 `success`
-- `routes/schedule_routes.py` 的手动触发有 5 分钟冷却保护
-- `services/task_manager.py` 使用守护线程执行异步任务，进程退出时可能中断
-- `frontend/api/index.js` 的 401 拦截器会在认证失败时刷新页面
-- 前端使用 `withCredentials: true` 发送 Cookie，需配合 Flask session 和 CORS
-- Docker Compose 挂载了 Docker socket (`/var/run/docker.sock`)，用于操作宿主机和本地容器
+- 先读当前代码事实，再按需更新文档；不要相信旧的“数量描述”，这类数字很容易过期。
+- 工作区可能已有用户改动，绝不要随意 `git reset --hard` 或回滚不属于自己的修改。
+- 后端迁移集中在 `app.py` 的 SQL 列表，新增 SQLite 字段时要保持幂等。
+- Gunicorn 2 workers 是既定部署形态，定时任务必须通过数据库 claim 去重，不要靠单 worker 规避。
+- 备份和恢复都可能跨本地 Docker 与远程 SSH 两种路径，修 bug 时要同时考虑两边。
+- 定时任务运行状态的用户可见进度来自 `ScheduledTask.progress_*`，恢复子步骤进度来自 `RestoreTask.progress_*`。
+- 备份失败原因应该在备份管理页可见，不要只写告警。
+- 提交门禁的安装成功不等于运行链路一定生效，排查时进入 Gitea 容器检查 bare repo hooks。
+- 只改文档时不需要跑前端构建或后端编译；改代码时按影响范围跑 `py_compile`、`npm run build`，若用户要求部署包则重新打 tar。

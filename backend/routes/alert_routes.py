@@ -31,7 +31,7 @@ def list_alerts():
 @login_required
 def alert_summary():
     active_count = Alert.query.filter_by(status='active').count()
-    latest = Alert.query.filter(Alert.status != 'cleared')\
+    latest = Alert.query.filter_by(status='active')\
         .order_by(Alert.created_at.desc()).first()
     return jsonify({
         'active_count': active_count,

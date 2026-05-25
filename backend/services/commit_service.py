@@ -4,6 +4,7 @@ import logging
 import requests
 from datetime import datetime
 from models import db, BackupRepoCommit, RestoreVerification, GiteaServer, Backup, RestoreTask
+from services.restore_progress import update_restore_progress
 
 
 def _ensure_url(url):
@@ -124,6 +125,7 @@ def verify_restore(task_id):
     task = RestoreTask.query.get(task_id)
     if not task:
         return
+    update_restore_progress(task, 'verify_commits', '正在对比 Commit ID', 96, '')
 
     verification = RestoreVerification.query.filter_by(restore_task_id=task_id).first()
     if not verification:
@@ -139,6 +141,7 @@ def verify_restore(task_id):
     if not backup:
         verification.status = 'failed'
         verification.verified_at = datetime.utcnow()
+        update_restore_progress(task, 'verify_failed', 'Commit ID 验证失败', 100, 'Backup not found')
         db.session.commit()
         return
 
@@ -149,6 +152,7 @@ def verify_restore(task_id):
     if not target:
         verification.status = 'failed'
         verification.verified_at = datetime.utcnow()
+        update_restore_progress(task, 'verify_failed', 'Commit ID 验证失败', 100, 'Target server not found')
         db.session.commit()
         return
 
@@ -202,6 +206,10 @@ def verify_restore(task_id):
     verification.mismatch_details = json.dumps(mismatch_details, ensure_ascii=False)
     verification.status = 'success' if len(mismatch_details) == 0 else 'failed'
     verification.verified_at = datetime.utcnow()
+    if verification.status == 'success':
+        update_restore_progress(task, 'completed', '恢复完成，Commit ID 验证通过', 100, '')
+    else:
+        update_restore_progress(task, 'verify_failed', 'Commit ID 验证失败', 100, f'{len(mismatch_details)} 个仓库不匹配')
     db.session.commit()
     logging.info('[验证] 完成 - task_id=%d status=%s matched=%d mismatch=%d',
                  task_id, verification.status, matched, len(mismatch_details))

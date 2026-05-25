@@ -59,6 +59,11 @@ class RestoreTask(db.Model):
     target_server_name = db.Column(db.String(100), default='')
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
+    progress_stage = db.Column(db.String(50), default='')
+    progress_label = db.Column(db.String(100), default='')
+    progress_percent = db.Column(db.Integer, default=0)
+    progress_detail = db.Column(db.Text, default='')
+    progress_updated_at = db.Column(db.DateTime, default=None)
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, default=None)
 
@@ -109,6 +114,15 @@ class ScheduledTask(db.Model):
     last_run_at = db.Column(db.DateTime, default=None)
     last_status = db.Column(db.String(20), default='')
     last_log = db.Column(db.Text, default='')
+    progress_stage = db.Column(db.String(50), default='')
+    progress_label = db.Column(db.String(100), default='')
+    progress_percent = db.Column(db.Integer, default=0)
+    progress_detail = db.Column(db.Text, default='')
+    progress_updated_at = db.Column(db.DateTime, default=None)
+    current_backup_id = db.Column(db.Integer, default=None)
+    current_restore_task_id = db.Column(db.Integer, default=None)
+    current_restore_index = db.Column(db.Integer, default=0)
+    current_restore_total = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     source_server = db.relationship('GiteaServer', foreign_keys=[source_server_id], lazy=True)
@@ -235,6 +249,41 @@ class BackupRepoCommit(db.Model):
     collected_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
+class CommitMessageRule(db.Model):
+    __tablename__ = 'commit_message_rules'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    pattern = db.Column(db.Text, nullable=False)
+    reject_message = db.Column(db.Text, default='')
+    enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=None)
+
+    server = db.relationship('GiteaServer', foreign_keys=[server_id], lazy=True)
+
+
+class CommitGateAssignment(db.Model):
+    __tablename__ = 'commit_gate_assignments'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    repo_name = db.Column(db.String(300), nullable=False)
+    rule_id = db.Column(db.Integer, db.ForeignKey('commit_message_rules.id'), nullable=False)
+    install_status = db.Column(db.String(20), default='pending')
+    install_log = db.Column(db.Text, default='')
+    applied_at = db.Column(db.DateTime, default=None)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    server = db.relationship('GiteaServer', foreign_keys=[server_id], lazy=True)
+    rule = db.relationship('CommitMessageRule', foreign_keys=[rule_id], lazy=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('server_id', 'repo_name', name='uq_commit_gate_repo'),
+    )
+
+
 class Alert(db.Model):
     __tablename__ = 'alerts'
 
@@ -259,6 +308,9 @@ class ScheduleLog(db.Model):
     status = db.Column(db.String(20), nullable=False, default='running')
     log = db.Column(db.Text, default='')
     backup_status = db.Column(db.String(20), default='')
+    backup_id = db.Column(db.Integer, default=None)
+    backup_filename = db.Column(db.String(500), default='')
+    backup_error = db.Column(db.Text, default='')
     restore_results = db.Column(db.Text, default='[]')
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, default=None)

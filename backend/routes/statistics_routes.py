@@ -1,6 +1,7 @@
 import json
+import logging
 import threading
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required
 from models import db, GiteaServer, RepoStatistics, CommitStatistics, AuthorStatistics
 
@@ -70,13 +71,15 @@ def author_trend(server_id, author_name):
 @login_required
 def refresh_statistics(server_id):
     server = GiteaServer.query.get_or_404(server_id)
+    app = current_app._get_current_object()
 
     def run():
-        from app import create_app
-        app = create_app()
         with app.app_context():
-            from services.statistics_service import collect_statistics
-            collect_statistics(server_id)
+            try:
+                from services.statistics_service import collect_statistics
+                collect_statistics(server_id)
+            except Exception:
+                logging.exception('[统计] 采集失败 - server_id=%s', server_id)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()

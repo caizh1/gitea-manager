@@ -186,8 +186,8 @@ export default {
         const y = padding.top + chartH - barH
 
         const gradient = ctx.createLinearGradient(x, y, x, y + barH)
-        gradient.addColorStop(0, '#43e97b')
-        gradient.addColorStop(1, '#38f9d7')
+        gradient.addColorStop(0, '#007aff')
+        gradient.addColorStop(1, '#5ac8fa')
         ctx.fillStyle = gradient
         ctx.beginPath()
         ctx.roundRect(x, y, barW, barH, 4)
@@ -240,29 +240,31 @@ export default {
 
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card {
-  padding: 22px 24px; border-radius: 16px; position: relative; overflow: hidden;
-  color: #fff; transition: all 0.3s ease; animation: fadeInUp 0.5s ease both;
+  padding: 22px 24px; border-radius: 22px; position: relative; overflow: hidden;
+  color: var(--text-primary); transition: all 0.3s ease; animation: fadeInUp 0.5s ease both;
+  background: rgba(255,255,255,0.62);
+  backdrop-filter: blur(32px) saturate(180%); -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.72);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 12px 32px rgba(15,23,42,0.08);
 }
-.stat-card:hover { transform: translateY(-3px); box-shadow: 0 12px 36px rgba(0,0,0,0.15); }
+.stat-card:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 18px 46px rgba(15,23,42,0.11); }
 .stat-card::before {
   content: ''; position: absolute; top: -50%; right: -30%; width: 160px; height: 160px;
-  border-radius: 50%; background: rgba(255,255,255,0.1);
+  border-radius: 46% 54% 52% 48%; background: rgba(255,255,255,0.34);
 }
 .stat-card::after {
   content: ''; position: absolute; bottom: -30%; left: -20%; width: 120px; height: 120px;
-  border-radius: 50%; background: rgba(255,255,255,0.06);
+  border-radius: 55% 45% 48% 52%; background: rgba(255,255,255,0.24);
 }
-.stat-blue { background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%); }
-.stat-green { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-.stat-orange { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-.stat-purple { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); }
+.stat-blue, .stat-green, .stat-orange, .stat-purple { background: rgba(255,255,255,0.62); }
 .stat-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.9; }
 .stat-num { font-size: 28px; font-weight: 700; margin-bottom: 2px; letter-spacing: -1px; }
 .stat-label { font-size: 13px; opacity: 0.85; font-weight: 500; }
 
 .detail-avatar {
   width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
-  background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+  background: rgba(0,122,255,0.12); color: var(--color-primary);
+  border: 1px solid rgba(0,122,255,0.16);
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; font-weight: 700;
 }
@@ -275,7 +277,7 @@ export default {
 }
 .pct-fill {
   position: absolute; left: 0; top: 0; bottom: 0;
-  background: linear-gradient(90deg, rgba(102,126,234,0.2), rgba(118,75,162,0.1));
+  background: rgba(0,122,255,0.14);
   border-radius: 4px;
 }
 .pct-text {
