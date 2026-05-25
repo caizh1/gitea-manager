@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+data/gitea-manager.db
+data/gitea-manager.db-wal
+data/gitea-manager.db-shm
+data/backups/
+*.egg-info/
+dist/

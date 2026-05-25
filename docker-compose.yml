@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: gitea-manager-api
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/home/appuser/.ssh/id_rsa:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=sqlite:////app/data/gitea-manager.db
+      - BACKUP_DIR=/app/data/backups
+      - SECRET_KEY=change-me-in-production
+      - INIT_PASSWORD=admin123
+      - SSH_KEY_PATH=/home/appuser/.ssh/id_rsa
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: gitea-manager-ui
+    ports:
+      - "5480:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
