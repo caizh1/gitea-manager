@@ -3,7 +3,7 @@ import logging
 import requests
 from datetime import datetime
 from collections import defaultdict
-from models import db, GiteaServer, RepoStatistics, CommitStatistics
+from models import db, GiteaServer, RepoStatistics, CommitStatistics, AuthorStatistics
 
 
 CODE_EXTENSIONS = {
@@ -60,7 +60,7 @@ def _get_repo_commits(server, owner, repo):
         try:
             resp = requests.get(
                 f'{_ensure_url(server.gitea_url)}/api/v1/repos/{owner}/{repo}/commits',
-                headers=headers, params={'page': page, 'limit': 50}, timeout=30
+                headers=headers, params={'page': page, 'limit': 50, 'stat': 'true'}, timeout=30
             )
             if resp.status_code != 200:
                 break
@@ -128,6 +128,14 @@ def _get_period_key(dt, period_type):
     return dt.strftime('%Y-%m')
 
 
+def _parse_commit_date(cdate_str):
+    try:
+        from datetime import datetime as _dt
+        return _dt.fromisoformat(cdate_str.replace('Z', '+00:00')).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
 def collect_statistics(server_id):
     server = GiteaServer.query.get(server_id)
     if not server:
@@ -137,13 +145,12 @@ def collect_statistics(server_id):
     repos = _get_all_repos(server)
     logging.info('[统计] 发现 %d 个仓库', len(repos))
 
-    period_commits = defaultdict(lambda: {'commits': 0, 'authors': set(), 'repos': set()})
-    total_code_lines = 0
-    total_doc_lines = 0
-    total_other_lines = 0
-    total_code_files = 0
-    total_doc_files = 0
-    total_other_files = 0
+    period_commits = defaultdict(lambda: {
+        'commits': 0,
+        'authors': set(),
+        'repos': set(),
+        'author_commits': defaultdict(int),
+    })
 
     for repo_info in repos:
         full_name = repo_info.get('full_name', '')
@@ -156,32 +163,77 @@ def collect_statistics(server_id):
 
         commits = _get_repo_commits(server, owner, repo_name)
         commit_count = len(commits)
+        all_repo_commits[full_name] = commits
 
         last_sha = commits[0].get('sha', '') if commits else ''
         last_date = None
         if commits and commits[0].get('commit', {}).get('committer', {}).get('date'):
-            try:
-                from datetime import datetime as _dt
-                last_date_str = commits[0]['commit']['committer']['date']
-                last_date = _dt.fromisoformat(last_date_str.replace('Z', '+00:00')).replace(tzinfo=None)
-            except Exception:
-                pass
+            last_date = _parse_commit_date(commits[0]['commit']['committer']['date'])
+
+        author_data = defaultdict(lambda: {
+            'email': '', 'additions': 0, 'deletions': 0, 'commit_count': 0,
+            'first_date': None, 'last_date': None,
+        })
 
         for c in commits:
-            try:
-                cdate_str = c.get('commit', {}).get('author', {}).get('date', '')
-                if not cdate_str:
-                    continue
-                from datetime import datetime as _dt
-                cdate = _dt.fromisoformat(cdate_str.replace('Z', '+00:00')).replace(tzinfo=None)
-                author = c.get('commit', {}).get('author', {}).get('name', 'unknown')
-                for pt in ('month', 'quarter', 'half_year', 'year'):
-                    pk = _get_period_key(cdate, pt)
-                    period_commits[(pt, pk)]['commits'] += 1
-                    period_commits[(pt, pk)]['authors'].add(author)
-                    period_commits[(pt, pk)]['repos'].add(full_name)
-            except Exception:
-                continue
+            cdate_str = c.get('commit', {}).get('author', {}).get('date', '')
+            author = c.get('commit', {}).get('author', {}).get('name', 'unknown')
+            author_email = c.get('commit', {}).get('author', {}).get('email', '')
+            stats = c.get('stats', {})
+            additions = stats.get('additions', 0) or 0
+            deletions = stats.get('deletions', 0) or 0
+
+            if not author_data[author]['email'] and author_email:
+                author_data[author]['email'] = author_email
+            author_data[author]['additions'] += additions
+            author_data[author]['deletions'] += deletions
+            author_data[author]['commit_count'] += 1
+
+            if cdate_str:
+                cdate = _parse_commit_date(cdate_str)
+                if cdate:
+                    ad = author_data[author]
+                    if ad['first_date'] is None or cdate < ad['first_date']:
+                        ad['first_date'] = cdate
+                    if ad['last_date'] is None or cdate > ad['last_date']:
+                        ad['last_date'] = cdate
+
+                    for pt in ('month', 'quarter', 'half_year', 'year'):
+                        pk = _get_period_key(cdate, pt)
+                        period_commits[(pt, pk)]['commits'] += 1
+                        period_commits[(pt, pk)]['authors'].add(author)
+                        period_commits[(pt, pk)]['repos'].add(full_name)
+                        period_commits[(pt, pk)]['author_commits'][author] += 1
+
+        for author_name, ad in author_data.items():
+            existing_author = AuthorStatistics.query.filter_by(
+                server_id=server_id, author_name=author_name, repo_name=full_name
+            ).first()
+            if existing_author:
+                existing_author.author_email = ad['email']
+                existing_author.commit_count = ad['commit_count']
+                existing_author.additions = ad['additions']
+                existing_author.deletions = ad['deletions']
+                existing_author.first_commit_date = ad['first_date']
+                existing_author.last_commit_date = ad['last_date']
+                existing_author.snapshot_at = datetime.utcnow()
+            else:
+                db.session.add(AuthorStatistics(
+                    server_id=server_id,
+                    author_name=author_name,
+                    author_email=ad['email'],
+                    repo_name=full_name,
+                    commit_count=ad['commit_count'],
+                    additions=ad['additions'],
+                    deletions=ad['deletions'],
+                    first_commit_date=ad['first_date'],
+                    last_commit_date=ad['last_date'],
+                    snapshot_at=datetime.utcnow(),
+                ))
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
         languages = _get_repo_languages(server, owner, repo_name)
         code_lines = 0
@@ -218,13 +270,6 @@ def collect_statistics(server_id):
             doc_lines = doc_files * 30
             other_lines = other_files * 20
 
-        total_code_lines += code_lines
-        total_doc_lines += doc_lines
-        total_other_lines += other_lines
-        total_code_files += code_files
-        total_doc_files += doc_files
-        total_other_files += other_files
-
         existing = RepoStatistics.query.filter_by(server_id=server_id, repo_name=full_name).first()
         if existing:
             existing.commit_count = commit_count
@@ -257,10 +302,9 @@ def collect_statistics(server_id):
         db.session.commit()
 
     for (pt, pk), data in period_commits.items():
-        authors_sorted = sorted(data['authors'], key=lambda a: -sum(
-            1 for c in commits if c.get('commit', {}).get('author', {}).get('name') == a
-        ))
-        top_authors = [{'name': a, 'count': 0} for a in list(authors_sorted)[:10]]
+        author_commits = data['author_commits']
+        authors_sorted = sorted(author_commits.keys(), key=lambda a: -author_commits[a])
+        top_authors = [{'name': a, 'count': author_commits[a]} for a in authors_sorted[:10]]
 
         existing = CommitStatistics.query.filter_by(
             server_id=server_id, period_type=pt, period_key=pk
@@ -329,7 +373,6 @@ def get_commit_trend(server_id, period='month'):
 
 
 def get_repo_ranking(server_id, sort_by='commit_count', limit=10):
-    from models import RepoStatistics
     repos = RepoStatistics.query.filter_by(server_id=server_id).all()
 
     if sort_by == 'code_lines':
@@ -349,3 +392,129 @@ def get_repo_ranking(server_id, sort_by='commit_count', limit=10):
         'doc_files': r.doc_files,
         'doc_ratio': round(r.doc_lines / max(r.code_lines + r.doc_lines + r.other_lines, 1) * 100, 1),
     } for r in repos[:limit]]
+
+
+def get_author_list(server_id, sort_by='commits', limit=50):
+    authors = AuthorStatistics.query.filter_by(server_id=server_id).all()
+    agg = defaultdict(lambda: {'commits': 0, 'additions': 0, 'deletions': 0, 'repos': set(), 'email': '', 'first_date': None, 'last_date': None})
+    for a in authors:
+        d = agg[a.author_name]
+        d['commits'] += a.commit_count
+        d['additions'] += a.additions
+        d['deletions'] += a.deletions
+        d['repos'].add(a.repo_name)
+        if a.author_email and not d['email']:
+            d['email'] = a.author_email
+        if a.first_commit_date:
+            if d['first_date'] is None or a.first_commit_date < d['first_date']:
+                d['first_date'] = a.first_commit_date
+        if a.last_commit_date:
+            if d['last_date'] is None or a.last_commit_date > d['last_date']:
+                d['last_date'] = a.last_commit_date
+
+    result = []
+    for name, d in agg.items():
+        result.append({
+            'name': name,
+            'email': d['email'],
+            'commits': d['commits'],
+            'additions': d['additions'],
+            'deletions': d['deletions'],
+            'repo_count': len(d['repos']),
+            'first_date': d['first_date'].isoformat() if d['first_date'] else None,
+            'last_date': d['last_date'].isoformat() if d['last_date'] else None,
+        })
+
+    if sort_by == 'additions':
+        result.sort(key=lambda x: -x['additions'])
+    elif sort_by == 'repos':
+        result.sort(key=lambda x: -x['repo_count'])
+    else:
+        result.sort(key=lambda x: -x['commits'])
+
+    return result[:limit]
+
+
+def get_author_detail(server_id, author_name):
+    records = AuthorStatistics.query.filter_by(server_id=server_id, author_name=author_name).all()
+    if not records:
+        return None
+
+    total_commits = sum(r.commit_count for r in records)
+    total_additions = sum(r.additions for r in records)
+    total_deletions = sum(r.deletions for r in records)
+    repo_count = len(records)
+    email = next((r.author_email for r in records if r.author_email), '')
+    first_date = None
+    last_date = None
+    for r in records:
+        if r.first_commit_date:
+            if first_date is None or r.first_commit_date < first_date:
+                first_date = r.first_commit_date
+        if r.last_commit_date:
+            if last_date is None or r.last_commit_date > last_date:
+                last_date = r.last_commit_date
+
+    return {
+        'name': author_name,
+        'email': email,
+        'total_commits': total_commits,
+        'total_additions': total_additions,
+        'total_deletions': total_deletions,
+        'repo_count': repo_count,
+        'first_date': first_date.isoformat() if first_date else None,
+        'last_date': last_date.isoformat() if last_date else None,
+    }
+
+
+def get_author_repos(server_id, author_name, sort_by='commits'):
+    records = AuthorStatistics.query.filter_by(server_id=server_id, author_name=author_name).all()
+    result = []
+    for r in records:
+        repo_stat = RepoStatistics.query.filter_by(server_id=server_id, repo_name=r.repo_name).first()
+        repo_commits = repo_stat.commit_count if repo_stat else 0
+        pct = round(r.commit_count / max(repo_commits, 1) * 100, 1)
+        result.append({
+            'repo_name': r.repo_name,
+            'commits': r.commit_count,
+            'additions': r.additions,
+            'deletions': r.deletions,
+            'repo_total_commits': repo_commits,
+            'contribution_pct': pct,
+            'last_date': r.last_commit_date.isoformat() if r.last_commit_date else None,
+        })
+
+    if sort_by == 'additions':
+        result.sort(key=lambda x: -x['additions'])
+    elif sort_by == 'recent':
+        result.sort(key=lambda x: x['last_date'] or '', reverse=True)
+    else:
+        result.sort(key=lambda x: -x['commits'])
+    return result
+
+
+def get_author_trend(server_id, author_name, period='month'):
+    records = AuthorStatistics.query.filter_by(server_id=server_id, author_name=author_name).all()
+    if not records:
+        return []
+
+    repo_names = [r.repo_name for r in records]
+    period_stats = CommitStatistics.query.filter_by(
+        server_id=server_id, period_type=period
+    ).order_by(CommitStatistics.period_key).all()
+
+    result = []
+    for ps in period_stats:
+        author_commits_in_period = 0
+        top_authors = json.loads(ps.top_authors) if ps.top_authors else []
+        for a in top_authors:
+            if a.get('name') == author_name:
+                author_commits_in_period = a.get('count', 0)
+                break
+        if author_commits_in_period > 0:
+            result.append({
+                'period_key': ps.period_key,
+                'commits': author_commits_in_period,
+            })
+
+    return result

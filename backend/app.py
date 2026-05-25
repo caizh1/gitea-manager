@@ -46,6 +46,7 @@ def create_app():
             "CREATE TABLE IF NOT EXISTS commit_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), period_type VARCHAR(20) NOT NULL, period_key VARCHAR(20) NOT NULL, commit_count INTEGER DEFAULT 0, repo_count INTEGER DEFAULT 0, author_count INTEGER DEFAULT 0, top_authors TEXT DEFAULT '[]', code_lines_added INTEGER DEFAULT 0, code_lines_deleted INTEGER DEFAULT 0, doc_lines_added INTEGER DEFAULT 0, doc_lines_deleted INTEGER DEFAULT 0, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
             "ALTER TABLE backups ADD COLUMN source_server_name VARCHAR(100) DEFAULT ''",
             "ALTER TABLE restore_tasks ADD COLUMN target_server_name VARCHAR(100) DEFAULT ''",
+            "CREATE TABLE IF NOT EXISTS author_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), author_name VARCHAR(200) NOT NULL, author_email VARCHAR(300) DEFAULT '', repo_name VARCHAR(300) NOT NULL, commit_count INTEGER DEFAULT 0, additions INTEGER DEFAULT 0, deletions INTEGER DEFAULT 0, first_commit_date DATETIME, last_commit_date DATETIME, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT uq_author_repo UNIQUE (server_id, author_name, repo_name))",
         ]:
             try:
                 db.session.execute(db.text(sql))
@@ -83,7 +84,7 @@ def create_app():
     def check_host_ip():
         if not request.endpoint:
             return None
-        read_only = {'.list_servers', '.get_server', '.list_backups', '.list_restore_tasks', '.list_schedules', '.list_alerts', '.alert_summary', '.recent_activity', '.list_mirrors', '.mirror_status', '.overview', '.commit_trend', '.repo_ranking', '.author_ranking', '.delete_info'}
+        read_only = {'.list_servers', '.get_server', '.list_backups', '.list_restore_tasks', '.list_schedules', '.list_alerts', '.alert_summary', '.recent_activity', '.list_mirrors', '.mirror_status', '.overview', '.commit_trend', '.repo_ranking', '.author_ranking', '.author_detail', '.author_repos', '.author_trend', '.delete_info'}
         protected_prefixes = ('servers.', 'backups.', 'restore.', 'schedule.')
         action = request.endpoint.split('.')[-1] if '.' in request.endpoint else ''
         endpoint_val = request.endpoint

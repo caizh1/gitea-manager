@@ -68,13 +68,14 @@
           <div class="glass-card" style="padding:20px;">
             <div class="section-sub-title" style="margin-bottom:14px;">作者贡献排名 (Top 10)</div>
             <div class="rank-list">
-              <div v-for="(a, i) in authorRanking" :key="a.name" class="rank-item">
+              <div v-for="(a, i) in authorRanking" :key="a.name" class="rank-item" @click="goAuthor(a.name)" style="cursor:pointer;">
                 <span class="rank-index">{{ i + 1 }}</span>
-                <span class="rank-name">{{ a.name }}</span>
+                <span class="rank-name rank-link">{{ a.name }}</span>
                 <span class="rank-value">{{ a.commits }} commits</span>
                 <div class="rank-bar" :style="{ width: barWidth(a.commits, authorRanking) }"></div>
               </div>
               <div v-if="authorRanking.length === 0" class="rank-empty">暂无数据</div>
+              <div v-else class="rank-more" @click="goAllAuthors">查看全部 →</div>
             </div>
           </div>
         </el-col>
@@ -114,11 +115,13 @@
 
 <script>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { ElMessage } from 'element-plus'
 
 export default {
   setup() {
+    const router = useRouter()
     const servers = ref([])
     const selectedServerId = ref(null)
     const refreshing = ref(false)
@@ -262,6 +265,14 @@ export default {
       return Math.max(2, (lines / max) * 100) + '%'
     }
 
+    function goAuthor(name) {
+      router.push({ path: `/statistics/authors/${encodeURIComponent(name)}`, query: { server_id: selectedServerId.value } })
+    }
+
+    function goAllAuthors() {
+      router.push({ path: '/statistics/authors', query: { server_id: selectedServerId.value } })
+    }
+
     onMounted(() => {
       api.get('/servers').then(res => {
         servers.value = res.data
@@ -278,7 +289,7 @@ export default {
     return { servers, selectedServerId, refreshing, overview, commitTrend, repoRanking, authorRanking,
              selectedPeriod, periods, primaryServers, trendChartRef,
              codePct, docPct, otherPct,
-             loadData, refreshData, changePeriod, formatNum, barWidth, langBarWidth }
+             loadData, refreshData, changePeriod, formatNum, barWidth, langBarWidth, goAuthor, goAllAuthors }
   },
 }
 </script>
@@ -333,6 +344,10 @@ export default {
 }
 .rank-index { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
 .rank-name { font-size: 13px; font-weight: 600; color: #1a1a2e; z-index: 1; min-width: 120px; }
+.rank-link { cursor: pointer; transition: color 0.2s; }
+.rank-link:hover { color: #667eea; text-decoration: underline; }
+.rank-more { text-align: center; padding: 10px; font-size: 12px; color: #667eea; cursor: pointer; font-weight: 600; }
+.rank-more:hover { text-decoration: underline; }
 .rank-value { font-size: 12px; color: #6b7280; margin-left: auto; z-index: 1; }
 .rank-bar { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, rgba(102,126,234,0.08), rgba(118,75,162,0.04)); border-radius: 8px; z-index: 0; }
 .rank-empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13px; }

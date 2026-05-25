@@ -8,7 +8,7 @@
 
 Gitea Manager 是一个 Web 管理面板，用于统一管理多台 Gitea 服务器的备份、恢复和定时调度。
 
-**核心功能：** 服务器管理 · 一键备份 · 灵活恢复 · 定时调度 · 系统设置
+**核心功能：** 服务器管理 · 一键备份 · 灵活恢复 · 定时调度 · 统计分析 · 镜像管理 · 全局告警 · 系统设置
 
 **技术栈：**
 
@@ -126,6 +126,14 @@ Gitea Manager 是一个 Web 管理面板，用于统一管理多台 Gitea 服务
 - `ScheduleLog` → `ScheduledTask`（多对一）：每次调度执行的日志
 - `Setting` — 键值存储，存管理员密码（bcrypt）和本机 IP
 - `User` — 不存储到数据库，硬编码 id=1，通过 `Setting.admin_password` 验证
+- `RepoStatistics` → `GiteaServer`（多对一）：每个仓库的统计数据（提交数、代码行、语言分布等）
+- `CommitStatistics` → `GiteaServer`（多对一）：按时间段的提交统计（月/季/半年/年）
+- `AuthorStatistics` → `GiteaServer`（多对一）：每个作者在每个仓库的统计（提交数、新增行、删除行），UniqueConstraint(server_id, author_name, repo_name)
+- `Alert` → `GiteaServer`（多对一）：全局告警记录
+- `MirrorConfig` → `GiteaServer`×2：镜像同步配置（源服务器→目标服务器）
+- `MirrorRepoStatus` → `MirrorConfig`（多对一）：每个仓库的镜像状态
+- `RestoreVerification` → `RestoreTask`（多对一）：恢复验证结果
+- `BackupRepoCommit` → `Backup`（多对一）：每次备份中每个仓库的 commit ID 校验集
 
 ---
 
@@ -215,6 +223,10 @@ Gitea Manager 是一个 Web 管理面板，用于统一管理多台 Gitea 服务
 | `Backups.vue` | `/backups` | 备份列表表格，创建备份对话框，下载/删除操作 |
 | `Restore.vue` | `/restore` | 恢复执行表单 + 恢复历史表格，双重确认，轮询运行中的任务 |
 | `Schedule.vue` | `/schedules` | 定时任务列表，展开行显示执行日志，创建/编辑/手动触发/删除，实时冷却倒计时 |
+| `Statistics.vue` | `/statistics` | 统计分析：概览卡片、提交趋势图（Canvas）、仓库/作者排名、代码文档比、语言分布 |
+| `AuthorList.vue` | `/statistics/authors` | 作者贡献排行列表（搜索、排序、点击跳转详情） |
+| `AuthorDetail.vue` | `/statistics/authors/:name` | 作者详情：统计卡片、提交趋势图、仓库贡献明细表（占比条） |
+| `Mirrors.vue` | `/mirrors` | 镜像同步管理：配置 CRUD、创建镜像、同步、仓库详情 |
 | `Settings.vue` | `/settings` | 系统设置表单，目前仅配置本机 IP |
 
 ---

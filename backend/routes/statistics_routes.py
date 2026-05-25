@@ -2,7 +2,7 @@ import json
 import threading
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
-from models import db, GiteaServer, RepoStatistics, CommitStatistics
+from models import db, GiteaServer, RepoStatistics, CommitStatistics, AuthorStatistics
 
 statistics_bp = Blueprint('statistics', __name__)
 
@@ -34,19 +34,36 @@ def repo_ranking(server_id):
 @statistics_bp.route('/statistics/<int:server_id>/authors', methods=['GET'])
 @login_required
 def author_ranking(server_id):
-    stats = CommitStatistics.query.filter_by(server_id=server_id).all()
-    author_commits = {}
-    for s in stats:
-        if s.top_authors:
-            try:
-                for a in json.loads(s.top_authors):
-                    name = a.get('name', '')
-                    if name:
-                        author_commits[name] = author_commits.get(name, 0) + s.commit_count
-            except Exception:
-                pass
-    ranked = sorted(author_commits.items(), key=lambda x: -x[1])[:20]
-    return jsonify([{'name': k, 'commits': v} for k, v in ranked])
+    sort_by = request.args.get('sort_by', 'commits')
+    limit = request.args.get('limit', 20, type=int)
+    from services.statistics_service import get_author_list
+    return jsonify(get_author_list(server_id, sort_by, limit))
+
+
+@statistics_bp.route('/statistics/<int:server_id>/authors/<author_name>', methods=['GET'])
+@login_required
+def author_detail(server_id, author_name):
+    from services.statistics_service import get_author_detail
+    result = get_author_detail(server_id, author_name)
+    if result is None:
+        return jsonify({'error': 'Author not found'}), 404
+    return jsonify(result)
+
+
+@statistics_bp.route('/statistics/<int:server_id>/authors/<author_name>/repos', methods=['GET'])
+@login_required
+def author_repos(server_id, author_name):
+    sort_by = request.args.get('sort_by', 'commits')
+    from services.statistics_service import get_author_repos
+    return jsonify(get_author_repos(server_id, author_name, sort_by))
+
+
+@statistics_bp.route('/statistics/<int:server_id>/authors/<author_name>/trend', methods=['GET'])
+@login_required
+def author_trend(server_id, author_name):
+    period = request.args.get('period', 'month')
+    from services.statistics_service import get_author_trend
+    return jsonify(get_author_trend(server_id, author_name, period))
 
 
 @statistics_bp.route('/statistics/<int:server_id>/refresh', methods=['POST'])

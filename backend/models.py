@@ -151,6 +151,26 @@ class CommitStatistics(db.Model):
     snapshot_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
+class AuthorStatistics(db.Model):
+    __tablename__ = 'author_statistics'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    author_name = db.Column(db.String(200), nullable=False)
+    author_email = db.Column(db.String(300), default='')
+    repo_name = db.Column(db.String(300), nullable=False)
+    commit_count = db.Column(db.Integer, default=0)
+    additions = db.Column(db.Integer, default=0)
+    deletions = db.Column(db.Integer, default=0)
+    first_commit_date = db.Column(db.DateTime, default=None)
+    last_commit_date = db.Column(db.DateTime, default=None)
+    snapshot_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('server_id', 'author_name', 'repo_name', name='uq_author_repo'),
+    )
+
+
 class MirrorConfig(db.Model):
     __tablename__ = 'mirror_configs'
 
