@@ -16,6 +16,7 @@ def start_scheduler(app):
     def loop():
         from models import db, ScheduledTask, Backup, RestoreTask, GiteaServer, ScheduleLog
         from services.gitea_service import do_backup, do_restore, test_server_connection
+        from services.alert_service import on_backup_completed, on_restore_completed
         import json
 
         while True:
@@ -54,9 +55,12 @@ def start_scheduler(app):
 
                             backup = Backup.query.get(backup.id)
                             if not backup or backup.status != 'success':
-                                raise Exception('备份失败: ' + (backup.error_msg if backup else ''))
+                                backup_err = backup.error_msg if backup else 'unknown'
+                                on_backup_completed(task.source_server_id, False, backup_err, backup_id=backup.id if backup else 0)
+                                raise Exception('备份失败: ' + backup_err)
 
-                            import json as _json
+                            on_backup_completed(task.source_server_id, True, backup_id=backup.id)
+
                             restore_results = []
                             logs = [f'备份完成: {backup.filename} ({backup.file_size} bytes)']
 
@@ -76,9 +80,12 @@ def start_scheduler(app):
                                 info = {'target': ts_name, 'status': rt.status if rt else 'unknown'}
                                 if rt and rt.status == 'success':
                                     logs.append(f'恢复成功: {ts_name}')
+                                    on_restore_completed(tid, True, task_id=rt.id)
                                 else:
-                                    info['error'] = (rt.error_msg if rt else '')[:200]
-                                    logs.append(f'恢复失败: {ts_name} - {info["error"]}')
+                                    err = (rt.error_msg if rt else '')[:200]
+                                    info['error'] = err
+                                    logs.append(f'恢复失败: {ts_name} - {err}')
+                                    on_restore_completed(tid, False, err, task_id=rt.id if rt else 0)
                                     if ts:
                                         ok, _ = test_server_connection(ts)
                                         ts.status = 'online' if ok else 'offline'

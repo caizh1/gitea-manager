@@ -67,7 +67,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="角色">
-              <el-select v-model="form.role"><el-option label="primary" value="primary" /><el-option label="backup" value="backup" /></el-select>
+              <el-select v-model="form.role"><el-option label="primary" value="primary" /><el-option label="backup" value="backup" /><el-option label="mirror" value="mirror" /></el-select>
             </el-form-item>
           </el-col>
         </el-row>

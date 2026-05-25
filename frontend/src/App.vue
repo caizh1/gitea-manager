@@ -46,6 +46,14 @@
             <el-icon><Clock /></el-icon>
             <template #title>定时任务</template>
           </el-menu-item>
+          <el-menu-item index="/mirrors">
+            <el-icon><Connection /></el-icon>
+            <template #title>镜像管理</template>
+          </el-menu-item>
+          <el-menu-item index="/statistics">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title>统计分析</template>
+          </el-menu-item>
         </el-menu>
         <div class="sidebar-footer">
           <div class="sidebar-user">
@@ -67,6 +75,7 @@
             </div>
           </div>
           <div class="header-right">
+            <AlertBell />
             <el-button size="small" @click="logout" class="logout-btn">
               <el-icon><SwitchButton /></el-icon>
               <span>退出登录</span>
@@ -96,7 +105,8 @@
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import LoginView from './views/Login.vue'
-import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton } from '@element-plus/icons-vue'
+import AlertBell from './components/AlertBell.vue'
+import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis } from '@element-plus/icons-vue'
 import { api } from './api'
 
 const breadcrumbMap = {
@@ -104,12 +114,14 @@ const breadcrumbMap = {
   '/servers': { parent: '首页', current: '服务器管理' },
   '/backups': { parent: '首页', current: '备份管理' },
   '/restore': { parent: '首页', current: '恢复操作' },
+  '/mirrors': { parent: '首页', current: '镜像管理' },
+  '/statistics': { parent: '首页', current: '统计分析' },
   '/settings': { parent: '首页', current: '系统设置' },
   '/schedules': { parent: '首页', current: '定时任务' },
 }
 
 export default {
-  components: { LoginView, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton },
+  components: { LoginView, AlertBell, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis },
   setup() {
     const router = useRouter()
     const route = useRoute()

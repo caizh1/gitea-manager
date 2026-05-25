@@ -6,6 +6,8 @@ const routes = [
   { path: '/servers', component: () => import('../views/Servers.vue') },
   { path: '/backups', component: () => import('../views/Backups.vue') },
   { path: '/restore', component: () => import('../views/Restore.vue') },
+  { path: '/mirrors', component: () => import('../views/Mirrors.vue') },
+  { path: '/statistics', component: () => import('../views/Statistics.vue') },
   { path: '/settings', component: () => import('../views/Settings.vue') },
   { path: '/schedules', component: () => import('../views/Schedule.vue') },
   { path: '/', redirect: '/dashboard' },

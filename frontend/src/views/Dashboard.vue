@@ -3,7 +3,7 @@
     <div class="section-header">
       <h3 class="section-title">服务器仪表盘</h3>
       <div class="header-actions">
-        <button class="icon-btn" @click="loadServers" title="刷新">↻</button>
+        <button class="icon-btn" @click="loadData" title="刷新">↻</button>
         <el-button size="small" @click="refreshAll" :loading="refreshingAll">刷新所有服务器</el-button>
       </div>
     </div>
@@ -30,6 +30,67 @@
         <div class="stat-label">定时任务</div>
       </div>
     </div>
+
+    <el-row :gutter="18" class="recent-row">
+      <el-col :span="12">
+        <div class="glass-card recent-card">
+          <div class="recent-card-header">
+            <span class="recent-card-title">最近备份记录</span>
+            <el-button size="small" text type="primary" @click="$router.push('/backups')">查看全部</el-button>
+          </div>
+          <div v-if="recentBackups.length === 0" class="recent-empty">暂无备份记录</div>
+          <div v-else class="recent-list">
+            <div v-for="b in recentBackups" :key="b.id" class="recent-item">
+              <div class="recent-item-left">
+                <span class="recent-status-icon" :class="b.status === 'success' ? 'icon-success' : 'icon-failed'">
+                  {{ b.status === 'success' ? '✅' : '❌' }}
+                </span>
+                <div class="recent-item-info">
+                  <div class="recent-item-main">
+                    <span class="recent-item-name">{{ b.source_server_name }}</span>
+                    <el-tag :type="b.status === 'success' ? 'success' : 'danger'" size="small" effect="dark">{{ b.status === 'success' ? '成功' : '失败' }}</el-tag>
+                  </div>
+                  <div class="recent-item-sub">
+                    <span v-if="b.status === 'success'">{{ b.file_size_display }}</span>
+                    <span v-else class="recent-error-msg">{{ b.error_msg.slice(0, 60) }}</span>
+                    <span class="recent-time">{{ fmtShort(b.started_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="12">
+        <div class="glass-card recent-card">
+          <div class="recent-card-header">
+            <span class="recent-card-title">最近恢复记录</span>
+            <el-button size="small" text type="primary" @click="$router.push('/restore')">查看全部</el-button>
+          </div>
+          <div v-if="recentRestores.length === 0" class="recent-empty">暂无恢复记录</div>
+          <div v-else class="recent-list">
+            <div v-for="r in recentRestores" :key="r.id" class="recent-item">
+              <div class="recent-item-left">
+                <span class="recent-status-icon" :class="r.status === 'success' ? 'icon-success' : 'icon-failed'">
+                  {{ r.status === 'success' ? '✅' : '❌' }}
+                </span>
+                <div class="recent-item-info">
+                  <div class="recent-item-main">
+                    <span class="recent-item-name">{{ r.target_server_name }}</span>
+                    <el-tag :type="r.status === 'success' ? 'success' : 'danger'" size="small" effect="dark">{{ r.status === 'success' ? '成功' : '失败' }}</el-tag>
+                  </div>
+                  <div class="recent-item-sub">
+                    <span v-if="r.status === 'success'" class="recent-backup-name">{{ r.backup_filename.slice(0, 30) }}</span>
+                    <span v-else class="recent-error-msg">{{ r.error_msg.slice(0, 60) }}</span>
+                    <span class="recent-time">{{ fmtShort(r.started_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
 
     <div class="section-header" style="margin-top:8px">
       <h3 class="section-title" style="font-size:16px;">服务器概览</h3>
@@ -88,7 +149,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 
 export default {
@@ -101,14 +162,17 @@ export default {
     const restoreRate = ref('--')
     const scheduleCount = ref(0)
     const failedRestoreServers = ref({})
+    const recentBackups = ref([])
+    const recentRestores = ref([])
 
-    function loadServers() {
+    function loadData() {
       Promise.all([
         api.get('/servers'),
         api.get('/backups'),
         api.get('/restore-tasks'),
         api.get('/schedules'),
-      ]).then(([sRes, bRes, rRes, tRes]) => {
+        api.get('/dashboard/recent'),
+      ]).then(([sRes, bRes, rRes, tRes, dRes]) => {
         servers.value = sRes.data
         backupCount.value = bRes.data.length
         const tasks = rRes.data
@@ -124,6 +188,8 @@ export default {
           }
         })
         failedRestoreServers.value = failedMap
+        recentBackups.value = dRes.data.recent_backups
+        recentRestores.value = dRes.data.recent_restores
       })
     }
 
@@ -153,6 +219,7 @@ export default {
             if (!running) {
               backingUpId.value = null
               if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+              loadData()
             }
           })
         }, 2000)
@@ -160,11 +227,16 @@ export default {
     }
 
     function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
+    function fmtShort(d) {
+      if (!d) return ''
+      const dt = new Date(d)
+      return `${dt.getMonth()+1}/${dt.getDate()} ${dt.getHours().toString().padStart(2,'0')}:${dt.getMinutes().toString().padStart(2,'0')}`
+    }
 
-    onMounted(loadServers)
+    onMounted(loadData)
     onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 
-    return { servers, backingUpId, refreshingAll, backupCount, restoreRate, scheduleCount, failedRestoreServers, loadServers, doBackup, refreshServer, refreshAll, fmt }
+    return { servers, backingUpId, refreshingAll, backupCount, restoreRate, scheduleCount, failedRestoreServers, recentBackups, recentRestores, loadData, doBackup, refreshServer, refreshAll, fmt, fmtShort }
   },
 }
 </script>
@@ -206,6 +278,59 @@ export default {
 .stat-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.9; }
 .stat-num { font-size: 32px; font-weight: 700; margin-bottom: 2px; letter-spacing: -1px; }
 .stat-label { font-size: 13px; opacity: 0.85; font-weight: 500; }
+
+.recent-row { margin-bottom: 16px; }
+.recent-card {
+  padding: 20px; border-radius: 14px;
+}
+.recent-card-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+}
+.recent-card-title {
+  font-size: 15px; font-weight: 700; color: #1a1a2e;
+}
+.recent-empty {
+  text-align: center; color: #9ca3af; padding: 20px 0; font-size: 13px;
+}
+.recent-list {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.recent-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.04);
+  transition: all 0.2s;
+}
+.recent-item:hover {
+  background: rgba(0,0,0,0.04);
+}
+.recent-item-left {
+  display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0;
+}
+.recent-status-icon {
+  font-size: 16px; margin-top: 2px; flex-shrink: 0;
+}
+.recent-item-info {
+  flex: 1; min-width: 0;
+}
+.recent-item-main {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+}
+.recent-item-name {
+  font-size: 13px; font-weight: 600; color: #1a1a2e;
+}
+.recent-item-sub {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9ca3af;
+}
+.recent-error-msg {
+  color: #ef4444; font-size: 12px;
+}
+.recent-backup-name {
+  color: #9ca3af; font-size: 12px;
+}
+.recent-time {
+  margin-left: auto; flex-shrink: 0; font-size: 11px; color: #d1d5db;
+}
 
 .server-card {
   margin-bottom: 18px; padding: 22px; position: relative;

@@ -37,6 +37,13 @@ def create_app():
             "ALTER TABLE schedule_logs ADD COLUMN backup_status VARCHAR(20) DEFAULT ''",
             "ALTER TABLE schedule_logs ADD COLUMN restore_results TEXT DEFAULT '[]'",
             "CREATE TABLE IF NOT EXISTS schedule_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, schedule_task_id INTEGER NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'running', log TEXT DEFAULT '', backup_status VARCHAR(20) DEFAULT '', restore_results TEXT DEFAULT '[]', started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at DATETIME)",
+            "CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, alert_type VARCHAR(30) NOT NULL, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), server_name VARCHAR(100) NOT NULL, message TEXT DEFAULT '', status VARCHAR(20) NOT NULL DEFAULT 'active', source_id INTEGER DEFAULT 0, resolved_at DATETIME, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS restore_verifications (id INTEGER PRIMARY KEY AUTOINCREMENT, restore_task_id INTEGER NOT NULL REFERENCES restore_tasks(id), status VARCHAR(20) NOT NULL DEFAULT 'pending', total_repos INTEGER DEFAULT 0, matched_repos INTEGER DEFAULT 0, mismatch_repos INTEGER DEFAULT 0, mismatch_details TEXT DEFAULT '[]', verified_at DATETIME, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS backup_repo_commits (id INTEGER PRIMARY KEY AUTOINCREMENT, backup_id INTEGER NOT NULL REFERENCES backups(id), repo_name VARCHAR(300) NOT NULL, commit_count INTEGER DEFAULT 0, latest_commit_sha VARCHAR(40) DEFAULT '', commit_ids_hash VARCHAR(64) DEFAULT '', commit_ids TEXT DEFAULT '', collected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS mirror_configs (id INTEGER PRIMARY KEY AUTOINCREMENT, source_server_id INTEGER NOT NULL REFERENCES gitea_servers(id), target_server_id INTEGER NOT NULL REFERENCES gitea_servers(id), sync_mode VARCHAR(20) NOT NULL DEFAULT 'gitea_mirror', sync_interval INTEGER DEFAULT 30, enabled BOOLEAN DEFAULT 1, status VARCHAR(20) DEFAULT 'pending', last_sync_at DATETIME, last_sync_status VARCHAR(20) DEFAULT '', last_sync_log TEXT DEFAULT '', total_repos INTEGER DEFAULT 0, synced_repos INTEGER DEFAULT 0, failed_repos INTEGER DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS mirror_repo_status (id INTEGER PRIMARY KEY AUTOINCREMENT, mirror_config_id INTEGER NOT NULL REFERENCES mirror_configs(id), repo_name VARCHAR(300) NOT NULL, source_repo_id INTEGER DEFAULT 0, target_repo_id INTEGER DEFAULT 0, status VARCHAR(20) DEFAULT 'pending', sync_mode VARCHAR(20) DEFAULT '', last_sync_at DATETIME, error_msg TEXT DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS repo_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), repo_name VARCHAR(300) NOT NULL, commit_count INTEGER DEFAULT 0, code_lines INTEGER DEFAULT 0, doc_lines INTEGER DEFAULT 0, other_lines INTEGER DEFAULT 0, code_files INTEGER DEFAULT 0, doc_files INTEGER DEFAULT 0, other_files INTEGER DEFAULT 0, language_breakdown TEXT DEFAULT '{}', last_commit_sha VARCHAR(40) DEFAULT '', last_commit_date DATETIME, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE TABLE IF NOT EXISTS commit_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), period_type VARCHAR(20) NOT NULL, period_key VARCHAR(20) NOT NULL, commit_count INTEGER DEFAULT 0, repo_count INTEGER DEFAULT 0, author_count INTEGER DEFAULT 0, top_authors TEXT DEFAULT '[]', code_lines_added INTEGER DEFAULT 0, code_lines_deleted INTEGER DEFAULT 0, doc_lines_added INTEGER DEFAULT 0, doc_lines_deleted INTEGER DEFAULT 0, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
         ]:
             try:
                 db.session.execute(db.text(sql))
@@ -54,6 +61,10 @@ def create_app():
     from routes.restore_routes import restore_bp
     from routes.settings_routes import settings_bp
     from routes.schedule_routes import schedule_bp
+    from routes.alert_routes import alert_bp
+    from routes.dashboard_routes import dashboard_bp
+    from routes.mirror_routes import mirror_bp
+    from routes.statistics_routes import statistics_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(server_bp, url_prefix='/api')
@@ -61,12 +72,16 @@ def create_app():
     app.register_blueprint(backup_bp, url_prefix='/api')
     app.register_blueprint(settings_bp, url_prefix='/api')
     app.register_blueprint(schedule_bp, url_prefix='/api')
+    app.register_blueprint(alert_bp, url_prefix='/api')
+    app.register_blueprint(dashboard_bp, url_prefix='/api')
+    app.register_blueprint(mirror_bp, url_prefix='/api')
+    app.register_blueprint(statistics_bp, url_prefix='/api')
 
     @app.before_request
     def check_host_ip():
         if not request.endpoint:
             return None
-        read_only = {'.list_servers', '.get_server', '.list_backups', '.list_restore_tasks', '.list_schedules'}
+        read_only = {'.list_servers', '.get_server', '.list_backups', '.list_restore_tasks', '.list_schedules', '.list_alerts', '.alert_summary', '.recent_activity', '.list_mirrors', '.mirror_status', '.overview', '.commit_trend', '.repo_ranking', '.author_ranking'}
         protected_prefixes = ('servers.', 'backups.', 'restore.', 'schedule.')
         action = request.endpoint.split('.')[-1] if '.' in request.endpoint else ''
         endpoint_val = request.endpoint

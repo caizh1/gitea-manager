@@ -96,6 +96,7 @@ def run_schedule(tid):
 
     def run():
         from app import create_app
+        from services.alert_service import on_backup_completed, on_restore_completed
         app = create_app()
         with app.app_context():
             t2 = ScheduledTask.query.get(tid)
@@ -124,7 +125,11 @@ def run_schedule(tid):
 
                 backup = Backup.query.get(backup.id)
                 if not backup or backup.status != 'success':
-                    raise Exception('备份失败: ' + (backup.error_msg if backup else ''))
+                    backup_err = backup.error_msg if backup else 'unknown'
+                    on_backup_completed(t2.source_server_id, False, backup_err, backup_id=backup.id if backup else 0)
+                    raise Exception('备份失败: ' + backup_err)
+
+                on_backup_completed(t2.source_server_id, True, backup_id=backup.id)
 
                 logs = [f'备份完成: {backup.filename}']
                 restore_results = []
@@ -145,9 +150,11 @@ def run_schedule(tid):
                     info = {'target': ts_name, 'status': rt.status if rt else 'unknown'}
                     if rt and rt.status == 'success':
                         logs.append(f'恢复成功: {ts_name}')
+                        on_restore_completed(tid2, True, task_id=rt.id)
                     else:
                         info['error'] = (rt.error_msg if rt else '')[:200]
                         logs.append(f'恢复失败: {ts_name} - {info["error"]}')
+                        on_restore_completed(tid2, False, info['error'], task_id=rt.id if rt else 0)
                         if ts:
                             ok, _ = test_server_connection(ts)
                             ts.status = 'online' if ok else 'offline'

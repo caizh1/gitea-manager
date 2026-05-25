@@ -112,6 +112,123 @@ class ScheduledTask(db.Model):
     source_server = db.relationship('GiteaServer', foreign_keys=[source_server_id], lazy=True)
 
 
+class RepoStatistics(db.Model):
+    __tablename__ = 'repo_statistics'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    repo_name = db.Column(db.String(300), nullable=False)
+    commit_count = db.Column(db.Integer, default=0)
+    code_lines = db.Column(db.Integer, default=0)
+    doc_lines = db.Column(db.Integer, default=0)
+    other_lines = db.Column(db.Integer, default=0)
+    code_files = db.Column(db.Integer, default=0)
+    doc_files = db.Column(db.Integer, default=0)
+    other_files = db.Column(db.Integer, default=0)
+    language_breakdown = db.Column(db.Text, default='{}')
+    last_commit_sha = db.Column(db.String(40), default='')
+    last_commit_date = db.Column(db.DateTime, default=None)
+    snapshot_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class CommitStatistics(db.Model):
+    __tablename__ = 'commit_statistics'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    period_type = db.Column(db.String(20), nullable=False)
+    period_key = db.Column(db.String(20), nullable=False)
+    commit_count = db.Column(db.Integer, default=0)
+    repo_count = db.Column(db.Integer, default=0)
+    author_count = db.Column(db.Integer, default=0)
+    top_authors = db.Column(db.Text, default='[]')
+    code_lines_added = db.Column(db.Integer, default=0)
+    code_lines_deleted = db.Column(db.Integer, default=0)
+    doc_lines_added = db.Column(db.Integer, default=0)
+    doc_lines_deleted = db.Column(db.Integer, default=0)
+    snapshot_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MirrorConfig(db.Model):
+    __tablename__ = 'mirror_configs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    source_server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    target_server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    sync_mode = db.Column(db.String(20), nullable=False, default='gitea_mirror')
+    sync_interval = db.Column(db.Integer, default=30)
+    enabled = db.Column(db.Boolean, default=True)
+    status = db.Column(db.String(20), default='pending')
+    last_sync_at = db.Column(db.DateTime, default=None)
+    last_sync_status = db.Column(db.String(20), default='')
+    last_sync_log = db.Column(db.Text, default='')
+    total_repos = db.Column(db.Integer, default=0)
+    synced_repos = db.Column(db.Integer, default=0)
+    failed_repos = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    source_server = db.relationship('GiteaServer', foreign_keys=[source_server_id], lazy=True)
+    target_server = db.relationship('GiteaServer', foreign_keys=[target_server_id], lazy=True)
+
+
+class MirrorRepoStatus(db.Model):
+    __tablename__ = 'mirror_repo_status'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    mirror_config_id = db.Column(db.Integer, db.ForeignKey('mirror_configs.id'), nullable=False)
+    repo_name = db.Column(db.String(300), nullable=False)
+    source_repo_id = db.Column(db.Integer, default=0)
+    target_repo_id = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(20), default='pending')
+    sync_mode = db.Column(db.String(20), default='')
+    last_sync_at = db.Column(db.DateTime, default=None)
+    error_msg = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class RestoreVerification(db.Model):
+    __tablename__ = 'restore_verifications'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    restore_task_id = db.Column(db.Integer, db.ForeignKey('restore_tasks.id'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    total_repos = db.Column(db.Integer, default=0)
+    matched_repos = db.Column(db.Integer, default=0)
+    mismatch_repos = db.Column(db.Integer, default=0)
+    mismatch_details = db.Column(db.Text, default='[]')
+    verified_at = db.Column(db.DateTime, default=None)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class BackupRepoCommit(db.Model):
+    __tablename__ = 'backup_repo_commits'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    backup_id = db.Column(db.Integer, db.ForeignKey('backups.id'), nullable=False)
+    repo_name = db.Column(db.String(300), nullable=False)
+    commit_count = db.Column(db.Integer, default=0)
+    latest_commit_sha = db.Column(db.String(40), default='')
+    commit_ids_hash = db.Column(db.String(64), default='')
+    commit_ids = db.Column(db.Text, default='')
+    collected_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class Alert(db.Model):
+    __tablename__ = 'alerts'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    alert_type = db.Column(db.String(30), nullable=False)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    server_name = db.Column(db.String(100), nullable=False)
+    message = db.Column(db.Text, default='')
+    status = db.Column(db.String(20), nullable=False, default='active')
+    source_id = db.Column(db.Integer, default=0)
+    resolved_at = db.Column(db.DateTime, default=None)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    server = db.relationship('GiteaServer', foreign_keys=[server_id], lazy=True)
+
+
 class ScheduleLog(db.Model):
     __tablename__ = 'schedule_logs'
 
