@@ -83,7 +83,7 @@
           </div>
         </el-header>
         <el-main class="app-main">
-          <div v-if="needsConfig" class="blocking-card">
+          <div v-if="needsConfig && route.path !== '/settings'" class="blocking-card">
             <el-result icon="warning" title="请先配置本机 IP" sub-title="使用平台前需在系统设置中配置本机 IP，用于区分本地和远程服务器。">
               <template #extra>
                 <el-button type="primary" @click="$router.push('/settings')">前往系统设置</el-button>
