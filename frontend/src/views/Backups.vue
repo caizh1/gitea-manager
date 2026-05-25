@@ -1,9 +1,9 @@
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <h3 style="margin:0">备份管理</h3>
-        <el-button circle size="small" @click="load" title="刷新">↻</el-button>
+    <div class="section-header">
+      <div class="header-left">
+        <h3 class="section-title">备份管理</h3>
+        <button class="icon-btn" @click="load" title="刷新">↻</button>
       </div>
       <el-button type="primary" @click="showCreateDialog = true" :disabled="primaryServers.length === 0">创建备份</el-button>
     </div>
@@ -12,31 +12,33 @@
       <el-empty description="暂无备份记录" />
     </div>
 
-    <el-table v-else :data="backups" border stripe v-loading="loading">
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="source_server_name" label="来源服务器" width="150" />
-      <el-table-column prop="filename" label="文件名" min-width="280" />
-      <el-table-column label="大小" width="100">
-        <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="started_at" label="开始时间" width="170">
-        <template #default="{ row }">{{ fmt(row.started_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button size="small" type="primary" v-if="row.status === 'success'"
-            @click="downloadBackup(row)">下载</el-button>
-          <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
-            <template #reference><el-button size="small" type="danger">删除</el-button></template>
-          </el-popconfirm>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div v-else class="glass-card" style="padding:0;animation:fadeInUp 0.5s ease both;">
+      <el-table :data="backups" stripe v-loading="loading" style="width:100%">
+        <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column prop="source_server_name" label="来源服务器" width="150" />
+        <el-table-column prop="filename" label="文件名" min-width="280" />
+        <el-table-column label="大小" width="100">
+          <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="started_at" label="开始时间" width="170">
+          <template #default="{ row }">{{ fmt(row.started_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" v-if="row.status === 'success'"
+              @click="downloadBackup(row)">下载</el-button>
+            <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
+              <template #reference><el-button size="small" type="danger">删除</el-button></template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <el-dialog title="创建备份" v-model="showCreateDialog" width="450px">
       <el-form label-width="100px">
@@ -118,3 +120,18 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.section-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;
+}
+.header-left { display: flex; align-items: center; gap: 8px; }
+.section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin: 0; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 16px;
+  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+</style>

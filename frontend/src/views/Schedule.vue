@@ -1,9 +1,9 @@
 <template>
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <h3 style="margin:0">定时任务</h3>
-        <el-button circle size="small" @click="loadData" title="刷新">↻</el-button>
+    <div class="section-header">
+      <div class="header-left">
+        <h3 class="section-title">定时任务</h3>
+        <button class="icon-btn" @click="loadData" title="刷新">↻</button>
       </div>
       <el-button type="primary" @click="openDialog()">创建定时任务</el-button>
     </div>
@@ -17,69 +17,69 @@
       style="margin-bottom:16px"
     />
 
-    <el-table :data="tasks" border stripe v-loading="loading" @expand-change="loadLogs">
-      <el-table-column type="expand">
-        <template #default="{ row }">
-          <div v-if="logsCache[row.id] && logsCache[row.id].length" style="padding:0 20px 10px">
-            <el-table :data="flatLogs(logsCache[row.id])" :key="row.id + '-' + logsCache[row.id].length" border size="small">
-              <el-table-column label="时间" width="160">
-                <template #default="{ row: lr }">{{ fmt(lr.started_at) }}</template>
-              </el-table-column>
-              <el-table-column prop="stage" label="阶段" width="70" />
-              <el-table-column label="状态" width="80">
-                <template #default="{ row: lr }">
-                  <el-tag :type="lr.status === 'success' ? 'success' : 'danger'" size="small">{{ lr.status }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="detail" label="详情" min-width="300" show-overflow-tooltip />
-            </el-table>
-          </div>
-          <div v-else style="padding:10px 20px;color:#999">加载中...</div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="name" label="名称" width="160" />
-      <el-table-column prop="source_server_name" label="源服务器" width="140" />
-      <el-table-column label="目标服务器" min-width="200">
-        <template #default="{ row }">
-          <template v-if="row.target_ids && row.target_ids.length">
-            <el-tag v-for="tid in row.target_ids" :key="tid" size="small" style="margin-right:4px">
-              {{ serverNameMap[tid] || tid }}
-            </el-tag>
+    <div class="glass-card" style="padding:0;animation:fadeInUp 0.5s ease both;">
+      <el-table :data="tasks" stripe v-loading="loading" @expand-change="loadLogs" style="width:100%">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div v-if="logsCache[row.id] && logsCache[row.id].length" style="padding:0 20px 10px">
+              <el-table :data="flatLogs(logsCache[row.id])" :key="row.id + '-' + logsCache[row.id].length" size="small">
+                <el-table-column label="时间" width="160">
+                  <template #default="{ row: lr }">{{ fmt(lr.started_at) }}</template>
+                </el-table-column>
+                <el-table-column prop="stage" label="阶段" width="70" />
+                <el-table-column label="状态" width="80">
+                  <template #default="{ row: lr }">
+                    <el-tag :type="lr.status === 'success' ? 'success' : 'danger'" size="small">{{ lr.status }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="detail" label="详情" min-width="300" show-overflow-tooltip />
+              </el-table>
+            </div>
+            <div v-else style="padding:10px 20px;color:#9ca3af">加载中...</div>
           </template>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="执行时间" width="120">
-        <template #default="{ row }">
-          {{ pad(row.schedule_hour) }}:{{ pad(row.schedule_minute) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="启用" width="70">
-        <template #default="{ row }">
-          <el-switch v-model="row.enabled" size="small" @change="toggleEnabled(row)" />
-        </template>
-      </el-table-column>
-      <el-table-column prop="last_status" label="上次" width="80">
-        <template #default="{ row }">
-          <el-tag v-if="row.last_status" :type="row.last_status === 'success' ? 'success' : 'danger'" size="small">{{ row.last_status }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="last_run_at" label="上次执行" width="150">
-        <template #default="{ row }">{{ row.last_run_at ? new Date(row.last_run_at).toLocaleString() : '-' }}</template>
-      </el-table-column>
-      <el-table-column prop="last_log" label="日志" min-width="150" show-overflow-tooltip />
-      <el-table-column label="操作" width="240" fixed="right">
-        <template #default="{ row }">
-          <el-tooltip :content="cooldownTip(row)" :disabled="!isCooldown(row)" placement="top">
-            <el-button size="small" @click="runNow(row)" :disabled="isCooldown(row)">立即执行</el-button>
-          </el-tooltip>
-          <el-button size="small" @click="openDialog(row)">编辑</el-button>
-          <el-popconfirm title="确定删除?" @confirm="deleteTask(row)">
-            <template #reference><el-button size="small" type="danger">删除</el-button></template>
-          </el-popconfirm>
-        </template>
-      </el-table-column>
-    </el-table>
+        </el-table-column>
+        <el-table-column prop="name" label="名称" width="160" />
+        <el-table-column prop="source_server_name" label="源服务器" width="140" />
+        <el-table-column label="目标服务器" min-width="200">
+          <template #default="{ row }">
+            <template v-if="row.target_ids && row.target_ids.length">
+              <el-tag v-for="tid in row.target_ids" :key="tid" size="small" style="margin-right:4px">
+                {{ serverNameMap[tid] || tid }}
+              </el-tag>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="执行时间" width="120">
+          <template #default="{ row }">{{ pad(row.schedule_hour) }}:{{ pad(row.schedule_minute) }}</template>
+        </el-table-column>
+        <el-table-column label="启用" width="70">
+          <template #default="{ row }">
+            <el-switch v-model="row.enabled" size="small" @change="toggleEnabled(row)" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="last_status" label="上次" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.last_status" :type="row.last_status === 'success' ? 'success' : 'danger'" size="small">{{ row.last_status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="last_run_at" label="上次执行" width="150">
+          <template #default="{ row }">{{ row.last_run_at ? new Date(row.last_run_at).toLocaleString() : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="last_log" label="日志" min-width="150" show-overflow-tooltip />
+        <el-table-column label="操作" width="240" fixed="right">
+          <template #default="{ row }">
+            <el-tooltip :content="cooldownTip(row)" :disabled="!isCooldown(row)" placement="top">
+              <el-button size="small" @click="runNow(row)" :disabled="isCooldown(row)">立即执行</el-button>
+            </el-tooltip>
+            <el-button size="small" @click="openDialog(row)">编辑</el-button>
+            <el-popconfirm title="确定删除?" @confirm="deleteTask(row)">
+              <template #reference><el-button size="small" type="danger">删除</el-button></template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <el-dialog :title="isEdit ? '编辑定时任务' : '创建定时任务'" v-model="dialogVisible" width="550px" destroy-on-close>
       <el-form :model="form" label-width="100px">
@@ -103,11 +103,9 @@
             <el-option v-for="m in 60" :key="m-1" :label="pad(m-1)" :value="m-1" />
           </el-select>
           <span style="margin-left:8px">分</span>
-          <span style="color:#999;margin-left:12px;font-size:12px">UTC 时间</span>
+          <span style="color:#9ca3af;margin-left:12px;font-size:12px">UTC 时间</span>
         </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="form.enabled" />
-        </el-form-item>
+        <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -279,3 +277,18 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.section-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;
+}
+.header-left { display: flex; align-items: center; gap: 8px; }
+.section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin: 0; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 16px;
+  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+</style>

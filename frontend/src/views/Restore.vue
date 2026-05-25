@@ -1,6 +1,8 @@
 <template>
   <div>
-    <h3 style="margin-bottom:16px">恢复操作</h3>
+    <div class="section-header">
+      <h3 class="section-title">恢复操作</h3>
+    </div>
 
     <el-alert
       v-if="criticalAlert"
@@ -11,8 +13,8 @@
       style="margin-bottom:16px"
     />
 
-    <el-card class="section-card" shadow="hover">
-      <template #header><span style="font-weight:bold">执行恢复</span></template>
+    <div class="glass-card" style="padding:24px;margin-bottom:20px;">
+      <div class="card-section-title" style="margin-bottom:16px;">执行恢复</div>
       <el-alert type="warning" :closable="false" show-icon title="警告：恢复操作将覆盖目标服务器的所有数据！请谨慎操作。" style="margin-bottom:16px" />
 
       <el-form label-width="110px">
@@ -40,16 +42,14 @@
           </el-popconfirm>
         </el-form-item>
       </el-form>
-    </el-card>
+    </div>
 
-    <el-card class="section-card" shadow="hover" style="margin-top:20px">
-      <template #header>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-weight:bold">恢复历史</span>
-          <el-button circle size="small" @click="load" title="刷新">↻</el-button>
-        </div>
-      </template>
-      <el-table :data="tasks" border stripe>
+    <div class="glass-card" style="padding:24px;">
+      <div class="card-section-header">
+        <span class="card-section-title">恢复历史</span>
+        <button class="icon-btn-sm" @click="load" title="刷新">↻</button>
+      </div>
+      <el-table :data="tasks" stripe style="width:100%">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="backup_filename" label="备份文件" min-width="250" />
         <el-table-column prop="target_server_name" label="目标服务器" width="150" />
@@ -66,7 +66,7 @@
           <template #default="{ row }">{{ fmt(row.completed_at) }}</template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -151,5 +151,16 @@ export default {
 </script>
 
 <style scoped>
-.section-card { margin-bottom: 10px; }
+.section-header { margin-bottom: 18px; }
+.section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin: 0; }
+.card-section-title { font-weight: 600; font-size: 15px; color: #1a1a2e; }
+.card-section-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+}
+.icon-btn-sm {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px;
+  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
+}
+.icon-btn-sm:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
 </style>

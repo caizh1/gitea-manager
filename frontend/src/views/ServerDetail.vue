@@ -1,53 +1,71 @@
 <template>
   <div v-loading="loading">
-    <el-page-header @back="$router.push('/servers')" :title="server.name" style="margin-bottom:16px">
-      <template #content>
-        <span style="font-size:16px;font-weight:600">{{ server.name }}</span>
-        <el-tag :type="server.role === 'primary' ? '' : 'info'" size="small" style="margin-left:8px">{{ server.role }}</el-tag>
-        <el-tag :type="server.status === 'online' ? 'success' : 'danger'" size="small" effect="dark" style="margin-left:4px">{{ server.status }}</el-tag>
-        <el-tag v-if="server.is_local" type="success" size="small" style="margin-left:4px">本地</el-tag>
-        <el-tag v-else size="small" style="margin-left:4px">远程</el-tag>
-      </template>
-    </el-page-header>
-
-    <el-row :gutter="14" style="margin-bottom:16px">
-      <el-col :span="6"><div class="info-card"><div class="info-val">{{ server.version || '-' }}</div><div class="info-label">版本</div></div></el-col>
-      <el-col :span="6"><div class="info-card"><div class="info-val">{{ server.repo_count }}</div><div class="info-label">仓库</div></div></el-col>
-      <el-col :span="6"><div class="info-card"><div class="info-val">{{ server.user_count }}</div><div class="info-label">用户</div></div></el-col>
-      <el-col :span="6"><div class="info-card"><div class="info-val">{{ server.gitea_port || '-' }}</div><div class="info-label">端口</div></div></el-col>
-    </el-row>
-
-    <el-row :gutter="14" style="margin-bottom:16px">
-      <el-col :span="9"><div class="info-card"><div class="info-val font-mono">{{ detail.backup_count }}</div><div class="info-label">备份数</div></div></el-col>
-      <el-col :span="9"><div class="info-card"><div class="info-val font-mono">{{ detail.restore_count }}</div><div class="info-label">恢复次数</div></div></el-col>
-      <el-col :span="6"><div class="info-card"><div class="info-val">{{ detail.container ? detail.container.image : '-' }}</div><div class="info-label">镜像</div></div></el-col>
-    </el-row>
-
-    <div v-if="detail.resources" style="margin-bottom:16px">
-      <el-tag size="small">CPU: {{ detail.resources.cpu_percent }}%</el-tag>
-      <el-tag size="small" style="margin-left:8px">内存: {{ fmtMem(detail.resources.memory_used) }} / {{ fmtMem(detail.resources.memory_limit) }}</el-tag>
+    <div class="detail-header">
+      <button class="back-btn" @click="$router.push('/servers')">← 返回</button>
+      <span class="detail-title">{{ server.name }}</span>
+      <el-tag :type="server.role === 'primary' ? 'warning' : 'info'" size="small">{{ server.role }}</el-tag>
+      <el-tag :type="server.status === 'online' ? 'success' : 'danger'" size="small" effect="dark">{{ server.status }}</el-tag>
+      <el-tag v-if="server.is_local" type="success" size="small">本地</el-tag>
+      <el-tag v-else size="small">远程</el-tag>
     </div>
-    <div v-if="detail.disk" style="margin-bottom:16px">
-      <el-tag size="small" type="warning">磁盘: {{ detail.disk }}</el-tag>
+
+    <div class="info-grid">
+      <div class="glass-card info-card">
+        <div class="info-val">{{ server.version || '-' }}</div>
+        <div class="info-label">版本</div>
+      </div>
+      <div class="glass-card info-card">
+        <div class="info-val">{{ server.repo_count }}</div>
+        <div class="info-label">仓库</div>
+      </div>
+      <div class="glass-card info-card">
+        <div class="info-val">{{ server.user_count }}</div>
+        <div class="info-label">用户</div>
+      </div>
+      <div class="glass-card info-card">
+        <div class="info-val">{{ server.gitea_port || '-' }}</div>
+        <div class="info-label">端口</div>
+      </div>
     </div>
-    <div v-if="detail.container" style="margin-bottom:16px;color:#999;font-size:12px">
+
+    <div class="info-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+      <div class="glass-card info-card">
+        <div class="info-val font-mono">{{ detail.backup_count }}</div>
+        <div class="info-label">备份数</div>
+      </div>
+      <div class="glass-card info-card">
+        <div class="info-val font-mono">{{ detail.restore_count }}</div>
+        <div class="info-label">恢复次数</div>
+      </div>
+      <div class="glass-card info-card">
+        <div class="info-val" style="font-size:16px;">{{ detail.container ? detail.container.image : '-' }}</div>
+        <div class="info-label">镜像</div>
+      </div>
+    </div>
+
+    <div v-if="detail.resources" class="resource-tags">
+      <el-tag size="small" type="info" effect="plain">CPU: {{ detail.resources.cpu_percent }}%</el-tag>
+      <el-tag size="small" type="warning" effect="plain">内存: {{ fmtMem(detail.resources.memory_used) }} / {{ fmtMem(detail.resources.memory_limit) }}</el-tag>
+    </div>
+    <div v-if="detail.disk" class="resource-tags">
+      <el-tag size="small" type="danger" effect="plain">磁盘: {{ detail.disk }}</el-tag>
+    </div>
+    <div v-if="detail.container" class="container-info">
       容器: {{ detail.container.name }} | 状态: {{ detail.container.status }}
     </div>
 
-    <el-card shadow="hover" style="margin-bottom:16px">
-      <template #header>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-weight:600">最近日志</span>
-          <el-button size="small" @click="loadData">刷新</el-button>
-        </div>
-      </template>
+    <div class="glass-card" style="padding:20px;margin-bottom:18px;">
+      <div class="card-section-header">
+        <span class="card-section-title">最近日志</span>
+        <button class="icon-btn-sm" @click="loadData">↻</button>
+      </div>
       <pre v-if="detail.logs" class="log-block">{{ detail.logs }}</pre>
       <el-empty v-else description="暂无日志" :image-size="60" />
-    </el-card>
+    </div>
 
-    <el-collapse v-model="activeSections" style="margin-bottom:16px">
+    <el-collapse v-model="activeSections" class="detail-collapse">
       <el-collapse-item name="backups" :title="`备份记录 (共 ${detail.backup_count} 条)`">
-        <el-table :data="detail.backups || []" size="small" border v-if="(detail.backups || []).length">
+        <el-table :data="detail.backups || []" size="small" v-if="(detail.backups || []).length">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip />
           <el-table-column label="大小" width="90">
@@ -66,7 +84,7 @@
       </el-collapse-item>
 
       <el-collapse-item name="restores" :title="`恢复记录 (共 ${detail.restore_count} 条)`">
-        <el-table :data="detail.restores || []" size="small" border v-if="(detail.restores || []).length">
+        <el-table :data="detail.restores || []" size="small" v-if="(detail.restores || []).length">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="backup_filename" label="备份文件" min-width="220" show-overflow-tooltip />
           <el-table-column prop="status" label="状态" width="80">
@@ -126,9 +144,49 @@ export default {
 </script>
 
 <style scoped>
-.info-card { background: #fff; border-radius: 8px; padding: 14px 16px; text-align: center; border: 1px solid #ebeef5; }
-.info-val { font-size: 22px; font-weight: 700; color: #303133; }
-.info-val.font-mono { font-family: monospace; }
-.info-label { font-size: 12px; color: #909399; margin-top: 4px; }
-.log-block { background: #1a1d2e; color: #e0e0e0; padding: 14px; border-radius: 6px; font-size: 12px; line-height: 1.6; max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin: 0; }
+.detail-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+  animation: fadeInUp 0.4s ease both;
+}
+.back-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 13px; color: #6b7280;
+  transition: all 0.2s; font-family: inherit;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.back-btn:hover { background: rgba(255,255,255,0.85); color: #1a1a2e; }
+.detail-title { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+
+.info-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px;
+}
+.info-card { padding: 18px; text-align: center; }
+.info-val { font-size: 24px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; }
+.info-val.font-mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+.info-label { font-size: 12px; color: #9ca3af; margin-top: 4px; font-weight: 500; }
+
+.resource-tags { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.container-info { margin-bottom: 16px; color: #9ca3af; font-size: 12px; }
+
+.card-section-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+}
+.card-section-title { font-weight: 600; font-size: 15px; color: #1a1a2e; }
+.icon-btn-sm {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px;
+  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
+}
+.icon-btn-sm:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+
+.log-block {
+  background: rgba(30,32,48,0.88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-radius: 10px; padding: 16px; font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px; line-height: 1.7; color: #c9d1d9; border: 1px solid rgba(255,255,255,0.06);
+  max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin: 0;
+}
+
+.detail-collapse {
+  margin-bottom: 16px;
+}
 </style>
