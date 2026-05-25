@@ -51,7 +51,7 @@
           <template #default="{ row }">
             <el-button size="small" @click="checkServer(row)">测试连接</el-button>
             <el-button size="small" @click="openDialog(row)">编辑</el-button>
-            <el-popconfirm title="确定删除?" @confirm="deleteServer(row)">
+            <el-popconfirm :title="`确定删除? 该操作不可恢复`" width="260" @confirm="deleteServer(row)">
               <template #reference><el-button size="small" type="danger">删除</el-button></template>
             </el-popconfirm>
           </template>
@@ -163,7 +163,19 @@ export default {
     }
 
     function deleteServer(row) {
-      api.delete(`/servers/${row.id}`).then(() => { loadServers() })
+      api.get(`/servers/${row.id}/delete-info`).then(info => {
+        const bc = info.data.backup_count || 0
+        const rc = info.data.restore_count || 0
+        let msg = `确定删除服务器 "${row.name}"?`
+        if (bc > 0 || rc > 0) {
+          msg += `\n该服务器有 ${bc} 条备份记录和 ${rc} 条恢复记录，删除后记录仍会保留但标记为"服务器已删除"。`
+        }
+        if (confirm(msg)) {
+          api.delete(`/servers/${row.id}`).then(() => { loadServers() })
+        }
+      }).catch(() => {
+        api.delete(`/servers/${row.id}`).then(() => { loadServers() })
+      })
     }
 
     function checkServer(row) {

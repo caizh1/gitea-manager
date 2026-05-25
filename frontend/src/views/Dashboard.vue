@@ -47,7 +47,7 @@
                 </span>
                 <div class="recent-item-info">
                   <div class="recent-item-main">
-                    <span class="recent-item-name">{{ b.source_server_name }}</span>
+                    <span class="recent-item-name">{{ b.source_server_name }}<el-tag v-if="b.source_server_deleted" type="danger" size="small" effect="plain" class="deleted-tag">服务器已删除</el-tag></span>
                     <el-tag :type="b.status === 'success' ? 'success' : 'danger'" size="small" effect="dark">{{ b.status === 'success' ? '成功' : '失败' }}</el-tag>
                   </div>
                   <div class="recent-item-sub">
@@ -76,7 +76,7 @@
                 </span>
                 <div class="recent-item-info">
                   <div class="recent-item-main">
-                    <span class="recent-item-name">{{ r.target_server_name }}</span>
+                    <span class="recent-item-name">{{ r.target_server_name }}<el-tag v-if="r.target_server_deleted" type="danger" size="small" effect="plain" class="deleted-tag">服务器已删除</el-tag></span>
                     <el-tag :type="r.status === 'success' ? 'success' : 'danger'" size="small" effect="dark">{{ r.status === 'success' ? '成功' : '失败' }}</el-tag>
                   </div>
                   <div class="recent-item-sub">
@@ -330,6 +330,9 @@ export default {
 }
 .recent-time {
   margin-left: auto; flex-shrink: 0; font-size: 11px; color: #d1d5db;
+}
+.deleted-tag {
+  margin-left: 6px; font-size: 10px; vertical-align: middle;
 }
 
 .server-card {

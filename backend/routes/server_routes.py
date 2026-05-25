@@ -80,7 +80,32 @@ def add_server():
     fetch_server_info(server)
     db.session.commit()
 
+    _repair_orphan_records(server)
+
     return jsonify(server_to_dict(server)), 201
+
+
+def _repair_orphan_records(server):
+    from models import Backup, RestoreTask
+    Backup.query.filter(
+        Backup.source_server_name == server.name,
+        ~Backup.source_server_id.in_(db.session.query(GiteaServer.id))
+    ).update({'source_server_id': server.id}, synchronize_session='fetch')
+
+    RestoreTask.query.filter(
+        RestoreTask.target_server_name == server.name,
+        ~RestoreTask.target_server_id.in_(db.session.query(GiteaServer.id))
+    ).update({'target_server_id': server.id}, synchronize_session='fetch')
+    db.session.commit()
+
+
+@server_bp.route('/servers/<int:sid>/delete-info', methods=['GET'])
+@login_required
+def delete_info(sid):
+    from models import Backup, RestoreTask
+    backup_count = Backup.query.filter_by(source_server_id=sid).count()
+    restore_count = RestoreTask.query.filter_by(target_server_id=sid).count()
+    return jsonify({'backup_count': backup_count, 'restore_count': restore_count})
 
 
 @server_bp.route('/servers/<int:sid>', methods=['PUT'])
@@ -104,10 +129,13 @@ def update_server(sid):
 @server_bp.route('/servers/<int:sid>', methods=['DELETE'])
 @login_required
 def delete_server(sid):
+    from models import Backup, RestoreTask
     s = GiteaServer.query.get_or_404(sid)
+    backup_count = Backup.query.filter_by(source_server_id=sid).count()
+    restore_count = RestoreTask.query.filter_by(target_server_id=sid).count()
     db.session.delete(s)
     db.session.commit()
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'deleted_backups': backup_count, 'deleted_restores': restore_count})
 
 
 @server_bp.route('/servers/<int:sid>/check', methods=['POST'])

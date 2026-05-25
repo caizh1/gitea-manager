@@ -47,6 +47,7 @@ def start_scheduler(app):
                                 file_path='',
                                 status='running',
                                 source_api_token=source.api_token if source else '',
+                                source_server_name=source.name if source else '',
                                 started_at=now,
                             )
                             db.session.add(backup)
@@ -65,9 +66,11 @@ def start_scheduler(app):
                             logs = [f'备份完成: {backup.filename} ({backup.file_size} bytes)']
 
                             for tid in target_ids:
+                                ts = GiteaServer.query.get(tid)
                                 rt = RestoreTask(
                                     backup_id=backup.id,
                                     target_server_id=tid,
+                                    target_server_name=ts.name if ts else '',
                                     status='running',
                                     started_at=datetime.utcnow(),
                                 )

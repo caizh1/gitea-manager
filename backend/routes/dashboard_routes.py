@@ -15,6 +15,14 @@ def _fmt_size(size):
     return f'{size/1073741824:.1f}G'
 
 
+def _get_server_name(obj, rel_attr, name_attr):
+    rel = getattr(obj, rel_attr, None)
+    snapshot = getattr(obj, name_attr, '') or ''
+    if rel is not None:
+        return snapshot or getattr(rel, 'name', '') or ''
+    return snapshot or '未知服务器'
+
+
 @dashboard_bp.route('/dashboard/recent', methods=['GET'])
 @login_required
 def recent_activity():
@@ -23,10 +31,12 @@ def recent_activity():
 
     backup_list = []
     for b in recent_backups:
+        server_exists = b.source_server is not None
         backup_list.append({
             'id': b.id,
             'filename': b.filename,
-            'source_server_name': b.source_server.name if b.source_server else '',
+            'source_server_name': _get_server_name(b, 'source_server', 'source_server_name'),
+            'source_server_deleted': not server_exists,
             'status': b.status,
             'file_size': b.file_size,
             'file_size_display': _fmt_size(b.file_size),
@@ -37,10 +47,12 @@ def recent_activity():
 
     restore_list = []
     for r in recent_restores:
+        server_exists = r.target_server is not None
         restore_list.append({
             'id': r.id,
             'backup_filename': r.backup.filename if r.backup else '',
-            'target_server_name': r.target_server.name if r.target_server else '',
+            'target_server_name': _get_server_name(r, 'target_server', 'target_server_name'),
+            'target_server_deleted': not server_exists,
             'status': r.status,
             'error_msg': (r.error_msg or '')[:200],
             'started_at': r.started_at.isoformat() if r.started_at else None,

@@ -10,10 +10,13 @@ backup_bp = Blueprint('backups', __name__)
 
 
 def backup_to_dict(b):
+    server_exists = b.source_server is not None
+    server_name = b.source_server_name or (b.source_server.name if server_exists else '未知服务器')
     return {
         'id': b.id,
         'source_server_id': b.source_server_id,
-        'source_server_name': b.source_server.name if b.source_server else '',
+        'source_server_name': server_name,
+        'source_server_deleted': not server_exists,
         'filename': b.filename,
         'file_path': b.file_path,
         'file_size': b.file_size,
@@ -52,6 +55,7 @@ def create_backup():
     backup = Backup(
         source_server_id=server.id,
         source_api_token=server.api_token,
+        source_server_name=server.name,
         filename=filename,
         file_path=file_path,
         status='running',

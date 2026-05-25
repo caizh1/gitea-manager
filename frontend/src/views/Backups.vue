@@ -15,7 +15,12 @@
     <div v-else class="glass-card" style="padding:0;animation:fadeInUp 0.5s ease both;">
       <el-table :data="backups" stripe v-loading="loading" style="width:100%">
         <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="source_server_name" label="来源服务器" width="150" />
+        <el-table-column label="来源服务器" width="180">
+          <template #default="{ row }">
+            {{ row.source_server_name }}
+            <el-tag v-if="row.source_server_deleted" type="danger" size="small" effect="plain" style="margin-left:4px;font-size:10px">服务器已删除</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="filename" label="文件名" min-width="280" />
         <el-table-column label="大小" width="100">
           <template #default="{ row }">{{ formatSize(row.file_size) }}</template>

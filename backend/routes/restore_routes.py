@@ -11,12 +11,22 @@ def restore_to_dict(r):
     from models import RestoreVerification
     v = RestoreVerification.query.filter_by(restore_task_id=r.id).first()
     verification_status = v.status if v else None
+    server_exists = r.target_server is not None
+    server_name = r.target_server_name or (r.target_server.name if server_exists else '未知服务器')
+    backup_name = r.backup.filename if r.backup else ''
+    source_server_deleted = False
+    if r.backup:
+        source_name = r.backup.source_server_name or (r.backup.source_server.name if r.backup.source_server else '未知服务器')
+        source_server_deleted = r.backup.source_server is None
+    else:
+        source_name = '未知备份'
     return {
         'id': r.id,
         'backup_id': r.backup_id,
-        'backup_filename': r.backup.filename if r.backup else '',
+        'backup_filename': backup_name,
         'target_server_id': r.target_server_id,
-        'target_server_name': r.target_server.name if r.target_server else '',
+        'target_server_name': server_name,
+        'target_server_deleted': not server_exists,
         'status': r.status,
         'error_msg': r.error_msg,
         'started_at': r.started_at.isoformat() if r.started_at else None,
@@ -55,6 +65,7 @@ def execute_restore():
     task = RestoreTask(
         backup_id=backup.id,
         target_server_id=target.id,
+        target_server_name=target.name,
         status='running',
         started_at=datetime.utcnow(),
     )

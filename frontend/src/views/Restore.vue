@@ -60,7 +60,12 @@
       <el-table :data="tasks" stripe style="width:100%">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="backup_filename" label="备份文件" min-width="250" />
-        <el-table-column prop="target_server_name" label="目标服务器" width="150" />
+        <el-table-column label="目标服务器" width="180">
+          <template #default="{ row }">
+            {{ row.target_server_name }}
+            <el-tag v-if="row.target_server_deleted" type="danger" size="small" effect="plain" style="margin-left:4px;font-size:10px">服务器已删除</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>

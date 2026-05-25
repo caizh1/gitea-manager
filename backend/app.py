@@ -44,6 +44,8 @@ def create_app():
             "CREATE TABLE IF NOT EXISTS mirror_repo_status (id INTEGER PRIMARY KEY AUTOINCREMENT, mirror_config_id INTEGER NOT NULL REFERENCES mirror_configs(id), repo_name VARCHAR(300) NOT NULL, source_repo_id INTEGER DEFAULT 0, target_repo_id INTEGER DEFAULT 0, status VARCHAR(20) DEFAULT 'pending', sync_mode VARCHAR(20) DEFAULT '', last_sync_at DATETIME, error_msg TEXT DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
             "CREATE TABLE IF NOT EXISTS repo_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), repo_name VARCHAR(300) NOT NULL, commit_count INTEGER DEFAULT 0, code_lines INTEGER DEFAULT 0, doc_lines INTEGER DEFAULT 0, other_lines INTEGER DEFAULT 0, code_files INTEGER DEFAULT 0, doc_files INTEGER DEFAULT 0, other_files INTEGER DEFAULT 0, language_breakdown TEXT DEFAULT '{}', last_commit_sha VARCHAR(40) DEFAULT '', last_commit_date DATETIME, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
             "CREATE TABLE IF NOT EXISTS commit_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), period_type VARCHAR(20) NOT NULL, period_key VARCHAR(20) NOT NULL, commit_count INTEGER DEFAULT 0, repo_count INTEGER DEFAULT 0, author_count INTEGER DEFAULT 0, top_authors TEXT DEFAULT '[]', code_lines_added INTEGER DEFAULT 0, code_lines_deleted INTEGER DEFAULT 0, doc_lines_added INTEGER DEFAULT 0, doc_lines_deleted INTEGER DEFAULT 0, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "ALTER TABLE backups ADD COLUMN source_server_name VARCHAR(100) DEFAULT ''",
+            "ALTER TABLE restore_tasks ADD COLUMN target_server_name VARCHAR(100) DEFAULT ''",
         ]:
             try:
                 db.session.execute(db.text(sql))
@@ -81,7 +83,7 @@ def create_app():
     def check_host_ip():
         if not request.endpoint:
             return None
-        read_only = {'.list_servers', '.get_server', '.list_backups', '.list_restore_tasks', '.list_schedules', '.list_alerts', '.alert_summary', '.recent_activity', '.list_mirrors', '.mirror_status', '.overview', '.commit_trend', '.repo_ranking', '.author_ranking'}
+        read_only = {'.list_servers', '.get_server', '.list_backups', '.list_restore_tasks', '.list_schedules', '.list_alerts', '.alert_summary', '.recent_activity', '.list_mirrors', '.mirror_status', '.overview', '.commit_trend', '.repo_ranking', '.author_ranking', '.delete_info'}
         protected_prefixes = ('servers.', 'backups.', 'restore.', 'schedule.')
         action = request.endpoint.split('.')[-1] if '.' in request.endpoint else ''
         endpoint_val = request.endpoint

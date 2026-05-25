@@ -43,6 +43,7 @@ class Backup(db.Model):
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
     source_api_token = db.Column(db.String(200), default='')
+    source_server_name = db.Column(db.String(100), default='')
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, default=None)
 
@@ -55,6 +56,7 @@ class RestoreTask(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     backup_id = db.Column(db.Integer, db.ForeignKey('backups.id'), nullable=False)
     target_server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    target_server_name = db.Column(db.String(100), default='')
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

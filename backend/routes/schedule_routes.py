@@ -117,6 +117,7 @@ def run_schedule(tid):
                     file_path='',
                     status='running',
                     source_api_token=source.api_token if source else '',
+                    source_server_name=source.name if source else '',
                     started_at=now,
                 )
                 db.session.add(backup)
@@ -135,9 +136,11 @@ def run_schedule(tid):
                 restore_results = []
 
                 for tid2 in target_ids:
+                    ts = GiteaServer.query.get(tid2)
                     rt = RestoreTask(
                         backup_id=backup.id,
                         target_server_id=tid2,
+                        target_server_name=ts.name if ts else '',
                         status='running',
                         started_at=datetime.utcnow(),
                     )
