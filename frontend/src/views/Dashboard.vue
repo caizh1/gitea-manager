@@ -3,29 +3,39 @@
     <div class="section-header">
       <h3 class="section-title">服务器仪表盘</h3>
       <div class="header-actions">
-        <button class="icon-btn" @click="loadData" title="刷新">↻</button>
+        <button class="icon-btn" @click="loadData" title="刷新" aria-label="刷新">
+          <el-icon><Refresh /></el-icon>
+        </button>
         <el-button size="small" @click="refreshAll" :loading="refreshingAll">刷新所有服务器</el-button>
       </div>
     </div>
 
     <div class="stat-grid">
       <div class="stat-card stat-blue">
-        <div class="stat-icon">🖥️</div>
+        <div class="stat-icon-badge stat-icon-blue">
+          <el-icon><Monitor /></el-icon>
+        </div>
         <div class="stat-num">{{ servers.filter(s => s.status === 'online').length }}/{{ servers.length }}</div>
         <div class="stat-label">在线服务器</div>
       </div>
       <div class="stat-card stat-green">
-        <div class="stat-icon">💾</div>
+        <div class="stat-icon-badge stat-icon-green">
+          <el-icon><FolderOpened /></el-icon>
+        </div>
         <div class="stat-num">{{ backupCount }}</div>
         <div class="stat-label">备份总数</div>
       </div>
       <div class="stat-card stat-orange">
-        <div class="stat-icon">✅</div>
+        <div class="stat-icon-badge stat-icon-success">
+          <el-icon><CircleCheckFilled /></el-icon>
+        </div>
         <div class="stat-num">{{ restoreRate }}%</div>
         <div class="stat-label">恢复成功率</div>
       </div>
       <div class="stat-card stat-purple">
-        <div class="stat-icon">⏰</div>
+        <div class="stat-icon-badge stat-icon-purple">
+          <el-icon><Clock /></el-icon>
+        </div>
         <div class="stat-num">{{ scheduleCount }}</div>
         <div class="stat-label">定时任务</div>
       </div>
@@ -36,14 +46,17 @@
         <div class="glass-card recent-card">
           <div class="recent-card-header">
             <span class="recent-card-title">最近备份记录</span>
-            <el-button size="small" text type="primary" @click="$router.push('/backups')">查看全部</el-button>
+            <button type="button" class="view-all-btn" @click="$router.push('/backups')">查看全部</button>
           </div>
           <div v-if="recentBackups.length === 0" class="recent-empty">暂无备份记录</div>
           <div v-else class="recent-list">
             <div v-for="b in recentBackups" :key="b.id" class="recent-item">
               <div class="recent-item-left">
                 <span class="recent-status-icon" :class="b.status === 'success' ? 'icon-success' : 'icon-failed'">
-                  {{ b.status === 'success' ? '✅' : '❌' }}
+                  <el-icon>
+                    <CircleCheckFilled v-if="b.status === 'success'" />
+                    <CircleCloseFilled v-else />
+                  </el-icon>
                 </span>
                 <div class="recent-item-info">
                   <div class="recent-item-main">
@@ -65,14 +78,17 @@
         <div class="glass-card recent-card">
           <div class="recent-card-header">
             <span class="recent-card-title">最近恢复记录</span>
-            <el-button size="small" text type="primary" @click="$router.push('/restore')">查看全部</el-button>
+            <button type="button" class="view-all-btn" @click="$router.push('/restore')">查看全部</button>
           </div>
           <div v-if="recentRestores.length === 0" class="recent-empty">暂无恢复记录</div>
           <div v-else class="recent-list">
             <div v-for="r in recentRestores" :key="r.id" class="recent-item">
               <div class="recent-item-left">
                 <span class="recent-status-icon" :class="r.status === 'success' ? 'icon-success' : 'icon-failed'">
-                  {{ r.status === 'success' ? '✅' : '❌' }}
+                  <el-icon>
+                    <CircleCheckFilled v-if="r.status === 'success'" />
+                    <CircleCloseFilled v-else />
+                  </el-icon>
                 </span>
                 <div class="recent-item-info">
                   <div class="recent-item-main">
@@ -251,26 +267,26 @@ export default {
 .header-actions { display: flex; align-items: center; gap: 8px; }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 14px; border: 1px solid rgba(15,23,42,0.08);
-  background: rgba(255,255,255,0.62); cursor: pointer; font-size: 16px;
-  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--glass-control); cursor: pointer; font-size: 16px; color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-xs);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.icon-btn:hover { background: rgba(255,255,255,0.86); color: var(--color-primary); transform: rotate(90deg); }
+.icon-btn:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
 
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .stat-card {
   padding: 22px 24px; border-radius: 22px; position: relative; overflow: hidden;
-  color: var(--text-primary); transition: all 0.3s ease; animation: fadeInUp 0.5s ease both;
-  background: rgba(255,255,255,0.62);
-  backdrop-filter: blur(32px) saturate(180%); -webkit-backdrop-filter: blur(32px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.72);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 12px 32px rgba(15,23,42,0.08);
+  color: var(--text-primary); transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  animation: fadeInUp 0.22s ease both;
+  background: var(--glass-surface);
+  border: 1px solid rgba(255,255,255,0.60);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-sm);
 }
-.stat-card:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 18px 46px rgba(15,23,42,0.11); }
+.stat-card:hover { background: var(--glass-surface-hover); border-color: rgba(255,255,255,0.70); transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), var(--shadow-md); }
 .stat-card::before {
   content: ''; position: absolute; top: -48%; right: -28%; width: 160px; height: 160px;
   border-radius: 46% 54% 52% 48%; background: rgba(255,255,255,0.34);
-  box-shadow: inset 18px 22px 48px rgba(255,255,255,0.6), inset -14px -18px 42px rgba(148,163,184,0.10);
 }
 .stat-card::after {
   content: ''; position: absolute; bottom: -38%; left: -18%; width: 120px; height: 120px;
@@ -280,7 +296,23 @@ export default {
 .stat-green { animation-delay: 0.06s; }
 .stat-orange { animation-delay: 0.12s; }
 .stat-purple { animation-delay: 0.18s; }
-.stat-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.78; color: var(--color-primary); }
+.stat-icon-badge {
+  width: 42px; height: 42px; border-radius: 16px; margin-bottom: 10px;
+  display: inline-grid; place-items: center;
+  font-size: 23px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.70), rgba(255,255,255,0.38)),
+    rgba(255,255,255,0.34);
+  border: 1px solid rgba(255,255,255,0.66);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.88),
+    inset 0 -1px 0 rgba(15,23,42,0.035),
+    0 9px 18px rgba(15,23,42,0.065);
+}
+.stat-icon-blue { color: var(--color-primary); }
+.stat-icon-green { color: #1f9d48; }
+.stat-icon-success { color: var(--color-success); }
+.stat-icon-purple { color: #7c3aed; }
 .stat-num { font-size: 32px; font-weight: 700; margin-bottom: 2px; letter-spacing: -1px; }
 .stat-label { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
 
@@ -294,6 +326,29 @@ export default {
 .recent-card-title {
   font-size: 15px; font-weight: 700; color: var(--text-primary);
 }
+.view-all-btn {
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 28px; padding: 5px 10px;
+  border: 1px solid rgba(0,122,255,0.16); border-radius: 10px;
+  background: rgba(0,122,255,0.08);
+  color: var(--color-primary);
+  font: inherit; font-size: 12px; font-weight: 760;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.view-all-btn:hover,
+.view-all-btn:focus {
+  color: #005ecb;
+  background: rgba(0,122,255,0.13);
+  border-color: rgba(0,122,255,0.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.78), 0 6px 14px rgba(0,122,255,0.10);
+}
+.view-all-btn:active {
+  transform: translateY(1px);
+  background: rgba(0,122,255,0.16);
+}
 .recent-empty {
   text-align: center; color: #9ca3af; padding: 20px 0; font-size: 13px;
 }
@@ -304,7 +359,7 @@ export default {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; border-radius: 10px;
   background: rgba(255,255,255,0.44); border: 1px solid rgba(15,23,42,0.06);
-  transition: all 0.2s;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
 }
 .recent-item:hover {
   background: rgba(255,255,255,0.66);
@@ -313,7 +368,28 @@ export default {
   display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0;
 }
 .recent-status-icon {
-  font-size: 16px; margin-top: 2px; flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 10px; margin-top: 1px; flex-shrink: 0;
+  display: inline-grid; place-items: center;
+  font-size: 16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.66), rgba(255,255,255,0.34)),
+    rgba(255,255,255,0.28);
+  border: 1px solid rgba(255,255,255,0.58);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.84), 0 5px 12px rgba(15,23,42,0.055);
+}
+.recent-status-icon.icon-success {
+  color: var(--color-success);
+  background:
+    linear-gradient(180deg, rgba(235,255,240,0.76), rgba(225,255,233,0.40)),
+    rgba(52,199,89,0.08);
+  border-color: rgba(52,199,89,0.18);
+}
+.recent-status-icon.icon-failed {
+  color: var(--color-danger);
+  background:
+    linear-gradient(180deg, rgba(255,239,238,0.76), rgba(255,232,230,0.40)),
+    rgba(255,59,48,0.08);
+  border-color: rgba(255,59,48,0.18);
 }
 .recent-item-info {
   flex: 1; min-width: 0;
@@ -342,7 +418,7 @@ export default {
 
 .server-card {
   margin-bottom: 18px; padding: 22px; position: relative;
-  animation: fadeInUp 0.5s ease both;
+  animation: fadeInUp 0.22s ease both;
 }
 .server-card:hover { transform: translateY(-2px); }
 .status-bar {
@@ -375,7 +451,7 @@ export default {
 }
 .ghost-btn {
   padding: 7px 16px; border-radius: 14px; font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s; border: none; font-family: inherit;
+  cursor: pointer; transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease; border: none; font-family: inherit;
   background: rgba(255,255,255,0.62); color: var(--text-secondary); border: 1px solid rgba(15,23,42,0.08);
 }
 .ghost-btn:hover { background: rgba(255,255,255,0.86); color: var(--text-primary); }

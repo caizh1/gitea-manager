@@ -23,7 +23,7 @@ body {
 }
 
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(18px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -61,48 +61,47 @@ body {
 }
 
 .glass-card {
-  background: var(--glass-bg);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
+  background: var(--glass-surface);
+  background-clip: padding-box;
   border-radius: var(--radius-md);
   border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), var(--shadow-sm);
-  transition: all 0.3s ease;
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-sm);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
   overflow: hidden;
 }
 
 .glass-card:hover {
-  box-shadow: var(--shadow-md), var(--shadow-glow);
+  background: var(--glass-surface-hover);
+  border-color: rgba(255, 255, 255, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), var(--shadow-md);
 }
 
 .glass-card-dark {
   background: var(--glass-bg-dark);
-  backdrop-filter: var(--blur);
-  -webkit-backdrop-filter: var(--blur);
   border: 1px solid var(--glass-border-dark);
   color: var(--text-primary);
 }
 
 .page-enter-active {
-  animation: fadeInUp 0.28s ease;
+  animation: fadeInUp 0.18s ease;
 }
 
 .page-leave-active {
-  animation: fadeIn 0.15s ease reverse;
+  animation: fadeIn 0.1s ease reverse;
 }
 
 .el-card {
   border-radius: var(--radius-md) !important;
   border: 1px solid var(--glass-border) !important;
-  background: var(--glass-bg) !important;
-  backdrop-filter: var(--blur) !important;
-  -webkit-backdrop-filter: var(--blur) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), var(--shadow-sm) !important;
-  transition: all 0.3s ease !important;
+  background: var(--glass-surface) !important;
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-sm) !important;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease !important;
 }
 
 .el-card:hover {
-  box-shadow: var(--shadow-md), var(--shadow-glow) !important;
+  background: var(--glass-surface-hover) !important;
+  border-color: rgba(255, 255, 255, 0.68) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), var(--shadow-md) !important;
 }
 
 .el-card__header {
@@ -111,11 +110,11 @@ body {
 
 .el-dialog {
   border-radius: var(--radius-lg) !important;
-  background: var(--glass-bg-heavy) !important;
-  backdrop-filter: var(--blur-heavy) !important;
-  -webkit-backdrop-filter: var(--blur-heavy) !important;
+  background: var(--glass-dialog) !important;
+  backdrop-filter: var(--blur-dialog) !important;
+  -webkit-backdrop-filter: var(--blur-dialog) !important;
   border: 1px solid var(--glass-border) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), var(--shadow-lg) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), var(--shadow-lg) !important;
   overflow: hidden;
 }
 
@@ -139,17 +138,27 @@ body {
 }
 
 .el-overlay {
-  backdrop-filter: blur(12px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
+  backdrop-filter: var(--blur-overlay) !important;
+  -webkit-backdrop-filter: var(--blur-overlay) !important;
 }
 
 .el-table {
   border-radius: var(--radius-md) !important;
   overflow: hidden !important;
+  background: transparent !important;
+}
+
+.el-table__inner-wrapper,
+.el-table__header-wrapper,
+.el-table__body-wrapper,
+.el-table tr,
+.el-table td.el-table__cell,
+.el-table th.el-table__cell {
+  background-clip: padding-box !important;
 }
 
 .el-table th.el-table__cell {
-  background: rgba(255, 255, 255, 0.38) !important;
+  background: rgba(255, 255, 255, 0.34) !important;
   color: var(--text-muted) !important;
   font-weight: 600 !important;
   font-size: 12px !important;
@@ -160,10 +169,11 @@ body {
 
 .el-table td.el-table__cell {
   border-bottom: 1px solid rgba(15, 23, 42, 0.05) !important;
+  background: rgba(255, 255, 255, 0.18) !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
-  background: rgba(255, 255, 255, 0.32) !important;
+  background: rgba(255, 255, 255, 0.28) !important;
 }
 
 .el-table__body tr:hover > td.el-table__cell {
@@ -183,12 +193,12 @@ body {
   background: var(--gradient-primary) !important;
   border: none !important;
   border-radius: var(--radius-xs) !important;
-  box-shadow: 0 8px 22px rgba(0, 122, 255, 0.22) !important;
-  transition: all 0.25s ease !important;
+  box-shadow: 0 7px 18px rgba(0, 122, 255, 0.20) !important;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease !important;
 }
 
 .el-button--primary:hover {
-  box-shadow: 0 12px 28px rgba(0, 122, 255, 0.30) !important;
+  box-shadow: 0 9px 22px rgba(0, 122, 255, 0.24) !important;
   transform: translateY(-1px);
 }
 
@@ -196,7 +206,7 @@ body {
   background: linear-gradient(180deg, rgba(52, 199, 89, 0.96), rgba(39, 174, 96, 0.96)) !important;
   border: none !important;
   border-radius: var(--radius-xs) !important;
-  box-shadow: 0 8px 22px rgba(52, 199, 89, 0.22) !important;
+  box-shadow: 0 7px 18px rgba(52, 199, 89, 0.18) !important;
 }
 
 .el-button--danger {
@@ -205,15 +215,15 @@ body {
 
 .el-button {
   border-radius: var(--radius-xs) !important;
-  transition: all 0.25s ease !important;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease !important;
   font-weight: 600 !important;
 }
 
 .el-input__wrapper {
   border-radius: var(--radius-sm) !important;
-  background: rgba(255, 255, 255, 0.68) !important;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset, inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
-  transition: all 0.25s ease !important;
+  background: var(--glass-control) !important;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset, inset 0 1px 0 rgba(255, 255, 255, 0.78) !important;
+  transition: background 0.18s ease, box-shadow 0.18s ease !important;
 }
 
 .el-input__wrapper:hover {
@@ -316,7 +326,8 @@ body {
 
 .el-loading-mask {
   background-color: rgba(255, 255, 255, 0.6) !important;
-  backdrop-filter: blur(4px) !important;
+  backdrop-filter: var(--blur-overlay) !important;
+  -webkit-backdrop-filter: var(--blur-overlay) !important;
 }
 
 .el-empty__description p {
@@ -330,4 +341,15 @@ body {
 .el-page-header__content {
   font-weight: 700 !important;
   color: var(--text-primary) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }

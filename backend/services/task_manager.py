@@ -27,12 +27,6 @@ class TaskManager:
                         backup.error_msg or '',
                         backup_id=backup.id,
                     )
-                    if backup.status == 'success':
-                        try:
-                            from services.commit_service import collect_backup_commits
-                            collect_backup_commits(backup_id)
-                        except Exception as e:
-                            logging.warning('[TaskManager] Commit采集失败: %s', e)
 
         thread = threading.Thread(target=target, daemon=True)
         thread.start()
@@ -64,23 +58,6 @@ class TaskManager:
                         task.error_msg or '',
                         task_id=task.id,
                     )
-                    if task.status == 'success':
-                        v = RestoreVerification.query.filter_by(restore_task_id=task_id).first()
-                        if v:
-                            v.status = 'running'
-                            db.session.commit()
-                        try:
-                            from services.commit_service import verify_restore
-                            verify_restore(task_id)
-                        except Exception as e:
-                            logging.warning('[TaskManager] 恢复验证失败: %s', e)
-                            from services.restore_progress import update_restore_progress
-                            update_restore_progress(task, 'verify_failed', 'Commit ID 验证失败', 100, str(e)[:500])
-                            v = RestoreVerification.query.filter_by(restore_task_id=task_id).first()
-                            if v and v.status == 'running':
-                                v.status = 'failed'
-                                v.verified_at = __import__('datetime').datetime.utcnow()
-                                db.session.commit()
 
         thread = threading.Thread(target=target, daemon=True)
         thread.start()

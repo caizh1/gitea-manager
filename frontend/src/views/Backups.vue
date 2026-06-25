@@ -3,7 +3,9 @@
     <div class="section-header">
       <div class="header-left">
         <h3 class="section-title">备份管理</h3>
-        <button class="icon-btn" @click="load" title="刷新">↻</button>
+        <button class="icon-btn" @click="load" title="刷新" aria-label="刷新">
+          <el-icon><Refresh /></el-icon>
+        </button>
       </div>
       <el-button type="primary" @click="showCreateDialog = true" :disabled="primaryServers.length === 0">创建备份</el-button>
     </div>
@@ -28,6 +30,13 @@
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="Commit 快照" width="150">
+          <template #default="{ row }">
+            <el-tag :type="snapshotType(row)" size="small" effect="plain">
+              {{ snapshotText(row) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="错误原因" min-width="240" show-overflow-tooltip>
@@ -148,6 +157,24 @@ export default {
       return 'danger'
     }
 
+    function snapshotText(row) {
+      const status = row.commit_snapshot_status
+      if (status === 'success') return `${row.commit_snapshot_repo_count || 0} 仓库`
+      if (status === 'running') return '采集中'
+      if (status === 'pending') return '待采集'
+      if (status === 'failed') return '采集失败'
+      if (row.status === 'success') return '旧备份缺失'
+      return '-'
+    }
+
+    function snapshotType(row) {
+      const status = row.commit_snapshot_status
+      if (status === 'success') return 'success'
+      if (status === 'running' || status === 'pending') return 'warning'
+      if (status === 'failed' || row.status === 'success') return 'danger'
+      return 'info'
+    }
+
     function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
 
     onMounted(load)
@@ -155,7 +182,7 @@ export default {
     return { backups, loading, creating, showCreateDialog, selectedServerId, primaryServers,
              errorDialogVisible, selectedErrorBackup,
              load, createBackup, downloadBackup, deleteBackup, shortError, showError,
-             formatSize, statusType, fmt }
+             formatSize, statusType, snapshotText, snapshotType, fmt }
   },
 }
 </script>
@@ -168,11 +195,12 @@ export default {
 .section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin: 0; }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 16px;
-  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--glass-control); cursor: pointer; font-size: 16px; color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-xs);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+.icon-btn:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
 .error-summary { color: #ef4444; font-size: 12px; vertical-align: middle; }
 .text-muted { color: #d1d5db; }
 .error-dialog { display: flex; flex-direction: column; gap: 12px; }

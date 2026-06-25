@@ -3,7 +3,9 @@
     <div class="section-header">
       <div class="header-left">
         <h3 class="section-title">服务器管理</h3>
-        <button class="icon-btn" @click="loadServers" title="刷新">↻</button>
+        <button class="icon-btn" @click="loadServers" title="刷新" aria-label="刷新">
+          <el-icon><Refresh /></el-icon>
+        </button>
       </div>
       <el-button type="primary" @click="openDialog()">
         <el-icon><Plus /></el-icon> 添加服务器
@@ -206,11 +208,12 @@ export default {
 .section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin: 0; }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 16px;
-  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--glass-control); cursor: pointer; font-size: 16px; color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-xs);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.icon-btn:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+.icon-btn:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
 .clickable-name { color: var(--color-primary); cursor: pointer; font-weight: 600; transition: color 0.2s; }
 .clickable-name:hover { color: #005ecb; }
 </style>

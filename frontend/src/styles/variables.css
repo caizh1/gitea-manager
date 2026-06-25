@@ -1,18 +1,27 @@
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.62);
-  --glass-bg-heavy: rgba(255, 255, 255, 0.78);
-  --glass-bg-dark: rgba(255, 255, 255, 0.58);
-  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.38));
+  --glass-surface-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0.46));
+  --glass-control: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.42));
+  --glass-chrome: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.36));
+  --glass-dialog: linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.56));
+  --glass-bg: var(--glass-surface);
+  --glass-bg-heavy: var(--glass-dialog);
+  --glass-bg-dark: linear-gradient(180deg, rgba(255, 255, 255, 0.50), rgba(255, 255, 255, 0.34));
+  --glass-border: rgba(255, 255, 255, 0.58);
   --glass-border-dark: rgba(15, 23, 42, 0.08);
-  --blur: blur(32px) saturate(180%);
-  --blur-heavy: blur(42px) saturate(190%);
+  --glass-highlight: rgba(255, 255, 255, 0.82);
+  --blur: blur(16px) saturate(145%);
+  --blur-chrome: blur(20px) saturate(150%);
+  --blur-dialog: blur(24px) saturate(155%);
+  --blur-overlay: blur(6px) saturate(125%);
+  --blur-heavy: var(--blur-dialog);
 
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 10px 28px rgba(15, 23, 42, 0.07);
-  --shadow-md: 0 18px 46px rgba(15, 23, 42, 0.10);
-  --shadow-lg: 0 26px 70px rgba(15, 23, 42, 0.15);
-  --shadow-glow: 0 14px 36px rgba(0, 122, 255, 0.10);
-  --shadow-glow-green: 0 14px 34px rgba(52, 199, 89, 0.12);
+  --shadow-sm: 0 8px 20px rgba(15, 23, 42, 0.055);
+  --shadow-md: 0 12px 28px rgba(15, 23, 42, 0.075);
+  --shadow-lg: 0 18px 44px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 10px 24px rgba(0, 122, 255, 0.08);
+  --shadow-glow-green: 0 10px 24px rgba(52, 199, 89, 0.09);
 
   --radius-xs: 10px;
   --radius-sm: 14px;
@@ -20,12 +29,12 @@
   --radius-lg: 26px;
 
   --gradient-primary: linear-gradient(180deg, rgba(0, 122, 255, 0.96) 0%, rgba(0, 98, 220, 0.96) 100%);
-  --gradient-blue: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.54));
-  --gradient-green: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.54));
-  --gradient-orange: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.54));
-  --gradient-purple: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.54));
-  --gradient-sidebar: rgba(255, 255, 255, 0.58);
-  --gradient-bg: linear-gradient(145deg, #f8fafc 0%, #eef3f8 100%);
+  --gradient-blue: var(--glass-surface);
+  --gradient-green: var(--glass-surface);
+  --gradient-orange: var(--glass-surface);
+  --gradient-purple: var(--glass-surface);
+  --gradient-sidebar: var(--glass-chrome);
+  --gradient-bg: linear-gradient(145deg, #f7fafd 0%, #edf4fa 54%, #f4f8fb 100%);
 
   --text-primary: #111827;
   --text-secondary: #5f6b7a;

@@ -19,7 +19,7 @@
 
       <el-form label-width="110px">
         <el-form-item label="选择备份">
-          <el-select v-model="selectedBackupId" placeholder="选择已完成的备份" style="width:100%">
+          <el-select v-model="selectedBackupId" placeholder="选择已完成且 Commit 快照通过的备份" style="width:100%">
             <el-option v-for="b in successBackups" :key="b.id"
               :label="`${b.filename} (${formatSize(b.file_size)} | ${fmt(b.started_at)})`"
               :value="b.id" />
@@ -56,7 +56,9 @@
     <div class="glass-card" style="padding:24px;">
       <div class="card-section-header">
         <span class="card-section-title">恢复历史</span>
-        <button class="icon-btn-sm" @click="load" title="刷新">↻</button>
+        <button class="icon-btn-sm" @click="load" title="刷新" aria-label="刷新">
+          <el-icon><Refresh /></el-icon>
+        </button>
       </div>
       <el-table :data="tasks" stripe style="width:100%">
         <el-table-column prop="id" label="ID" width="60" />
@@ -112,8 +114,14 @@
           <div class="verify-mismatch-title">不匹配仓库详情</div>
           <div v-for="m in verifyData.mismatch_details" :key="m.repo" class="verify-mismatch-item">
             <div class="verify-mismatch-repo">❌ {{ m.repo }}</div>
-            <div class="verify-mismatch-info">
-              备份: {{ m.backup_commit_count }} commits | 恢复后: {{ m.target_commit_count }} commits
+            <div v-if="m.message" class="verify-mismatch-info">
+              {{ m.message }}
+            </div>
+            <div v-if="m.path" class="verify-mismatch-detail">
+              API: {{ m.path }}
+            </div>
+            <div v-if="m.backup_commit_count !== undefined || m.target_commit_count !== undefined" class="verify-mismatch-info">
+              备份: {{ displayCount(m.backup_commit_count) }} commits | 恢复后: {{ displayCount(m.target_commit_count) }} commits
             </div>
             <div v-if="m.missing_samples && m.missing_samples.length" class="verify-mismatch-detail">
               缺少: {{ m.missing_samples.join(', ') }}{{ m.missing_count > 5 ? ` ...等${m.missing_count}个` : '' }}
@@ -124,7 +132,7 @@
           </div>
         </div>
         <div v-else class="verify-all-ok">
-          ✅ 所有仓库 commit ID 完全匹配，恢复验证通过！
+          ✅ 健康检查通过，所有仓库 commit ID 完全匹配！
         </div>
       </div>
       <div v-else>暂无验证数据</div>
@@ -151,7 +159,9 @@ export default {
     const verifyDialogVisible = ref(false)
     const verifyData = ref(null)
 
-    const successBackups = computed(() => backups.value.filter(b => b.status === 'success'))
+    const successBackups = computed(() => backups.value.filter(
+      b => b.status === 'success' && b.commit_snapshot_status === 'success'
+    ))
     const backupServers = computed(() => servers.value.filter(s => s.role === 'backup'))
 
     const criticalAlert = computed(() => {
@@ -266,6 +276,10 @@ export default {
       })
     }
 
+    function displayCount(value) {
+      return value === null || value === undefined ? '-' : value
+    }
+
     function formatSize(bytes) {
       if (!bytes) return '-'
       if (bytes < 1024) return bytes + ' B'
@@ -289,7 +303,7 @@ export default {
              successBackups, backupServers, criticalAlert,
              doRestore, load, formatSize, statusType, fmt,
               progressStage, progressPct, progressLabel, progressDetail, progressStatus,
-             verifyDialogVisible, verifyData, triggerVerify, showVerify }
+             verifyDialogVisible, verifyData, triggerVerify, showVerify, displayCount }
   },
 }
 </script>
@@ -303,10 +317,12 @@ export default {
 }
 .icon-btn-sm {
   width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px;
-  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
+  background: var(--glass-control); cursor: pointer; font-size: 14px; color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-xs);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.icon-btn-sm:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+.icon-btn-sm:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
 
 .restore-progress {
   margin-top: 16px; padding: 16px; border-radius: 10px;

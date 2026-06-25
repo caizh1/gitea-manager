@@ -241,13 +241,13 @@ export default {
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
 .stat-card {
   padding: 22px 24px; border-radius: 22px; position: relative; overflow: hidden;
-  color: var(--text-primary); transition: all 0.3s ease; animation: fadeInUp 0.5s ease both;
-  background: rgba(255,255,255,0.62);
-  backdrop-filter: blur(32px) saturate(180%); -webkit-backdrop-filter: blur(32px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.72);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 12px 32px rgba(15,23,42,0.08);
+  color: var(--text-primary); transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  animation: fadeInUp 0.22s ease both;
+  background: var(--glass-surface);
+  border: 1px solid rgba(255,255,255,0.60);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-sm);
 }
-.stat-card:hover { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.86), 0 18px 46px rgba(15,23,42,0.11); }
+.stat-card:hover { background: var(--glass-surface-hover); border-color: rgba(255,255,255,0.70); transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), var(--shadow-md); }
 .stat-card::before {
   content: ''; position: absolute; top: -50%; right: -30%; width: 160px; height: 160px;
   border-radius: 46% 54% 52% 48%; background: rgba(255,255,255,0.34);
@@ -256,7 +256,7 @@ export default {
   content: ''; position: absolute; bottom: -30%; left: -20%; width: 120px; height: 120px;
   border-radius: 55% 45% 48% 52%; background: rgba(255,255,255,0.24);
 }
-.stat-blue, .stat-green, .stat-orange, .stat-purple { background: rgba(255,255,255,0.62); }
+.stat-blue, .stat-green, .stat-orange, .stat-purple { background: var(--glass-surface); }
 .stat-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.9; }
 .stat-num { font-size: 28px; font-weight: 700; margin-bottom: 2px; letter-spacing: -1px; }
 .stat-label { font-size: 13px; opacity: 0.85; font-weight: 500; }

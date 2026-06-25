@@ -64,6 +64,48 @@ def _limit_error_msg(message, limit=2000):
     return message[:half] + '\n... <error truncated> ...\n' + message[-half:]
 
 
+def _set_backup_snapshot_state(backup, status, repo_count=None, error='', collected_at=None):
+    backup.commit_snapshot_status = status
+    if repo_count is not None:
+        backup.commit_snapshot_repo_count = repo_count
+    backup.commit_snapshot_error = _limit_error_msg(error) if error else ''
+    backup.commit_snapshot_collected_at = collected_at
+
+
+def _collect_backup_commit_snapshot(backup_id):
+    backup = Backup.query.get(backup_id)
+    if not backup:
+        raise Exception('Backup not found')
+
+    logging.info('[备份] 开始采集 Commit ID 快照 - backup_id=%d', backup_id)
+    _set_backup_snapshot_state(backup, 'running', repo_count=0, error='', collected_at=None)
+    db.session.commit()
+
+    try:
+        from services.commit_service import collect_backup_commits
+        repo_count = collect_backup_commits(backup_id)
+    except Exception as e:
+        db.session.rollback()
+        backup = Backup.query.get(backup_id)
+        if backup:
+            _set_backup_snapshot_state(backup, 'failed', repo_count=0, error=str(e), collected_at=None)
+            db.session.commit()
+        raise Exception(f'Commit ID 快照采集失败: {e}')
+
+    backup = Backup.query.get(backup_id)
+    if not backup:
+        raise Exception('Backup not found')
+    _set_backup_snapshot_state(
+        backup,
+        'success',
+        repo_count=repo_count,
+        error='',
+        collected_at=datetime.utcnow(),
+    )
+    logging.info('[备份] Commit ID 快照采集完成 - backup_id=%d repos=%d', backup_id, repo_count)
+    return repo_count
+
+
 GITEA_DATA_PERMISSION_CMD = 'chown -R git:git /data/gitea /data/git'
 
 
@@ -241,8 +283,6 @@ def _backup_local(server, backup):
     file_size = os.path.getsize(local_path)
     backup.file_size = file_size
     backup.file_path = local_path
-    backup.status = 'success'
-    backup.completed_at = datetime.utcnow()
     logging.info('[备份-本地] 完成 - 大小: %d 字节', file_size)
 
 
@@ -298,8 +338,6 @@ def _backup_remote(server, backup):
     file_size = os.path.getsize(local_path)
     backup.file_size = file_size
     backup.file_path = local_path
-    backup.status = 'success'
-    backup.completed_at = datetime.utcnow()
     logging.info('[备份-远程] 完成 - 大小: %d 字节', file_size)
 
 
@@ -317,6 +355,11 @@ def do_backup(backup_id):
         return
 
     logging.info('[备份] 开始 - 源: %s (%s) is_local=%s', server.name, server.host, server.is_local)
+    backup.status = 'running'
+    backup.error_msg = ''
+    _set_backup_snapshot_state(backup, 'pending', repo_count=0, error='', collected_at=None)
+    db.session.commit()
+
     try:
         if server.is_local:
             try:
@@ -326,9 +369,20 @@ def do_backup(backup_id):
                 _backup_remote(server, backup)
         else:
             _backup_remote(server, backup)
+        _collect_backup_commit_snapshot(backup_id)
+        backup = Backup.query.get(backup_id)
+        if backup:
+            backup.status = 'success'
+            backup.error_msg = ''
+            backup.completed_at = datetime.utcnow()
     except Exception as e:
+        backup = Backup.query.get(backup_id)
+        if not backup:
+            return
         backup.status = 'failed'
         backup.error_msg = _limit_error_msg(str(e))
+        if backup.commit_snapshot_status in ('', 'pending', 'running'):
+            _set_backup_snapshot_state(backup, 'failed', repo_count=0, error=str(e), collected_at=None)
         backup.completed_at = datetime.utcnow()
         logging.error('[备份] 失败 - %s', e)
 
@@ -466,9 +520,7 @@ def _restore_local(target, backup, task):
     container.exec_run('/usr/local/bin/gitea admin regenerate keys', user='git')
 
     shutil.rmtree(local_work, ignore_errors=True)
-    task.status = 'success'
-    task.completed_at = datetime.utcnow()
-    logging.info('[恢复-本地] 完成')
+    logging.info('[恢复-本地] 恢复命令完成')
 
 
 def _restore_remote(target, backup, task):
@@ -555,9 +607,7 @@ def _restore_remote(target, backup, task):
     for cmd in cleanup_cmds:
         ssh.exec(cmd)
 
-    task.status = 'success'
-    task.completed_at = datetime.utcnow()
-    logging.info('[恢复-远程] 完成')
+    logging.info('[恢复-远程] 恢复命令完成')
 
 
 def _sync_restored_api_token(target, backup):
@@ -609,10 +659,13 @@ def do_restore(task_id):
                 _restore_remote(target, backup, task)
         else:
             _restore_remote(target, backup, task)
-        if task.status == 'success':
-            update_restore_progress(task, 'sync_token', '正在同步恢复后的 API Token', 92, target.name)
-            _sync_restored_api_token(target, backup)
-            update_restore_progress(task, 'restore_done', '恢复完成，等待 Commit ID 验证', 94, target.name)
+        update_restore_progress(task, 'sync_token', '正在同步恢复后的 API Token', 92, target.name)
+        _sync_restored_api_token(target, backup)
+        db.session.commit()
+
+        update_restore_progress(task, 'restore_done', '恢复命令完成，开始健康检查和 Commit ID 验证', 94, target.name)
+        from services.commit_service import verify_restore
+        verify_restore(task_id)
     except Exception as e:
         task.status = 'failed'
         task.error_msg = str(e)

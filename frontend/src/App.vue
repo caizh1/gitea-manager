@@ -248,12 +248,12 @@ export default {
 .layout { height: 100vh; }
 
 .app-aside {
-  background: rgba(255,255,255,0.58);
-  backdrop-filter: blur(36px) saturate(180%); -webkit-backdrop-filter: blur(36px) saturate(180%);
+  background: var(--glass-chrome);
+  backdrop-filter: var(--blur-chrome); -webkit-backdrop-filter: var(--blur-chrome);
   overflow: hidden; display: flex; flex-direction: column;
   border-right: 1px solid rgba(15,23,42,0.08);
-  box-shadow: inset -1px 0 0 rgba(255,255,255,0.62), 14px 0 42px rgba(15,23,42,0.06);
-  transition: width 0.3s ease;
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.58), 10px 0 26px rgba(15,23,42,0.045);
+  transition: width 0.22s ease;
 }
 
 .sidebar-logo {
@@ -276,14 +276,14 @@ export default {
 .collapse-btn {
   color: var(--text-muted); text-align: center; line-height: 36px; cursor: pointer;
   font-size: 16px; border-bottom: 1px solid rgba(15,23,42,0.06);
-  user-select: none; transition: all 0.25s; display: flex; align-items: center;
+  user-select: none; transition: background-color 0.18s ease, color 0.18s ease; display: flex; align-items: center;
   justify-content: center;
 }
 .collapse-btn:hover { color: var(--color-primary); background: rgba(255,255,255,0.45); }
 
 .app-menu { border-right: none; flex: 1; padding: 8px 0; }
 .el-menu-item {
-  transition: all 0.25s; margin: 3px 10px; border-radius: 16px !important;
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; margin: 3px 10px; border-radius: 16px !important;
   height: 44px !important; line-height: 44px !important;
   font-weight: 600;
 }
@@ -319,8 +319,8 @@ export default {
 .user-role { color: var(--text-muted); font-size: 11px; }
 
 .app-header {
-  background: rgba(255,255,255,0.58); backdrop-filter: blur(34px) saturate(180%); -webkit-backdrop-filter: blur(34px) saturate(180%);
-  border-bottom: 1px solid rgba(15,23,42,0.07); box-shadow: 0 10px 34px rgba(15,23,42,0.06);
+  background: var(--glass-chrome); backdrop-filter: var(--blur-chrome); -webkit-backdrop-filter: var(--blur-chrome);
+  border-bottom: 1px solid rgba(15,23,42,0.07); box-shadow: 0 8px 22px rgba(15,23,42,0.045);
   display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
   height: 60px !important;
 }
@@ -338,7 +338,7 @@ export default {
 .breadcrumb-current.is-muted { color: var(--text-muted); font-weight: 500; }
 .breadcrumb-link {
   appearance: none; padding: 2px 5px; border: none; border-radius: 8px; background: transparent;
-  color: var(--text-muted); cursor: pointer; font: inherit; text-align: left; transition: all 0.2s;
+  color: var(--text-muted); cursor: pointer; font: inherit; text-align: left; transition: background-color 0.18s ease, color 0.18s ease;
 }
 .breadcrumb-link:hover { background: rgba(0,122,255,0.08); color: var(--color-primary); }
 .header-right { display: flex; align-items: center; gap: 12px; }
@@ -349,21 +349,24 @@ export default {
 .logout-btn:hover { background: rgba(239,68,68,0.06) !important; color: #ef4444 !important; border-color: rgba(239,68,68,0.2) !important; }
 
 .app-main {
-  background: var(--gradient-bg);
+  background:
+    radial-gradient(circle at 78% 18%, rgba(255,255,255,0.36) 0, rgba(255,255,255,0.16) 22%, transparent 44%),
+    radial-gradient(circle at 24% 82%, rgba(255,255,255,0.30) 0, rgba(255,255,255,0.12) 18%, transparent 38%),
+    var(--gradient-bg);
   min-height: calc(100vh - 60px); padding: 24px 28px;
   position: relative; overflow: hidden;
 }
 .app-main::before {
-  content: ''; position: absolute; width: 380px; height: 380px; right: 7%; top: 8%;
+  content: ''; position: absolute; width: 320px; height: 320px; right: 8%; top: 10%;
   border-radius: 44% 56% 52% 48%; pointer-events: none;
-  background: rgba(255,255,255,0.32);
-  box-shadow: inset 24px 28px 82px rgba(255,255,255,0.72), inset -24px -28px 70px rgba(148,163,184,0.12);
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.30);
 }
 .app-main::after {
-  content: ''; position: absolute; width: 240px; height: 240px; left: 18%; bottom: 8%;
+  content: ''; position: absolute; width: 220px; height: 220px; left: 18%; bottom: 9%;
   border-radius: 58% 42% 48% 52%; pointer-events: none;
-  background: rgba(255,255,255,0.24);
-  box-shadow: inset 18px 22px 64px rgba(255,255,255,0.68), inset -18px -22px 58px rgba(148,163,184,0.12);
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.24);
 }
 .app-main > * { position: relative; z-index: 1; }
 

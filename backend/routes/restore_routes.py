@@ -66,6 +66,11 @@ def execute_restore():
         return jsonify({'error': 'Target server not found'}), 404
     if backup.status != 'success':
         return jsonify({'error': 'Backup is not in success state'}), 400
+    if (backup.commit_snapshot_status or '') != 'success':
+        message = '备份缺少 Commit ID 快照，无法验证恢复一致性'
+        if backup.commit_snapshot_error:
+            message += f': {backup.commit_snapshot_error[:300]}'
+        return jsonify({'error': message}), 400
 
     task = RestoreTask(
         backup_id=backup.id,

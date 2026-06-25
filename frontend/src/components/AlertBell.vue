@@ -125,25 +125,26 @@ export default {
 }
 
 .bell-icon-wrap {
-  position: relative;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--glass-control);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  transition: all 0.25s;
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-xs);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .bell-icon-wrap:hover {
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--glass-surface-hover);
+  border-color: rgba(0, 122, 255, 0.18);
 }
 
 .bell-icon {
   color: #6b7280;
+  grid-area: 1 / 1;
   transition: color 0.2s;
 }
 
@@ -152,9 +153,9 @@ export default {
 }
 
 .bell-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: end;
   background: var(--color-danger);
   color: #fff;
   font-size: 10px;
@@ -194,7 +195,7 @@ export default {
   margin-bottom: 8px;
   background: rgba(0, 0, 0, 0.02);
   border: 1px solid rgba(0, 0, 0, 0.04);
-  transition: all 0.2s;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
 }
 
 .alert-item:hover {

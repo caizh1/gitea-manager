@@ -28,18 +28,28 @@
           </div>
         </div>
         <div class="mirror-card-info">
-          <span class="mirror-info-item">同步模式: {{ m.sync_mode === 'gitea_mirror' ? 'Gitea Mirror' : 'Git Clone' }}</span>
-          <span v-if="m.sync_mode === 'gitea_mirror'" class="mirror-info-item">间隔: {{ m.sync_interval }}分钟</span>
+          <span class="mirror-info-item">同步模式: {{ m.deprecated ? '旧 Pull Mirror（已弃用）' : 'Push Mirror' }}</span>
+          <span class="mirror-info-item">Push 后立即同步: {{ m.sync_on_commit !== false ? '开启' : '关闭' }}</span>
+          <span class="mirror-info-item">兜底间隔: {{ m.sync_interval }}分钟</span>
           <span class="mirror-info-item">仓库: {{ m.synced_repos }}/{{ m.total_repos }} 同步</span>
           <span v-if="m.failed_repos > 0" class="mirror-info-item mirror-fail">失败: {{ m.failed_repos }}</span>
           <span v-if="m.last_sync_at" class="mirror-info-item">最后同步: {{ fmt(m.last_sync_at) }}</span>
         </div>
+        <el-alert
+          v-if="m.deprecated"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="旧 Pull Mirror / Git Clone 配置已弃用，请删除后重新创建 Push Mirror。"
+          style="margin-bottom:14px"
+        />
+        <pre v-if="mirrorFailureLog(m)" class="mirror-log">{{ mirrorFailureLog(m) }}</pre>
         <div class="mirror-card-actions">
-          <el-button size="small" type="primary" @click="doSync(m.id)" :disabled="m.status === 'syncing'">
+          <el-button size="small" type="primary" @click="doSync(m.id)" :disabled="m.status === 'syncing' || m.deprecated">
             {{ m.status === 'syncing' ? '同步中...' : '同步' }}
           </el-button>
           <el-button size="small" @click="showDetail(m)">查看详情</el-button>
-          <el-button size="small" @click="editMirror(m)">编辑</el-button>
+          <el-button size="small" @click="editMirror(m)" :disabled="m.deprecated">编辑</el-button>
           <el-popconfirm title="确认删除此镜像配置?" @confirm="deleteMirror(m.id)">
             <template #reference>
               <el-button size="small" type="danger">删除</el-button>
@@ -61,13 +71,13 @@
             <el-option v-for="s in nonPrimaryServers" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="同步模式">
-          <el-radio-group v-model="form.sync_mode">
-            <el-radio value="gitea_mirror">Gitea Mirror</el-radio>
-            <el-radio value="git_clone">Git Clone</el-radio>
-          </el-radio-group>
+        <el-form-item label="镜像模式">
+          <el-tag type="success" effect="dark">Push Mirror</el-tag>
         </el-form-item>
-        <el-form-item v-if="form.sync_mode === 'gitea_mirror'" label="同步间隔(分钟)">
+        <el-form-item label="Push 后同步">
+          <el-switch v-model="form.sync_on_commit" active-text="开启" inactive-text="关闭" />
+        </el-form-item>
+        <el-form-item label="兜底间隔(分钟)">
           <el-input-number v-model="form.sync_interval" :min="5" :max="1440" />
         </el-form-item>
       </el-form>
@@ -81,8 +91,11 @@
     <el-dialog v-model="detailVisible" title="镜像仓库详情" width="700px">
       <div class="detail-header">
         <span>仓库状态列表</span>
-        <button class="icon-btn-sm" @click="loadDetailRepo" title="刷新">↻</button>
+        <button class="icon-btn-sm" @click="loadDetailRepo" title="刷新" aria-label="刷新">
+          <el-icon><Refresh /></el-icon>
+        </button>
       </div>
+      <pre v-if="detailSyncLog" class="mirror-log detail-log">{{ detailSyncLog }}</pre>
       <el-table :data="detailRepos" stripe style="width:100%" max-height="400">
         <el-table-column prop="repo_name" label="仓库" min-width="250" />
         <el-table-column prop="status" label="状态" width="100">
@@ -92,7 +105,7 @@
         </el-table-column>
         <el-table-column prop="sync_mode" label="模式" width="110">
           <template #default="{ row }">
-            {{ row.sync_mode === 'gitea_mirror' ? 'Gitea Mirror' : row.sync_mode === 'git_clone' ? 'Git Clone' : row.sync_mode || '-' }}
+            {{ row.sync_mode === 'push_mirror' ? 'Push Mirror' : row.sync_mode || '旧配置' }}
           </template>
         </el-table-column>
         <el-table-column prop="last_sync_at" label="最后同步" width="160">
@@ -101,7 +114,7 @@
         <el-table-column prop="error_msg" label="错误" min-width="150" />
         <el-table-column label="操作" width="80">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'failed'" size="small" text type="primary" @click="syncOneRepo(row)">重试</el-button>
+            <el-button v-if="row.status === 'failed' && !detailDeprecated" size="small" text type="primary" @click="syncOneRepo(row)">重试</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -122,13 +135,15 @@ export default {
     const editingMirror = ref(null)
     const detailVisible = ref(false)
     const detailConfigId = ref(null)
+    const detailDeprecated = ref(false)
+    const detailSyncLog = ref('')
     const detailRepos = ref([])
 
     const form = ref({
       source_server_id: null,
       target_server_id: null,
-      sync_mode: 'gitea_mirror',
       sync_interval: 30,
+      sync_on_commit: true,
     })
 
     const primaryServers = computed(() => servers.value.filter(s => s.role === 'primary'))
@@ -158,8 +173,8 @@ export default {
     function updateMirror() {
       if (!editingMirror.value) return
       api.put(`/mirrors/${editingMirror.value.id}`, {
-        sync_mode: form.value.sync_mode,
         sync_interval: form.value.sync_interval,
+        sync_on_commit: form.value.sync_on_commit,
       }).then(() => {
         ElMessage.success('已更新')
         showCreateDialog.value = false
@@ -169,12 +184,16 @@ export default {
     }
 
     function editMirror(m) {
+      if (m.deprecated) {
+        ElMessage.warning('旧镜像配置已弃用，请删除后重新创建 Push Mirror')
+        return
+      }
       editingMirror.value = m
       form.value = {
         source_server_id: m.source_server_id,
         target_server_id: m.target_server_id,
-        sync_mode: m.sync_mode,
         sync_interval: m.sync_interval,
+        sync_on_commit: m.sync_on_commit,
       }
       showCreateDialog.value = true
     }
@@ -195,6 +214,8 @@ export default {
 
     function showDetail(m) {
       detailConfigId.value = m.id
+      detailDeprecated.value = !!m.deprecated
+      detailSyncLog.value = mirrorFailureLog(m)
       detailVisible.value = true
       loadDetailRepo()
     }
@@ -215,17 +236,24 @@ export default {
 
     function resetForm() {
       editingMirror.value = null
-      form.value = { source_server_id: null, target_server_id: null, sync_mode: 'gitea_mirror', sync_interval: 30 }
+      form.value = { source_server_id: null, target_server_id: null, sync_interval: 30, sync_on_commit: true }
     }
 
     function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
 
+    function mirrorFailureLog(m) {
+      if (!m || !m.last_sync_log) return ''
+      if (!['failed', 'partial'].includes(m.status) && m.last_sync_status !== 'failed') return ''
+      return m.last_sync_log
+    }
+
     onMounted(load)
 
     return { mirrors, servers, showCreateDialog, editingMirror, form, detailVisible, detailRepos,
+             detailSyncLog,
              primaryServers, nonPrimaryServers,
              load, createMirror, updateMirror, editMirror, deleteMirror, doSync,
-             showDetail, loadDetailRepo, syncOneRepo, resetForm, fmt }
+             showDetail, loadDetailRepo, syncOneRepo, resetForm, fmt, detailDeprecated, mirrorFailureLog }
   },
 }
 </script>
@@ -248,6 +276,12 @@ export default {
 .mirror-info-item { font-size: 13px; color: #6b7280; }
 .mirror-fail { color: #ef4444 !important; font-weight: 600; }
 .mirror-card-actions { display: flex; gap: 8px; }
+.mirror-log {
+  margin: 0 0 14px; padding: 12px; border-radius: 8px; max-height: 180px; overflow: auto;
+  background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.14);
+  color: #7f1d1d; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+.detail-log { max-height: 140px; }
 
 .detail-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
@@ -255,8 +289,10 @@ export default {
 }
 .icon-btn-sm {
   width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.5); cursor: pointer; font-size: 14px;
-  transition: all 0.25s; display: flex; align-items: center; justify-content: center;
+  background: var(--glass-control); cursor: pointer; font-size: 14px; color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-xs);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.icon-btn-sm:hover { background: rgba(255,255,255,0.85); transform: rotate(90deg); }
+.icon-btn-sm:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
 </style>

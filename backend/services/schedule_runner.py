@@ -106,6 +106,9 @@ def run_schedule_task(task_id, started_at=None):
             status='running',
             source_api_token=source.api_token,
             source_server_name=source.name,
+            commit_snapshot_status='pending',
+            commit_snapshot_repo_count=0,
+            commit_snapshot_error='',
             started_at=run_started_at,
         )
         db.session.add(backup)
