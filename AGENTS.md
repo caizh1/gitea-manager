@@ -68,6 +68,7 @@ backend gunicorn
 | `RepoStatistics` / `CommitStatistics` / `AuthorStatistics` | 仓库、提交趋势、作者贡献统计 |
 | `MirrorConfig` / `MirrorRepoStatus` | Gitea 镜像配置和单仓库同步状态 |
 | `RestoreVerification` / `BackupRepoCommit` | 备份时采集 commit 校验集，恢复后验证目标仓库 commit ID |
+| `RestoreStepLog` | 记录恢复步骤状态、耗时、退出码、诊断指标和有限长度日志尾部 |
 | `CommitMessageRule` / `CommitGateAssignment` | 提交消息规则和仓库应用状态 |
 | `Alert` | 全局告警，记录备份/恢复/镜像等失败事件 |
 
@@ -104,7 +105,7 @@ backend gunicorn
 | `auth_routes.py` | `auth_bp` | `GET /session`, `POST /login`, `POST /logout` |
 | `server_routes.py` | `server_bp` | 服务器 CRUD、连接测试、刷新信息、删除影响检查、详情 |
 | `backup_routes.py` | `backup_bp` | `GET/POST /backups`, 删除备份, 下载备份 |
-| `restore_routes.py` | `restore_bp` | 恢复任务列表、创建恢复、恢复验证、备份 commit 列表 |
+| `restore_routes.py` | `restore_bp` | 恢复任务列表、创建恢复、步骤详情、恢复验证、备份 commit 列表 |
 | `schedule_routes.py` | `schedule_bp` | 定时任务 CRUD、手动执行、执行日志和 `steps` |
 | `settings_routes.py` | `settings_bp` | 读取/更新 `host_ip` |
 | `alert_routes.py` | `alert_bp` | 告警列表、摘要、清除告警 |
@@ -123,6 +124,8 @@ backend gunicorn
 | `schedule_progress.py` | 定时任务总进度写入和响应聚合，恢复阶段会读取当前 `RestoreTask.progress_*` |
 | `scheduler_service.py` | 后台调度线程，每 60 秒扫描启用任务，到点后先 claim 再执行 |
 | `restore_progress.py` | 恢复任务进度写入 helper |
+| `restore_step_service.py` | 恢复步骤日志、指标和有限长度输出尾部持久化 |
+| `remote_job_service.py` | 远端后台作业启动、状态轮询、断线重连、超时终止和日志读取 |
 | `commit_service.py` | 备份采集仓库 commit 集，恢复后做 commit ID 验证 |
 | `commit_gate_service.py` | 规则测试、仓库查询、安装/移除 Gitea `pre-receive.d/gitea-manager-commit-msg` hook |
 | `mirror_service.py` | 镜像配置、创建镜像、同步和状态更新 |
@@ -206,7 +209,12 @@ POST /api/restore { backup_id, target_server_id }
 
 - 只有 `Backup.status == success` 的备份允许恢复。
 - 恢复过程会持续更新 `RestoreTask.progress_stage`、`progress_label`、`progress_percent`、`progress_detail`。
-- 本地和远程恢复都会停止目标 Gitea、解压备份、覆盖仓库/配置、重建或导入 PostgreSQL、修复权限、重新生成 hooks/keys、启动 Gitea。
+- 远程恢复先上传并校验 ZIP 大小/SHA-256、完成解压和内容检查，再停止目标 Gitea。
+- 远端数据库导入、解压、仓库/数据复制、权限修复和 hooks/keys 使用 `/tmp/gitea-manager/restore-<task_id>/steps/<step>/` 后台作业；Manager 每 5 秒用短 SSH 连接轮询，默认允许 300 秒 SSH 重连并限制长步骤最多运行 7200 秒。
+- `repos/` 恢复到 `/data/git/repositories/`，`data/` 恢复到 `/data/gitea/`；备份中的 `app.ini` 全量覆盖 `/data/gitea/conf/app.ini`。
+- 每个步骤写入 `RestoreStepLog`，长步骤每 30 秒更新进程、输出大小、源/目标大小、数据库状态和磁盘空间等有限诊断信息，不保存 Token、SQL 正文、app.ini 内容或密码。
+- 远程恢复只有在同步源 API Token并通过 API 与 Commit ID 验证后才清理现场；失败现场由后续恢复任务清理超过 7 天的目录。
+- 本地和远程恢复都会停止目标 Gitea、覆盖仓库/配置、重建或导入 PostgreSQL、修复权限、重新生成 hooks/keys、启动 Gitea。
 - 恢复接近完成后执行 commit ID 验证，结果写入 `RestoreVerification`；失败时进度会进入 `verify_failed`。
 
 ### 6.3 定时调度

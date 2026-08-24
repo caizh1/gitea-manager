@@ -4,6 +4,7 @@ from models import db, Alert, GiteaServer
 
 
 def create_alert(alert_type, server_id, message, source_id=0):
+    message = str(message or '').strip() or f'{alert_type} 失败，但未记录具体错误'
     server = GiteaServer.query.get(server_id)
     server_name = server.name if server else str(server_id)
     alert = Alert(

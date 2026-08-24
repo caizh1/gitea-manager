@@ -85,6 +85,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="error_msg" label="错误信息" min-width="200" />
+        <el-table-column label="执行详情" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="showSteps(row)">查看</el-button>
+          </template>
+        </el-table-column>
         <el-table-column prop="started_at" label="开始时间" width="170">
           <template #default="{ row }">{{ fmt(row.started_at) }}</template>
         </el-table-column>
@@ -137,6 +142,54 @@
       </div>
       <div v-else>暂无验证数据</div>
     </el-dialog>
+
+    <el-dialog v-model="stepDialogVisible" title="恢复执行详情" width="min(920px, 92vw)">
+      <div class="step-dialog-header">
+        <div>
+          <div class="step-dialog-title">任务 #{{ stepTask?.id }} · {{ stepTask?.target_server_name }}</div>
+          <div class="step-dialog-subtitle">只展示有限长度日志尾部，不包含 Token、SQL 正文或 app.ini 内容。</div>
+        </div>
+        <el-button :loading="stepLoading" @click="loadSteps">刷新</el-button>
+      </div>
+
+      <el-empty v-if="!stepLoading && stepLogs.length === 0" description="暂无步骤记录" />
+      <div v-else class="step-list" v-loading="stepLoading">
+        <section v-for="step in stepLogs" :key="step.id" class="step-card">
+          <div class="step-card-header">
+            <div class="step-title-group">
+              <el-tag :type="stepStatusType(step.status)" size="small">{{ step.status }}</el-tag>
+              <span class="step-label">{{ step.label }}</span>
+              <span class="step-key">{{ step.step_key }}</span>
+            </div>
+            <span class="step-elapsed">{{ formatElapsed(step.elapsed_ms) }}</span>
+          </div>
+          <div v-if="step.detail" class="step-detail">{{ step.detail }}</div>
+          <div class="step-meta">
+            <span>开始：{{ fmt(step.started_at) }}</span>
+            <span>完成：{{ fmt(step.completed_at) }}</span>
+            <span>退出码：{{ step.exit_code ?? '—' }}</span>
+          </div>
+          <div v-if="step.remote_job_dir" class="step-path">远端日志：{{ step.remote_job_dir }}</div>
+          <div v-if="Object.keys(step.metrics || {}).length" class="metric-grid">
+            <div v-for="(value, key) in step.metrics" :key="key" class="metric-item">
+              <span class="metric-key">{{ key }}</span>
+              <span class="metric-value">{{ metricValue(value) }}</span>
+            </div>
+          </div>
+          <details v-if="step.stdout_tail || step.stderr_tail" class="step-logs">
+            <summary>查看有限长度日志尾部</summary>
+            <div v-if="step.stdout_tail" class="log-block">
+              <div class="log-title">stdout</div>
+              <pre>{{ step.stdout_tail }}</pre>
+            </div>
+            <div v-if="step.stderr_tail" class="log-block log-error">
+              <div class="log-title">stderr</div>
+              <pre>{{ step.stderr_tail }}</pre>
+            </div>
+          </details>
+        </section>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -158,6 +211,10 @@ export default {
     const currentTaskId = ref(null)
     const verifyDialogVisible = ref(false)
     const verifyData = ref(null)
+    const stepDialogVisible = ref(false)
+    const stepLogs = ref([])
+    const stepTask = ref(null)
+    const stepLoading = ref(false)
 
     const successBackups = computed(() => backups.value.filter(
       b => b.status === 'success' && b.commit_snapshot_status === 'success'
@@ -276,6 +333,43 @@ export default {
       })
     }
 
+    function loadSteps() {
+      if (!stepTask.value) return
+      stepLoading.value = true
+      api.get(`/restore-tasks/${stepTask.value.id}/steps`).then(res => {
+        stepLogs.value = res.data
+      }).finally(() => {
+        stepLoading.value = false
+      })
+    }
+
+    function showSteps(task) {
+      stepTask.value = task
+      stepLogs.value = []
+      stepDialogVisible.value = true
+      loadSteps()
+    }
+
+    function stepStatusType(status) {
+      if (status === 'success') return 'success'
+      if (status === 'running') return 'warning'
+      return 'danger'
+    }
+
+    function formatElapsed(milliseconds) {
+      const seconds = Math.max(0, Math.round((milliseconds || 0) / 1000))
+      if (seconds < 60) return `${seconds} 秒`
+      const minutes = Math.floor(seconds / 60)
+      const remainder = seconds % 60
+      return `${minutes} 分 ${remainder} 秒`
+    }
+
+    function metricValue(value) {
+      if (value === null || value === undefined || value === '') return '—'
+      if (typeof value === 'object') return JSON.stringify(value)
+      return String(value)
+    }
+
     function displayCount(value) {
       return value === null || value === undefined ? '-' : value
     }
@@ -302,8 +396,10 @@ export default {
              selectedBackupId, selectedTargetId,
              successBackups, backupServers, criticalAlert,
              doRestore, load, formatSize, statusType, fmt,
-              progressStage, progressPct, progressLabel, progressDetail, progressStatus,
-             verifyDialogVisible, verifyData, triggerVerify, showVerify, displayCount }
+             progressStage, progressPct, progressLabel, progressDetail, progressStatus,
+             verifyDialogVisible, verifyData, triggerVerify, showVerify, displayCount,
+             stepDialogVisible, stepLogs, stepTask, stepLoading, showSteps, loadSteps,
+             stepStatusType, formatElapsed, metricValue }
   },
 }
 </script>
@@ -359,4 +455,41 @@ export default {
 .verify-mismatch-info { font-size: 12px; color: #6b7280; }
 .verify-mismatch-detail { font-size: 11px; color: #9ca3af; font-family: monospace; margin-top: 2px; }
 .verify-all-ok { text-align: center; padding: 20px; font-size: 15px; color: #10b981; font-weight: 600; }
+
+.step-dialog-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px;
+}
+.step-dialog-title { color: #1a1a2e; font-size: 15px; font-weight: 700; }
+.step-dialog-subtitle { color: #6b7280; font-size: 12px; line-height: 1.5; margin-top: 4px; }
+.step-list { display: grid; gap: 12px; min-height: 80px; }
+.step-card {
+  padding: 14px; border: 1px solid rgba(0,0,0,0.08); border-radius: 10px;
+  background: rgba(255,255,255,0.48); min-width: 0;
+}
+.step-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.step-title-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.step-label { color: #1a1a2e; font-size: 14px; font-weight: 600; }
+.step-key { color: #9ca3af; font-family: monospace; font-size: 11px; }
+.step-elapsed { color: #6b7280; font-size: 12px; flex: 0 0 auto; }
+.step-detail { color: #4b5563; font-size: 12px; line-height: 1.6; margin-top: 8px; word-break: break-word; }
+.step-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #9ca3af; font-size: 11px; margin-top: 8px; }
+.step-path { color: #6b7280; font-family: monospace; font-size: 11px; margin-top: 8px; word-break: break-all; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-top: 10px; }
+.metric-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 7px; background: rgba(0,0,0,0.025); min-width: 0; }
+.metric-key { color: #9ca3af; font-size: 10px; }
+.metric-value { color: #374151; font-size: 12px; word-break: break-word; }
+.step-logs { margin-top: 10px; color: var(--color-primary); font-size: 12px; }
+.step-logs summary { cursor: pointer; }
+.log-block { margin-top: 8px; }
+.log-title { color: #6b7280; font-weight: 600; margin-bottom: 4px; }
+.log-block pre {
+  max-height: 240px; overflow: auto; margin: 0; padding: 10px; border-radius: 7px;
+  background: #111827; color: #d1fae5; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+}
+.log-error pre { color: #fecaca; }
+
+@media (max-width: 640px) {
+  .step-dialog-header { align-items: stretch; flex-direction: column; }
+  .step-card-header { align-items: flex-start; }
+}
 </style>

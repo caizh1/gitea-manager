@@ -1,5 +1,6 @@
 import threading
 import logging
+from datetime import datetime
 from models import db, Backup, RestoreTask, RestoreVerification
 from services.gitea_service import do_backup, do_restore
 
@@ -48,14 +49,31 @@ class TaskManager:
                         db.session.add(v)
                         db.session.commit()
 
-                do_restore(task_id)
+                try:
+                    do_restore(task_id)
+                except Exception as exc:
+                    db.session.rollback()
+                    message = str(exc).strip() or repr(exc)
+                    error_text = f'{type(exc).__name__}: {message}'
+                    task = RestoreTask.query.get(task_id)
+                    if task:
+                        task.status = 'failed'
+                        task.error_msg = error_text[:2000]
+                        task.progress_stage = 'failed'
+                        task.progress_label = '恢复失败'
+                        task.progress_percent = 100
+                        task.progress_detail = error_text[:500]
+                        task.progress_updated_at = datetime.utcnow()
+                        task.completed_at = datetime.utcnow()
+                        db.session.commit()
+                    logging.exception('[恢复线程] 未捕获异常 - task_id=%s error=%s', task_id, error_text)
                 task = RestoreTask.query.get(task_id)
                 if task:
                     from services.alert_service import on_restore_completed
                     on_restore_completed(
                         task.target_server_id,
                         task.status == 'success',
-                        task.error_msg or '',
+                        task.error_msg or f'恢复任务 {task.id} 失败，但未记录具体错误',
                         task_id=task.id,
                     )
 

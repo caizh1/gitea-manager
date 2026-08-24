@@ -3,11 +3,20 @@ import time
 import logging
 import shlex
 import requests
+import hashlib
+import re
 from datetime import datetime
 from models import db, GiteaServer, Backup, RestoreTask, Setting, get_setting
 from services.ssh_service import SSHService
 from services.docker_service import local_exec, local_cp_from, local_cp_to
 from services.restore_progress import update_restore_progress
+from services.remote_job_service import RemoteJobError, run_remote_job
+from services.restore_step_service import (
+    finish_restore_step,
+    start_restore_step,
+    update_restore_step,
+)
+from config import RESTORE_DIAGNOSTIC_INTERVAL_SECONDS, RESTORE_LONG_JOB_TIMEOUT_SECONDS
 from config import BACKUP_DIR
 
 
@@ -523,91 +532,515 @@ def _restore_local(target, backup, task):
     logging.info('[恢复-本地] 恢复命令完成')
 
 
+REMOTE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
+
+
+def _checked_remote_name(value, label):
+    value = str(value or '')
+    if not value or not REMOTE_NAME_PATTERN.fullmatch(value):
+        raise ValueError(f'{label} 包含不安全字符: {value!r}')
+    return value
+
+
+def _exception_message(exc):
+    text = str(exc or '').strip()
+    if text:
+        return f'{type(exc).__name__}: {text}'
+    return f'{type(exc).__name__}: {exc!r}'
+
+
+def _sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _require_ssh_command(ssh, command, label, timeout=600):
+    exit_code, out, err = ssh.exec(command, timeout=timeout)
+    if exit_code != 0:
+        raise RuntimeError(_format_command_error(label, exit_code, out, err))
+    return out, err
+
+
+def _run_simple_restore_step(task, step_key, label, percent, detail, action):
+    step = start_restore_step(task.id, step_key, label, detail=detail)
+    update_restore_progress(task, step_key, label, percent, detail)
+    started = time.monotonic()
+    try:
+        result = action()
+        elapsed = max(0, int(time.monotonic() - started))
+        finish_restore_step(
+            step,
+            status='success',
+            detail=f'{detail}，完成于 {elapsed} 秒' if detail else f'完成于 {elapsed} 秒',
+            exit_code=0,
+            metrics={'耗时秒数': elapsed},
+        )
+        return result
+    except Exception as exc:
+        message = _exception_message(exc)
+        finish_restore_step(
+            step,
+            status='failed',
+            detail=message,
+            exit_code=getattr(getattr(exc, 'result', None), 'exit_code', -1),
+            stdout_tail=getattr(getattr(exc, 'result', None), 'stdout_tail', ''),
+            stderr_tail=getattr(getattr(exc, 'result', None), 'stderr_tail', ''),
+            metrics=getattr(getattr(exc, 'result', None), 'metrics', None),
+        )
+        raise
+
+
+def _run_long_restore_step(
+    task,
+    ssh,
+    remote_root,
+    step_key,
+    label,
+    percent,
+    detail,
+    command,
+    diagnostic_callback=None,
+    timeout_callback=None,
+):
+    job_dir = f'{remote_root}/steps/{step_key}'
+    step = start_restore_step(
+        task.id,
+        step_key,
+        label,
+        detail=detail,
+        remote_job_dir=job_dir,
+    )
+    update_restore_progress(task, step_key, label, percent, detail)
+    last_persisted = [-RESTORE_DIAGNOSTIC_INTERVAL_SECONDS]
+
+    def on_progress(status, elapsed, metrics):
+        if elapsed - last_persisted[0] < RESTORE_DIAGNOSTIC_INTERVAL_SECONDS:
+            return
+        state_text = metrics.get('远端状态', '正在运行')
+        progress_detail = f'{detail}；已运行 {elapsed} 秒；远端状态 {state_text}'
+        update_restore_progress(task.id, step_key, label, percent, progress_detail)
+        update_restore_step(step.id, detail=progress_detail, metrics=metrics, remote_job_dir=job_dir)
+        last_persisted[0] = elapsed
+
+    try:
+        result = run_remote_job(
+            ssh,
+            job_dir,
+            command,
+            timeout_seconds=RESTORE_LONG_JOB_TIMEOUT_SECONDS,
+            progress_callback=on_progress,
+            diagnostic_callback=diagnostic_callback,
+            timeout_callback=timeout_callback,
+        )
+        finish_restore_step(
+            step.id,
+            status='success',
+            detail=f'{detail}，完成于 {result.elapsed_seconds} 秒',
+            exit_code=result.exit_code,
+            stdout_tail=result.stdout_tail,
+            stderr_tail=result.stderr_tail,
+            metrics=result.metrics,
+        )
+        return result
+    except Exception as exc:
+        result = getattr(exc, 'result', None)
+        finish_restore_step(
+            step.id,
+            status='failed',
+            detail=_exception_message(exc),
+            exit_code=getattr(result, 'exit_code', -1),
+            stdout_tail=getattr(result, 'stdout_tail', ''),
+            stderr_tail=getattr(result, 'stderr_tail', ''),
+            metrics=getattr(result, 'metrics', None),
+        )
+        raise
+
+
+def _remote_du_bytes(ssh, path):
+    quoted_path = shlex.quote(path)
+    out, _ = _require_ssh_command(
+        ssh,
+        f'du -sb {quoted_path} 2>/dev/null | cut -f1',
+        f'读取目录大小失败: {path}',
+        timeout=120,
+    )
+    try:
+        return int(out.strip().splitlines()[-1])
+    except Exception:
+        return 0
+
+
+def _verify_remote_archive(ssh, remote_zip, local_size, local_hash):
+    quoted_zip = shlex.quote(remote_zip)
+    probe = (
+        f'stat -c "%s" {quoted_zip} && '
+        f'sha256sum {quoted_zip} | cut -d " " -f1 && '
+        f"unzip -l {quoted_zip} | awk 'END {{print $1}}' && "
+        'df -Pk /tmp | awk \'END {printf "%.0f\\n", $4 * 1024}\''
+    )
+    out, _ = _require_ssh_command(
+        ssh,
+        f'sh -c {shlex.quote(probe)}',
+        '校验远端备份包失败',
+        timeout=RESTORE_LONG_JOB_TIMEOUT_SECONDS,
+    )
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    if len(lines) < 4:
+        raise RuntimeError(f'远端备份校验输出不完整: {out!r}')
+    remote_size = int(lines[0])
+    remote_hash = lines[1]
+    uncompressed_size = int(lines[2])
+    available_bytes = int(lines[3])
+    if remote_size != local_size or remote_hash.lower() != local_hash.lower():
+        raise RuntimeError(
+            f'备份上传校验不一致: local={local_size}/{local_hash}, '
+            f'remote={remote_size}/{remote_hash}'
+        )
+    if available_bytes < uncompressed_size:
+        raise RuntimeError(
+            f'目标机 /tmp 空间不足: 可用 {available_bytes} 字节，解压至少需要 {uncompressed_size} 字节'
+        )
+    return {
+        '远端字节': remote_size,
+        '解压后字节': uncompressed_size,
+        '/tmp可用字节': available_bytes,
+        'SHA-256': remote_hash,
+    }
+
+
 def _restore_remote(target, backup, task):
     ssh = SSHService(target.host, target.ssh_port, target.ssh_user)
+    gitea_container = _checked_remote_name(target.gitea_container, 'Gitea 容器名')
+    pg_container = _checked_remote_name(target.pg_container, 'PostgreSQL 容器名')
+    pg_user = _checked_remote_name(target.pg_user, 'PostgreSQL 用户名')
+    pg_dbname = _checked_remote_name(target.pg_dbname, 'PostgreSQL 数据库名')
 
-    remote_tmp_zip = f'/tmp/{backup.filename}'
-    remote_tmp_dir = '/tmp/gitea_restore'
+    remote_root = f'/tmp/gitea-manager/restore-{task.id}'
+    remote_zip = f'{remote_root}/backup.zip'
+    extract_dir = f'{remote_root}/extracted'
+    sql_file = f'{extract_dir}/gitea-db.sql'
+    quoted_root = shlex.quote(remote_root)
+    quoted_zip = shlex.quote(remote_zip)
+    quoted_extract = shlex.quote(extract_dir)
 
-    logging.info('[恢复-远程] 上传备份文件...')
+    def prepare_remote():
+        out, _ = _require_ssh_command(
+            ssh,
+            'command -v docker && command -v unzip && command -v sha256sum && command -v setsid && '
+            'mkdir -p /tmp/gitea-manager && '
+            "find /tmp/gitea-manager -mindepth 1 -maxdepth 1 -type d -name 'restore-*' "
+            f'-mtime +7 -exec rm -rf -- {{}} + && mkdir -p {quoted_root}/steps && '
+            'df -Pk /tmp | tail -n 1',
+            '目标机恢复前置检查失败',
+            timeout=120,
+        )
+        return out
+
+    _run_simple_restore_step(task, 'remote_prepare', '正在检查目标机恢复环境', 6, target.name, prepare_remote)
+
+    local_size = os.path.getsize(backup.file_path)
+    local_hash = _sha256_file(backup.file_path)
+    upload_step = start_restore_step(task.id, 'upload_backup', '正在上传备份包', detail=backup.filename)
     update_restore_progress(task, 'upload_backup', '正在上传备份包到目标服务器', 10, backup.filename)
-    ssh.put_file(backup.file_path, remote_tmp_zip)
+    upload_started = time.monotonic()
+    upload_last = [0.0]
 
-    logging.info('[恢复-远程] 停止目标 Gitea ...')
-    update_restore_progress(task, 'stop_gitea', '正在停止目标 Gitea 服务', 20, target.name)
-    exit_code, out, err = ssh.exec(f'docker stop {target.gitea_container}')
-    if exit_code != 0:
-        raise Exception(f'docker stop failed (exit={exit_code})\nstdout: {out[:500]}\nstderr: {err[:500]}')
+    def upload_progress(transferred, total):
+        now = time.monotonic()
+        if now - upload_last[0] < RESTORE_DIAGNOSTIC_INTERVAL_SECONDS and transferred < total:
+            return
+        percent = int(transferred * 100 / max(total, 1))
+        metrics = {'已传输字节': transferred, '总字节': total, '上传百分比': percent}
+        detail = f'{backup.filename}；{percent}%（{transferred}/{total} 字节）'
+        update_restore_progress(task.id, 'upload_backup', '正在上传备份包到目标服务器', 10, detail)
+        update_restore_step(upload_step.id, detail=detail, metrics=metrics)
+        upload_last[0] = now
 
-    logging.info('[恢复-远程] 解压备份包...')
-    update_restore_progress(task, 'extract', '正在解压备份包', 30, backup.filename)
-    ssh.exec(f'rm -rf {remote_tmp_dir}')
-    exit_code, out, err = ssh.exec(f'mkdir -p {remote_tmp_dir} && unzip -o {remote_tmp_zip} -d {remote_tmp_dir}')
-    if exit_code != 0:
-        raise Exception(f'Unzip failed (exit={exit_code})\nstdout: {out[:500]}\nstderr: {err[:500]}')
+    try:
+        ssh.put_file(backup.file_path, remote_zip, callback=upload_progress)
+        elapsed = max(0, int(time.monotonic() - upload_started))
+        finish_restore_step(
+            upload_step.id,
+            detail=f'{backup.filename}，上传完成于 {elapsed} 秒',
+            metrics={'文件字节': local_size, '耗时秒数': elapsed, 'SHA-256': local_hash},
+        )
+    except Exception as exc:
+        finish_restore_step(upload_step.id, status='failed', detail=_exception_message(exc), exit_code=-1)
+        raise
 
-    sql_file = f'{remote_tmp_dir}/gitea-db.sql'
-    if ssh.file_exists(sql_file):
-        logging.info('[恢复-远程] 重建数据库 ...')
-        update_restore_progress(task, 'recreate_database', '正在重建目标数据库', 45, target.pg_dbname)
-        ssh.exec(f'docker exec {target.pg_container} dropdb -U {target.pg_user} --if-exists {target.pg_dbname}')
-        ssh.exec(f'docker exec {target.pg_container} createdb -U {target.pg_user} -O {target.pg_user} {target.pg_dbname}')
+    def verify_upload():
+        return _verify_remote_archive(ssh, remote_zip, local_size, local_hash)
 
-        logging.info('[恢复-远程] 导入数据库 ...')
-        update_restore_progress(task, 'import_database', '正在导入备份数据库', 60, target.pg_dbname)
-        sql_content_cmd = f'cat {sql_file}'
-        exit_code, sql_content, err = ssh.exec(sql_content_cmd)
-        if exit_code == 0 and sql_content:
-            import_sql = (
-                f'docker exec -i {target.pg_container} '
-                f'psql -U {target.pg_user} -d {target.pg_dbname}'
+    verify_metrics = _run_simple_restore_step(
+        task, 'verify_upload', '正在校验上传备份包', 15, backup.filename, verify_upload
+    )
+    verify_step = start_restore_step(task.id, 'upload_evidence', '备份包上传证据', detail='大小和 SHA-256 一致')
+    finish_restore_step(verify_step, detail='大小和 SHA-256 一致', metrics=verify_metrics)
+
+    extract_command = f'rm -rf {quoted_extract} && mkdir -p {quoted_extract} && unzip -o {quoted_zip} -d {quoted_extract}'
+    _run_long_restore_step(
+        task,
+        ssh,
+        remote_root,
+        'extract',
+        '正在解压备份包',
+        25,
+        backup.filename,
+        extract_command,
+    )
+
+    def verify_extract():
+        required = [
+            sql_file,
+            f'{extract_dir}/repos',
+            f'{extract_dir}/data',
+            f'{extract_dir}/app.ini',
+        ]
+        tests = ' && '.join(
+            f'test -s {shlex.quote(path)}' if path.endswith(('.sql', '.ini'))
+            else f'test -d {shlex.quote(path)}'
+            for path in required
+        )
+        out, _ = _require_ssh_command(
+            ssh,
+            f'{tests} && du -sb {shlex.quote(sql_file)} {shlex.quote(extract_dir + "/repos")} '
+            f'{shlex.quote(extract_dir + "/data")}',
+            '备份解压内容不完整',
+            timeout=300,
+        )
+        return out
+
+    _run_simple_restore_step(task, 'verify_extract', '正在检查解压内容', 30, backup.filename, verify_extract)
+
+    def stop_gitea():
+        command = (
+            f'if test "$(docker inspect -f "{{{{.State.Running}}}}" {shlex.quote(gitea_container)})" = true; '
+            f'then docker stop {shlex.quote(gitea_container)}; else printf "already stopped\\n"; fi'
+        )
+        return _require_ssh_command(ssh, command, '停止目标 Gitea 失败', timeout=300)
+
+    _run_simple_restore_step(task, 'stop_gitea', '正在停止目标 Gitea 服务', 35, target.name, stop_gitea)
+
+    def recreate_database():
+        drop_command = (
+            f'docker exec {shlex.quote(pg_container)} dropdb -U {shlex.quote(pg_user)} '
+            f'--if-exists --force {shlex.quote(pg_dbname)}'
+        )
+        create_command = (
+            f'docker exec {shlex.quote(pg_container)} createdb -U {shlex.quote(pg_user)} '
+            f'-O {shlex.quote(pg_user)} {shlex.quote(pg_dbname)}'
+        )
+        _require_ssh_command(ssh, drop_command, '删除旧 PostgreSQL 数据库失败', timeout=300)
+        return _require_ssh_command(ssh, create_command, '创建 PostgreSQL 数据库失败', timeout=300)
+
+    _run_simple_restore_step(
+        task, 'recreate_database', '正在重建目标数据库', 42, pg_dbname, recreate_database
+    )
+
+    pg_app_name = f'gitea-manager-restore-{task.id}'
+    import_command = (
+        f'docker exec -e PGAPPNAME={shlex.quote(pg_app_name)} -i {shlex.quote(pg_container)} '
+        f'psql -X -v ON_ERROR_STOP=1 -v VERBOSITY=terse '
+        f'-U {shlex.quote(pg_user)} -d {shlex.quote(pg_dbname)} '
+        f'< {shlex.quote(sql_file)}'
+    )
+
+    def database_diagnostics(status, elapsed):
+        sql = (
+            "SELECT pg_database_size('" + pg_dbname + "'), "
+            "COALESCE((SELECT state || '|' || COALESCE(wait_event_type,'') || '|' || "
+            "COALESCE(wait_event,'') FROM pg_stat_activity WHERE application_name='" + pg_app_name + "' "
+            "ORDER BY backend_start DESC LIMIT 1), 'not-visible')"
+        )
+        command = (
+            f'docker exec {shlex.quote(pg_container)} psql -X -U {shlex.quote(pg_user)} '
+            f'-d postgres -At -F "|" -c {shlex.quote(sql)}'
+        )
+        exit_code, out, err = ssh.exec(command, timeout=30)
+        metrics = {'SQL文件字节': _remote_du_bytes(ssh, sql_file)}
+        if exit_code == 0 and out:
+            parts = out.strip().split('|')
+            metrics['数据库字节'] = int(parts[0]) if parts and parts[0].isdigit() else parts[0]
+            metrics['PostgreSQL状态'] = '|'.join(parts[1:]) if len(parts) > 1 else 'unknown'
+        else:
+            metrics['PostgreSQL诊断'] = err or out or '命令失败'
+        disk_probe = "df -Pk /var/lib/postgresql/data 2>/dev/null | tail -n 1 | awk '{print $4}'"
+        disk_exit, disk_out, _ = ssh.exec(
+            f'docker exec {shlex.quote(pg_container)} sh -c {shlex.quote(disk_probe)}',
+            timeout=30,
+        )
+        if disk_exit == 0 and disk_out.strip().isdigit():
+            metrics['PostgreSQL可用KB'] = int(disk_out.strip())
+        return metrics
+
+    def terminate_database_import():
+        sql = (
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE application_name='{pg_app_name}' AND pid <> pg_backend_pid()"
+        )
+        command = (
+            f'docker exec {shlex.quote(pg_container)} psql -X -U {shlex.quote(pg_user)} '
+            f'-d postgres -At -c {shlex.quote(sql)}'
+        )
+        ssh.exec(command, timeout=60)
+
+    _run_long_restore_step(
+        task,
+        ssh,
+        remote_root,
+        'import_database',
+        '正在导入备份数据库',
+        58,
+        pg_dbname,
+        import_command,
+        diagnostic_callback=database_diagnostics,
+        timeout_callback=terminate_database_import,
+    )
+
+    image_out, _ = _require_ssh_command(
+        ssh,
+        f'docker inspect -f "{{{{.Config.Image}}}}" {shlex.quote(gitea_container)}',
+        '读取 Gitea 容器镜像失败',
+        timeout=60,
+    )
+    gitea_image = image_out.strip().splitlines()[-1]
+
+    def copy_diagnostics(destination, source):
+        source_size = _remote_du_bytes(ssh, source)
+
+        def collect(status, elapsed):
+            copy_probe = (
+                f'du -sb {destination} 2>/dev/null | cut -f1 || true; '
+                f"df -Pk {destination} 2>/dev/null | tail -n 1 | awk '{{print $4}}'"
             )
-            c = ssh._get_client()
-            try:
-                stdin, stdout, stderr = c.exec_command(import_sql, timeout=300)
-                stdin.write(sql_content)
-                stdin.channel.shutdown_write()
-                out = stdout.read().decode('utf-8', errors='replace')
-                err_out = stderr.read().decode('utf-8', errors='replace')
-                exit_code = stdout.channel.recv_exit_status()
-            finally:
-                c.close()
+            command = (
+                f'docker run --rm --user root --volumes-from {shlex.quote(gitea_container)} '
+                f'--entrypoint sh {shlex.quote(gitea_image)} -c '
+                f'{shlex.quote(copy_probe)}'
+            )
+            exit_code, out, err = ssh.exec(command, timeout=120)
+            target_size = 0
+            lines = out.strip().splitlines()
+            if exit_code == 0 and lines:
+                try:
+                    target_size = int(lines[0])
+                except ValueError:
+                    target_size = 0
+            metrics = {
+                '源目录字节': source_size,
+                '目标目录字节': target_size,
+                '目标大小诊断': '正常' if exit_code == 0 else (err or '失败'),
+            }
+            if len(lines) > 1 and lines[-1].isdigit():
+                metrics['目标数据盘可用KB'] = int(lines[-1])
+            return metrics
 
-    logging.info('[恢复-远程] 覆盖 repos/ ...')
-    update_restore_progress(task, 'copy_repos', '正在覆盖仓库文件', 72, target.name)
-    ssh.exec(f'docker cp {remote_tmp_dir}/repos/. {target.gitea_container}:/data/git/repositories/')
+        return collect
 
-    if ssh.file_exists(f'{remote_tmp_dir}/data'):
-        logging.info('[恢复-远程] 覆盖 data/ ...')
-        update_restore_progress(task, 'copy_data', '正在覆盖 Gitea 数据目录', 76, target.name)
-        ssh.exec(f'docker cp {remote_tmp_dir}/data/. {target.gitea_container}:/data/gitea/data/')
+    repos_source = f'{extract_dir}/repos'
+    reset_repos = (
+        f'docker run --rm --user root --volumes-from {shlex.quote(gitea_container)} '
+        f'--entrypoint sh {shlex.quote(gitea_image)} -c '
+        f'{shlex.quote("find /data/git/repositories -mindepth 1 -delete && mkdir -p /data/git/repositories")}'
+    )
+    repos_command = (
+        f'{reset_repos} && docker cp {shlex.quote(repos_source + "/.")} '
+        f'{shlex.quote(gitea_container + ":/data/git/repositories/")}'
+    )
+    _run_long_restore_step(
+        task,
+        ssh,
+        remote_root,
+        'copy_repos',
+        '正在覆盖仓库文件',
+        72,
+        target.name,
+        repos_command,
+        diagnostic_callback=copy_diagnostics('/data/git/repositories', repos_source),
+    )
 
-    app_ini_src = f'{remote_tmp_dir}/app.ini'
-    if ssh.file_exists(app_ini_src):
-        logging.info('[恢复-远程] 覆盖 app.ini ...')
-        update_restore_progress(task, 'copy_config', '正在覆盖 Gitea 配置文件', 80, target.name)
-        ssh.exec(f'docker cp {app_ini_src} {target.gitea_container}:/data/gitea/conf/app.ini')
+    data_source = f'{extract_dir}/data'
+    reset_data = (
+        f'docker run --rm --user root --volumes-from {shlex.quote(gitea_container)} '
+        f'--entrypoint sh {shlex.quote(gitea_image)} -c '
+        f'{shlex.quote("find /data/gitea -mindepth 1 -delete && mkdir -p /data/gitea/conf")}'
+    )
+    data_command = (
+        f'{reset_data} && docker cp {shlex.quote(data_source + "/.")} '
+        f'{shlex.quote(gitea_container + ":/data/gitea/")}'
+    )
+    _run_long_restore_step(
+        task,
+        ssh,
+        remote_root,
+        'copy_data',
+        '正在覆盖 Gitea 数据目录',
+        78,
+        target.name,
+        data_command,
+        diagnostic_callback=copy_diagnostics('/data/gitea', data_source),
+    )
 
-    logging.info('[restore-remote] Repairing Gitea data permissions ...')
-    update_restore_progress(task, 'fix_permissions', '正在修复 Gitea 数据目录权限', 82, target.name)
-    _repair_stopped_gitea_data_permissions_remote(target, ssh)
+    def copy_config():
+        command = (
+            f'docker cp {shlex.quote(extract_dir + "/app.ini")} '
+            f'{shlex.quote(gitea_container + ":/data/gitea/conf/app.ini")}'
+        )
+        return _require_ssh_command(ssh, command, '覆盖 app.ini 失败', timeout=300)
 
-    logging.info('[恢复-远程] 启动目标 Gitea ...')
-    update_restore_progress(task, 'start_gitea', '正在启动目标 Gitea 服务', 86, target.name)
-    exit_code, out, err = ssh.exec(f'docker start {target.gitea_container}')
-    if exit_code != 0:
-        raise Exception(f'docker start failed (exit={exit_code})\nstdout: {out[:500]}\nstderr: {err[:500]}')
+    _run_simple_restore_step(task, 'copy_config', '正在覆盖 Gitea 配置文件', 82, target.name, copy_config)
 
-    logging.info('[恢复-远程] 重新生成 hooks 和 keys ...')
-    update_restore_progress(task, 'regenerate_hooks', '正在重新生成 hooks 和 keys', 90, target.name)
-    ssh.exec(f'docker exec -u git {target.gitea_container} /usr/local/bin/gitea admin regenerate hooks')
-    ssh.exec(f'docker exec -u git {target.gitea_container} /usr/local/bin/gitea admin regenerate keys')
+    permission_command = (
+        f'docker run --rm --user root --volumes-from {shlex.quote(gitea_container)} '
+        f'--entrypoint sh {shlex.quote(gitea_image)} -c '
+        f'{shlex.quote(GITEA_DATA_PERMISSION_CMD)}'
+    )
+    _run_long_restore_step(
+        task,
+        ssh,
+        remote_root,
+        'fix_permissions',
+        '正在修复 Gitea 数据目录权限',
+        86,
+        target.name,
+        permission_command,
+    )
 
-    cleanup_cmds = [f'rm -f {remote_tmp_zip}', f'rm -rf {remote_tmp_dir}']
-    for cmd in cleanup_cmds:
-        ssh.exec(cmd)
+    def start_gitea():
+        return _require_ssh_command(
+            ssh,
+            f'docker start {shlex.quote(gitea_container)}',
+            '启动目标 Gitea 失败',
+            timeout=300,
+        )
 
-    logging.info('[恢复-远程] 恢复命令完成')
+    _run_simple_restore_step(task, 'start_gitea', '正在启动目标 Gitea 服务', 89, target.name, start_gitea)
+
+    hooks_command = (
+        f'docker exec -u git {shlex.quote(gitea_container)} /usr/local/bin/gitea '
+        f'-c /data/gitea/conf/app.ini admin regenerate hooks && '
+        f'docker exec -u git {shlex.quote(gitea_container)} /usr/local/bin/gitea '
+        f'-c /data/gitea/conf/app.ini admin regenerate keys'
+    )
+    _run_long_restore_step(
+        task,
+        ssh,
+        remote_root,
+        'regenerate_hooks',
+        '正在重新生成 hooks 和 keys',
+        92,
+        target.name,
+        hooks_command,
+    )
+
+    logging.info('[恢复-远程] 恢复命令完成 - task_id=%s remote_root=%s', task.id, remote_root)
+    return remote_root
 
 
 def _sync_restored_api_token(target, backup):
@@ -650,28 +1083,112 @@ def do_restore(task_id):
 
     logging.info('[恢复] 开始 - 目标: %s (%s) is_local=%s, 备份: %s', target.name, target.host, target.is_local, backup.filename)
     update_restore_progress(task, 'prepare', '正在准备恢复任务', 5, backup.filename)
+    remote_root = None
     try:
         if target.is_local:
+            def run_local_restore():
+                return _restore_local(target, backup, task)
+
             try:
-                _restore_local(target, backup, task)
+                _run_simple_restore_step(
+                    task,
+                    'local_restore',
+                    '正在执行本地恢复',
+                    10,
+                    target.name,
+                    run_local_restore,
+                )
             except Exception as e:
                 logging.warning('[恢复] 本地失败 (%s)，回退到远程模式', e)
-                _restore_remote(target, backup, task)
+                remote_root = _restore_remote(target, backup, task)
         else:
-            _restore_remote(target, backup, task)
-        update_restore_progress(task, 'sync_token', '正在同步恢复后的 API Token', 92, target.name)
-        _sync_restored_api_token(target, backup)
-        db.session.commit()
+            remote_root = _restore_remote(target, backup, task)
 
-        update_restore_progress(task, 'restore_done', '恢复命令完成，开始健康检查和 Commit ID 验证', 94, target.name)
+        def sync_token():
+            _sync_restored_api_token(target, backup)
+            db.session.commit()
+
+        _run_simple_restore_step(
+            task,
+            'sync_token',
+            '正在同步恢复后的 API Token',
+            93,
+            target.name,
+            sync_token,
+        )
+
+        verify_step = start_restore_step(
+            task.id,
+            'verify_restore',
+            '正在执行健康检查和 Commit ID 验证',
+            detail=target.name,
+        )
+        update_restore_progress(
+            task,
+            'restore_done',
+            '恢复命令完成，开始健康检查和 Commit ID 验证',
+            94,
+            target.name,
+        )
         from services.commit_service import verify_restore
         verify_restore(task_id)
+
+        task = RestoreTask.query.get(task_id)
+        if task and task.status == 'success':
+            finish_restore_step(
+                verify_step.id,
+                status='success',
+                detail='健康检查和 Commit ID 验证通过',
+                exit_code=0,
+            )
+        else:
+            verification_error = task.error_msg if task else '恢复验证任务不存在'
+            finish_restore_step(
+                verify_step.id,
+                status='failed',
+                detail=verification_error,
+                exit_code=-1,
+                stderr_tail=verification_error,
+            )
+
+        if task and task.status == 'success' and remote_root:
+            cleanup_ssh = SSHService(target.host, target.ssh_port, target.ssh_user)
+
+            def cleanup_remote():
+                return _require_ssh_command(
+                    cleanup_ssh,
+                    f'rm -rf -- {shlex.quote(remote_root)}',
+                    '清理远端恢复临时目录失败',
+                    timeout=300,
+                )
+
+            try:
+                _run_simple_restore_step(
+                    task,
+                    'cleanup',
+                    '正在清理恢复临时文件',
+                    99,
+                    remote_root,
+                    cleanup_remote,
+                )
+            except Exception:
+                logging.warning('[恢复] 成功后的临时目录清理失败 - %s', remote_root, exc_info=True)
+            task = RestoreTask.query.get(task_id)
+            if task and task.status == 'success':
+                update_restore_progress(task, 'completed', '恢复完成，健康检查和 Commit ID 验证通过', 100, '')
     except Exception as e:
+        db.session.rollback()
+        task = RestoreTask.query.get(task_id)
+        if not task:
+            logging.exception('[恢复] 失败且任务记录不存在 - task_id=%s', task_id)
+            return
+        failed_stage = task.progress_stage or 'unknown'
+        error_text = _limit_error_msg(f'阶段 {failed_stage}: {_exception_message(e)}')
         task.status = 'failed'
-        task.error_msg = str(e)
+        task.error_msg = error_text
         task.completed_at = datetime.utcnow()
-        update_restore_progress(task, 'failed', '恢复失败', 100, task.error_msg[:500])
-        logging.error('[恢复] 失败 - %s', e)
+        update_restore_progress(task, 'failed', '恢复失败', 100, error_text[:500])
+        logging.exception('[恢复] 失败 - task_id=%s stage=%s error=%s', task_id, failed_stage, error_text)
 
     db.session.commit()
 

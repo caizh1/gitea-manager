@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
-from models import db, GiteaServer, Backup, RestoreTask
+from models import db, GiteaServer, Backup, RestoreTask, RestoreStepLog
 from services.task_manager import task_manager
 
 restore_bp = Blueprint('restore', __name__)
@@ -45,6 +45,18 @@ def restore_to_dict(r):
 def list_restore_tasks():
     tasks = RestoreTask.query.order_by(RestoreTask.started_at.desc()).all()
     return jsonify([restore_to_dict(t) for t in tasks])
+
+
+@restore_bp.route('/restore-tasks/<int:task_id>/steps', methods=['GET'])
+@login_required
+def get_restore_steps(task_id):
+    RestoreTask.query.get_or_404(task_id)
+    from services.restore_step_service import restore_step_to_dict
+    steps = RestoreStepLog.query.filter_by(restore_task_id=task_id).order_by(
+        RestoreStepLog.started_at.asc(),
+        RestoreStepLog.id.asc(),
+    ).all()
+    return jsonify([restore_step_to_dict(step) for step in steps])
 
 
 @restore_bp.route('/restore', methods=['POST'])

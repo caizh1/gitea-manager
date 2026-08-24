@@ -79,8 +79,14 @@ npm run dev
 | `SECRET_KEY` | Flask 密钥（请修改） | `change-me-in-production` |
 | `INIT_PASSWORD` | 初始管理员密码（请修改） | `admin123` |
 | `SSH_KEY_PATH` | SSH 私钥路径（容器内） | `/home/appuser/.ssh/id_rsa` |
+| `RESTORE_LONG_JOB_TIMEOUT_SECONDS` | 远程恢复长步骤最长运行时间 | `7200` |
+| `RESTORE_JOB_POLL_SECONDS` | 远端作业状态轮询间隔 | `5` |
+| `RESTORE_SSH_RECONNECT_GRACE_SECONDS` | 轮询期间 SSH 连续不可用的容忍时间 | `300` |
+| `RESTORE_DIAGNOSTIC_INTERVAL_SECONDS` | 长步骤诊断指标记录间隔 | `30` |
 
 **注意：** 生产环境部署前请务必修改 `SECRET_KEY` 和 `INIT_PASSWORD`。
+
+远程恢复会在目标机 `/tmp/gitea-manager/restore-<任务ID>/` 下启动独立后台作业。数据库导入、解压、仓库与数据复制、权限修复以及 hooks/keys 生成不占用长时间 SSH 会话；Manager 只做短连接轮询。上传文件会校验大小和 SHA-256，备份中的 `app.ini` 会覆盖目标 `/data/gitea/conf/app.ini`。恢复失败时现场默认保留 7 天，成功并通过 API 与 Commit ID 验证后才清理。
 
 ## 项目结构
 
@@ -132,6 +138,7 @@ gitea-manager/
 | `/api/servers/:id/check` | POST | 检查服务器状态 |
 | `/api/backups` | GET/POST | 备份列表/创建备份 |
 | `/api/restore` | POST | 执行恢复 |
+| `/api/restore-tasks/:id/steps` | GET | 查询恢复步骤、指标和有限长度日志尾部 |
 | `/api/schedules` | GET/POST | 定时任务列表/创建 |
 | `/api/schedules/:id` | PUT/DELETE | 编辑/删除定时任务 |
 | `/api/settings` | GET/PUT | 系统设置 |

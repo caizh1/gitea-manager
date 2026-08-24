@@ -75,6 +75,27 @@ class RestoreTask(db.Model):
     target_server = db.relationship('GiteaServer', foreign_keys=[target_server_id], lazy=True)
 
 
+class RestoreStepLog(db.Model):
+    __tablename__ = 'restore_step_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    restore_task_id = db.Column(db.Integer, db.ForeignKey('restore_tasks.id'), nullable=False)
+    step_key = db.Column(db.String(50), nullable=False)
+    label = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='running')
+    detail = db.Column(db.Text, default='')
+    metrics_json = db.Column(db.Text, default='{}')
+    exit_code = db.Column(db.Integer, default=None)
+    stdout_tail = db.Column(db.Text, default='')
+    stderr_tail = db.Column(db.Text, default='')
+    remote_job_dir = db.Column(db.String(1000), default='')
+    elapsed_ms = db.Column(db.BigInteger, default=0)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, default=None)
+
+    restore_task = db.relationship('RestoreTask', foreign_keys=[restore_task_id], lazy=True)
+
+
 class Setting(db.Model):
     __tablename__ = 'settings'
 
