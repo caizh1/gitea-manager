@@ -3,14 +3,15 @@ import threading
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
-from models import db, MirrorConfig
+from models import db, MirrorAuditLog, MirrorConfig
+from services.mirror_progress import mirror_progress_for_response
 from services.mirror_service import PUSH_MIRROR_MODE, is_deprecated_config
 
 mirror_bp = Blueprint('mirror', __name__)
 
 
 def config_to_dict(c):
-    return {
+    data = {
         'id': c.id,
         'source_server_id': c.source_server_id,
         'source_server_name': c.source_server.name if c.source_server else '',
@@ -29,6 +30,21 @@ def config_to_dict(c):
         'synced_repos': c.synced_repos,
         'failed_repos': c.failed_repos,
         'created_at': c.created_at.isoformat() if c.created_at else None,
+    }
+    data.update(mirror_progress_for_response(c))
+    return data
+
+
+def audit_log_to_dict(log):
+    return {
+        'id': log.id,
+        'mirror_config_id': log.mirror_config_id,
+        'repo_name': log.repo_name,
+        'action': log.action,
+        'reason': log.reason,
+        'status': log.status,
+        'detail': log.detail,
+        'created_at': log.created_at.isoformat() if log.created_at else None,
     }
 
 
@@ -130,6 +146,19 @@ def sync_mirror(cid):
 def mirror_status(cid):
     from services.mirror_service import get_mirror_status
     return jsonify(get_mirror_status(cid))
+
+
+@mirror_bp.route('/mirrors/<int:cid>/audit-logs', methods=['GET'])
+@login_required
+def mirror_audit_logs(cid):
+    MirrorConfig.query.get_or_404(cid)
+    limit = request.args.get('limit', 200, type=int)
+    limit = min(max(limit or 200, 1), 500)
+    logs = MirrorAuditLog.query.filter_by(mirror_config_id=cid)\
+        .order_by(MirrorAuditLog.created_at.desc())\
+        .limit(limit)\
+        .all()
+    return jsonify([audit_log_to_dict(log) for log in logs])
 
 
 @mirror_bp.route('/mirrors/<int:cid>/sync-repo/<path:repo_name>', methods=['POST'])

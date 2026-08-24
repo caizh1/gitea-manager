@@ -10,7 +10,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from flask import Flask
 
-from models import db, GiteaServer, MirrorConfig, MirrorRepoStatus
+from models import db, GiteaServer, MirrorAuditLog, MirrorConfig, MirrorRepoStatus
 from routes.mirror_routes import create_mirror as create_mirror_route
 from routes.mirror_routes import setup_mirror as setup_mirror_route
 from services.mirror_service import PUSH_MIRROR_MODE, setup_mirror, sync_mirror
@@ -132,6 +132,8 @@ class PushMirrorTestCase(unittest.TestCase):
         repo = MirrorRepoStatus.query.filter_by(mirror_config_id=config.id, repo_name='org/repo').first()
         push_call = next(c for c in calls if c['method'] == 'POST' and c['url'].endswith('/push_mirrors'))
         self.assertEqual(config.status, 'success')
+        self.assertEqual(config.progress_percent, 100)
+        self.assertEqual(config.progress_stage, 'completed')
         self.assertEqual(repo.status, 'success')
         self.assertEqual(repo.remote_name, 'backup')
         self.assertEqual(push_call['json']['remote_address'], 'http://backup.local/org/repo.git')
@@ -195,6 +197,128 @@ class PushMirrorTestCase(unittest.TestCase):
         self.assertEqual(config.status, 'success')
         self.assertTrue(any(c['url'].endswith('/push_mirrors-sync') for c in calls))
         self.assertFalse(any(c['url'].endswith('/mirror-sync') for c in calls))
+
+    def test_setup_marks_missing_source_and_audits_it(self):
+        config = self.add_config()
+        db.session.add(MirrorRepoStatus(
+            mirror_config_id=config.id,
+            repo_name='org/removed',
+            source_repo_id=77,
+            status='success',
+            sync_mode=PUSH_MIRROR_MODE,
+            remote_name='backup',
+            created_at=datetime.utcnow(),
+        ))
+        db.session.commit()
+
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            if url.endswith('/api/v1/repos/search'):
+                return FakeResponse(200, {'data': []})
+            return FakeResponse(500, {}, f'unexpected {method} {url}')
+
+        with patch('services.mirror_service.requests.request', side_effect=fake_request):
+            setup_mirror(config.id)
+
+        repo = MirrorRepoStatus.query.filter_by(mirror_config_id=config.id, repo_name='org/removed').first()
+        audit = MirrorAuditLog.query.filter_by(mirror_config_id=config.id, action='mark_missing_source').first()
+        config = MirrorConfig.query.get(config.id)
+        self.assertEqual(repo.status, 'missing_source')
+        self.assertEqual(config.progress_percent, 100)
+        self.assertEqual(config.progress_stage, 'completed_partial')
+        self.assertIsNotNone(audit)
+        self.assertIn('未发现该仓库', audit.reason)
+
+    def test_manual_sync_skips_missing_source_and_audits_it(self):
+        config = self.add_config()
+        db.session.add(MirrorRepoStatus(
+            mirror_config_id=config.id,
+            repo_name='org/removed',
+            source_repo_id=77,
+            status='missing_source',
+            sync_mode=PUSH_MIRROR_MODE,
+            remote_name='backup',
+            created_at=datetime.utcnow(),
+        ))
+        db.session.commit()
+        calls = []
+
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            calls.append({'method': method, 'url': url})
+            return FakeResponse(500, {}, f'unexpected {method} {url}')
+
+        with patch('services.mirror_service.requests.request', side_effect=fake_request):
+            sync_mirror(config.id)
+
+        repo = MirrorRepoStatus.query.filter_by(mirror_config_id=config.id, repo_name='org/removed').first()
+        audit = MirrorAuditLog.query.filter_by(mirror_config_id=config.id, action='skip_missing_source').first()
+        config = MirrorConfig.query.get(config.id)
+        self.assertEqual(repo.status, 'missing_source')
+        self.assertEqual(config.progress_percent, 100)
+        self.assertIn('失败或跳过', config.progress_detail)
+        self.assertEqual(calls, [])
+        self.assertIsNotNone(audit)
+
+    def test_setup_repairs_renamed_repo_by_source_repo_id(self):
+        config = self.add_config()
+        db.session.add(MirrorRepoStatus(
+            mirror_config_id=config.id,
+            repo_name='org/old-repo',
+            source_repo_id=1,
+            target_repo_id=88,
+            status='success',
+            sync_mode=PUSH_MIRROR_MODE,
+            remote_name='backup',
+            created_at=datetime.utcnow(),
+        ))
+        db.session.commit()
+        calls = []
+
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            calls.append({'method': method, 'url': url, 'json': kwargs.get('json')})
+            path = urlparse(url).path
+            host = urlparse(url).hostname
+            if host == 'source.local' and path == '/api/v1/repos/search':
+                return FakeResponse(200, {'data': [{
+                    'id': 1,
+                    'full_name': 'org/new-repo',
+                    'private': True,
+                    'description': 'renamed',
+                }]})
+            if host == 'backup.local' and path == '/api/v1/repos/org/new-repo':
+                return FakeResponse(404, {}, 'not found')
+            if host == 'backup.local' and path == '/api/v1/repos/org/old-repo':
+                if method == 'PATCH':
+                    return FakeResponse(200, {'id': 88})
+                return FakeResponse(200, {'id': 88})
+            if host == 'source.local' and path == '/api/v1/repos/org/new-repo/push_mirrors':
+                if method == 'GET':
+                    return FakeResponse(200, [{
+                        'remote_name': 'backup',
+                        'remote_address': 'http://backup.local/org/old-repo.git',
+                    }])
+                return FakeResponse(200, {'remote_name': 'backup'})
+            if host == 'source.local' and path == '/api/v1/repos/org/new-repo/push_mirrors/backup':
+                return FakeResponse(204, {})
+            if host == 'backup.local' and path == '/api/v1/user':
+                return FakeResponse(200, {'login': 'mirrorbot'})
+            if host == 'source.local' and path == '/api/v1/repos/org/new-repo/push_mirrors-sync':
+                return FakeResponse(200, {})
+            return FakeResponse(500, {}, f'unexpected {method} {url}')
+
+        with patch('services.mirror_service.requests.request', side_effect=fake_request):
+            setup_mirror(config.id)
+
+        repo = MirrorRepoStatus.query.filter_by(mirror_config_id=config.id, repo_name='org/new-repo').first()
+        rename_audit = MirrorAuditLog.query.filter_by(mirror_config_id=config.id, action='rename_target_repo').first()
+        update_audit = MirrorAuditLog.query.filter_by(mirror_config_id=config.id, action='update_push_mirror').first()
+        config = MirrorConfig.query.get(config.id)
+        self.assertIsNotNone(repo)
+        self.assertEqual(repo.status, 'success')
+        self.assertEqual(config.progress_percent, 100)
+        self.assertIsNotNone(rename_audit)
+        self.assertIsNotNone(update_audit)
+        self.assertTrue(any(c['method'] == 'PATCH' and c['url'].endswith('/api/v1/repos/org/old-repo') for c in calls))
+        self.assertTrue(any(c['method'] == 'DELETE' and c['url'].endswith('/push_mirrors/backup') for c in calls))
 
     def test_deprecated_config_setup_is_rejected_by_route(self):
         config = self.add_config(mode='gitea_mirror')

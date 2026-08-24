@@ -206,6 +206,14 @@ class MirrorConfig(db.Model):
     total_repos = db.Column(db.Integer, default=0)
     synced_repos = db.Column(db.Integer, default=0)
     failed_repos = db.Column(db.Integer, default=0)
+    progress_stage = db.Column(db.String(50), default='')
+    progress_label = db.Column(db.String(100), default='')
+    progress_percent = db.Column(db.Integer, default=0)
+    progress_detail = db.Column(db.Text, default='')
+    progress_updated_at = db.Column(db.DateTime, default=None)
+    current_repo_name = db.Column(db.String(300), default='')
+    current_repo_index = db.Column(db.Integer, default=0)
+    current_repo_total = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     source_server = db.relationship('GiteaServer', foreign_keys=[source_server_id], lazy=True)
@@ -225,6 +233,19 @@ class MirrorRepoStatus(db.Model):
     sync_mode = db.Column(db.String(20), default='')
     last_sync_at = db.Column(db.DateTime, default=None)
     error_msg = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MirrorAuditLog(db.Model):
+    __tablename__ = 'mirror_audit_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    mirror_config_id = db.Column(db.Integer, db.ForeignKey('mirror_configs.id'), nullable=False)
+    repo_name = db.Column(db.String(300), nullable=False, default='')
+    action = db.Column(db.String(50), nullable=False)
+    reason = db.Column(db.Text, default='')
+    status = db.Column(db.String(20), nullable=False, default='success')
+    detail = db.Column(db.Text, default='')
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
