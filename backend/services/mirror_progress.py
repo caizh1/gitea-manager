@@ -46,6 +46,14 @@ def update_mirror_progress(
     if current_repo_total is not _UNSET:
         config.current_repo_total = int(current_repo_total or 0)
 
+    from services.integration_outbox_service import emit_event
+    emit_event(
+        f'mirror.{stage}', 'mirror', config.id, stage,
+        {'label': label, 'percent': config.progress_percent, 'detail': detail,
+         'source_server_id': config.source_server_id, 'target_server_id': config.target_server_id,
+         'current_repo_name': config.current_repo_name},
+    )
+
     try:
         db.session.commit()
     except Exception as e:

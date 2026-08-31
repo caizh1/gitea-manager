@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from config import SECRET_KEY, DATABASE_URL, INIT_PASSWORD
+from config import SECRET_KEY, DATABASE_URL, INIT_PASSWORD, INTEGRATION_SERVICE_TOKEN
 from models import db, Setting, User
 from auth import init_auth
 import os
@@ -83,6 +83,10 @@ def create_app():
             "CREATE TABLE IF NOT EXISTS author_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), author_name VARCHAR(200) NOT NULL, author_email VARCHAR(300) DEFAULT '', repo_name VARCHAR(300) NOT NULL, commit_count INTEGER DEFAULT 0, additions INTEGER DEFAULT 0, deletions INTEGER DEFAULT 0, first_commit_date DATETIME, last_commit_date DATETIME, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT uq_author_repo UNIQUE (server_id, author_name, repo_name))",
             "CREATE TABLE IF NOT EXISTS commit_message_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), name VARCHAR(100) NOT NULL, pattern TEXT NOT NULL, reject_message TEXT DEFAULT '', enabled BOOLEAN DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME)",
             "CREATE TABLE IF NOT EXISTS commit_gate_assignments (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), repo_name VARCHAR(300) NOT NULL, rule_id INTEGER NOT NULL REFERENCES commit_message_rules(id), install_status VARCHAR(20) DEFAULT 'pending', install_log TEXT DEFAULT '', applied_at DATETIME, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT uq_commit_gate_repo UNIQUE (server_id, repo_name))",
+            "CREATE TABLE IF NOT EXISTS integration_service_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL UNIQUE, token_hash VARCHAR(64) NOT NULL UNIQUE, active BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, rotated_at DATETIME, last_used_at DATETIME)",
+            "CREATE TABLE IF NOT EXISTS integration_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_type VARCHAR(100) NOT NULL, task_type VARCHAR(30) NOT NULL, task_id INTEGER NOT NULL, status VARCHAR(30) NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "CREATE INDEX IF NOT EXISTS ix_integration_outbox_created_at ON integration_outbox (created_at)",
+            "CREATE TABLE IF NOT EXISTS integration_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor VARCHAR(100) NOT NULL, action VARCHAR(100) NOT NULL, target VARCHAR(200) NOT NULL DEFAULT '', status VARCHAR(20) NOT NULL DEFAULT 'success', detail TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
         ]:
             try:
                 db.session.execute(db.text(sql))
@@ -126,6 +130,10 @@ def create_app():
         if not setting:
             User.set_password(INIT_PASSWORD)
 
+        from services.integration_outbox_service import synchronize_bootstrap_token
+        if synchronize_bootstrap_token(INTEGRATION_SERVICE_TOKEN):
+            db.session.commit()
+
     from routes.auth_routes import auth_bp
     from routes.server_routes import server_bp
     from routes.backup_routes import backup_bp
@@ -137,6 +145,7 @@ def create_app():
     from routes.mirror_routes import mirror_bp
     from routes.statistics_routes import statistics_bp
     from routes.commit_gate_routes import commit_gate_bp
+    from routes.integration_routes import integration_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(server_bp, url_prefix='/api')
@@ -149,6 +158,7 @@ def create_app():
     app.register_blueprint(mirror_bp, url_prefix='/api')
     app.register_blueprint(statistics_bp, url_prefix='/api')
     app.register_blueprint(commit_gate_bp, url_prefix='/api')
+    app.register_blueprint(integration_bp, url_prefix='/api/integrations/v1')
 
     @app.before_request
     def check_host_ip():

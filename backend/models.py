@@ -364,6 +364,42 @@ class ScheduleLog(db.Model):
     completed_at = db.Column(db.DateTime, default=None)
 
 
+class IntegrationServiceToken(db.Model):
+    __tablename__ = 'integration_service_tokens'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    rotated_at = db.Column(db.DateTime, default=None)
+    last_used_at = db.Column(db.DateTime, default=None)
+
+
+class IntegrationOutbox(db.Model):
+    __tablename__ = 'integration_outbox'
+
+    seq = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    event_type = db.Column(db.String(100), nullable=False, index=True)
+    task_type = db.Column(db.String(30), nullable=False, index=True)
+    task_id = db.Column(db.Integer, nullable=False, index=True)
+    status = db.Column(db.String(30), nullable=False)
+    payload_json = db.Column(db.Text, nullable=False, default='{}')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
+class IntegrationAuditLog(db.Model):
+    __tablename__ = 'integration_audit_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    actor = db.Column(db.String(100), nullable=False)
+    action = db.Column(db.String(100), nullable=False, index=True)
+    target = db.Column(db.String(200), nullable=False, default='')
+    status = db.Column(db.String(20), nullable=False, default='success')
+    detail = db.Column(db.Text, nullable=False, default='')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
 def get_setting(key, default=''):
     s = Setting.query.get(key)
     return s.value if s else default

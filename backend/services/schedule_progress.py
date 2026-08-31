@@ -50,6 +50,14 @@ def update_schedule_progress(
     if current_restore_total is not _UNSET:
         task.current_restore_total = int(current_restore_total or 0)
 
+    from services.integration_outbox_service import emit_event
+    emit_event(
+        f'schedule.{stage}', 'schedule', task.id, stage,
+        {'label': label, 'percent': task.progress_percent, 'detail': detail,
+         'current_backup_id': task.current_backup_id,
+         'current_restore_task_id': task.current_restore_task_id},
+    )
+
     try:
         db.session.commit()
     except Exception as e:

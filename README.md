@@ -83,6 +83,7 @@ npm run dev
 | `RESTORE_JOB_POLL_SECONDS` | 远端作业状态轮询间隔 | `5` |
 | `RESTORE_SSH_RECONNECT_GRACE_SECONDS` | 轮询期间 SSH 连续不可用的容忍时间 | `300` |
 | `RESTORE_DIAGNOSTIC_INTERVAL_SECONDS` | 长步骤诊断指标记录间隔 | `30` |
+| `INTEGRATION_SERVICE_TOKEN` | AIOps Sentinel 只读增量接口服务令牌，数据库仅保存 SHA-256 | 无，必须显式配置 |
 
 **注意：** 生产环境部署前请务必修改 `SECRET_KEY` 和 `INIT_PASSWORD`。
 
@@ -142,6 +143,11 @@ gitea-manager/
 | `/api/schedules` | GET/POST | 定时任务列表/创建 |
 | `/api/schedules/:id` | PUT/DELETE | 编辑/删除定时任务 |
 | `/api/settings` | GET/PUT | 系统设置 |
+| `/api/integrations/v1/health` | GET | 服务令牌认证的只读集成健康检查 |
+| `/api/integrations/v1/events?after_seq=&limit=` | GET | 单调序号增量事件与补传游标 |
+| `/api/integrations/v1/tasks/:type/:id` | GET | 不含凭据和敏感配置的任务详情 |
+
+集成接口使用 `Authorization: Bearer <INTEGRATION_SERVICE_TOKEN>`。备份、恢复、镜像和定时任务的状态变化写入同库 outbox；接口不会返回 Gitea API token、SSH 密钥、密码、备份路径或未脱敏配置。轮换环境变量后重启服务会吊销旧服务令牌并记录审计。
 
 ## License
 

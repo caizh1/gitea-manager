@@ -35,6 +35,7 @@ def auto_resolve_alerts(alert_type, server_id):
 def on_backup_completed(server_id, success, error_msg='', backup_id=0):
     if success:
         auto_resolve_alerts('backup_failed', server_id)
+        db.session.commit()
     else:
         create_alert('backup_failed', server_id, error_msg, source_id=backup_id)
 
@@ -42,5 +43,6 @@ def on_backup_completed(server_id, success, error_msg='', backup_id=0):
 def on_restore_completed(target_server_id, success, error_msg='', task_id=0):
     if success:
         auto_resolve_alerts('restore_failed', target_server_id)
+        db.session.commit()
     else:
         create_alert('restore_failed', target_server_id, error_msg, source_id=task_id)
