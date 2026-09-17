@@ -40,19 +40,19 @@
       </div>
     </div>
 
-    <div v-if="detail && detail.email" class="glass-card" style="padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;">
+    <div v-if="detail && detail.email" class="glass-card author-summary">
       <div class="detail-avatar">{{ authorName.charAt(0).toUpperCase() }}</div>
       <div>
         <div style="font-size:14px;font-weight:600;color:#1a1a2e;">{{ authorName }}</div>
-        <div style="font-size:12px;color:#9ca3af;">{{ detail.email }}</div>
+        <div style="font-size:12px;color:var(--text-muted);">{{ detail.email }}</div>
       </div>
       <div style="margin-left:auto;display:flex;gap:20px;">
         <div v-if="detail.first_date" style="text-align:center;">
-          <div style="font-size:11px;color:#9ca3af;">首次提交</div>
+          <div style="font-size:11px;color:var(--text-muted);">首次提交</div>
           <div style="font-size:13px;font-weight:600;color:#1a1a2e;">{{ detail.first_date.slice(0, 10) }}</div>
         </div>
         <div v-if="detail.last_date" style="text-align:center;">
-          <div style="font-size:11px;color:#9ca3af;">最近提交</div>
+          <div style="font-size:11px;color:var(--text-muted);">最近提交</div>
           <div style="font-size:13px;font-weight:600;color:#1a1a2e;">{{ detail.last_date.slice(0, 10) }}</div>
         </div>
       </div>
@@ -62,7 +62,7 @@
       <span class="section-sub-title">提交趋势</span>
     </div>
     <div class="glass-card" style="padding:20px;margin-bottom:20px;">
-      <div v-if="trendData.length === 0" style="text-align:center;color:#9ca3af;padding:40px;">暂无趋势数据</div>
+      <div v-if="trendData.length === 0" style="text-align:center;color:var(--text-muted);padding:40px;">暂无趋势数据</div>
       <div v-else class="chart-container" ref="trendChartRef"></div>
     </div>
 
@@ -75,7 +75,7 @@
       </el-select>
     </div>
     <div class="glass-card" style="padding:0;">
-      <el-table :data="repos" stripe style="width:100%" size="small">
+      <el-table :data="repos" stripe style="width:100%" size="small" max-height="var(--table-max-height)">
         <el-table-column label="仓库" prop="repo_name" min-width="200" />
         <el-table-column label="提交数" prop="commits" width="90" align="center" sortable />
         <el-table-column label="新增行" width="100" align="center" sortable sort-by="additions">
@@ -95,7 +95,7 @@
         <el-table-column label="最近提交" width="110">
           <template #default="{ row }">
             <span v-if="row.last_date">{{ row.last_date.slice(0, 10) }}</span>
-            <span v-else style="color:#d1d5db;">-</span>
+            <span v-else style="color:var(--text-muted);">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -107,6 +107,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
+import { useChartResize } from '../composables/useChartResize'
 import { ArrowLeft } from '@element-plus/icons-vue'
 
 export default {
@@ -122,6 +123,7 @@ export default {
     const selectedPeriod = ref('month')
     const repoSortBy = ref('commits')
     const trendChartRef = ref(null)
+    useChartResize(trendChartRef, renderChart)
 
     function loadDetail() {
       if (!serverId.value) return
@@ -150,14 +152,18 @@ export default {
       const container = trendChartRef.value
       container.innerHTML = ''
       const canvas = document.createElement('canvas')
-      canvas.width = container.clientWidth || 600
-      canvas.height = 260
+      const w = Math.max(120, container.clientWidth)
+      const h = 260
+      const scale = window.devicePixelRatio || 1
+      canvas.width = Math.round(w * scale)
+      canvas.height = Math.round(h * scale)
+      canvas.style.width = "100%"
+      canvas.style.height = h + "px"
       container.appendChild(canvas)
       const ctx = canvas.getContext('2d')
+      ctx.scale(scale, scale)
       const data = trendData.value
       const maxVal = Math.max(...data.map(d => d.commits), 1)
-      const w = canvas.width
-      const h = canvas.height
       const padding = { top: 20, right: 20, bottom: 50, left: 60 }
       const chartW = w - padding.left - padding.right
       const chartH = h - padding.top - padding.bottom
@@ -179,7 +185,8 @@ export default {
         ctx.fillText(Math.round(maxVal * i / 5), padding.left - 8, y + 4)
       }
 
-      const barW = Math.min(36, chartW / data.length - 8)
+      const barW = Math.max(1, Math.min(36, chartW / data.length * 0.65))
+      const labelStep = Math.max(1, Math.ceil(data.length * 64 / chartW))
       data.forEach((d, i) => {
         const x = padding.left + (i + 0.5) * (chartW / data.length) - barW / 2
         const barH = (d.commits / maxVal) * chartH
@@ -199,7 +206,7 @@ export default {
         ctx.save()
         ctx.translate(x + barW / 2, h - padding.bottom + 12)
         ctx.rotate(-0.4)
-        ctx.fillText(d.period_key, 0, 0)
+        if (i % labelStep === 0) ctx.fillText(d.period_key, 0, 0)
         ctx.restore()
       })
     }

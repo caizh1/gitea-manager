@@ -1,0 +1,170 @@
+{
+  "说明": "真实 Gitea、Manager、Worker、执行器和进度进程；模型为协议替身，不代表真实模型识别质量。",
+  "PR": "http://127.0.0.1:64300/review-admin/progress-acceptance/pulls/1",
+  "SHA": "31f9c9e73170df8de90b568e820ccf4a783f7451",
+  "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a",
+  "模式": "normal",
+  "首次状态可见秒": 2.307,
+  "过程": [
+    {
+      "经过秒": 1.26,
+      "状态": null,
+      "任务": null
+    },
+    {
+      "经过秒": 1.78,
+      "状态": [
+        "queued",
+        "queued",
+        0,
+        null
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 2.31,
+      "状态": [
+        "queued",
+        "queued",
+        0,
+        "queued"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 23.17,
+      "状态": [
+        "running",
+        "analysis",
+        0,
+        "queued"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 23.7,
+      "状态": [
+        "running",
+        "analysis",
+        0,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 30.12,
+      "状态": [
+        "running",
+        "refutation",
+        0,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 37.1,
+      "状态": [
+        "running",
+        "analysis",
+        1,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 44.6,
+      "状态": [
+        "running",
+        "refutation",
+        1,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 51.55,
+      "状态": [
+        "running",
+        "analysis",
+        2,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 58.5,
+      "状态": [
+        "running",
+        "refutation",
+        2,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 65.42,
+      "状态": [
+        "publishing",
+        "publishing",
+        3,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 65.95,
+      "状态": [
+        "succeeded",
+        "succeeded",
+        3,
+        "running"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    },
+    {
+      "经过秒": 66.48,
+      "状态": [
+        "succeeded",
+        "succeeded",
+        3,
+        "succeeded"
+      ],
+      "任务": "73d8ddf1677c8c2ba41ff8b1a300f59a"
+    }
+  ],
+  "最终载荷": {
+    "checked_at": 1789181031.6018527,
+    "coverage": {
+      "complete": true,
+      "files_reviewed": 1,
+      "files_total": 1
+    },
+    "current_head": "31f9c9e73170df8de90b568e820ccf4a783f7451",
+    "detail": "已完成",
+    "elapsed_seconds": 42,
+    "enabled": true,
+    "error": "",
+    "findings": 3,
+    "finished_at": 1789181030.9125295,
+    "generation": 1,
+    "head": "31f9c9e73170df8de90b568e820ccf4a783f7451",
+    "job": "73d8ddf1677c8c2ba41ff8b1a300f59a",
+    "job_generation": 1,
+    "label": "审查完成",
+    "lease_until": null,
+    "number": 1,
+    "received_at": 1789180967.109023,
+    "repository": "review-admin/progress-acceptance",
+    "repository_id": 1,
+    "review_fragment": "issuecomment-3",
+    "review_id": 1,
+    "sequence": 26,
+    "stage": "succeeded",
+    "started_at": 1789180988.0469928,
+    "status": "succeeded",
+    "units_completed": 3,
+    "units_total": 3,
+    "version": 1
+  },
+  "总体评论数": 1
+}

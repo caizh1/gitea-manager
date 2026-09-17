@@ -45,12 +45,12 @@
         </div>
       </div>
       <div class="glass-card" style="padding:20px;margin-bottom:20px;">
-        <div v-if="commitTrend.length === 0" style="text-align:center;color:#9ca3af;padding:40px;">暂无数据，请先刷新采集</div>
+        <div v-if="commitTrend.length === 0" style="text-align:center;color:var(--text-muted);padding:40px;">暂无数据，请先刷新采集</div>
         <div v-else class="chart-container" ref="trendChartRef"></div>
       </div>
 
       <el-row :gutter="18" style="margin-bottom:20px;">
-        <el-col :span="12">
+        <el-col :xs="24" :md="12">
           <div class="glass-card" style="padding:20px;">
             <div class="section-sub-title" style="margin-bottom:14px;">仓库排名 (Top 10)</div>
             <div class="rank-list">
@@ -64,7 +64,7 @@
             </div>
           </div>
         </el-col>
-        <el-col :span="12">
+        <el-col :xs="24" :md="12">
           <div class="glass-card" style="padding:20px;">
             <div class="section-sub-title" style="margin-bottom:14px;">作者贡献排名 (Top 10)</div>
             <div class="rank-list">
@@ -117,6 +117,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
+import { useChartResize } from '../composables/useChartResize'
 import { ElMessage } from 'element-plus'
 
 export default {
@@ -131,6 +132,7 @@ export default {
     const authorRanking = ref([])
     const selectedPeriod = ref('month')
     const trendChartRef = ref(null)
+    useChartResize(trendChartRef, renderChart)
     let chartInstance = null
 
     const periods = [
@@ -161,12 +163,12 @@ export default {
         api.get(`/statistics/${selectedServerId.value}/overview`),
         api.get(`/statistics/${selectedServerId.value}/commits?period=${selectedPeriod.value}`),
         api.get(`/statistics/${selectedServerId.value}/repos?limit=10`),
-        api.get(`/statistics/${selectedServerId.value}/authors`),
+        api.get(`/statistics/${selectedServerId.value}/authors?limit=10`),
       ]).then(([oRes, cRes, rRes, aRes]) => {
         overview.value = oRes.data
         commitTrend.value = cRes.data
         repoRanking.value = rRes.data
-        authorRanking.value = aRes.data
+        authorRanking.value = aRes.data.slice(0, 10)
         nextTick(renderChart)
       }).catch(() => {})
     }
@@ -194,14 +196,18 @@ export default {
       const container = trendChartRef.value
       container.innerHTML = ''
       const canvas = document.createElement('canvas')
-      canvas.width = container.clientWidth || 600
-      canvas.height = 300
+      const w = Math.max(120, container.clientWidth)
+      const h = 300
+      const scale = window.devicePixelRatio || 1
+      canvas.width = Math.round(w * scale)
+      canvas.height = Math.round(h * scale)
+      canvas.style.width = "100%"
+      canvas.style.height = h + "px"
       container.appendChild(canvas)
       const ctx = canvas.getContext('2d')
+      ctx.scale(scale, scale)
       const data = commitTrend.value
       const maxVal = Math.max(...data.map(d => d.commit_count), 1)
-      const w = canvas.width
-      const h = canvas.height
       const padding = { top: 20, right: 20, bottom: 50, left: 60 }
       const chartW = w - padding.left - padding.right
       const chartH = h - padding.top - padding.bottom
@@ -223,7 +229,8 @@ export default {
         ctx.fillText(Math.round(maxVal * i / 5), padding.left - 8, y + 4)
       }
 
-      const barW = Math.min(40, chartW / data.length - 8)
+      const barW = Math.max(1, Math.min(40, chartW / data.length * 0.65))
+      const labelStep = Math.max(1, Math.ceil(data.length * 64 / chartW))
       data.forEach((d, i) => {
         const x = padding.left + (i + 0.5) * (chartW / data.length) - barW / 2
         const barH = (d.commit_count / maxVal) * chartH
@@ -243,7 +250,7 @@ export default {
         ctx.save()
         ctx.translate(x + barW / 2, h - padding.bottom + 12)
         ctx.rotate(-0.4)
-        ctx.fillText(d.period_key, 0, 0)
+        if (i % labelStep === 0) ctx.fillText(d.period_key, 0, 0)
         ctx.restore()
       })
     }
@@ -351,7 +358,7 @@ export default {
 .rank-more:hover { text-decoration: underline; }
 .rank-value { font-size: 12px; color: #6b7280; margin-left: auto; z-index: 1; }
 .rank-bar { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(0,122,255,0.07); border-radius: 8px; z-index: 0; }
-.rank-empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13px; }
+.rank-empty { text-align: center; color: var(--text-muted); padding: 20px; font-size: 13px; }
 
 .ratio-bar {
   display: flex; height: 36px; border-radius: 8px; overflow: hidden;

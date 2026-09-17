@@ -1,10 +1,12 @@
 import io
+import json
 import os
 import re
 import shlex
 import subprocess
 import tarfile
 import tempfile
+from contextlib import closing
 from datetime import datetime
 
 import requests
@@ -12,6 +14,7 @@ import requests
 from models import db, GiteaServer, CommitMessageRule, CommitGateAssignment
 from services.docker_service import local_exec, _get_client
 from services.ssh_service import SSHService
+from approval.gitea import Reader
 
 
 OLD_DEFAULT_PATTERN = r'^\[ID-\d+\]\s+(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([A-Za-z0-9_.-]+\))?: .+'
@@ -54,7 +57,34 @@ def _run_in_gitea(server, shell_script):
     return ssh.exec(f'docker exec {shlex.quote(server.gitea_container)} {shell_cmd}')
 
 
-def _resolve_repo_dir(server, repo_name):
+def _resolve_native_repo_dir(server, repo_id):
+    command = f'gitea admin governance repository-storage --repository-id {int(repo_id)}'
+    if server.is_local:
+        exit_code, out = local_exec(server.gitea_container, command)
+        err = ''
+    else:
+        ssh = SSHService(server.host, server.ssh_port, server.ssh_user)
+        exit_code, out, err = ssh.exec(f'docker exec {shlex.quote(server.gitea_container)} {command}')
+    if exit_code != 0:
+        raise RuntimeError('无法按稳定项目 ID 取得物理路径：' + (err or out or '治理命令失败')[:200])
+    try:
+        value = json.loads(out)
+        path = value['storage_path']
+    except (ValueError, KeyError, TypeError):
+        raise RuntimeError('稳定项目路径回执格式错误') from None
+    if value.get('repository_id') != repo_id or not isinstance(path, str) or not path.startswith('/') or '..' in path.split('/'):
+        raise RuntimeError('稳定项目路径身份核对失败')
+    return path
+
+
+def _resolve_repo_dir(server, repo_name, repo_id=0):
+    if repo_id:
+        with closing(Reader(server, 3)) as client:
+            capabilities = client.governance_capabilities()
+        if capabilities and capabilities.get('repository_storage_identity') is True:
+            return _resolve_native_repo_dir(server, repo_id)
+        if capabilities:
+            raise RuntimeError('原生治理实例未声明稳定项目存储身份能力，拒绝按展示路径猜测物理目录')
     path = _repo_path(repo_name)
     lower_path = path.lower()
     script = (
@@ -147,8 +177,8 @@ exit $STATUS
 """
 
 
-def _install_hook(server, repo_name, rule):
-    repo_dir = _resolve_repo_dir(server, repo_name)
+def _install_hook(server, repo_name, rule, repo_id=0):
+    repo_dir = _resolve_repo_dir(server, repo_name, repo_id)
     hook_dir = f'{repo_dir}/hooks/pre-receive.d'
     hook_path = f'{hook_dir}/{HOOK_NAME}'
     exit_code, out, err = _run_in_gitea(server, f'mkdir -p {shlex.quote(hook_dir)}')
@@ -170,8 +200,8 @@ def _install_hook(server, repo_name, rule):
         raise RuntimeError(err or out or 'chmod failed')
 
 
-def _remove_hook(server, repo_name):
-    repo_dir = _resolve_repo_dir(server, repo_name)
+def _remove_hook(server, repo_name, repo_id=0):
+    repo_dir = _resolve_repo_dir(server, repo_name, repo_id)
     hook_path = f'{repo_dir}/hooks/pre-receive.d/{HOOK_NAME}'
     exit_code, out, err = _run_in_gitea(server, f'rm -f {shlex.quote(hook_path)}')
     if exit_code != 0:
@@ -237,14 +267,20 @@ def apply_rule(server_id, rule_id, repo_names=None, apply_all=False):
     if not rule.enabled:
         raise ValueError('Rule is disabled')
 
+    repositories = fetch_repos(server)
+    by_name = {r.get('full_name', ''): r for r in repositories}
     if apply_all:
-        repo_names = [r.get('full_name', '') for r in fetch_repos(server)]
+        repo_names = list(by_name)
     repo_names = [_normalize_repo_name(r) for r in (repo_names or []) if r]
     if not repo_names:
         raise ValueError('No repositories selected')
 
     results = []
     for repo_name in repo_names:
+        repository = by_name.get(repo_name)
+        if not repository or not isinstance(repository.get('id'), int):
+            results.append({'repo_name': repo_name, 'status': 'failed', 'log': '项目稳定 ID 不存在，请刷新列表'})
+            continue
         assignment = CommitGateAssignment.query.filter_by(
             server_id=server_id,
             repo_name=repo_name,
@@ -253,18 +289,20 @@ def apply_rule(server_id, rule_id, repo_names=None, apply_all=False):
             assignment = CommitGateAssignment(
                 server_id=server_id,
                 repo_name=repo_name,
+                repo_id=repository['id'],
                 rule_id=rule.id,
                 created_at=datetime.utcnow(),
             )
             db.session.add(assignment)
         assignment.rule_id = rule.id
+        assignment.repo_id = repository['id']
         assignment.install_status = 'pending'
         assignment.install_log = ''
         assignment.applied_at = datetime.utcnow()
         db.session.commit()
 
         try:
-            _install_hook(server, repo_name, rule)
+            _install_hook(server, repo_name, rule, assignment.repo_id)
             assignment.install_status = 'success'
             assignment.install_log = 'Hook installed'
         except Exception as e:
@@ -294,7 +332,7 @@ def remove_gate(server_id, repo_names=None, remove_all=False):
             repo_name=repo_name,
         ).first()
         try:
-            _remove_hook(server, repo_name)
+            _remove_hook(server, repo_name, assignment.repo_id if assignment else 0)
             if assignment:
                 db.session.delete(assignment)
                 db.session.commit()
@@ -374,6 +412,7 @@ def assignment_to_dict(assignment):
         'id': assignment.id,
         'server_id': assignment.server_id,
         'repo_name': assignment.repo_name,
+        'repo_id': assignment.repo_id,
         'rule_id': assignment.rule_id,
         'rule_name': assignment.rule.name if assignment.rule else '',
         'install_status': assignment.install_status,

@@ -4,57 +4,69 @@
   </div>
   <div v-else class="layout">
     <el-container>
-      <el-aside :width="collapsed ? '64px' : '240px'" class="app-aside">
+      <el-aside :width="collapsed ? '64px' : '240px'" class="app-aside" :class="{ 'is-collapsed': collapsed }">
         <div class="sidebar-logo">
           <h1 v-if="!collapsed" class="logo-text">Gitea Manager</h1>
           <span v-else class="logo-icon">G</span>
           <span v-if="!collapsed" class="logo-sub">Management Console</span>
         </div>
-        <div class="collapse-btn" @click="collapsed = !collapsed">
+        <button type="button" class="collapse-btn" :aria-label="collapsed ? '展开导航' : '收起导航'" :aria-expanded="!collapsed" @click="collapsed = !collapsed">
           <el-icon :size="16"><component :is="collapsed ? 'Expand' : 'Fold'" /></el-icon>
-        </div>
+        </button>
         <el-menu
           :default-active="activeMenu"
           :collapse="collapsed"
           router
           background-color="transparent"
           text-color="#5f6b7a"
-          active-text-color="#007aff"
+          active-text-color="#1765be"
           class="app-menu"
         >
-          <el-menu-item index="/dashboard">
+          <el-menu-item index="/dashboard" aria-label="仪表盘">
             <el-icon><Monitor /></el-icon>
             <template #title>仪表盘</template>
           </el-menu-item>
-          <el-menu-item index="/servers">
+          <el-menu-item index="/servers" aria-label="服务器管理">
             <el-icon><Setting /></el-icon>
             <template #title>服务器管理</template>
           </el-menu-item>
-          <el-menu-item index="/backups">
+          <el-menu-item index="/backups" aria-label="备份管理">
             <el-icon><FolderOpened /></el-icon>
             <template #title>备份管理</template>
           </el-menu-item>
-          <el-menu-item index="/restore">
+          <el-menu-item index="/restore" aria-label="恢复操作">
             <el-icon><RefreshRight /></el-icon>
             <template #title>恢复操作</template>
           </el-menu-item>
-          <el-menu-item index="/settings">
+          <el-menu-item index="/settings" aria-label="系统设置">
             <el-icon><Tools /></el-icon>
             <template #title>系统设置</template>
           </el-menu-item>
-          <el-menu-item index="/schedules">
+          <el-menu-item index="/schedules" aria-label="定时任务">
             <el-icon><Clock /></el-icon>
             <template #title>定时任务</template>
           </el-menu-item>
-          <el-menu-item index="/mirrors">
+          <el-menu-item index="/mirrors" aria-label="镜像管理">
             <el-icon><Connection /></el-icon>
             <template #title>镜像管理</template>
           </el-menu-item>
-          <el-menu-item index="/commit-gates">
+          <el-menu-item index="/commit-gates" aria-label="提交门禁">
             <el-icon><Key /></el-icon>
             <template #title>提交门禁</template>
           </el-menu-item>
-          <el-menu-item index="/statistics">
+          <el-menu-item index="/repository-policies" aria-label="仓库策略中心">
+            <el-icon><Key /></el-icon>
+            <template #title>仓库策略中心</template>
+          </el-menu-item>
+          <el-menu-item index="/approval-rules" aria-label="审批规则">
+            <el-icon><CircleCheck /></el-icon>
+            <template #title>审批规则</template>
+          </el-menu-item>
+          <el-menu-item index="/ai-reviews" aria-label="AI Code Review">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title>AI Code Review</template>
+          </el-menu-item>
+          <el-menu-item index="/statistics" aria-label="统计分析">
             <el-icon><DataAnalysis /></el-icon>
             <template #title>统计分析</template>
           </el-menu-item>
@@ -97,6 +109,7 @@
             </el-button>
           </div>
         </el-header>
+        <ReviewAttentionBanner />
         <el-main class="app-main">
           <div v-if="needsConfig && !isSettingsPage" class="blocking-card">
             <el-result icon="warning" title="请先配置本机 IP" sub-title="使用平台前需在系统设置中配置本机 IP，用于区分本地和远程服务器。">
@@ -117,10 +130,11 @@
 </template>
 
 <script>
-import { ref, computed, provide, watch } from 'vue'
+import { ref, computed, provide, watch, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import LoginView from './views/Login.vue'
 import AlertBell from './components/AlertBell.vue'
+import ReviewAttentionBanner from './components/ReviewAttentionBanner.vue'
 import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key } from '@element-plus/icons-vue'
 import { api } from './api'
 
@@ -131,6 +145,9 @@ const breadcrumbMap = {
   '/restore': '恢复操作',
   '/mirrors': '镜像管理',
   '/commit-gates': '提交门禁',
+  '/repository-policies': '仓库策略中心',
+  '/approval-rules': '审批规则',
+  '/ai-reviews': 'AI Code Review',
   '/statistics': '统计分析',
   '/settings': '系统设置',
   '/schedules': '定时任务',
@@ -147,13 +164,17 @@ function decodeRouteParam(value) {
 }
 
 export default {
-  components: { LoginView, AlertBell, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key },
+  components: { LoginView, AlertBell, ReviewAttentionBanner, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key },
   setup() {
     const router = useRouter()
     const route = useRoute()
     const authenticated = ref(false)
     const needsConfig = ref(false)
-    const collapsed = ref(false)
+    const compactViewport = window.matchMedia('(max-width: 1024px)')
+    const collapsed = ref(compactViewport.matches)
+    const syncSidebar = event => { collapsed.value = event.matches }
+    compactViewport.addEventListener('change', syncSidebar)
+    onUnmounted(() => compactViewport.removeEventListener('change', syncSidebar))
 
     const activeMenu = computed(() => {
       const path = route.path
@@ -218,7 +239,8 @@ export default {
     function onLogin() {
       authenticated.value = true
       checkSettings()
-      router.push('/dashboard')
+      // 待办深链接在重新登录后继续定位到原 PR。
+      if (route.path !== '/ai-reviews' || route.query.attention !== '1') router.push('/dashboard')
     }
 
     watch(() => route.path, (path) => {
@@ -245,7 +267,9 @@ export default {
 </script>
 
 <style>
-.layout { height: 100vh; }
+.layout { height: 100vh; height: 100dvh; }
+.layout > .el-container { height: 100%; }
+.layout .el-container { min-width: 0; min-height: 0; }
 
 .app-aside {
   background: var(--glass-chrome);
@@ -274,6 +298,7 @@ export default {
 }
 
 .collapse-btn {
+  appearance: none; background: transparent; border: 0; min-height: 36px; flex-shrink: 0;
   color: var(--text-muted); text-align: center; line-height: 36px; cursor: pointer;
   font-size: 16px; border-bottom: 1px solid rgba(15,23,42,0.06);
   user-select: none; transition: background-color 0.18s ease, color 0.18s ease; display: flex; align-items: center;
@@ -281,7 +306,7 @@ export default {
 }
 .collapse-btn:hover { color: var(--color-primary); background: rgba(255,255,255,0.45); }
 
-.app-menu { border-right: none; flex: 1; padding: 8px 0; }
+.app-menu { border-right: none; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; }
 .el-menu-item {
   transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; margin: 3px 10px; border-radius: 16px !important;
   height: 44px !important; line-height: 44px !important;
@@ -289,20 +314,14 @@ export default {
 }
 .el-menu-item.is-active {
   background: rgba(0,122,255,0.12) !important;
-  box-shadow: inset 0 0 0 1px rgba(0,122,255,0.10), inset 0 1px 0 rgba(255,255,255,0.72);
-  position: relative;
-}
-.el-menu-item.is-active::before {
-  content: ''; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 20px; border-radius: 0 999px 999px 0;
-  background: var(--color-primary);
-  box-shadow: 0 0 14px rgba(0,122,255,0.32);
+  box-shadow: inset 3px 0 0 var(--color-primary), inset 0 0 0 1px rgba(0,122,255,0.10);
 }
 .el-menu-item:hover {
   background: rgba(255,255,255,0.48) !important; color: var(--text-primary) !important;
 }
 
 .sidebar-footer {
+  flex-shrink: 0;
   padding: 16px 20px; border-top: 1px solid rgba(15,23,42,0.06);
   margin-top: auto;
 }
@@ -322,7 +341,7 @@ export default {
   background: var(--glass-chrome); backdrop-filter: var(--blur-chrome); -webkit-backdrop-filter: var(--blur-chrome);
   border-bottom: 1px solid rgba(15,23,42,0.07); box-shadow: 0 8px 22px rgba(15,23,42,0.045);
   display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
-  height: 60px !important;
+  min-height: 60px; height: auto !important; flex-shrink: 0; gap: 12px;
 }
 .header-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .breadcrumb {
@@ -341,7 +360,7 @@ export default {
   color: var(--text-muted); cursor: pointer; font: inherit; text-align: left; transition: background-color 0.18s ease, color 0.18s ease;
 }
 .breadcrumb-link:hover { background: rgba(0,122,255,0.08); color: var(--color-primary); }
-.header-right { display: flex; align-items: center; gap: 12px; }
+.header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .logout-btn {
   background: rgba(255,255,255,0.62) !important; border: 1px solid rgba(15,23,42,0.08) !important;
   color: var(--text-secondary) !important; border-radius: 14px !important;
@@ -353,8 +372,8 @@ export default {
     radial-gradient(circle at 78% 18%, rgba(255,255,255,0.36) 0, rgba(255,255,255,0.16) 22%, transparent 44%),
     radial-gradient(circle at 24% 82%, rgba(255,255,255,0.30) 0, rgba(255,255,255,0.12) 18%, transparent 38%),
     var(--gradient-bg);
-  min-height: calc(100vh - 60px); padding: 24px 28px;
-  position: relative; overflow: hidden;
+  min-height: 0; min-width: 0; padding: 24px 28px;
+  position: relative; overflow: auto;
 }
 .app-main::before {
   content: ''; position: absolute; width: 320px; height: 320px; right: 8%; top: 10%;
@@ -376,5 +395,18 @@ export default {
 
 .el-menu--collapse .el-menu-item {
   margin: 2px 6px !important;
+}
+.is-collapsed .sidebar-logo { padding: 18px 8px; }
+.is-collapsed .sidebar-footer { padding: 12px 16px; }
+.is-collapsed .el-menu-item { padding: 0 !important; display: flex; justify-content: center; }
+.is-collapsed .el-menu-item > .el-menu-tooltip__trigger { position: static; padding: 0; display: flex; justify-content: center; width: 100%; }
+.is-collapsed .el-menu-item .el-icon { margin: 0; flex-shrink: 0; }
+@media (max-width: 760px) {
+  .app-header { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
+  .app-header .header-left { flex: 1 1 140px; }
+  .app-header .breadcrumb { max-width: 100%; flex-wrap: wrap; }
+  .app-header .header-right { margin-left: auto; gap: 8px; }
+  .app-main { padding: 16px 12px; }
+  .app-main::before, .app-main::after { display: none; }
 }
 </style>

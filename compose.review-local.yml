@@ -1,0 +1,207 @@
+# 独立真实验收环境；不复用仓库策略测试数据，所有入口只绑定本机。
+name: ${REVIEW_PROJECT:-gitea-review-local}
+services:
+  offline-ingress:
+    profiles: [offline]
+    image: nginx:1.31.1
+    pull_policy: never
+    platform: linux/amd64
+    volumes: ['./review-runtime/offline-ingress.conf:/etc/nginx/nginx.conf:ro']
+    networks: [default, test-entry]
+    ports: ['127.0.0.1:${REVIEW_GITEA_PORT:-23000}:3000', '127.0.0.1:${REVIEW_MANAGER_PORT:-25480}:8080', '127.0.0.1:${REVIEW_FIXTURE_PORT:-23053}:5053']
+  review-model-fixture:
+    profiles: [fixture]
+    image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    platform: linux/amd64
+    command: [python, /opt/test/model_fixture.py]
+    environment:
+      FIXTURE_TOKEN: ${INTEGRATION_TOKEN}
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: ['./review-runtime/model_fixture.py:/opt/test/model_fixture.py:ro']
+    ports: ['127.0.0.1:${REVIEW_FIXTURE_PORT:-13053}:5053']
+    read_only: true
+    user: '10001:10001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+  postgres:
+    image: postgres:17.11-bookworm
+    pull_policy: never
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: gitea
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请先初始化本机测试凭据}
+    volumes: [review-postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U gitea]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  gitea:
+    image: ${REVIEW_GITEA_IMAGE:-gitea/gitea:1.26.4}
+    pull_policy: never
+    platform: linux/amd64
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD: ${PG_PASSWORD}
+      GITEA__security__INSTALL_LOCK: 'true'
+      GITEA__server__DOMAIN: 127.0.0.1
+      GITEA__server__ROOT_URL: http://127.0.0.1:${REVIEW_GITEA_PORT:-13000}/
+      GITEA__server__SSH_DOMAIN: 127.0.0.1
+      GITEA__server__SSH_PORT: '${REVIEW_SSH_PORT:-12222}'
+      GITEA__service__DISABLE_REGISTRATION: 'true'
+      GITEA__repository__DEFAULT_BRANCH: main
+      GITEA__webhook__ALLOWED_HOST_LIST: backend
+    volumes: [review-gitea:/data]
+    ports: ['127.0.0.1:${REVIEW_GITEA_PORT:-13000}:3000', '127.0.0.1:${REVIEW_SSH_PORT:-12222}:22']
+  backend:
+    image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    build:
+      context: ./backend
+      network: none
+      args: {BASE_IMAGE: 'python:3.11-slim'}
+    platform: linux/amd64
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+      BACKUP_DIR: /app/data/backups
+      SECRET_KEY: ${MANAGER_SECRET}
+      INIT_PASSWORD: ${MANAGER_PASSWORD}
+      INTEGRATION_SERVICE_TOKEN: ${INTEGRATION_TOKEN}
+      DISABLE_BACKGROUND_TASKS: '1'
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_GITEA_HOSTS: gitea
+      AI_REVIEW_MODEL_HOSTS: ${REVIEW_MODEL_HOSTS:-review-model-fixture}
+      AI_REVIEW_WEBHOOK_HOSTS: backend
+    volumes: [review-manager:/app/data, review-data:/app/review]
+    secrets: [review_master]
+  approval-view:
+    image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    platform: linux/amd64
+    command: [gunicorn, --bind, '0.0.0.0:5000', --workers, '2', --threads, '8', --timeout, '30', 'approval.view_app:create_app()']
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+    volumes: [review-manager:/app/data, /var/run/docker.sock:/var/run/docker.sock]
+    depends_on: [backend]
+    mem_limit: 512m
+    cpus: 1.0
+  frontend:
+    image: gitea-review-frontend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    build:
+      context: ./frontend
+      network: none
+      args: {BASE_IMAGE: 'nginx:1.31.1'}
+    platform: linux/amd64
+    depends_on: [backend]
+    ports: ['127.0.0.1:${REVIEW_MANAGER_PORT:-15480}:80']
+  review-worker:
+    image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    platform: linux/amd64
+    command: [python, -m, ai_review.worker]
+    environment:
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
+      AI_REVIEW_GITEA_HOSTS: gitea
+      AI_REVIEW_MODEL_HOSTS: ${REVIEW_MODEL_HOSTS:-review-model-fixture}
+      AI_REVIEW_EXECUTOR_URL: http://review-executor:5052
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-data:/app/review]
+    secrets: [review_master, review_executor]
+    networks: [default, review-execution]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 1.0
+    restart: unless-stopped
+  review-progress:
+    image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    platform: linux/amd64
+    command: [python, -m, ai_review.progress]
+    environment:
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_GITEA_HOSTS: gitea
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-data:/app/review]
+    secrets: [review_master]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+  review-feedback:
+    image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    platform: linux/amd64
+    command: [python, -m, ai_review.feedback]
+    environment:
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_GITEA_HOSTS: gitea
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-data:/app/review, review-manager:/app/data:ro]
+    secrets: [review_master]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+  review-executor:
+    image: gitea-review-executor:${REVIEW_IMAGE_TAG:-local}
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: review-runtime/Dockerfile
+      network: none
+      args: {BASE_IMAGE: 'python:3.11-slim'}
+    platform: linux/amd64
+    environment:
+      AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
+      AI_REVIEW_BROKER_URL: http://review-worker:5051/v1
+      PYTHONDONTWRITEBYTECODE: '1'
+    secrets: [review_executor]
+    networks: [review-execution]
+    dns: [127.0.0.1]
+    read_only: true
+    tmpfs: ['/tmp:size=384m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 2g
+    cpus: 2.0
+    restart: unless-stopped
+networks:
+  test-entry:
+  default:
+    internal: ${REVIEW_OFFLINE:-false}
+  review-execution:
+    internal: true
+volumes:
+  review-postgres:
+  review-gitea:
+  review-manager:
+  review-data:
+secrets:
+  review_master:
+    file: ${REVIEW_STATE_DIR:-./work/AIReview本机}/secrets/master.key
+  review_executor:
+    file: ${REVIEW_STATE_DIR:-./work/AIReview本机}/secrets/executor.token

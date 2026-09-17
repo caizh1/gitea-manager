@@ -1,0 +1,45 @@
+{
+  "结果": {
+    "created": 1789217170.1226132,
+    "detail": {
+      "error": "",
+      "needs_callback": false,
+      "results": [
+        {
+          "name": "review-admin/permission-check",
+          "ok": true,
+          "repository": 4
+        }
+      ],
+      "stage": "接入完成",
+      "steps": [
+        {
+          "name": "review-admin/permission-check",
+          "ok": true,
+          "step": "回调地址"
+        },
+        {
+          "name": "review-admin/permission-check",
+          "ok": true,
+          "step": "机器人与仓库权限"
+        },
+        {
+          "name": "review-admin/permission-check",
+          "ok": true,
+          "step": "Webhook 安装及投递"
+        },
+        {
+          "name": "review-admin/permission-check",
+          "ok": true,
+          "step": "PR 进度组件"
+        }
+      ]
+    },
+    "id": "7f13a6a38a02445361210fb68efa6628",
+    "status": "succeeded",
+    "updated": 1789217173.2868948
+  },
+  "耗时秒": 4.1,
+  "再次填写模型地址和Key": false,
+  "再次填写回调": false
+}

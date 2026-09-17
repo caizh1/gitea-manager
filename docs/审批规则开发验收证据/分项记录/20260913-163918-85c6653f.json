@@ -1,0 +1,900 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "a8637d0ce856df5377a5018887ff11291124a477189061766470c7ffe2280787",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-163918-85c6653f",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-原生五票优先",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Does not have enough approvals",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.44,
+        "旧引用": "9a244872756ebd8267196b1850c8ef0bd1984a05",
+        "新引用": "9a244872756ebd8267196b1850c8ef0bd1984a05",
+        "耗时秒": 0.042
+      },
+      {
+        "场景": "合并-merge-原生五票优先",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.439,
+        "旧引用": "9a244872756ebd8267196b1850c8ef0bd1984a05",
+        "新引用": "762fce0df74c562c7ba8155fd78d3d599542abef",
+        "耗时秒": 2.259
+      },
+      {
+        "场景": "合并-merge-原生CI-missing",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.42,
+        "旧引用": "762fce0df74c562c7ba8155fd78d3d599542abef",
+        "新引用": "762fce0df74c562c7ba8155fd78d3d599542abef",
+        "耗时秒": 0.056
+      },
+      {
+        "场景": "合并-merge-原生CI-failure",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.413,
+        "旧引用": "762fce0df74c562c7ba8155fd78d3d599542abef",
+        "新引用": "762fce0df74c562c7ba8155fd78d3d599542abef",
+        "耗时秒": 0.055
+      },
+      {
+        "场景": "合并-merge-原生CI-success",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.482,
+        "旧引用": "762fce0df74c562c7ba8155fd78d3d599542abef",
+        "新引用": "5b47a968eb3aa0b8063b3c85c21efa74c34735e8",
+        "耗时秒": 2.396
+      },
+      {
+        "场景": "合并-merge-原生请求修改",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "There are requested changes",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.417,
+        "旧引用": "5b47a968eb3aa0b8063b3c85c21efa74c34735e8",
+        "新引用": "5b47a968eb3aa0b8063b3c85c21efa74c34735e8",
+        "耗时秒": 0.041
+      },
+      {
+        "场景": "合并-merge-原生签名要求",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "wont sign: nokey",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.42,
+        "旧引用": "5b47a968eb3aa0b8063b3c85c21efa74c34735e8",
+        "新引用": "5b47a968eb3aa0b8063b3c85c21efa74c34735e8",
+        "耗时秒": 0.075
+      },
+      {
+        "场景": "接入-持续页面读取-仅页面回退",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入19-页面卸载不取消门禁",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-门禁卸载",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入18-回退只移除组件且保留接入后数据",
+        "结果": "失败"
+      }
+    ],
+    "首次失败": [
+      {
+        "原因": "接入18-回退只移除组件且保留接入后数据 断言失败",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 551, in main\n    run.run_matrix(args.section)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 538, in run_matrix\n    if section in ('all','native'):self.native_cases()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 526, in native_cases\n    self.rollback_cases()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 231, in rollback_cases\n    self.record('接入18-回退只移除组件且保留接入后数据',\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 153, in record\n    if not passed: raise RuntimeError(name+' 断言失败')\nRuntimeError: 接入18-回退只移除组件且保留接入后数据 断言失败\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "入口01-merge-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.001
+      },
+      {
+        "编号": "入口01-merge-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-rebase-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-rebase-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-rebase-merge-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-rebase-merge-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-squash-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-squash-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-fast-forward-only-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "入口01-fast-forward-only-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n",
+        "耗时秒": 0.0
+      },
+      {
+        "编号": "兼容01-原生五票",
+        "场景": "新增三票满足仍受原生五票限制",
+        "结果": "通过",
+        "证据": {
+          "PR": 7,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 25
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 26
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 27
+              }
+            ],
+            "base": "9a244872756ebd8267196b1850c8ef0bd1984a05",
+            "checked_at": 1789288843.220914,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "48f3d0f1fb040e7ebb2dbdf2615eda6fa80a5992",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "isolated_enforced",
+            "name": "三人及双组审批",
+            "native_required": 5,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 7,
+            "policy_id": 1,
+            "pr_id": 7,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789288858.2209144
+          }
+        },
+        "耗时秒": 11.68
+      },
+      {
+        "编号": "原生01-missing",
+        "场景": "原生CI独立生效",
+        "结果": "通过",
+        "证据": {
+          "原生CI状态": "missing",
+          "PR": 8
+        },
+        "耗时秒": 8.149
+      },
+      {
+        "编号": "原生01-failure",
+        "场景": "原生CI独立生效",
+        "结果": "通过",
+        "证据": {
+          "原生CI状态": "failure",
+          "PR": 9
+        },
+        "耗时秒": 6.988
+      },
+      {
+        "编号": "原生01-success",
+        "场景": "原生CI独立生效",
+        "结果": "通过",
+        "证据": {
+          "原生CI状态": "success",
+          "PR": 10
+        },
+        "耗时秒": 11.24
+      },
+      {
+        "编号": "原生02-请求修改",
+        "场景": "原生请求修改不能被新增三票绕过",
+        "结果": "通过",
+        "证据": {
+          "PR": 11,
+          "结果": "目标分支未写入"
+        },
+        "耗时秒": 9.285
+      },
+      {
+        "编号": "原生02-签名",
+        "场景": "原生签名要求保留",
+        "结果": "通过",
+        "证据": {
+          "PR": 12,
+          "结果": "未签名提交被原生拒绝"
+        },
+        "耗时秒": 8.47
+      },
+      {
+        "编号": "接入04-B",
+        "场景": "新增组票满足也不能吞掉其他Hook拒绝",
+        "结果": "失败",
+        "原因": "POST /repos/approval-probe/approval-live/branches 返回 500：{'message': '', 'url': 'http://127.0.0.1:3000/api/swagger'}",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 521, in third_party\n    pr=self.pr('其他门禁优先',('alice','bob','carol'))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 141, in pr\n    pr = self.create_pr(name)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 123, in create_pr\n    self.api('POST', self.path+'/branches', {'new_branch_name': branch, 'old_ref_name': 'main'}, user='author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 105, in api\n    raise RuntimeError(f'{method} {path} 返回 {response.code}：{str(value)[:500]}')\nRuntimeError: POST /repos/approval-probe/approval-live/branches 返回 500：{'message': '', 'url': 'http://127.0.0.1:3000/api/swagger'}\n",
+        "耗时秒": 1.742
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [
+      {
+        "编号": "入口01-merge-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-merge-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-rebase-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-rebase-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-rebase-merge-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-rebase-merge-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-squash-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-squash-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-fast-forward-only-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 473, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "入口01-fast-forward-only-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "失败",
+        "原因": "local variable 'http' referenced before assignment",
+        "异常": "UnboundLocalError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 476, in <lambda>\n    lambda pr=pr,style=style:self.web_merge(pr,style,True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 97, in web_merge\n    http,_=self.native_web_login('author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 80, in native_web_login\n    jar=http.cookiejar.CookieJar()\nUnboundLocalError: local variable 'http' referenced before assignment\n"
+      },
+      {
+        "编号": "接入04-B",
+        "场景": "新增组票满足也不能吞掉其他Hook拒绝",
+        "结果": "失败",
+        "原因": "POST /repos/approval-probe/approval-live/branches 返回 500：{'message': '', 'url': 'http://127.0.0.1:3000/api/swagger'}",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 125, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 521, in third_party\n    pr=self.pr('其他门禁优先',('alice','bob','carol'))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 141, in pr\n    pr = self.create_pr(name)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 123, in create_pr\n    self.api('POST', self.path+'/branches', {'new_branch_name': branch, 'old_ref_name': 'main'}, user='author')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 105, in api\n    raise RuntimeError(f'{method} {path} 返回 {response.code}：{str(value)[:500]}')\nRuntimeError: POST /repos/approval-probe/approval-live/branches 返回 500：{'message': '', 'url': 'http://127.0.0.1:3000/api/swagger'}\n"
+      }
+    ],
+    "隔离网段": "10.253.241.64/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "64c32169f95093ca03c39423a559faf80a9c3bd200314e290c837f19e9ad038a",
+      "地址": "http://127.0.0.1:55297",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T08:39:23.982264044Z"
+    },
+    "状态": "基础设施或前置失败，保留现场",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789288779.6774726,
+      "fingerprint": "ac88d273f6595377c2f14c9b9d69189f2d084a80ddb78fef515fcf6ac1204d0a",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T08:39:32Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T08:39:32Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T08:39:35Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0226
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0047
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0132
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0436
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0049
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0051
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.0056
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.005
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0048
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0044
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        }
+      ],
+      "仅页面回退": [
+        {
+          "成功": true,
+          "耗时秒": 0.0089
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        }
+      ],
+      "门禁卸载": [
+        {
+          "成功": true,
+          "耗时秒": 0.0064
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        }
+      ]
+    }
+  }
+}

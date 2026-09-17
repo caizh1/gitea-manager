@@ -1,0 +1,526 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "88f0a5ac477fd89337531be809121f69de23916300d5149a147e0df88f7cf1f7",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-191237-0a94eb0b",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入边界测试未改原生规则或重启",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "接入13-B-预检读取中创建",
+        "场景": "第一次PR列表读取后创建PR，预检必须拒绝不完整边界",
+        "结果": "失败",
+        "原因": "{\"allow\": false, \"error\": \"原生接口超时或响应损坏，未放行\"}",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 142, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-onboarding-races.py\", line 34, in preview_creation\n    assert 'PR 创建边界变化' in result.get('error',''),json.dumps(result,ensure_ascii=False)\nAssertionError: {\"allow\": false, \"error\": \"原生接口超时或响应损坏，未放行\"}\n",
+        "耗时秒": 7.355
+      },
+      {
+        "编号": "接入13-B-安装准备中创建",
+        "场景": "导出后且正式激活前创建PR，必须保持存量或拒绝启用",
+        "结果": "失败",
+        "原因": "{\"导出后时间\": 1789298010.1239328, \"创建完成时间\": 1789298015.3994298, \"检查时间\": 1789298028.067025, \"PR\": 3, \"模式\": \"isolated_enforced\", \"存量豁免\": false, \"新增条件\": false, \"安装拒绝\": null}",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 142, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-onboarding-races.py\", line 61, in after_bundle\n    assert policy['mode']!='isolated_enforced' or state['grandfathered'],json.dumps(evidence,ensure_ascii=False)\nAssertionError: {\"导出后时间\": 1789298010.1239328, \"创建完成时间\": 1789298015.3994298, \"检查时间\": 1789298028.067025, \"PR\": 3, \"模式\": \"isolated_enforced\", \"存量豁免\": false, \"新增条件\": false, \"安装拒绝\": null}\n",
+        "耗时秒": 21.314
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [
+      {
+        "编号": "接入13-B-预检读取中创建",
+        "场景": "第一次PR列表读取后创建PR，预检必须拒绝不完整边界",
+        "结果": "失败",
+        "原因": "{\"allow\": false, \"error\": \"原生接口超时或响应损坏，未放行\"}",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 142, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-onboarding-races.py\", line 34, in preview_creation\n    assert 'PR 创建边界变化' in result.get('error',''),json.dumps(result,ensure_ascii=False)\nAssertionError: {\"allow\": false, \"error\": \"原生接口超时或响应损坏，未放行\"}\n"
+      },
+      {
+        "编号": "接入13-B-安装准备中创建",
+        "场景": "导出后且正式激活前创建PR，必须保持存量或拒绝启用",
+        "结果": "失败",
+        "原因": "{\"导出后时间\": 1789298010.1239328, \"创建完成时间\": 1789298015.3994298, \"检查时间\": 1789298028.067025, \"PR\": 3, \"模式\": \"isolated_enforced\", \"存量豁免\": false, \"新增条件\": false, \"安装拒绝\": null}",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 142, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-onboarding-races.py\", line 61, in after_bundle\n    assert policy['mode']!='isolated_enforced' or state['grandfathered'],json.dumps(evidence,ensure_ascii=False)\nAssertionError: {\"导出后时间\": 1789298010.1239328, \"创建完成时间\": 1789298015.3994298, \"检查时间\": 1789298028.067025, \"PR\": 3, \"模式\": \"isolated_enforced\", \"存量豁免\": false, \"新增条件\": false, \"安装拒绝\": null}\n"
+      }
+    ],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "backend/approval/__init__.py": "d8d200d2c243b369cfcdc14aee9b6b7d047a9d58d72dfa6475af0ab05cac135d",
+      "backend/approval/assets/approval-hook-linux-amd64": "65734d7d22b014605efa02e772a86bd7259f1a2709295fc778bb3148552c7992",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "backend/approval/assets/widget.css": "1adbfb3b870ab2e8e63b9b1bcffdf2ce695aa2b8d76b9a85eeb276f04091f2aa",
+      "backend/approval/assets/widget.js": "9b58ebfea614841a02a02ea6c046a65ead13f9ed17511024c9991131b4991220",
+      "backend/approval/bundle.py": "d4cdc96bcdd12a0b375e722e9510ec9367b2fa113f95b7d6162ead8b3cc87159",
+      "backend/approval/display_cache.py": "ded57b3da3e7d1d4edcb1ece078b8578a634f80e24e044d03428016f0fae7976",
+      "backend/approval/gitea.py": "ae7d5b37913308ed7813d0db1c3421ad314123fe009cbc88cec6142d9db32e26",
+      "backend/approval/hook/go.mod": "e203d2c7d49dc50205d9f80c5d78aad331f1eb0bf687a55ed030581d1dfe378f",
+      "backend/approval/hook/main.go": "b04ca918b6f4054415222418b802059a87d7cb214d2fa03636daf462c4e95c4b",
+      "backend/approval/hook/main_test.go": "c248332cfa03c5bf8915979683f6eaff0b166b91fd4204c89f195306fb051702",
+      "backend/approval/native_metadata.py": "d0b2709ba3a43f35c5d44f29d966f369383b47fdf70a4904e9b3d03fba0aaae0",
+      "backend/approval/rules.py": "4d6bb018a0a0a47e4dd9c4ff9df4c73030231f92414ec16785fb04415601583c",
+      "backend/approval/service.py": "36d78fec13c8ca11c2f8db961ae1d6e4ddcc70e5130c634e8dee8717f40dd3e5",
+      "backend/approval/timeline.py": "6a9a54ca99b05a90ec1dac43e820278a1aeae96382861cfcbef34d7ccc688549",
+      "backend/approval/view_app.py": "4db8fe579820406ae143ed6796fd1583f844b2e71b375af4112d90ebabbd729a",
+      "backend/models.py": "13802d12cfb4c6bd2f614e4ff0f3e5d22e02ab7b604394fbf99f4ac8e6de825c",
+      "backend/routes/approval_routes.py": "e3cbfe4008c10a22c85c6f05cc3aec175e307ea0bf796968679682e98a932c3f",
+      "compose.ai-review.images.yml": "8fa2cfd5bb0d6fd478ac5e46637cefc4d797c614c455414407b095578a3e819c",
+      "compose.local.yml": "4380c7d9da966432802b60c83a20fb84f8eff0b1a0261a2590308223a4acb98f",
+      "compose.review-local.yml": "d2846a48025c1fdb9fd176364ba6f1910c4b779d128655f3f945b09d729c6dda",
+      "docker-compose.yml": "4c58750317b08b2786022d1be5b0272e7955b4fdc8179c425692d8fa89b01f41",
+      "frontend/nginx.conf": "eb0f9d233bed6b19009bf73b9582ccf53dfb79b1ee7ef3637f5549a9d46e8fd7",
+      "frontend/src/views/ApprovalRules.vue": "346ee575ad7657bb9f110a573de82a6c559052876cb2b4877618f5fb57c5f11b",
+      "scripts/approval-capacity-probe.py": "16e9d3ad3f49df1d3df13b5f060487e7a2dd2493b52e33622addc13b6876433c",
+      "scripts/approval-compat-matrix.py": "45bbcb4ba9b98e71696ed15eb689ee37b2acd5e39442a43fa562314068228d84",
+      "scripts/approval-concurrency-matrix.py": "657a5fe7a7ba50c8253caef91d097d03f7559f7799b4577d03ce8c3457e9c0a8",
+      "scripts/approval-evidence-index.py": "cf59e25296570158461949d5c119341b06dcf001add8e78b41aee3ed3d29a2d3",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb",
+      "scripts/approval-feasibility.py": "51cd0e4a60cd7b438839d58e77594427be0c7667fd9105e614baf4e259ff71e2",
+      "scripts/approval-integration.py": "9c3c99d3838d5c16fdbc7f5451004a3c676cf11702f953a37a2ab9acef5df7e1",
+      "scripts/approval-matrix.py": "a1c8952dc1fb30ffdc7b068dac4b631e9b17723892419c11da6c1d2e93b6c0b0",
+      "scripts/approval-onboarding-races.py": "0a76e9c994241d51069cea4f364fcbc6cc9b9400f99785a6b01540dad1b1e8b8",
+      "scripts/approval-pause-proxy.py": "4fced6ed6af04746e4e420783308105b5461c55abb75335ce957d651bcc3d3cf",
+      "scripts/approval-ssh-fixture.py": "544ae9abfdc9cb732238d44cd804044296538505a76edb347d29b1f489d38691",
+      "scripts/approval-ssh-matrix.py": "6ab4f814c9c43cf1cc3043481bdbd8e1c575fcd427ef9e34b186fc8a0e913f56",
+      "scripts/approval-view-matrix.py": "39f7671198bd5acfc6d8c230c2d2513c30166743104ea5065567f16543c42c2b",
+      "scripts/approval-view-probe.py": "5f60d03ce82d0b4f6010141c3abae18d1d15e26ffe403f32fba50d752e3b32d4",
+      "scripts/upgrade_runtime.py": "71f01469d606bf0835fac24dd3d4807951d60afbcf130b02914a9789a924bd5e"
+    },
+    "Docker执行环境": {
+      "客户端路径": "/Applications/Docker.app/Contents/Resources/bin/docker",
+      "客户端与服务版本": "29.6.2/29.6.2"
+    },
+    "隔离网段": "10.253.244.48/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "ab821f3f8f7b32b157cb9c1a6ff700ce72d9b391c9edcce26042d0c26ea8da81",
+      "地址": "http://127.0.0.1:54380",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T11:12:42.905992928Z"
+    },
+    "状态": "接入并发分项结束，完整矩阵仍待验收",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789297979.7313075,
+      "fingerprint": "b1efe90f4493094be78d891b8ef06672b24a2a8aa4cf488ddb4a00fc316acc12",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T11:12:51Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T11:12:51Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T11:12:54Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0307
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.03
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0054
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.0064
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0046
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0107
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0088
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0048
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        }
+      ]
+    },
+    "切换边界原始证据": {
+      "导出后时间": 1789298010.1239328,
+      "创建完成时间": 1789298015.3994298,
+      "检查时间": 1789298028.067025,
+      "PR": 3,
+      "模式": "isolated_enforced",
+      "存量豁免": false,
+      "新增条件": false,
+      "安装拒绝": null
+    },
+    "结束时间": 1789298029.489889
+  }
+}

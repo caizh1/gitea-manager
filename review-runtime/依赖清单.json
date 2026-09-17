@@ -1,0 +1,34 @@
+{
+  "说明": "部署前准备的离线依赖，运行时禁止下载。",
+  "依赖": [
+    {
+      "组件": "tree-sitter",
+      "版本": "0.25.2",
+      "文件": "backend/wheels/tree_sitter-0.25.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+      "SHA256": "3e65ae456ad0d210ee71a89ee112ac7e72e6c2e5aac1b95846ecc7afa68a194c",
+      "来源": "https://files.pythonhosted.org/packages/34/38/b735a58c1c2f60a168a678ca27b4c1a9df725d0bf2d1a8a1c571c033111e/tree_sitter-0.25.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+    },
+    {
+      "组件": "tree-sitter-c",
+      "版本": "0.24.1",
+      "文件": "backend/wheels/tree_sitter_c-0.24.1-cp310-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "SHA256": "a6a807705a3978911dc7ee26a7ad36dcfacb6adfc13c190d496660ec9bd66707",
+      "来源": "https://files.pythonhosted.org/packages/5e/e8/fc541d34ee81c386c5453c2596c1763e8e9cd7cb0725f39d7dfa2276afa4/tree_sitter_c-0.24.1-cp310-abi3-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+    },
+    {
+      "组件": "tree-sitter-cpp",
+      "版本": "0.23.4",
+      "文件": "backend/wheels/tree_sitter_cpp-0.23.4-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "SHA256": "773d2cafc08bbc0f998687fa33f42f378c1a371cdb582870c4d13abb06092706",
+      "来源": "https://files.pythonhosted.org/packages/6a/4d/23e390234d2acd351f5563b1079c515d7c1fe13ddb7392cee543be74dda3/tree_sitter_cpp-0.23.4-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+    },
+    {
+      "组件": "OpenCode",
+      "版本": "1.18.7",
+      "文件": "review-runtime/vendor/opencode-linux-x64",
+      "SHA256": "5a0ffa7a5504bdde023a0c59cfa009654c52186d135b3b762f28e032ca2833b5",
+      "归档SHA256": "96df9b0b4fcabb420c445dfdcf45d49570a57546603bbb4784593c6dfb098d7e",
+      "来源": "https://github.com/anomalyco/opencode/releases/download/v1.18.7/opencode-linux-x64-baseline.tar.gz"
+    }
+  ]
+}

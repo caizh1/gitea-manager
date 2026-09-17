@@ -1,0 +1,30 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "73196af86e6435c9fa7ea49aaf24eac6961a6217526ae698f960bf0bf44928c3",
+  "记录": {
+    "说明": "官方镜像独立实例第一阶段反证，不代表完整审批功能或生产验收。",
+    "运行标识": "20260913-134956-1d7c6f58",
+    "状态": "实验未完成",
+    "检查": [],
+    "阻断": [],
+    "未执行": [
+      "生产接入矩阵",
+      "网页与自动合并入口",
+      "代码更新竞争",
+      "影子和强制模式各24小时",
+      "现场负载与人工精力指标"
+    ],
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "错误": "docker 执行失败（1）： Network gm-approval-probe-20260913-134956-1d7c6f58_default Creating \n Network gm-approval-probe-20260913-134956-1d7c6f58_default Error Error response from daemon: all predefined address pools have been fully subnetted\nfailed to create network gm-approval-probe-20260913-134956-1d7c6f58_default: Error response from daemon: all predefined address pools have been fully subnetted\n",
+    "隔离实例已停止": true
+  }
+}

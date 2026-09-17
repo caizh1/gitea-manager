@@ -4,6 +4,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+if [ -f compose.managed.json ]; then
+    echo '[提示] 当前实例由一键升级器管理，请将新版升级包与 upgrade.sh 放在同一目录后执行 bash upgrade.sh。'
+    exit 0
+fi
+
 export SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
 
 mkdir -p data/backups

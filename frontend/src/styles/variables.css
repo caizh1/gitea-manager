@@ -3,7 +3,7 @@
   --glass-surface-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.60), rgba(255, 255, 255, 0.46));
   --glass-control: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.42));
   --glass-chrome: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.36));
-  --glass-dialog: linear-gradient(180deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.56));
+  --glass-dialog: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.96));
   --glass-bg: var(--glass-surface);
   --glass-bg-heavy: var(--glass-dialog);
   --glass-bg-dark: linear-gradient(180deg, rgba(255, 255, 255, 0.50), rgba(255, 255, 255, 0.34));
@@ -28,7 +28,7 @@
   --radius-md: 20px;
   --radius-lg: 26px;
 
-  --gradient-primary: linear-gradient(180deg, rgba(0, 122, 255, 0.96) 0%, rgba(0, 98, 220, 0.96) 100%);
+  --gradient-primary: linear-gradient(180deg, #1765be 0%, #124e96 100%);
   --gradient-blue: var(--glass-surface);
   --gradient-green: var(--glass-surface);
   --gradient-orange: var(--glass-surface);
@@ -38,16 +38,46 @@
 
   --text-primary: #111827;
   --text-secondary: #5f6b7a;
-  --text-muted: #8a95a5;
+  --text-muted: #647182;
 
-  --color-primary: #007aff;
+  --color-primary: #1765be;
   --color-primary-light: rgba(0, 122, 255, 0.12);
-  --color-success: #34c759;
+  --color-success: #20753a;
   --color-success-light: rgba(52, 199, 89, 0.12);
-  --color-warning: #ff9500;
+  --color-warning: #965500;
   --color-warning-light: rgba(255, 149, 0, 0.13);
-  --color-danger: #ff3b30;
+  --color-danger: #c43131;
   --color-danger-light: rgba(255, 59, 48, 0.12);
   --color-info: #5f6b7a;
   --color-info-light: rgba(95, 107, 122, 0.12);
+
+  /* 统一组件语义色；文字按钮、朴素按钮与禁用态继续由组件状态控制。 */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: #3475bc;
+  --el-color-primary-light-5: #86acd7;
+  --el-color-primary-light-7: #c4d8ec;
+  --el-color-primary-light-8: #dce8f5;
+  --el-color-primary-light-9: #edf3fa;
+  --el-color-primary-dark-2: #124e96;
+  --el-color-success: var(--color-success);
+  --el-color-success-light-3: #327e49;
+  --el-color-success-light-9: #eef7f0;
+  --el-color-success-dark-2: #185d2d;
+  --el-color-warning: var(--color-warning);
+  --el-color-warning-light-3: #986017;
+  --el-color-warning-light-9: #fff5e8;
+  --el-color-warning-dark-2: #754200;
+  --el-color-danger: var(--color-danger);
+  --el-color-danger-light-3: #c14141;
+  --el-color-danger-light-9: #fff0f0;
+  --el-color-danger-dark-2: #a32626;
+  --el-color-info: var(--color-info);
+  --el-color-info-light-3: #657385;
+  --el-color-info-dark-2: #485463;
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: #647182;
+  --table-max-height: clamp(240px, calc(100dvh - 300px), 600px);
+  --table-detail-max-height: clamp(180px, calc(100dvh - 360px), 360px);
 }

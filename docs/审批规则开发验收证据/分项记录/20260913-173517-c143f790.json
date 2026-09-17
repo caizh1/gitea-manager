@@ -1,0 +1,637 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "6245f5e8c9ee8c8cd25bd06811317c332f15f6d02e3934dc79a7c07e48017309",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-173517-c143f790",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-仅页面回退",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入19-页面卸载不取消门禁",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-门禁卸载",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入18-回退只移除组件且保留接入后数据",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入08-重复卸载回执可核对",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-回退后没有重启",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "入口04-HTTP-克隆",
+        "场景": "真实传输拉取已存在私有仓库",
+        "结果": "通过",
+        "证据": {
+          "工作目录": "/Users/archer/Work/gitea-manager/work/审批可行性-20260913-173517-c143f790/Git工作区-HTTP"
+        },
+        "耗时秒": 0.257
+      },
+      {
+        "编号": "入口04-HTTP-普通分支",
+        "场景": "非受管分支正常推送",
+        "结果": "通过",
+        "证据": {
+          "推送": {
+            "退出码": 0,
+            "输出": "",
+            "错误输出": "remote: \nremote: Create a new pull request for 'matrix-http-22871a9b':        \nremote:   http://127.0.0.1:3000/approval-probe/approval-live/pulls/new/matrix-http-22871a9b        \nremote: \nremote: . Processing 1 references        \nremote: Processed 1 references in total        \nTo http://127.0.0.1:59531/approval-probe/approval-live.git\n * [new branch]      HEAD -> matrix-http-22871a9b\n"
+          },
+          "实际引用": "f848e5e409799572c8c4deb3c828424477507901"
+        },
+        "耗时秒": 1.279
+      },
+      {
+        "编号": "入口05-HTTP-直接推送",
+        "场景": "原生保护与新增门禁不能被绕过",
+        "结果": "通过",
+        "证据": {
+          "实际引用不变": true,
+          "推送": {
+            "退出码": 1,
+            "输出": "",
+            "错误输出": "remote: \nremote: error:        \nremote: error: Not allowed to push to protected branch main        \nremote: error:        \nremote: 审批门禁：受管分支只允许经过审批的 PR 合并        \nTo http://127.0.0.1:59531/approval-probe/approval-live.git\n ! [remote rejected] HEAD -> main (pre-receive hook declined)\nerror: failed to push some refs to 'http://127.0.0.1:59531/approval-probe/approval-live.git'\n"
+          }
+        },
+        "耗时秒": 0.75
+      },
+      {
+        "编号": "入口05-HTTP-强推",
+        "场景": "原生保护与新增门禁不能被绕过",
+        "结果": "通过",
+        "证据": {
+          "实际引用不变": true,
+          "推送": {
+            "退出码": 1,
+            "输出": "",
+            "错误输出": "remote: \nremote: error:        \nremote: error: Not allowed to push to protected branch main        \nremote: error:        \nremote: 审批门禁：受管分支只允许经过审批的 PR 合并        \nTo http://127.0.0.1:59531/approval-probe/approval-live.git\n ! [remote rejected] HEAD -> main (pre-receive hook declined)\nerror: failed to push some refs to 'http://127.0.0.1:59531/approval-probe/approval-live.git'\n"
+          }
+        },
+        "耗时秒": 0.718
+      },
+      {
+        "编号": "入口05-HTTP-多引用",
+        "场景": "原生保护与新增门禁不能被绕过",
+        "结果": "通过",
+        "证据": {
+          "实际引用不变": true,
+          "推送": {
+            "退出码": 1,
+            "输出": "",
+            "错误输出": "remote: \nremote: error:        \nremote: error: Not allowed to push to protected branch main        \nremote: error:        \nremote: 审批门禁：受管合并不接受多引用更新        \nTo http://127.0.0.1:59531/approval-probe/approval-live.git\n ! [remote rejected] HEAD -> main (pre-receive hook declined)\n ! [remote rejected] HEAD -> matrix-multi (pre-receive hook declined)\nerror: failed to push some refs to 'http://127.0.0.1:59531/approval-probe/approval-live.git'\n"
+          }
+        },
+        "耗时秒": 0.911
+      },
+      {
+        "编号": "入口04-SSH-克隆",
+        "场景": "真实传输拉取已存在私有仓库",
+        "结果": "通过",
+        "证据": {
+          "工作目录": "/Users/archer/Work/gitea-manager/work/审批可行性-20260913-173517-c143f790/Git工作区-SSH"
+        },
+        "耗时秒": 0.508
+      },
+      {
+        "编号": "入口04-SSH-普通分支",
+        "场景": "非受管分支正常推送",
+        "结果": "通过",
+        "证据": {
+          "推送": {
+            "退出码": 0,
+            "输出": "",
+            "错误输出": "remote: \nremote: Create a new pull request for 'matrix-ssh-2a43de23':        \nremote:   http://127.0.0.1:3000/approval-probe/approval-live/pulls/new/matrix-ssh-2a43de23        \nremote: \nremote: . Processing 1 references        \nremote: Processed 1 references in total        \nTo ssh://127.0.0.1:59530/approval-probe/approval-live.git\n * [new branch]      HEAD -> matrix-ssh-2a43de23\n"
+          },
+          "实际引用": "d5d583851947a1ec5cec1637f27e7a13e429aecc"
+        },
+        "耗时秒": 1.61
+      },
+      {
+        "编号": "入口05-SSH-直接推送",
+        "场景": "原生保护与新增门禁不能被绕过",
+        "结果": "通过",
+        "证据": {
+          "实际引用不变": true,
+          "推送": {
+            "退出码": 1,
+            "输出": "",
+            "错误输出": "remote: \nremote: error:        \nremote: error: Not allowed to push to protected branch main        \nremote: error:        \nremote: 审批门禁：受管分支只允许经过审批的 PR 合并        \nTo ssh://127.0.0.1:59530/approval-probe/approval-live.git\n ! [remote rejected] HEAD -> main (pre-receive hook declined)\nerror: failed to push some refs to 'ssh://127.0.0.1:59530/approval-probe/approval-live.git'\n"
+          }
+        },
+        "耗时秒": 1.157
+      },
+      {
+        "编号": "入口05-SSH-强推",
+        "场景": "原生保护与新增门禁不能被绕过",
+        "结果": "通过",
+        "证据": {
+          "实际引用不变": true,
+          "推送": {
+            "退出码": 1,
+            "输出": "",
+            "错误输出": "remote: \nremote: error:        \nremote: error: Not allowed to push to protected branch main        \nremote: error:        \nremote: 审批门禁：受管分支只允许经过审批的 PR 合并        \nTo ssh://127.0.0.1:59530/approval-probe/approval-live.git\n ! [remote rejected] HEAD -> main (pre-receive hook declined)\nerror: failed to push some refs to 'ssh://127.0.0.1:59530/approval-probe/approval-live.git'\n"
+          }
+        },
+        "耗时秒": 0.978
+      },
+      {
+        "编号": "入口05-SSH-多引用",
+        "场景": "原生保护与新增门禁不能被绕过",
+        "结果": "通过",
+        "证据": {
+          "实际引用不变": true,
+          "推送": {
+            "退出码": 1,
+            "输出": "",
+            "错误输出": "remote: \nremote: error:        \nremote: error: Not allowed to push to protected branch main        \nremote: error:        \nremote: 审批门禁：受管合并不接受多引用更新        \nTo ssh://127.0.0.1:59530/approval-probe/approval-live.git\n ! [remote rejected] HEAD -> main (pre-receive hook declined)\n ! [remote rejected] HEAD -> matrix-multi (pre-receive hook declined)\nerror: failed to push some refs to 'ssh://127.0.0.1:59530/approval-probe/approval-live.git'\n"
+          }
+        },
+        "耗时秒": 0.915
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "38495869955f346617c4ab19a045b09cd803c4d4191487cf34f94e00c692eedc",
+      "scripts/approval-integration.py": "855932edfc36ee7566713b6b9b84d78e85605b8447190e3c0ad3c66b02302d4b",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb"
+    },
+    "分项": "transport",
+    "隔离网段": "10.253.242.80/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "6abaea51ebb94725fccc6ebc7bb46c2708811fe4cfe7ea2986e48cef58fa12e0",
+      "地址": "http://127.0.0.1:59531",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:35:23.180803793Z"
+    },
+    "状态": "本轮分项执行完成，完整矩阵仍按所有分项证据判定",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789292140.1070867,
+      "fingerprint": "5d361f462999d819752b313058daeea8e985f0bc69e90c78cfdf3e02cdad87e3",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T09:35:31Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T09:35:31Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T09:35:34Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0222
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0186
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.002
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.0066
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0046
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0048
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0078
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.005
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.005
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0061
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0044
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.005
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        }
+      ],
+      "仅页面回退": [
+        {
+          "成功": true,
+          "耗时秒": 0.005
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.005
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0078
+        }
+      ],
+      "门禁卸载": [
+        {
+          "成功": true,
+          "耗时秒": 0.0059
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        }
+      ]
+    },
+    "传输检查后原生保持": {
+      "规则": true,
+      "未重启": true
+    }
+  }
+}

@@ -10,7 +10,7 @@
         title="添加服务器前必须先配置本机 IP，用于区分本地和远程服务器。" style="margin-bottom:20px" />
       <el-form label-width="100px">
         <el-form-item label="本机 IP">
-          <el-input v-model="hostIp" placeholder="例: 10.10.5.21" style="width:300px" />
+          <el-input v-model="hostIp" placeholder="例: 10.10.5.21" style="width:100%;max-width:300px" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="save" :loading="saving">保存</el-button>

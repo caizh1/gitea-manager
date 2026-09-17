@@ -1,0 +1,161 @@
+{
+  "结果": "通过",
+  "规则数": 2,
+  "每条字段数": 30,
+  "比较字段总数": 60,
+  "字段差异": [],
+  "删除的来源仓库ID": 98,
+  "来源删除后可保存": true,
+  "原样保存未使预览过期": true,
+  "模板": {
+    "content_hash": "95f3322e693d0897605d689795255d833c43f0f2682ae41f06a113d1686865a6",
+    "created_at": "2026-09-12T12:45:58.406810Z",
+    "description": "两条原生分支规则，组织内手动批量下发；保留来源快照。",
+    "id": 16,
+    "identities": {
+      "instance_key": "ee9305a7f9a47f449923f78d75cc4e92968cffbdd7f8f025e4bd3e203470d28c",
+      "teams": [
+        {
+          "id": 26,
+          "name": "org-center-review",
+          "organization_id": 6,
+          "server_id": 1
+        },
+        {
+          "id": 27,
+          "name": "org-center-write",
+          "organization_id": 6,
+          "server_id": 1
+        }
+      ],
+      "users": [
+        {
+          "id": 2,
+          "name": "policy-developer",
+          "server_id": 1
+        },
+        {
+          "id": 3,
+          "name": "policy-reviewer-one",
+          "server_id": 1
+        }
+      ]
+    },
+    "name": "集团研发标准（组织验收）",
+    "organization": {
+      "id": 6,
+      "name": "policy-qa",
+      "server_id": 1
+    },
+    "rules": [
+      {
+        "approvals_whitelist_teams": [
+          "org-center-review"
+        ],
+        "approvals_whitelist_username": [
+          "policy-reviewer-one"
+        ],
+        "block_admin_merge_override": true,
+        "block_on_official_review_requests": true,
+        "block_on_outdated_branch": true,
+        "block_on_rejected_reviews": true,
+        "dismiss_stale_approvals": true,
+        "enable_approvals_whitelist": true,
+        "enable_force_push": true,
+        "enable_force_push_allowlist": true,
+        "enable_merge_whitelist": true,
+        "enable_push": true,
+        "enable_push_whitelist": true,
+        "enable_status_check": true,
+        "force_push_allowlist_deploy_keys": true,
+        "force_push_allowlist_teams": [
+          "org-center-write"
+        ],
+        "force_push_allowlist_usernames": [
+          "policy-developer"
+        ],
+        "ignore_stale_approvals": false,
+        "merge_whitelist_teams": [
+          "org-center-write"
+        ],
+        "merge_whitelist_usernames": [
+          "policy-developer"
+        ],
+        "priority": 3,
+        "protected_file_patterns": "secrets/**;*.key",
+        "push_whitelist_deploy_keys": true,
+        "push_whitelist_teams": [
+          "org-center-write"
+        ],
+        "push_whitelist_usernames": [
+          "policy-developer"
+        ],
+        "require_signed_commits": true,
+        "required_approvals": 1,
+        "rule_name": "main",
+        "status_check_contexts": [
+          "ci/*",
+          "org-policy/check"
+        ],
+        "team_org": "policy-qa",
+        "unprotected_file_patterns": "docs/**"
+      },
+      {
+        "approvals_whitelist_teams": [
+          "org-center-review"
+        ],
+        "approvals_whitelist_username": [
+          "policy-reviewer-one"
+        ],
+        "block_admin_merge_override": true,
+        "block_on_official_review_requests": true,
+        "block_on_outdated_branch": true,
+        "block_on_rejected_reviews": true,
+        "dismiss_stale_approvals": true,
+        "enable_approvals_whitelist": true,
+        "enable_force_push": true,
+        "enable_force_push_allowlist": true,
+        "enable_merge_whitelist": true,
+        "enable_push": false,
+        "enable_push_whitelist": false,
+        "enable_status_check": true,
+        "force_push_allowlist_deploy_keys": true,
+        "force_push_allowlist_teams": [
+          "org-center-write"
+        ],
+        "force_push_allowlist_usernames": [
+          "policy-developer"
+        ],
+        "ignore_stale_approvals": false,
+        "merge_whitelist_teams": [
+          "org-center-write"
+        ],
+        "merge_whitelist_usernames": [
+          "policy-developer"
+        ],
+        "priority": 8,
+        "protected_file_patterns": "secrets/**;*.key",
+        "push_whitelist_deploy_keys": false,
+        "push_whitelist_teams": [],
+        "push_whitelist_usernames": [],
+        "require_signed_commits": true,
+        "required_approvals": 1,
+        "rule_name": "release/**",
+        "status_check_contexts": [
+          "ci/*",
+          "org-policy/check"
+        ],
+        "team_org": "policy-qa",
+        "unprotected_file_patterns": "docs/**"
+      }
+    ],
+    "server_id": 1,
+    "source": {
+      "default_branch": "main",
+      "full_name": "policy-qa/org-center-source",
+      "id": 98,
+      "owner_id": 6
+    },
+    "updated_at": "2026-09-12T12:51:13.710261Z"
+  }
+}

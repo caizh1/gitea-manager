@@ -102,10 +102,11 @@ def _repair_orphan_records(server):
 @server_bp.route('/servers/<int:sid>/delete-info', methods=['GET'])
 @login_required
 def delete_info(sid):
-    from models import Backup, RestoreTask
+    from models import Backup, RestoreTask, ApprovalPolicy
     backup_count = Backup.query.filter_by(source_server_id=sid).count()
     restore_count = RestoreTask.query.filter_by(target_server_id=sid).count()
-    return jsonify({'backup_count': backup_count, 'restore_count': restore_count})
+    return jsonify({'backup_count': backup_count, 'restore_count': restore_count,
+                    'approval_policy_count': ApprovalPolicy.query.filter_by(server_id=sid).count()})
 
 
 @server_bp.route('/servers/<int:sid>', methods=['PUT'])
@@ -115,6 +116,14 @@ def update_server(sid):
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data'}), 400
+
+    from models import ApprovalPolicy
+    binding_fields = ('host', 'ssh_port', 'ssh_user', 'gitea_container', 'gitea_port', 'gitea_url')
+    if any(f in data and data[f] != getattr(s, f) for f in binding_fields):
+        if ApprovalPolicy.query.filter(ApprovalPolicy.server_id == sid,
+                ~ApprovalPolicy.mode.in_(('draft', 'disabled'))).first():
+            return jsonify({'error': '请先停用并卸载此实例的审批组件，再修改连接身份，避免门禁关联到其他实例'}), 409
+        ApprovalPolicy.query.filter_by(server_id=sid).update({'preview_json': '{}'})
 
     fields = ['name', 'role', 'host', 'ssh_port', 'ssh_user',
               'gitea_container', 'pg_container', 'pg_dbname', 'pg_user',
@@ -129,8 +138,14 @@ def update_server(sid):
 @server_bp.route('/servers/<int:sid>', methods=['DELETE'])
 @login_required
 def delete_server(sid):
-    from models import Backup, RestoreTask
+    from models import Backup, RestoreTask, PolicyBatch, PolicyTemplate, ApprovalPolicy
     s = GiteaServer.query.get_or_404(sid)
+    if ApprovalPolicy.query.filter_by(server_id=sid).first():
+        return jsonify({'error': '该实例仍有审批配置，请先停用并卸载组件、删除配置；审计历史将保留'}), 409
+    if PolicyBatch.query.filter(PolicyBatch.server_id == sid, PolicyBatch.status.in_(('preview_queued', 'previewing', 'apply_queued', 'applying'))).first():
+        return jsonify({'error': '该实例仍有策略任务等待或正在执行，请等待任务结束'}), 409
+    if PolicyTemplate.query.filter_by(server_id=sid).first():
+        return jsonify({'error': '该实例仍有策略模板，请先删除模板；历史执行记录将保留'}), 409
     backup_count = Backup.query.filter_by(source_server_id=sid).count()
     restore_count = RestoreTask.query.filter_by(target_server_id=sid).count()
     db.session.delete(s)

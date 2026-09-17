@@ -1,0 +1,61 @@
+{
+  "说明": "真实 Linux OpenCode；协议替身。恢复时不重复已完成任务，当前记录仅包含恢复后的实际空间采样。",
+  "起始已完成任务": 28,
+  "累计Review数量": 40,
+  "本段模型调用": 26,
+  "临时空间采样": [
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    },
+    {
+      "used": 0,
+      "entries": 0
+    }
+  ],
+  "通过": true
+}

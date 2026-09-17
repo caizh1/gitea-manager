@@ -22,7 +22,7 @@
     />
 
     <div class="glass-card" style="padding:0;animation:fadeInUp 0.5s ease both;">
-      <el-table :data="servers" stripe v-loading="loading" style="width:100%">
+      <el-table :data="servers" stripe v-loading="loading" style="width:100%" max-height="var(--table-max-height)">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="name" label="名称" width="150">
           <template #default="{ row }">
@@ -64,37 +64,37 @@
     <el-dialog :title="isEdit ? '编辑服务器' : '添加服务器'" v-model="dialogVisible" width="650px" destroy-on-close>
       <el-form :model="form" label-width="130px">
         <el-row :gutter="16">
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="角色">
               <el-select v-model="form.role"><el-option label="primary" value="primary" /><el-option label="backup" value="backup" /><el-option label="mirror" value="mirror" /></el-select>
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
-          <el-col :span="16">
+          <el-col :xs="24" :sm="16">
             <el-form-item label="主机IP"><el-input v-model="form.host" placeholder="192.168.1.10" /></el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :xs="24" :sm="8">
             <el-form-item label="SSH端口"><el-input v-model.number="form.ssh_port" type="number" min="1" max="65535" /></el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="SSH用户"><el-input v-model="form.ssh_user" placeholder="root" /></el-form-item>
         <el-row :gutter="16">
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="Gitea端口"><el-input v-model.number="form.gitea_port" type="number" min="1" max="65535" /></el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="Gitea容器"><el-input v-model="form.gitea_container" placeholder="gitea" /></el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="PG容器"><el-input v-model="form.pg_container" placeholder="gitea-postgres" /></el-form-item>
           </el-col>
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="PG数据库"><el-input v-model="form.pg_dbname" placeholder="gitea" /></el-form-item>
           </el-col>
         </el-row>

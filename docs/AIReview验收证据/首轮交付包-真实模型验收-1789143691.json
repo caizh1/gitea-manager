@@ -1,0 +1,68 @@
+{
+  "说明": "真实 Gitea、真实 Git、真实模型的合成代码验收；不代表公司真实 PR 或内部模型质量通过。",
+  "引擎": "opencode_cli",
+  "模型": "deepseek-flash",
+  "结果": [
+    {
+      "样本": "case-41",
+      "名称": "未对齐嵌入式读取缺陷",
+      "PR": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/1",
+      "PR编号": 1,
+      "Head": "49c9c2259136ffe5be7d9a1ef92f51311e101171",
+      "任务": "2196b7aa941189cfe6b18f9a8b26aca3",
+      "状态": "succeeded",
+      "耗时秒": 23.4,
+      "错误": "",
+      "存在缺陷": true,
+      "允许问题行": [
+        14
+      ],
+      "行内评论": [
+        {
+          "文件": "case_41.c",
+          "新侧": 14,
+          "旧侧": 0,
+          "位置正确": true,
+          "页面": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/1#issuecomment-2"
+        }
+      ],
+      "问题": [
+        {
+          "anchor": {
+            "ambiguous": false,
+            "hunk": 0,
+            "id": "3486ec5ff4bd88de8db0d91d4acf8854",
+            "line": 14,
+            "new_path": "case_41.c",
+            "old_path": null,
+            "path": "case_41.c",
+            "quote": "    return *(const uint32_t *)(data + 1);",
+            "side": "new",
+            "snapshot_id": "c48c11e9e3a1f256879c1edbd3295e52aec2a2b298443ec9676d33cd48f902e3"
+          },
+          "anchor_id": "3486ec5ff4bd88de8db0d91d4acf8854",
+          "candidate_id": "01b6b41fb5d2106a9ff5e696",
+          "explanation": "声明注释指出目标为严格对齐的 ARMv7，data 至少有 5 字节但只保证字节对齐。代码将 data+1 强制转换为 const uint32_t* 后直接解引用。ARMv7 默认对未对齐的 LDR/STR 产生 Alignment fault（除非 SCTLR.A 被清除且使用支持非对齐访问的指令，但此处为普通 C 解引用，编译器生成的访问不保证非对齐安全）。data 仅字节对齐意味着 data+1 的对齐性不可控，因此该解引用在多数调用下会落在非 4 字节边界。此外，即使在不报错的平台上，该转换也违反 C 的严格别名/对齐要求，属于未定义行为。",
+          "fallback_reason": "",
+          "fingerprint": "[\"case_41.c\",\"load_word(const unsigned char *data)\",\"未对齐的uint32_t指针解引用在严格对齐的armv7上触发未对齐访问异常\"]",
+          "impact": "在严格对齐的 ARMv7 上产生 SIGBUS/Alignment fault 导致进程崩溃；在允许非对齐访问的平台上可能被编译器优化为假设对齐的指令而读取错误数据。",
+          "location_verified": true,
+          "path": "case_41.c",
+          "quote": "    return *(const uint32_t *)(data + 1);",
+          "recommendation": "改为逐字节组装（如 data[1] | data[2]<<8 | ...）或使用 memcpy 将 4 字节拷贝到局部 uint32_t 变量后再返回，避免未对齐指针解引用；同时确认返回值的字节序处理是否符合注释中“本机字节序”的约定。",
+          "scope": "load_word(const unsigned char *data)",
+          "severity": "P1",
+          "title": "未对齐的 uint32_t 指针解引用，在严格对齐的 ARMv7 上触发未对齐访问异常",
+          "trigger": "调用 load_word 时传入的 data 仅保证字节对齐（声明注释明确说明），data+1 的地址对齐性完全取决于调用者传入的指针值；只要 data 的地址不是 4 的倍数减 1（即 data+1 不是 4 字节对齐），解引用即触发。",
+          "verification": "锚点 3486ec5ff4bd88de8db0d91d4acf8854 的 quote 与代码完全一致，且位于 load_word 函数体内（scope 13-15），位置正确。声明注释明确写明“目标为严格对齐的 ARMv7；data 至少有 5 字节，但只保证字节对齐”，因此 data+1 的 4 字节对齐性完全取决于调用者传入的指针，无法由函数自身保证。代码将 data+1 强转为 const uint32_t* 后直接解引用，在严格对齐的 ARMv7 上，若 data+1 未落在 4 字节边界，普通 C 解引用生成的 LDR 会触发 Alignment fault（SIGBUS）；即便在允许非对齐访问的平台上，该转换也违反 C 的对齐要求，属未定义行为，编译器可据此假设对齐而生成错误访问。触发路径具体可达：只要调用者传入的 data 地址不是 4k+3 形式，data+1 即非 4 字节对齐。无任何既有检查、锁或生命周期约束能阻止该未对齐访问。该问题由本次新增代码引入，非既有问题。建议改为逐字节组装或 memcpy 到局部 uint32_t 后再返回。"
+        }
+      ],
+      "Review版本正确": true,
+      "普通开发者可见": true,
+      "总体评论正确": true,
+      "Review动态唯一": true,
+      "链路通过": true,
+      "定位通过": true
+    }
+  ]
+}

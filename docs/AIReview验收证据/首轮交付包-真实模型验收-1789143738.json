@@ -1,0 +1,234 @@
+{
+  "说明": "真实 Gitea、真实 Git、真实模型的合成代码验收；不代表公司真实 PR 或内部模型质量通过。",
+  "引擎": "opencode_cli",
+  "模型": "deepseek-flash",
+  "结果": [
+    {
+      "样本": "case-01",
+      "名称": "数组边界缺陷",
+      "PR": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/2",
+      "PR编号": 2,
+      "Head": "bb10907796cb5272c0c30b808f366e3ee0d7471f",
+      "任务": "af3bf3c306a2520989ac34b5aeec6c69",
+      "状态": "succeeded",
+      "耗时秒": 26.44,
+      "错误": "",
+      "存在缺陷": true,
+      "允许问题行": [
+        13,
+        14
+      ],
+      "行内评论": [
+        {
+          "文件": "case_01.c",
+          "新侧": 13,
+          "旧侧": 0,
+          "位置正确": true,
+          "页面": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/2#issuecomment-7"
+        }
+      ],
+      "问题": [
+        {
+          "anchor": {
+            "ambiguous": false,
+            "hunk": 0,
+            "id": "44a5d5725646977f84565382642e95d1",
+            "line": 13,
+            "new_path": "case_01.c",
+            "old_path": null,
+            "path": "case_01.c",
+            "quote": "    if (!p || i > n) return -1;",
+            "side": "new",
+            "snapshot_id": "78573d753d219bc833a0ad4f8f7edc29d6521ae4e97e9d4be6c7bb34f786e37b"
+          },
+          "anchor_id": "44a5d5725646977f84565382642e95d1",
+          "candidate_id": "9c63647ee6a3e568b53830f8",
+          "explanation": "函数以 i > n 作为拒绝条件，因此 i == n 时通过检查并执行 return p[i]，即读取 p[n]。合法下标范围是 [0, n-1]，p[n] 已越界。空指针检查 !p 只防止 p 为 NULL，无法覆盖下标越界；函数内也没有其他长度校验或调用方约束可依赖。",
+          "fallback_reason": "",
+          "fingerprint": "[\"case_01.c\",\"lookup(const int *p, size_t n, size_t i)\",\"边界检查使用i>n导致越界读取p[n]\"]",
+          "impact": "对长度为 n 的数组发生一次越界读取，可能读到相邻内存数据并作为返回值泄露，或在缓冲区末尾紧邻不可访问页时触发段错误崩溃。属于读取越界，不直接写坏内存。",
+          "location_verified": true,
+          "path": "case_01.c",
+          "quote": "    if (!p || i > n) return -1;",
+          "recommendation": "将条件改为 i >= n（即 if (!p || i >= n) return -1;），并确认所有调用方传入的 n 为元素个数而非最大合法下标。",
+          "scope": "lookup(const int *p, size_t n, size_t i)",
+          "severity": "P1",
+          "title": "边界检查使用 i > n 导致越界读取 p[n]",
+          "trigger": "调用 lookup(p, n, i) 且 i == n（例如 n=5、i=5），p 指向至少 n 个 int 的有效缓冲区。",
+          "verification": "锚点 44a5d5725646977f84565382642e95d1 的 quote 与代码第 13 行完全一致，且位于 lookup 函数体内，位置正确。函数签名 lookup(const int *p, size_t n, size_t i) 中 n 为元素个数，合法下标为 [0, n-1]。拒绝条件 i > n 在 i == n 时为假，随后第 14 行 return p[i] 读取 p[n]，确属越界读取。!p 仅排除空指针，函数内无其他长度校验，调用方约束在本次修改中不可见，无反证。触发路径明确：n=5、i=5 且 p 指向至少 5 个 int 的缓冲区即可到达。影响为越界读取（可能泄露相邻内存或触发段错误），不涉及写内存，与候选描述一致。建议改为 i >= n 成立。"
+        }
+      ],
+      "Review版本正确": true,
+      "普通开发者可见": true,
+      "总体评论正确": true,
+      "Review动态唯一": true,
+      "链路通过": true,
+      "定位通过": true
+    },
+    {
+      "样本": "case-02",
+      "名称": "数组边界正常对照",
+      "PR": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/3",
+      "PR编号": 3,
+      "Head": "4c26d2af22877b9cd7947565d9e50348b87b7f91",
+      "任务": "dff1ec0252a1373e79e87478f9bd1afc",
+      "状态": "succeeded",
+      "耗时秒": 16.3,
+      "错误": "",
+      "存在缺陷": false,
+      "允许问题行": [],
+      "行内评论": [],
+      "问题": [],
+      "Review版本正确": true,
+      "普通开发者可见": true,
+      "总体评论正确": true,
+      "Review动态唯一": true,
+      "链路通过": true,
+      "定位通过": true
+    },
+    {
+      "样本": "case-03",
+      "名称": "空指针检查顺序缺陷",
+      "PR": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/4",
+      "PR编号": 4,
+      "Head": "647a17bba33ed19da4f3eb71d87105bd3c94d05d",
+      "任务": "cb1af651857f5e65f37af6c8bffe96f4",
+      "状态": "succeeded",
+      "耗时秒": 22.38,
+      "错误": "",
+      "存在缺陷": true,
+      "允许问题行": [
+        13
+      ],
+      "行内评论": [
+        {
+          "文件": "case_03.c",
+          "新侧": 13,
+          "旧侧": 0,
+          "位置正确": true,
+          "页面": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/4#issuecomment-16"
+        }
+      ],
+      "问题": [
+        {
+          "anchor": {
+            "ambiguous": false,
+            "hunk": 0,
+            "id": "59232848088a5c1db4a8ecbec44fbfda",
+            "line": 13,
+            "new_path": "case_03.c",
+            "old_path": null,
+            "path": "case_03.c",
+            "quote": "    int value = *p;",
+            "side": "new",
+            "snapshot_id": "c196fdd3a1b58000c57fccab8976b8646cf0e907175757a8b676b006299bf37a"
+          },
+          "anchor_id": "59232848088a5c1db4a8ecbec44fbfda",
+          "candidate_id": "4afeffc50cf78dfbe491051e",
+          "explanation": "函数第 13 行先执行 int value = *p; 对 p 解引用，而第 14 行的 if (!p) return -1; 判空检查位于解引用之后。因此当 p 为 NULL 时，解引用先发生，判空检查永远无法起到保护作用，属于典型的检查顺序颠倒。",
+          "fallback_reason": "",
+          "fingerprint": "[\"case_03.c\",\"read_value(const int *p)\",\"空指针解引用发生在判空检查之前\"]",
+          "impact": "传入 NULL 时触发未定义行为，通常导致进程崩溃（段错误），而非按设计返回 -1。",
+          "location_verified": true,
+          "path": "case_03.c",
+          "quote": "    int value = *p;",
+          "recommendation": "将判空检查移到解引用之前，例如先 if (!p) return -1; 再 int value = *p; 并返回 value。",
+          "scope": "read_value(const int *p)",
+          "severity": "P1",
+          "title": "空指针解引用发生在判空检查之前",
+          "trigger": "调用者传入 p == NULL，例如 read_value(NULL)。",
+          "verification": "锚点 59232848088a5c1db4a8ecbec44fbfda 的 quote「    int value = *p;」与 case_03.c 第 13 行完全一致，且位于 read_value(const int *p) 函数体内（scope 12-16），位置正确。修改后代码顺序为：第 13 行先对 p 解引用，第 14 行才执行 if (!p) return -1;，判空检查确实位于解引用之后，无法对第 13 行形成保护。触发路径明确：调用者传入 p == NULL（如 read_value(NULL)）时，第 13 行即发生空指针解引用，属未定义行为，通常导致段错误，而非按设计返回 -1。代码中不存在其他前置判空、断言或调用方约束等反证；counterpart_code 为空，说明本次修改即为引入该顺序问题的版本。影响与触发条件具体可达，故确认成立。"
+        }
+      ],
+      "Review版本正确": true,
+      "普通开发者可见": true,
+      "总体评论正确": true,
+      "Review动态唯一": true,
+      "链路通过": true,
+      "定位通过": true
+    },
+    {
+      "样本": "case-04",
+      "名称": "空指针检查顺序正常对照",
+      "PR": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/5",
+      "PR编号": 5,
+      "Head": "348400600fa0079bd4bca8a1d95dc0d3bec1add5",
+      "任务": "8a30444ddee95b811cd84c0d2edcbb6f",
+      "状态": "succeeded",
+      "耗时秒": 15.25,
+      "错误": "",
+      "存在缺陷": false,
+      "允许问题行": [],
+      "行内评论": [],
+      "问题": [],
+      "Review版本正确": true,
+      "普通开发者可见": true,
+      "总体评论正确": true,
+      "Review动态唯一": true,
+      "链路通过": true,
+      "定位通过": true
+    },
+    {
+      "样本": "case-05",
+      "名称": "分配失败缺陷",
+      "PR": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/6",
+      "PR编号": 6,
+      "Head": "c6a8867aa11ff9b39449f2b2e183f19900ca0018",
+      "任务": "1e5b4e0a969a0018be6a24a386493cd7",
+      "状态": "succeeded",
+      "耗时秒": 24.4,
+      "错误": "",
+      "存在缺陷": true,
+      "允许问题行": [
+        13,
+        14
+      ],
+      "行内评论": [
+        {
+          "文件": "case_05.c",
+          "新侧": 13,
+          "旧侧": 0,
+          "位置正确": true,
+          "页面": "http://127.0.0.1:33000/review-admin/delivery-real/pulls/6#issuecomment-25"
+        }
+      ],
+      "问题": [
+        {
+          "anchor": {
+            "ambiguous": false,
+            "hunk": 0,
+            "id": "35a37df36390793ec2673de56d6aedc9",
+            "line": 13,
+            "new_path": "case_05.c",
+            "old_path": null,
+            "path": "case_05.c",
+            "quote": "    int *p = malloc(sizeof(*p));",
+            "side": "new",
+            "snapshot_id": "191de3e95ae0c07d6aac975bcf06d94b8b9789a9a450fdd1275ee4c1be15e9bd"
+          },
+          "anchor_id": "35a37df36390793ec2673de56d6aedc9",
+          "candidate_id": "e8a2bb8a246e94836de489ff",
+          "explanation": "`malloc(sizeof(*p))` 的返回值被直接赋给 `p`，代码中没有 `if (p == NULL)` 或等价检查。第 14 行 `*p = 7;` 是紧随其后的写操作，因此一旦分配失败，控制流必然到达对空指针的写入。函数内不存在任何前置校验、错误返回或调用方保证分配成功的约束，也没有 `errno` 检查等替代保护。",
+          "fallback_reason": "",
+          "fingerprint": "[\"case_05.c\",\"allocate_value(void)\",\"malloc返回值未检查即解引用\"]",
+          "impact": "对 NULL 指针写入通常触发段错误（SIGSEGV），导致进程异常终止；在嵌入式或长期运行的服务中属于可被内存压力触发的崩溃点。",
+          "location_verified": true,
+          "path": "case_05.c",
+          "quote": "    int *p = malloc(sizeof(*p));",
+          "recommendation": "在解引用前检查 `p` 是否为 NULL，失败时返回错误码或约定值（如 `return -1;`），并考虑是否需要向调用方传递分配失败信息。",
+          "scope": "allocate_value(void)",
+          "severity": "P1",
+          "title": "malloc 返回值未检查即解引用",
+          "trigger": "当 malloc 分配失败（例如进程内存耗尽、请求被系统拒绝）时返回 NULL，随后第 14 行 `*p = 7;` 立即对 NULL 解引用。",
+          "verification": "锚点 35a37df36390793ec2673de56d6aedc9 的 quote 与第 13 行 `int *p = malloc(sizeof(*p));` 完全一致，且位于 allocate_value 函数体内（scope 12-18），位置正确。修改后代码中 malloc 返回值直接赋给 p，函数内无任何 NULL 检查、无前置校验、无调用方约束，第 14 行 `*p = 7;` 紧随其后，构成确定的空指针写入路径。触发条件为 malloc 返回 NULL（内存耗尽等），因果链完整且可达，影响为 SIGSEGV 崩溃。未发现任何既有保护或反证，故确认成立。"
+        }
+      ],
+      "Review版本正确": true,
+      "普通开发者可见": true,
+      "总体评论正确": true,
+      "Review动态唯一": true,
+      "链路通过": true,
+      "定位通过": true
+    }
+  ]
+}

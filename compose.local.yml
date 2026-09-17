@@ -1,0 +1,91 @@
+# 独立本地验证环境；使用脚本生成的凭据，所有宿主机端口仅绑定回环地址。
+name: gitea-policy-local
+services:
+  postgres:
+    image: postgres:17.11-bookworm
+    pull_policy: never
+    platform: linux/amd64
+    container_name: gitea-policy-postgres
+    environment:
+      POSTGRES_DB: gitea
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请先运行本地环境脚本}
+    volumes:
+      - ./work/本地环境/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U gitea']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  gitea:
+    image: gitea/gitea:1.26.4
+    pull_policy: never
+    platform: linux/amd64
+    container_name: gitea-policy-local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: postgres:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD: ${PG_PASSWORD}
+      GITEA__security__INSTALL_LOCK: 'true'
+      GITEA__server__DOMAIN: 127.0.0.1
+      GITEA__server__ROOT_URL: http://127.0.0.1:3000/
+      GITEA__server__SSH_DOMAIN: 127.0.0.1
+      GITEA__server__SSH_PORT: '2222'
+      GITEA__service__DISABLE_REGISTRATION: 'true'
+      GITEA__repository__DEFAULT_BRANCH: main
+    volumes:
+      - ./work/本地环境/gitea:/data
+    ports:
+      - 127.0.0.1:3000:3000
+      - 127.0.0.1:2222:22
+    restart: unless-stopped
+  backend:
+    build:
+      context: ./backend
+      args:
+        BASE_IMAGE: python:3.11-slim
+    platform: linux/amd64
+    container_name: gitea-policy-manager-api
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+      BACKUP_DIR: /app/data/backups
+      SECRET_KEY: ${MANAGER_SECRET}
+      INIT_PASSWORD: ${MANAGER_PASSWORD}
+      INTEGRATION_SERVICE_TOKEN: ${INTEGRATION_TOKEN}
+    volumes:
+      # Docker Desktop 宿主机共享目录的 flock 不可靠；SQLite 和任务锁必须使用 Linux 原生卷。
+      - manager-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+  approval-view:
+    build:
+      context: ./backend
+      args: {BASE_IMAGE: 'python:3.11-slim'}
+    platform: linux/amd64
+    command: [gunicorn, --bind, '0.0.0.0:5000', --workers, '2', --threads, '8', --timeout, '30', 'approval.view_app:create_app()']
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+    volumes: [manager-data:/app/data, /var/run/docker.sock:/var/run/docker.sock]
+    depends_on: [backend]
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BASE_IMAGE: nginx:1.31.1
+    platform: linux/amd64
+    container_name: gitea-policy-manager-ui
+    depends_on: [backend]
+    ports:
+      - 127.0.0.1:5480:80
+    restart: unless-stopped
+volumes:
+  manager-data:

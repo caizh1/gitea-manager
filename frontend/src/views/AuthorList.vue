@@ -18,7 +18,7 @@
     </div>
 
     <div class="glass-card" style="padding:0;">
-      <el-table :data="filteredAuthors" stripe style="width:100%" @row-click="goDetail" highlight-current-row size="small">
+      <el-table :data="filteredAuthors" stripe style="width:100%" @row-click="goDetail" highlight-current-row size="small" :empty-text="searchText ? '没有匹配的作者' : '暂无数据，请先在统计分析页刷新采集'" max-height="var(--table-max-height)">
         <el-table-column label="#" width="50" align="center">
           <template #default="{ $index }">
             <span class="rank-badge" :class="{ 'rank-top': $index < 3 }">{{ $index + 1 }}</span>
@@ -50,7 +50,6 @@
           </template>
         </el-table-column>
       </el-table>
-      <div v-if="filteredAuthors.length === 0" class="empty-state">暂无数据，请先在统计分析页刷新采集</div>
     </div>
   </div>
 </template>
@@ -130,7 +129,7 @@ export default {
   font-size: 14px; font-weight: 700;
 }
 .author-name { font-size: 13px; font-weight: 600; color: #1a1a2e; cursor: pointer; }
-.author-email { font-size: 11px; color: #9ca3af; }
+.author-email { font-size: 11px; color: var(--text-muted); }
 
 .rank-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -139,8 +138,8 @@ export default {
 }
 .rank-top { background: rgba(0,122,255,0.12); color: var(--color-primary); }
 
-.text-muted { color: #d1d5db; }
-.empty-state { text-align: center; padding: 40px; color: #9ca3af; font-size: 13px; }
+.text-muted { color: var(--text-muted); }
+.empty-state { text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px; }
 
 :deep(.el-table) { --el-table-border-color: rgba(0,0,0,0.04); }
 :deep(.el-table__row) { cursor: pointer; }

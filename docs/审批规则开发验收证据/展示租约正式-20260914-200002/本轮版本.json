@@ -1,0 +1,10 @@
+{
+  "说明": "正式租约修复的新候选；保留已发布r7和首次失败，未完成最终包验收前不发布。",
+  "目录": "/Users/archer/Work/gitea-manager/outputs/审批展示租约正式-20260914-200002",
+  "标签": "approval-lease-20260914-200002-r8",
+  "创建时间": "2026-09-14T20:00:02.015240",
+  "源码": {
+    "backend/approval/display_cache.py": "98025e4bfba04d7e69bb9b9de7969eafbdcff78b12626cea08661543191d62bb",
+    "backend/tests/test_approval_display_concurrency.py": "8363203507bbaacbd8185b58d7a0d8ce08fb8a338530d361f87d6937ad69feeb"
+  }
+}

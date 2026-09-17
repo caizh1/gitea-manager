@@ -136,6 +136,66 @@ def _target_repo_url(target, full_name):
     return f'{_ensure_url(target.gitea_url)}/{full_name}.git'
 
 
+def _native_capabilities(server):
+    try:
+        data = _api_request(server, 'GET', '/api/v1/governance/capabilities', expected=(200,), timeout=10)
+    except MirrorServiceError:
+        return None
+    return data if data.get('hierarchical_groups') is True else None
+
+
+def _supports_internal_visibility(capabilities):
+    return 'internal' in (capabilities or {}).get('repository_visibility', [])
+
+
+def _visibility_value(value, private=False):
+    if isinstance(value, int) and 0 <= value <= 2:
+        return value
+    return {'public': 0, 'limited': 1, 'internal': 1, 'private': 2}.get(str(value or '').lower(), 2 if private else 0)
+
+
+def _ensure_native_group_path(server, group_path, visibility):
+    capabilities = _native_capabilities(server)
+    if not capabilities:
+        raise MirrorServiceError('目标 Gitea 不支持层级群组，不能把子群组仓库静默摊平')
+    parent_id = 0
+    leaf = None
+    current = []
+    for slug in group_path.split('/'):
+        current.append(slug)
+        groups, after_id = [], 0
+        while True:
+            page = _api_request(
+                server, 'GET', '/api/v1/governance/groups', expected=(200,), timeout=15,
+                params={'parent_id': parent_id, 'after_id': after_id},
+            )
+            groups.extend(page)
+            if len(page) < 100:
+                break
+            after_id = int(page[-1].get('id') or 0)
+        leaf = next((item for item in groups if item.get('full_path') == '/'.join(current)), None)
+        if leaf is None:
+            leaf = _api_request(
+                server, 'POST', '/api/v1/governance/groups', expected=(200, 201), timeout=15,
+                json={'name': slug, 'path': slug, 'parent_id': parent_id, 'visibility': visibility},
+            )
+        parent_id = int(leaf.get('id') or 0)
+        if parent_id <= 0:
+            raise MirrorServiceError('目标层级群组返回结构异常')
+    return leaf
+
+
+def _repo_visibility(repo):
+    if repo.get('internal'):
+        return 1
+    return 2 if repo.get('private') else 0
+
+
+def _assert_target_visibility(source_repo, target_repo):
+    if _repo_visibility(target_repo) < _repo_visibility(source_repo):
+        raise MirrorServiceError('目标仓库可见性比源仓库更开放，已拒绝配置镜像')
+
+
 def _get_repo_or_none(server, owner, repo_name):
     try:
         return _api_request(server, 'GET', _repo_path(owner, repo_name), expected=(200,), timeout=15)
@@ -232,22 +292,54 @@ def _rename_target_repo_if_needed(target, old_full_name, new_full_name, config_i
         raise
 
 
-def _ensure_target_repo(target, repo_info, config_id=0, old_full_name=None):
-    full_name = repo_info.get('full_name', '')
-    owner, repo_name = _split_repo_name(full_name)
+def _ensure_target_repo(target, repo_info, config_id=0, old_full_name=None, target_repo_id=0):
+    source_full_name = repo_info.get('full_name', '')
+    full_name = repo_info.get('full_path') or source_full_name
+    parts = full_name.split('/')
+    if len(parts) < 2:
+        raise MirrorServiceError('Invalid repo name')
+    owner, repo_name = source_full_name.split('/', 1) if len(parts) == 2 else ('', parts[-1])
+    native_group = bool(repo_info.get('full_path'))
 
-    renamed_repo_id = _rename_target_repo_if_needed(target, old_full_name, full_name, config_id)
+    if repo_info.get('internal') and not _supports_internal_visibility(_native_capabilities(target)):
+        raise MirrorServiceError('目标 Gitea 不支持项目 internal 可见性，已拒绝创建公开镜像')
+
+    if target_repo_id:
+        repo = _api_request(target, 'GET', f'/api/v1/repositories/{int(target_repo_id)}', expected=(200,), timeout=15)
+        _assert_target_visibility(repo_info, repo)
+        if not repo.get('clone_url'):
+            raise MirrorServiceError('目标稳定项目缺少实际 clone_url')
+        return repo
+
+    if native_group:
+        fallback_visibility = 1 if repo_info.get('internal') else 2 if repo_info.get('private') else 0
+        group = _ensure_native_group_path(
+            target, '/'.join(parts[:-1]),
+            _visibility_value((repo_info.get('owner') or {}).get('visibility'), fallback_visibility == 2),
+        )
+        owner = group.get('compatibility_name') or ''
+        if not owner:
+            raise MirrorServiceError('目标层级群组缺少兼容仓库所有者')
+
+    renamed_repo_id = _rename_target_repo_if_needed(target, old_full_name, full_name, config_id) if len(parts) == 2 else None
     if renamed_repo_id:
-        return renamed_repo_id
+        repo = _api_request(target, 'GET', f'/api/v1/repositories/{int(renamed_repo_id)}', expected=(200,), timeout=15)
+        _assert_target_visibility(repo_info, repo)
+        if not repo.get('clone_url'):
+            raise MirrorServiceError('目标项目改名后缺少实际 clone_url')
+        return repo
 
     repo = _get_repo_or_none(target, owner, repo_name)
     if repo:
-        return repo.get('id', 0)
+        _assert_target_visibility(repo_info, repo)
+        return repo
 
     target_login = _get_token_login(target)
+    source_internal = bool(repo_info.get('internal'))
     payload = {
         'name': repo_name,
-        'private': repo_info.get('private', False),
+        'private': bool(repo_info.get('private')) and not source_internal,
+        'internal': source_internal,
         'description': repo_info.get('description', '') or '',
         'auto_init': False,
     }
@@ -255,7 +347,8 @@ def _ensure_target_repo(target, repo_info, config_id=0, old_full_name=None):
         if owner == target_login:
             repo = _api_request(target, 'POST', '/api/v1/user/repos', json=payload, expected=(200, 201), timeout=30)
         else:
-            _ensure_org_exists(target, owner)
+            if not native_group:
+                _ensure_org_exists(target, owner)
             repo = _api_request(
                 target,
                 'POST',
@@ -264,6 +357,7 @@ def _ensure_target_repo(target, repo_info, config_id=0, old_full_name=None):
                 expected=(200, 201),
                 timeout=30,
             )
+        _assert_target_visibility(repo_info, repo)
         _audit(
             config_id,
             full_name,
@@ -282,7 +376,7 @@ def _ensure_target_repo(target, repo_info, config_id=0, old_full_name=None):
             str(e),
         )
         raise
-    return repo.get('id', 0)
+    return repo
 
 
 def _list_push_mirrors(source, owner, repo_name):
@@ -374,12 +468,19 @@ def _cleanup_stale_push_mirrors(source, target, owner, repo_name, old_full_name,
             raise
 
 
-def _ensure_push_mirror(source, target, repo_info, config, old_full_name=None, known_remote_name=''):
+def _ensure_push_mirror(source, target, repo_info, config, old_full_name=None, known_remote_name='', target_repo_id=0):
     full_name = repo_info.get('full_name', '')
     owner, repo_name = _split_repo_name(full_name)
 
-    target_repo_id = _ensure_target_repo(target, repo_info, config.id, old_full_name)
-    remote_address = _target_repo_url(target, full_name)
+    target_repo = _ensure_target_repo(target, repo_info, config.id, old_full_name, target_repo_id)
+    target_repo_id = target_repo.get('id', 0)
+    remote_address = target_repo.get('clone_url')
+    if not remote_address and target_repo.get('html_url'):
+        remote_address = target_repo['html_url'].rstrip('/') + '.git'
+    if not remote_address:
+        if repo_info.get('full_path'):
+            raise MirrorServiceError('原生层级目标仓库缺少实际 clone_url，已拒绝自行拼接地址')
+        remote_address = _target_repo_url(target, repo_info.get('full_path') or full_name)
     existing = _find_existing_push_mirror(source, owner, repo_name, remote_address)
     if existing:
         try:
@@ -620,6 +721,7 @@ def setup_mirror(config_id):
                 config,
                 old_full_name=old_full_name if old_full_name != full_name else None,
                 known_remote_name=status.remote_name,
+                target_repo_id=status.target_repo_id,
             )
             status.status = 'success'
             status.target_repo_id = target_repo_id or status.target_repo_id

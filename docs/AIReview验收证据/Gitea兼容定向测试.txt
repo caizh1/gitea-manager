@@ -1,0 +1,27 @@
+Gitea 兼容补丁模型层测试。首次 root 执行被官方保护拒绝，改为非 root 运行测试二进制后四项通过。
+
+Environment variable GITEA_TEST_CONF not set - defaulting to tests/sqlite.ini
+2026/09/11 16:58:31 .../setting/repository.go:318:loadRepositoryFrom() [W] SCRIPT_TYPE "bash" is not on the current PATH. Are you sure that this is the correct SCRIPT_TYPE?
+2026/09/11 16:58:31 modules/storage/storage.go:227:initAttachments() [I] Initialising Attachment storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /tmp/gitea-test/appdata3886042285/attachments
+2026/09/11 16:58:31 modules/storage/storage.go:217:initAvatars() [I] Initialising Avatar storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /tmp/gitea-test/appdata3886042285/avatars
+2026/09/11 16:58:31 modules/storage/storage.go:243:initRepoAvatars() [I] Initialising Repository Avatar storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /tmp/gitea-test/appdata3886042285/repo-avatars
+2026/09/11 16:58:31 modules/storage/storage.go:249:initRepoArchives() [I] Initialising Repository Archive storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /tmp/gitea-test/appdata3886042285/repo-archive
+2026/09/11 16:58:31 modules/storage/storage.go:259:initPackages() [I] Initialising Packages storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /tmp/gitea-test/appdata3886042285/packages
+2026/09/11 16:58:31 modules/storage/storage.go:270:initActions() [I] Initialising Actions storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /tmp/gitea-test/appdata3886042285/actions_log
+2026/09/11 16:58:31 modules/storage/storage.go:274:initActions() [I] Initialising ActionsArtifacts storage with type: local
+2026/09/11 16:58:31 modules/storage/local.go:48:NewLocalStorage() [I] Creating new Local Storage at /src/data/actions_artifacts
+=== RUN   TestCreateReview
+--- PASS: TestCreateReview (0.14s)
+=== RUN   TestDeleteReview
+--- PASS: TestDeleteReview (0.02s)
+=== RUN   TestPendingReviewDoesNotCreatePublicTimeline
+--- PASS: TestPendingReviewDoesNotCreatePublicTimeline (0.02s)
+=== RUN   TestSubmitReviewClearsStaleReviewRequest
+--- PASS: TestSubmitReviewClearsStaleReviewRequest (0.02s)
+PASS

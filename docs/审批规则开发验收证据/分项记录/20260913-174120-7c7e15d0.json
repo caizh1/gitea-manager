@@ -1,0 +1,58 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "264050826fb419d74bdccb29f16909b950711928659465dd06a9ce9fba1471ae",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-174120-7c7e15d0",
+    "结果": [],
+    "首次失败": [
+      {
+        "原因": "docker 执行失败（1）：Cannot connect to the Docker daemon at unix:///Users/archer/.docker/run/docker.sock. Is the docker daemon running?\n",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 898, in main\n    run.run_matrix(section)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 870, in run_matrix\n    self.start();self.fixtures();self.start_manager();self.create_repo();self.setup_policy()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 184, in start\n    self.execute('gitea', '--config', '/data/gitea/conf/app.ini', 'admin', 'user',\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 86, in execute\n    self.verify_owned()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 80, in verify_owned\n    info = json.loads(self.run(['docker', 'inspect', self.container]))[0]\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 51, in run\n    raise RuntimeError(message) from None\nRuntimeError: docker 执行失败（1）：Cannot connect to the Docker daemon at unix:///Users/archer/.docker/run/docker.sock. Is the docker daemon running?\n\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "38495869955f346617c4ab19a045b09cd803c4d4191487cf34f94e00c692eedc",
+      "scripts/approval-integration.py": "855932edfc36ee7566713b6b9b84d78e85605b8447190e3c0ad3c66b02302d4b",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb"
+    },
+    "分项": "inflight",
+    "隔离网段": "10.253.242.160/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "ccfca2698615446af936d459614273d9ed23b1c3299977b7b454cfe48066c1bf",
+      "地址": "http://127.0.0.1:60359",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:41:26.091942961Z"
+    },
+    "状态": "基础设施或前置失败，保留现场"
+  }
+}

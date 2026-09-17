@@ -1,0 +1,856 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "3034af0186e642a2d7aa2f9e4196ca83d7f2f3c18e5fbcd00f1667244e93aaea",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-164701-6fb24322",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-原生五票优先",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Does not have enough approvals",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.406,
+        "旧引用": "c05e2407148c7eaf0d811c00067835e65fe525e3",
+        "新引用": "c05e2407148c7eaf0d811c00067835e65fe525e3",
+        "耗时秒": 0.045
+      },
+      {
+        "场景": "合并-merge-原生五票优先",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.364,
+        "旧引用": "c05e2407148c7eaf0d811c00067835e65fe525e3",
+        "新引用": "ccd22240dd3dcaeba92c702e6c9a56010f61f00b",
+        "耗时秒": 2.563
+      },
+      {
+        "场景": "合并-merge-原生CI-missing",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.388,
+        "旧引用": "ccd22240dd3dcaeba92c702e6c9a56010f61f00b",
+        "新引用": "ccd22240dd3dcaeba92c702e6c9a56010f61f00b",
+        "耗时秒": 0.064
+      },
+      {
+        "场景": "合并-merge-原生CI-failure",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.421,
+        "旧引用": "ccd22240dd3dcaeba92c702e6c9a56010f61f00b",
+        "新引用": "ccd22240dd3dcaeba92c702e6c9a56010f61f00b",
+        "耗时秒": 0.065
+      },
+      {
+        "场景": "合并-merge-原生CI-success",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.73,
+        "旧引用": "ccd22240dd3dcaeba92c702e6c9a56010f61f00b",
+        "新引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "耗时秒": 2.679
+      },
+      {
+        "场景": "合并-merge-原生请求修改",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "There are requested changes",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.429,
+        "旧引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "新引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "耗时秒": 0.042
+      },
+      {
+        "场景": "合并-merge-原生签名要求",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "wont sign: nokey",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.488,
+        "旧引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "新引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "耗时秒": 0.101
+      },
+      {
+        "场景": "合并-merge-其他门禁优先",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 原有门禁拒绝\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.528,
+        "旧引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "新引用": "bf71549160fdf071533967b3a7f005e83c65b64b",
+        "耗时秒": 2.054
+      }
+    ],
+    "首次失败": [
+      {
+        "原因": "原生测试规则未完整恢复",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 578, in main\n    {'state':'success','context':'matrix/auto','description':'隔离自动合并触发'})\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 565, in run_matrix\n    pr=self.pr('自动合并-'+style,('bob','carol','dave'))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 549, in native_cases\n    assert [{k:v for k,v in r.items() if k!='updated_at'} for r in current]==[\nAssertionError: 原生测试规则未完整恢复\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "入口01-merge-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "62bcd8d61baa3337d41f40fb3530bb0afb607059",
+          "新引用": "62bcd8d61baa3337d41f40fb3530bb0afb607059",
+          "已合并": false,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/2\"}"
+        },
+        "耗时秒": 2.644
+      },
+      {
+        "编号": "入口01-merge-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "62bcd8d61baa3337d41f40fb3530bb0afb607059",
+          "新引用": "5f91a4bff5b3e9f53a7e26b0c479c631965e0f3e",
+          "已合并": true,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/2\"}"
+        },
+        "耗时秒": 3.535
+      },
+      {
+        "编号": "入口01-rebase-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "5f91a4bff5b3e9f53a7e26b0c479c631965e0f3e",
+          "新引用": "5f91a4bff5b3e9f53a7e26b0c479c631965e0f3e",
+          "已合并": false,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/3\"}"
+        },
+        "耗时秒": 2.735
+      },
+      {
+        "编号": "入口01-rebase-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "5f91a4bff5b3e9f53a7e26b0c479c631965e0f3e",
+          "新引用": "19803772add0e92cffe20ced85d74371658ad0fb",
+          "已合并": true,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/3\"}"
+        },
+        "耗时秒": 3.744
+      },
+      {
+        "编号": "入口01-rebase-merge-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "19803772add0e92cffe20ced85d74371658ad0fb",
+          "新引用": "19803772add0e92cffe20ced85d74371658ad0fb",
+          "已合并": false,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/4\"}"
+        },
+        "耗时秒": 2.536
+      },
+      {
+        "编号": "入口01-rebase-merge-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "19803772add0e92cffe20ced85d74371658ad0fb",
+          "新引用": "21e13717d9d8c393c4e74d0a16e837c2753d366b",
+          "已合并": true,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/4\"}"
+        },
+        "耗时秒": 3.215
+      },
+      {
+        "编号": "入口01-squash-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "21e13717d9d8c393c4e74d0a16e837c2753d366b",
+          "新引用": "21e13717d9d8c393c4e74d0a16e837c2753d366b",
+          "已合并": false,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/5\"}"
+        },
+        "耗时秒": 2.576
+      },
+      {
+        "编号": "入口01-squash-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "21e13717d9d8c393c4e74d0a16e837c2753d366b",
+          "新引用": "2fe584d071215e979c7f57a2f690699ec5bf3b8d",
+          "已合并": true,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/5\"}"
+        },
+        "耗时秒": 4.044
+      },
+      {
+        "编号": "入口01-fast-forward-only-拒绝",
+        "场景": "原生网页入口缺指定组票拒绝",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "2fe584d071215e979c7f57a2f690699ec5bf3b8d",
+          "新引用": "2fe584d071215e979c7f57a2f690699ec5bf3b8d",
+          "已合并": false,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/6\"}"
+        },
+        "耗时秒": 2.446
+      },
+      {
+        "编号": "入口01-fast-forward-only-放行",
+        "场景": "原生网页入口补齐票后合并",
+        "结果": "通过",
+        "证据": {
+          "旧引用": "2fe584d071215e979c7f57a2f690699ec5bf3b8d",
+          "新引用": "c05e2407148c7eaf0d811c00067835e65fe525e3",
+          "已合并": true,
+          "HTTP": 200,
+          "原生响应": "{\"redirect\":\"/approval-probe/approval-live/pulls/6\"}"
+        },
+        "耗时秒": 3.889
+      },
+      {
+        "编号": "兼容01-原生五票",
+        "场景": "新增三票满足仍受原生五票限制",
+        "结果": "通过",
+        "证据": {
+          "PR": 7,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 25
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 26
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 27
+              }
+            ],
+            "base": "c05e2407148c7eaf0d811c00067835e65fe525e3",
+            "checked_at": 1789289341.2976496,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "89c29b1c9ee5d3f41b9712ca7495f1f6deb17f55",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "isolated_enforced",
+            "name": "三人及双组审批",
+            "native_required": 5,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 7,
+            "policy_id": 1,
+            "pr_id": 7,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289356.2976499
+          }
+        },
+        "耗时秒": 12.047
+      },
+      {
+        "编号": "原生01-missing",
+        "场景": "原生CI独立生效",
+        "结果": "通过",
+        "证据": {
+          "原生CI状态": "missing",
+          "PR": 8
+        },
+        "耗时秒": 7.712
+      },
+      {
+        "编号": "原生01-failure",
+        "场景": "原生CI独立生效",
+        "结果": "通过",
+        "证据": {
+          "原生CI状态": "failure",
+          "PR": 9
+        },
+        "耗时秒": 8.404
+      },
+      {
+        "编号": "原生01-success",
+        "场景": "原生CI独立生效",
+        "结果": "通过",
+        "证据": {
+          "原生CI状态": "success",
+          "PR": 10
+        },
+        "耗时秒": 11.515
+      },
+      {
+        "编号": "原生02-请求修改",
+        "场景": "原生请求修改不能被新增三票绕过",
+        "结果": "通过",
+        "证据": {
+          "PR": 11,
+          "结果": "目标分支未写入"
+        },
+        "耗时秒": 7.211
+      },
+      {
+        "编号": "原生02-签名",
+        "场景": "原生签名要求保留",
+        "结果": "通过",
+        "证据": {
+          "PR": 12,
+          "结果": "未签名提交被原生拒绝"
+        },
+        "耗时秒": 8.451
+      },
+      {
+        "编号": "接入04-B",
+        "场景": "新增组票满足也不能吞掉其他Hook拒绝",
+        "结果": "通过",
+        "证据": {
+          "PR": 13,
+          "结果": "原有门禁退出码被保留"
+        },
+        "耗时秒": 10.698
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "640b5bec5c51cfcfcf81690411f4e5704fb2cc3992ec5325a97403bd36d55b00",
+      "scripts/approval-integration.py": "5c252c3e20faf0f13c7be536bdbee2f905a0de6302f474072498f8b0084fe9af",
+      "backend/approval/gitea.py": "d899badd1e5653d02ead6280cfe286753439e46e95d6e22c9428d5835848dc48",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9"
+    },
+    "隔离网段": "10.253.241.128/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "0795371dd8921de03a49fe29ec2bdd28d87203997ab18f17c912ad56c469f083",
+      "地址": "http://127.0.0.1:56224",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T08:47:07.343559925Z"
+    },
+    "状态": "基础设施或前置失败，保留现场",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789289244.1331587,
+      "fingerprint": "9c306426463635048888a579c6671633cc3f779d9849b2b4c738ae3c6d13b01b",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T08:47:17Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T08:47:17Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T08:47:20Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0227
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0049
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0052
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0072
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0049
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0049
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0086
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.0053
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0075
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0048
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0047
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0134
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        }
+      ]
+    },
+    "原生变更恢复核对": {
+      "基线": [
+        {
+          "branch_name": "main",
+          "rule_name": "main",
+          "priority": 1,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "push_whitelist_usernames": [],
+          "push_whitelist_teams": [],
+          "push_whitelist_deploy_keys": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "force_push_allowlist_usernames": [],
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_deploy_keys": false,
+          "enable_merge_whitelist": false,
+          "merge_whitelist_usernames": [],
+          "merge_whitelist_teams": [],
+          "enable_status_check": false,
+          "status_check_contexts": null,
+          "required_approvals": 3,
+          "enable_approvals_whitelist": false,
+          "approvals_whitelist_username": [],
+          "approvals_whitelist_teams": [],
+          "block_on_rejected_reviews": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "dismiss_stale_approvals": false,
+          "ignore_stale_approvals": false,
+          "require_signed_commits": false,
+          "protected_file_patterns": "",
+          "unprotected_file_patterns": "",
+          "block_admin_merge_override": true,
+          "created_at": "2026-09-13T08:47:17Z",
+          "updated_at": "2026-09-13T08:47:17Z"
+        }
+      ],
+      "当前": [
+        {
+          "branch_name": "main",
+          "rule_name": "main",
+          "priority": 1,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "push_whitelist_usernames": [],
+          "push_whitelist_teams": [],
+          "push_whitelist_deploy_keys": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "force_push_allowlist_usernames": [],
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_deploy_keys": false,
+          "enable_merge_whitelist": false,
+          "merge_whitelist_usernames": [],
+          "merge_whitelist_teams": [],
+          "enable_status_check": false,
+          "status_check_contexts": [],
+          "required_approvals": 3,
+          "enable_approvals_whitelist": false,
+          "approvals_whitelist_username": [],
+          "approvals_whitelist_teams": [],
+          "block_on_rejected_reviews": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "dismiss_stale_approvals": false,
+          "ignore_stale_approvals": false,
+          "require_signed_commits": false,
+          "protected_file_patterns": "",
+          "unprotected_file_patterns": "",
+          "block_admin_merge_override": true,
+          "created_at": "2026-09-13T08:47:17Z",
+          "updated_at": "2026-09-13T08:49:48Z"
+        }
+      ]
+    }
+  }
+}

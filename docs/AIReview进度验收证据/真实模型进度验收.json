@@ -1,0 +1,88 @@
+{
+  "说明": "真实模型成功链路仅使用本文生成的合成 C 代码；不是内部模型或公司 PR 的质量验收。",
+  "模型": "deepseek-flash",
+  "引擎": "opencode_cli",
+  "PR": "http://127.0.0.1:64300/review-admin/progress-real-model/pulls/1",
+  "任务": "e026f7f4b25b58f09288bb8264d47a5a",
+  "SHA": "8641405eeeb0d03a95d62e3938b6237bebfbb6f5",
+  "任务状态": "succeeded",
+  "进度": [
+    {
+      "status": "queued",
+      "stage": "queued",
+      "units_completed": 0,
+      "units_total": null
+    },
+    {
+      "status": "running",
+      "stage": "snapshot",
+      "units_completed": 0,
+      "units_total": null
+    },
+    {
+      "status": "running",
+      "stage": "analysis",
+      "units_completed": 0,
+      "units_total": 2
+    },
+    {
+      "status": "running",
+      "stage": "analysis",
+      "units_completed": 1,
+      "units_total": 2
+    },
+    {
+      "status": "running",
+      "stage": "refutation",
+      "units_completed": 1,
+      "units_total": 2
+    },
+    {
+      "status": "running",
+      "stage": "refutation",
+      "units_completed": 2,
+      "units_total": 2
+    },
+    {
+      "status": "succeeded",
+      "stage": "succeeded",
+      "units_completed": 2,
+      "units_total": 2
+    }
+  ],
+  "评论状态": {
+    "checked_at": 1789181668.3948598,
+    "coverage": {
+      "complete": true,
+      "files_reviewed": 1,
+      "files_total": 1
+    },
+    "current_head": "8641405eeeb0d03a95d62e3938b6237bebfbb6f5",
+    "detail": "已完成",
+    "elapsed_seconds": 14,
+    "enabled": true,
+    "error": "",
+    "findings": 1,
+    "finished_at": 1789181664.2660167,
+    "generation": 1,
+    "head": "8641405eeeb0d03a95d62e3938b6237bebfbb6f5",
+    "job": "e026f7f4b25b58f09288bb8264d47a5a",
+    "job_generation": 1,
+    "label": "审查完成",
+    "lease_until": null,
+    "number": 1,
+    "received_at": 1789181645.8344471,
+    "repository": "review-admin/progress-real-model",
+    "repository_id": 2,
+    "review_fragment": "issuecomment-14",
+    "review_id": 4,
+    "sequence": 21,
+    "stage": "succeeded",
+    "started_at": 1789181649.7239912,
+    "status": "succeeded",
+    "units_completed": 2,
+    "units_total": 2,
+    "version": 1
+  },
+  "错误": ""
+}

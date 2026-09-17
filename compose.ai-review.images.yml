@@ -1,0 +1,23 @@
+# 离线导入镜像后与现有 Compose 及 AI Review 配置叠加，使用 --no-build --pull never。
+services:
+  backend:
+    image: gitea-review-backend:offline
+    pull_policy: never
+  frontend:
+    image: gitea-review-frontend:offline
+    pull_policy: never
+  approval-view:
+    image: gitea-review-backend:offline
+    pull_policy: never
+  review-worker:
+    image: gitea-review-backend:offline
+    pull_policy: never
+  review-progress:
+    image: gitea-review-backend:offline
+    pull_policy: never
+  review-feedback:
+    image: gitea-review-backend:offline
+    pull_policy: never
+  review-executor:
+    image: gitea-review-executor:offline
+    pull_policy: never

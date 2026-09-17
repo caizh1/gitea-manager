@@ -67,13 +67,13 @@
 
     <el-collapse v-model="activeSections" class="detail-collapse">
       <el-collapse-item name="backups" :title="`备份记录 (共 ${detail.backup_count} 条)`">
-        <el-table :data="detail.backups || []" size="small" v-if="(detail.backups || []).length">
+        <el-table :data="detail.backups || []" size="small" v-if="(detail.backups || []).length" max-height="var(--table-max-height)">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip />
           <el-table-column label="大小" width="90">
             <template #default="{ row }">{{ fmtSize(row.file_size) }}</template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="80">
+          <el-table-column prop="status" label="状态" width="110">
             <template #default="{ row }">
               <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
             </template>
@@ -86,10 +86,10 @@
       </el-collapse-item>
 
       <el-collapse-item name="restores" :title="`恢复记录 (共 ${detail.restore_count} 条)`">
-        <el-table :data="detail.restores || []" size="small" v-if="(detail.restores || []).length">
+        <el-table :data="detail.restores || []" size="small" v-if="(detail.restores || []).length" max-height="var(--table-max-height)">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="backup_filename" label="备份文件" min-width="220" show-overflow-tooltip />
-          <el-table-column prop="status" label="状态" width="80">
+          <el-table-column prop="status" label="状态" width="110">
             <template #default="{ row }">
               <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
             </template>
@@ -165,10 +165,10 @@ export default {
 .info-card { padding: 18px; text-align: center; }
 .info-val { font-size: 24px; font-weight: 700; color: #1a1a2e; letter-spacing: -0.5px; }
 .info-val.font-mono { font-family: 'SF Mono', 'Fira Code', monospace; }
-.info-label { font-size: 12px; color: #9ca3af; margin-top: 4px; font-weight: 500; }
+.info-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
 
 .resource-tags { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.container-info { margin-bottom: 16px; color: #9ca3af; font-size: 12px; }
+.container-info { margin-bottom: 16px; color: var(--text-muted); font-size: 12px; }
 
 .card-section-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;

@@ -1,0 +1,814 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "d0b6143e022ce41f0c9a414827d4390d355d08bf193dc4acf63ed5fc566b6ab7",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-181937-33470420",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "容量校准没有重启原生服务",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "容量校准-热点突发-1",
+        "场景": "独立登录身份同时读取审批页面",
+        "结果": "通过",
+        "证据": {
+          "独立会话数": 1,
+          "实际请求数": 1,
+          "完成成功数": 1,
+          "P95秒": 2.8401,
+          "最大秒": 2.8401,
+          "逐请求": [
+            {
+              "用户ID": 9,
+              "计划延误秒": 0.0006,
+              "HTTP": 200,
+              "身份正确": true,
+              "成功": true,
+              "耗时秒": 2.8401
+            }
+          ]
+        },
+        "耗时秒": 3.5
+      },
+      {
+        "编号": "容量校准-热点突发-50",
+        "场景": "独立登录身份同时读取审批页面",
+        "结果": "失败",
+        "原因": "独立页面突发有失败，停止升档：{\"独立会话数\": 50, \"实际请求数\": 50, \"完成成功数\": 0, \"P95秒\": 12.0098, \"最大秒\": 12.0121}",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 133, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-capacity-probe.py\", line 100, in <lambda>\n    row=self.case('容量校准-热点突发-'+str(count),'独立登录身份同时读取审批页面',lambda count=count:self.burst(count))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-capacity-probe.py\", line 83, in burst\n    assert all(r['成功'] for r in rows),'独立页面突发有失败，停止升档：'+json.dumps({k:v for k,v in result.items() if k!='逐请求'},ensure_ascii=False)\nAssertionError: 独立页面突发有失败，停止升档：{\"独立会话数\": 50, \"实际请求数\": 50, \"完成成功数\": 0, \"P95秒\": 12.0098, \"最大秒\": 12.0121}\n",
+        "耗时秒": 20.053
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [
+      {
+        "编号": "容量校准-热点突发-50",
+        "场景": "独立登录身份同时读取审批页面",
+        "结果": "失败",
+        "原因": "独立页面突发有失败，停止升档：{\"独立会话数\": 50, \"实际请求数\": 50, \"完成成功数\": 0, \"P95秒\": 12.0098, \"最大秒\": 12.0121}",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 133, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-capacity-probe.py\", line 100, in <lambda>\n    row=self.case('容量校准-热点突发-'+str(count),'独立登录身份同时读取审批页面',lambda count=count:self.burst(count))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-capacity-probe.py\", line 83, in burst\n    assert all(r['成功'] for r in rows),'独立页面突发有失败，停止升档：'+json.dumps({k:v for k,v in result.items() if k!='逐请求'},ensure_ascii=False)\nAssertionError: 独立页面突发有失败，停止升档：{\"独立会话数\": 50, \"实际请求数\": 50, \"完成成功数\": 0, \"P95秒\": 12.0098, \"最大秒\": 12.0121}\n"
+      }
+    ],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "backend/approval/__init__.py": "d8d200d2c243b369cfcdc14aee9b6b7d047a9d58d72dfa6475af0ab05cac135d",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "backend/approval/bundle.py": "d5c48c109e1355bedeaa7f2bb37782b3739857e8dc0837db1bf313d5be53934a",
+      "backend/approval/display_cache.py": "f1491a910a36856619e324397df567e60ec6027fed139d8f741f605b78528a76",
+      "backend/approval/gitea.py": "ae7d5b37913308ed7813d0db1c3421ad314123fe009cbc88cec6142d9db32e26",
+      "backend/approval/native_metadata.py": "d0b2709ba3a43f35c5d44f29d966f369383b47fdf70a4904e9b3d03fba0aaae0",
+      "backend/approval/rules.py": "4d6bb018a0a0a47e4dd9c4ff9df4c73030231f92414ec16785fb04415601583c",
+      "backend/approval/service.py": "36d78fec13c8ca11c2f8db961ae1d6e4ddcc70e5130c634e8dee8717f40dd3e5",
+      "backend/approval/timeline.py": "6a9a54ca99b05a90ec1dac43e820278a1aeae96382861cfcbef34d7ccc688549",
+      "backend/approval/view_app.py": "4db8fe579820406ae143ed6796fd1583f844b2e71b375af4112d90ebabbd729a",
+      "backend/routes/approval_routes.py": "c19bca3098172277c8b6d6e7c49ab6c80545542dd9875d084722c0b2b0437c8d",
+      "scripts/approval-capacity-probe.py": "948792f137287247453a5292ea1c6873eae4b1be28fc5f3c56b2359a86518ee4",
+      "scripts/approval-compat-matrix.py": "45bbcb4ba9b98e71696ed15eb689ee37b2acd5e39442a43fa562314068228d84",
+      "scripts/approval-concurrency-matrix.py": "657a5fe7a7ba50c8253caef91d097d03f7559f7799b4577d03ce8c3457e9c0a8",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb",
+      "scripts/approval-feasibility.py": "51cd0e4a60cd7b438839d58e77594427be0c7667fd9105e614baf4e259ff71e2",
+      "scripts/approval-integration.py": "9c3c99d3838d5c16fdbc7f5451004a3c676cf11702f953a37a2ab9acef5df7e1",
+      "scripts/approval-matrix.py": "5a23237c5c9861668e5e3ee2681724d0a73b3f80d5fcdc78eb43da1b2c5cd58b",
+      "scripts/approval-pause-proxy.py": "4fced6ed6af04746e4e420783308105b5461c55abb75335ce957d651bcc3d3cf",
+      "scripts/approval-ssh-fixture.py": "544ae9abfdc9cb732238d44cd804044296538505a76edb347d29b1f489d38691",
+      "scripts/approval-ssh-matrix.py": "6ab4f814c9c43cf1cc3043481bdbd8e1c575fcd427ef9e34b186fc8a0e913f56"
+    },
+    "隔离网段": "10.253.243.112/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "5b49864bab09cced4bcec31fdb45f1c681d84c3d2dfd6ad294cfe195a2935201",
+      "地址": "http://127.0.0.1:63810",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T10:19:42.720776803Z"
+    },
+    "状态": "运行中",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789294799.665646,
+      "fingerprint": "4e21bd554d568ea02259c9e82d05825969725919e3e51bf3c720c92a01a4a79f",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T10:19:51Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T10:19:51Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T10:19:54Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0211
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.013
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0046
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0051
+        }
+      ]
+    },
+    "容量边界": {
+      "类型": "短时热点页面突发，真实独立登录身份",
+      "配额": "主 Manager 与独立展示各 1 CPU/512 MiB；展示 2 进程×8线程；Gitea 1 CPU/768 MiB，PostgreSQL 0.5 CPU/256 MiB",
+      "限制": "本机与其他开发实例共享资源；不等于现场硬件，也不等于完整混合流量或 24 小时结果",
+      "保护": "只从 1 页面起逐档校准，出现失败停止升档；不调整用户既有容器资源"
+    },
+    "容量原始结果": [
+      {
+        "独立会话数": 1,
+        "实际请求数": 1,
+        "完成成功数": 1,
+        "P95秒": 2.8401,
+        "最大秒": 2.8401,
+        "逐请求": [
+          {
+            "用户ID": 9,
+            "计划延误秒": 0.0006,
+            "HTTP": 200,
+            "身份正确": true,
+            "成功": true,
+            "耗时秒": 2.8401
+          }
+        ]
+      },
+      {
+        "独立会话数": 50,
+        "实际请求数": 50,
+        "完成成功数": 0,
+        "P95秒": 12.0098,
+        "最大秒": 12.0121,
+        "逐请求": [
+          {
+            "用户ID": 9,
+            "计划延误秒": 0.0118,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 9.0782
+          },
+          {
+            "用户ID": 10,
+            "计划延误秒": 0.0075,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.3053
+          },
+          {
+            "用户ID": 11,
+            "计划延误秒": 0.0057,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 8.3068
+          },
+          {
+            "用户ID": 12,
+            "计划延误秒": 0.0143,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.0067
+          },
+          {
+            "用户ID": 13,
+            "计划延误秒": 0.0186,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.0035
+          },
+          {
+            "用户ID": 14,
+            "计划延误秒": 0.0157,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3256
+          },
+          {
+            "用户ID": 15,
+            "计划延误秒": 0.0106,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3291
+          },
+          {
+            "用户ID": 16,
+            "计划延误秒": 0.0136,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.0535
+          },
+          {
+            "用户ID": 17,
+            "计划延误秒": 0.0104,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.012
+          },
+          {
+            "用户ID": 18,
+            "计划延误秒": 0.0094,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 5.2959
+          },
+          {
+            "用户ID": 19,
+            "计划延误秒": 0.0051,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.0619
+          },
+          {
+            "用户ID": 20,
+            "计划延误秒": 0.0021,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3341
+          },
+          {
+            "用户ID": 21,
+            "计划延误秒": 0.0013,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.3142
+          },
+          {
+            "用户ID": 22,
+            "计划延误秒": 0.0085,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.0644
+          },
+          {
+            "用户ID": 23,
+            "计划延误秒": 0.0122,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.0417
+          },
+          {
+            "用户ID": 24,
+            "计划延误秒": 0.0169,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.0371
+          },
+          {
+            "用户ID": 25,
+            "计划延误秒": 0.0145,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.055
+          },
+          {
+            "用户ID": 26,
+            "计划延误秒": 0.0041,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 9.0858
+          },
+          {
+            "用户ID": 27,
+            "计划延误秒": 0.0151,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.006
+          },
+          {
+            "用户ID": 28,
+            "计划延误秒": 0.0071,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3324
+          },
+          {
+            "用户ID": 29,
+            "计划延误秒": 0.0101,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.0121
+          },
+          {
+            "用户ID": 30,
+            "计划延误秒": 0.0068,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3345
+          },
+          {
+            "用户ID": 31,
+            "计划延误秒": 0.0054,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 11.3175
+          },
+          {
+            "用户ID": 32,
+            "计划延误秒": 0.016,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.0381
+          },
+          {
+            "用户ID": 33,
+            "计划延误秒": 0.0025,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3346
+          },
+          {
+            "用户ID": 34,
+            "计划延误秒": 0.0034,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.337
+          },
+          {
+            "用户ID": 35,
+            "计划延误秒": 0.0016,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.32
+          },
+          {
+            "用户ID": 36,
+            "计划延误秒": 0.0114,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 9.0751
+          },
+          {
+            "用户ID": 37,
+            "计划延误秒": 0.0178,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.0339
+          },
+          {
+            "用户ID": 38,
+            "计划延误秒": 0.0149,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.0907
+          },
+          {
+            "用户ID": 39,
+            "计划延误秒": 0.0166,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.0055
+          },
+          {
+            "用户ID": 40,
+            "计划延误秒": 0.0127,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 9.0991
+          },
+          {
+            "用户ID": 41,
+            "计划延误秒": 0.0091,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.3015
+          },
+          {
+            "用户ID": 42,
+            "计划延误秒": 0.0082,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.3057
+          },
+          {
+            "用户ID": 43,
+            "计划延误秒": 0.0048,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 9.0814
+          },
+          {
+            "用户ID": 44,
+            "计划延误秒": 0.0044,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 8.2072
+          },
+          {
+            "用户ID": 45,
+            "计划延误秒": 0.0002,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 11.2172
+          },
+          {
+            "用户ID": 46,
+            "计划延误秒": 0.0174,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 5.1854
+          },
+          {
+            "用户ID": 47,
+            "计划延误秒": 0.0038,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 9.0868
+          },
+          {
+            "用户ID": 48,
+            "计划延误秒": 0.0079,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.0434
+          },
+          {
+            "用户ID": 49,
+            "计划延误秒": 0.0154,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.3008
+          },
+          {
+            "用户ID": 50,
+            "计划延误秒": 0.0132,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.0534
+          },
+          {
+            "用户ID": 51,
+            "计划延误秒": 0.0088,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 6.3285
+          },
+          {
+            "用户ID": 52,
+            "计划延误秒": 0.011,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.0098
+          },
+          {
+            "用户ID": 53,
+            "计划延误秒": 0.0065,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "原生接口超时或响应损坏，未放行",
+            "耗时秒": 2.1884
+          },
+          {
+            "用户ID": 54,
+            "计划延误秒": 0.0139,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "原生接口超时或响应损坏，未放行",
+            "耗时秒": 2.2801
+          },
+          {
+            "用户ID": 55,
+            "计划延误秒": 0.0098,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "原生接口超时或响应损坏，未放行",
+            "耗时秒": 3.0913
+          },
+          {
+            "用户ID": 56,
+            "计划延误秒": 0.0029,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.3115
+          },
+          {
+            "用户ID": 57,
+            "计划延误秒": 0.0009,
+            "HTTP": 409,
+            "身份正确": false,
+            "成功": false,
+            "原因": "无法确认当前 Gitea 会话",
+            "耗时秒": 3.312
+          },
+          {
+            "用户ID": 58,
+            "计划延误秒": 0.0204,
+            "成功": false,
+            "异常": "timeout",
+            "耗时秒": 12.0018
+          }
+        ]
+      }
+    ],
+    "未执行升档": [
+      200,
+      500,
+      1000
+    ]
+  }
+}

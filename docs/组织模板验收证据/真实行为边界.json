@@ -1,0 +1,169 @@
+{
+  "说明": "真实 Gitea 1.26.4，独立测试仓库；不是生产或人工效率验收",
+  "检查": [
+    {
+      "项目": "组织验收：双人审批及状态检查 54823602000 经 Manager 预览应用回读",
+      "结果": "通过",
+      "证据": {
+        "批次": 19,
+        "结果": {
+          "success": 1
+        }
+      }
+    },
+    {
+      "项目": "真实 Git 直接推送被拒绝",
+      "结果": "通过",
+      "证据": {
+        "仓库": "policy-qa/org-center-behavior-pull-54823602000",
+        "服务端保护拒绝": true
+      }
+    },
+    {
+      "项目": "零审批禁止合并",
+      "结果": "通过",
+      "证据": {
+        "PR": 1,
+        "拒绝原因": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        }
+      }
+    },
+    {
+      "项目": "一人审批仍禁止合并",
+      "结果": "通过",
+      "证据": {
+        "PR": 1,
+        "拒绝原因": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        }
+      }
+    },
+    {
+      "项目": "两人审批但缺少 CI 禁止合并",
+      "结果": "通过",
+      "证据": {
+        "PR": 1,
+        "拒绝原因": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        }
+      }
+    },
+    {
+      "项目": "CI 失败禁止合并",
+      "结果": "通过",
+      "证据": {
+        "PR": 1,
+        "拒绝原因": {
+          "message": "Not all required status checks successful",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        }
+      }
+    },
+    {
+      "项目": "双人审批且 CI 成功允许合并",
+      "结果": "通过",
+      "证据": {
+        "PR": 1,
+        "已合并": true
+      }
+    },
+    {
+      "项目": "组织验收：禁止强推 54823602000 经 Manager 预览应用回读",
+      "结果": "通过",
+      "证据": {
+        "批次": 20,
+        "结果": {
+          "success": 1
+        }
+      }
+    },
+    {
+      "项目": "允许直接推送时真实 Git 提交成功",
+      "结果": "通过",
+      "证据": "policy-qa/org-center-behavior-force-54823602000"
+    },
+    {
+      "项目": "禁止强推时真实 Force Push 被拒绝",
+      "结果": "通过",
+      "证据": "policy-qa/org-center-behavior-force-54823602000"
+    },
+    {
+      "项目": "组织验收：允许强推 54823602000 经 Manager 预览应用回读",
+      "结果": "通过",
+      "证据": {
+        "批次": 21,
+        "结果": {
+          "success": 1
+        }
+      }
+    },
+    {
+      "项目": "允许强推时真实 Force Push 成功",
+      "结果": "通过",
+      "证据": "policy-qa/org-center-behavior-force-54823602000"
+    },
+    {
+      "项目": "仓库转移、权限变化、规则变化分别阻塞且不影响正常仓库",
+      "结果": "通过",
+      "证据": {
+        "批次": 22,
+        "结果": {
+          "blocked": 3,
+          "success": 1
+        },
+        "明细": [
+          {
+            "仓库": "policy-qa/org-center-behavior-transfer-54823602000",
+            "状态": "blocked",
+            "原因": "仓库不在模板所属组织内，或已转移/组织已改名；请重新选择组织及仓库并预览"
+          },
+          {
+            "仓库": "policy-qa/org-center-behavior-permission-54823602000",
+            "状态": "blocked",
+            "原因": "名单对应的仓库权限已在预览后变化，请重新预览"
+          },
+          {
+            "仓库": "policy-qa/org-center-behavior-rule-change-54823602000",
+            "状态": "blocked",
+            "原因": "仓库规则已在预览后发生变化，请重新预览"
+          },
+          {
+            "仓库": "policy-qa/org-center-behavior-healthy-54823602000",
+            "状态": "success",
+            "原因": ""
+          }
+        ]
+      }
+    }
+  ],
+  "样本仓库": {
+    "pull": {
+      "id": 102,
+      "名称": "policy-qa/org-center-behavior-pull-54823602000"
+    },
+    "force": {
+      "id": 103,
+      "名称": "policy-qa/org-center-behavior-force-54823602000"
+    },
+    "transfer": {
+      "id": 104,
+      "名称": "policy-qa/org-center-behavior-transfer-54823602000"
+    },
+    "permission": {
+      "id": 105,
+      "名称": "policy-qa/org-center-behavior-permission-54823602000"
+    },
+    "rule-change": {
+      "id": 106,
+      "名称": "policy-qa/org-center-behavior-rule-change-54823602000"
+    },
+    "healthy": {
+      "id": 107,
+      "名称": "policy-qa/org-center-behavior-healthy-54823602000"
+    }
+  }
+}

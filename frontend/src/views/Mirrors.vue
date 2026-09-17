@@ -129,7 +129,7 @@
                 <el-icon><Refresh /></el-icon>
               </button>
             </div>
-            <el-table :data="detailRepos" stripe size="small" class="compact-table" max-height="460">
+            <el-table :data="detailRepos" stripe size="small" class="compact-table" max-height="min(460px, var(--table-max-height))">
               <el-table-column prop="repo_name" label="仓库" min-width="240" show-overflow-tooltip />
               <el-table-column prop="status" label="状态" width="112">
                 <template #default="{ row }">
@@ -160,7 +160,7 @@
                 <el-icon><Refresh /></el-icon>
               </button>
             </div>
-            <el-table :data="auditLogs" stripe size="small" class="compact-table" max-height="460" empty-text="暂无审计记录">
+            <el-table :data="auditLogs" stripe size="small" class="compact-table" max-height="min(460px, var(--table-max-height))" empty-text="暂无审计记录">
               <el-table-column prop="created_at" label="时间" width="170">
                 <template #default="{ row }">{{ fmt(row.created_at) }}</template>
               </el-table-column>

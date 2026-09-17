@@ -1,0 +1,57 @@
+
+> gitea-manager-frontend@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+../../../../frontend/node_modules/@vueuse/core/dist/index.js (3362:0): A comment
+
+"/* #__PURE__ */"
+
+in "../../../../frontend/node_modules/@vueuse/core/dist/index.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+../../../../frontend/node_modules/@vueuse/core/dist/index.js (5780:22): A comment
+
+"/* #__PURE__ */"
+
+in "../../../../frontend/node_modules/@vueuse/core/dist/index.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 1699 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                  0.40 kB │ gzip:   0.30 kB
+dist/assets/Settings-BR4Pf3rP.css                0.22 kB │ gzip:   0.15 kB
+dist/assets/Servers-CvWVnU9x.css                 1.01 kB │ gzip:   0.46 kB
+dist/assets/AuthorList-CfGgG0t2.css              1.38 kB │ gzip:   0.48 kB
+dist/assets/Backups-BeMCVF4Z.css                 1.40 kB │ gzip:   0.59 kB
+dist/assets/CommitGates-CdsmvljG.css             1.50 kB │ gzip:   0.53 kB
+dist/assets/Schedule-B81lzybH.css                1.70 kB │ gzip:   0.67 kB
+dist/assets/ServerDetail-orgZwp0d.css            2.33 kB │ gzip:   0.85 kB
+dist/assets/AuthorDetail-JRBXJMZs.css            2.67 kB │ gzip:   0.89 kB
+dist/assets/AIReviews-RjLMIlGP.css               3.09 kB │ gzip:   0.86 kB
+dist/assets/Mirrors-DLZV9Rph.css                 3.84 kB │ gzip:   1.14 kB
+dist/assets/Statistics-DUskC4a4.css              4.57 kB │ gzip:   1.25 kB
+dist/assets/Restore-Eeypp2P_.css                 5.23 kB │ gzip:   1.34 kB
+dist/assets/RepositoryPolicies-cMeAUva0.css      7.13 kB │ gzip:   1.74 kB
+dist/assets/Dashboard-CH5X7lzs.css               7.79 kB │ gzip:   1.90 kB
+dist/assets/index-Dr7JEK13.css                 383.31 kB │ gzip:  53.08 kB
+dist/assets/useChartResize-z4Vt56Ky.js           0.37 kB │ gzip:   0.27 kB
+dist/assets/Settings-CCoXk-At.js                 1.58 kB │ gzip:   0.99 kB
+dist/assets/AuthorList-CSiC6B7i.js               3.44 kB │ gzip:   1.72 kB
+dist/assets/ServerDetail-CET5wx3w.js             5.89 kB │ gzip:   2.17 kB
+dist/assets/Backups-B0-kXwH5.js                  6.05 kB │ gzip:   2.59 kB
+dist/assets/AuthorDetail-BhguQwut.js             7.33 kB │ gzip:   2.94 kB
+dist/assets/Servers-C14b3VF3.js                  7.86 kB │ gzip:   2.87 kB
+dist/assets/Statistics-SqGK0Ouf.js               9.50 kB │ gzip:   3.71 kB
+dist/assets/Dashboard-BO6O4yRo.js                9.75 kB │ gzip:   3.40 kB
+dist/assets/CommitGates-DLNE3ui6.js             10.03 kB │ gzip:   3.64 kB
+dist/assets/Schedule-KlrK4jxM.js                11.14 kB │ gzip:   4.27 kB
+dist/assets/Restore-VWE1QTcx.js                 12.93 kB │ gzip:   4.98 kB
+dist/assets/Mirrors-CO5Zq3uw.js                 14.42 kB │ gzip:   4.76 kB
+dist/assets/AIReviews-B4HnM6O0.js               34.90 kB │ gzip:  12.51 kB
+dist/assets/RepositoryPolicies-I2ZK2q9G.js      50.86 kB │ gzip:  17.67 kB
+dist/assets/index-CXyJW3gS.js                1,240.30 kB │ gzip: 401.95 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.15s

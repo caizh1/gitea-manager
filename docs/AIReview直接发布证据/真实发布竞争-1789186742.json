@@ -1,0 +1,66 @@
+{
+  "说明": "真实 Gitea；注入提交与模拟丢弃成功响应的控制器仅用于合成验收。",
+  "结果": [
+    {
+      "场景": "normal",
+      "通过": true,
+      "状态": "已发布",
+      "快照Head": "7aaa01ee393b69f153a53d0134b1ee21f40e8803",
+      "当前Head": "7aaa01ee393b69f153a53d0134b1ee21f40e8803",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "7aaa01ee393b69f153a53d0134b1ee21f40e8803"
+      ],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [
+        [
+          "probe.c",
+          2,
+          0
+        ]
+      ],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/8"
+    },
+    {
+      "场景": "response_lost",
+      "通过": true,
+      "状态": "已发布",
+      "快照Head": "61e344ba34f7c574e09632fb481912663154b1c7",
+      "当前Head": "61e344ba34f7c574e09632fb481912663154b1c7",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "61e344ba34f7c574e09632fb481912663154b1c7"
+      ],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [
+        [
+          "probe.c",
+          2,
+          0
+        ]
+      ],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/9"
+    },
+    {
+      "场景": "rejected",
+      "通过": true,
+      "状态": "明确拒绝写入",
+      "快照Head": "7b55d747952a849b9a297f6185d531e54bf4ea23",
+      "当前Head": "7b55d747952a849b9a297f6185d531e54bf4ea23",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/10"
+    }
+  ]
+}

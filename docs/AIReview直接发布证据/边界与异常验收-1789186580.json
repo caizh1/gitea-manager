@@ -1,0 +1,520 @@
+{
+  "说明": "真实 Gitea 与执行器，模型为协议替身；不计入模型准确率。",
+  "结果": [
+    {
+      "场景": "新增",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/1",
+      "任务": "44d696b1134a615a729359523be7dac6",
+      "Head": "8a6770e53afeebbb4977fe4da1591599ec85fb35",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "added.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "added.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 11.1,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "修改",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/2",
+      "任务": "b7cb1c1993320f63f02cd99af744c9d9",
+      "Head": "c395224415c050b49a3d9ceb6ea15d88549ca5b0",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "modify.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "modify.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 13.12,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "删除行",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/3",
+      "任务": "78af9e9fb4303365a66699ea0360db08",
+      "Head": "b0fb78cd9f53c2533595f25c3fe2d99d282bfc86",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "delete.c",
+          "old",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "delete.c",
+          "old",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 12.14,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "删除文件",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/4",
+      "任务": "71d96f11348c625feb81fed6b2d8e9c7",
+      "Head": "1655e53202f87ff748d24ab63a0819ca812b4cae",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "deleted-file.c",
+          "old",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "deleted-file.c",
+          "old",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 10.14,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "重命名特殊路径",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/5",
+      "任务": "befa46949b6c457b41f07f8b78dcf52e",
+      "Head": "b21834abf4b5b951d6fe8fe7ab17e04cf449059b",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "目录/带 空格名称.c",
+          "new",
+          19
+        ]
+      ],
+      "实际位置": [
+        [
+          "目录/带 空格名称.c",
+          "new",
+          19
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 12.16,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "CRLF",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/6",
+      "任务": "8333509ac244a176fd6ad265c14bfd11",
+      "Head": "c1d138c275972db02bd6a2735e08bc6a4293c4e8",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "crlf.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "crlf.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 10.15,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "末尾无换行",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/7",
+      "任务": "a53073d1d3efa0ab230b9cac27cc967a",
+      "Head": "bb5888cd0ef9f747ea1015dd0c92f96c36975613",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "no-eol.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "no-eol.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 11.15,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "多个修改区域",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/8",
+      "任务": "daa31face98c97cd7ff2d65adb8787ab",
+      "Head": "aa06574abf468f00a8ae46d21a662055088d066f",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "multi.c",
+          "new",
+          2
+        ],
+        [
+          "multi.c",
+          "new",
+          30
+        ]
+      ],
+      "实际位置": [
+        [
+          "multi.c",
+          "new",
+          2
+        ],
+        [
+          "multi.c",
+          "new",
+          30
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 21.26,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "重复函数片段",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/9",
+      "任务": "2cbe909fc723f683030376e3361db3c2",
+      "Head": "359db0e1258b1c9f24f1cf2f74321197c9cc743b",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "similar.c",
+          "new",
+          2
+        ],
+        [
+          "similar.c",
+          "new",
+          5
+        ]
+      ],
+      "实际位置": [
+        [
+          "similar.c",
+          "new",
+          2
+        ],
+        [
+          "similar.c",
+          "new",
+          5
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 14.18,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "函数内重复原文降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/10",
+      "任务": "c0d6a494b46d7036495441ec79612e70",
+      "Head": "027fe5036feecea171e5773b941a80aaa694d6d0",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 10.15,
+      "错误": "",
+      "降级原因": [
+        "同一函数中存在重复的问题行文本，无法唯一确认代码块，已降级为普通意见"
+      ]
+    },
+    {
+      "场景": "wrong_anchor 安全降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/11",
+      "任务": "c59116760be7ef8e6f9f6439ef401d21",
+      "Head": "02dda028e6f86b0c817c5fda1c6e7537cd2363a0",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 12.17,
+      "错误": "",
+      "降级原因": [
+        "未返回本任务的有效锚点，已降级为普通意见"
+      ]
+    },
+    {
+      "场景": "wrong_quote 安全降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/12",
+      "任务": "92b7322517750e9dee8f890f9f7e23f7",
+      "Head": "a2896275393819e4e7e8da406965a2a235204b7e",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 9.14,
+      "错误": "",
+      "降级原因": [
+        "引用与该位置源码不完全一致，已降级为普通意见"
+      ]
+    },
+    {
+      "场景": "unlocated 安全降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/13",
+      "任务": "ed9beac503119d138955020ef0860778",
+      "Head": "1ae3ec9b5d2e15d65bfc17adf92ed51bf028655b",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 9.14,
+      "错误": "",
+      "降级原因": [
+        "反证检查未确认问题与该位置的对应关系"
+      ]
+    },
+    {
+      "场景": "模型异常 429",
+      "通过": true,
+      "任务": "8083285fef5e0f02f54c3cbbc05e3bb6",
+      "状态": "failed",
+      "错误": "模型服务返回 HTTP 429（退出码 1）；HTTP 403",
+      "耗时秒": 13.23
+    },
+    {
+      "场景": "模型异常 500",
+      "通过": true,
+      "任务": "2789991d34353fdb405cc97d9c4a744c",
+      "状态": "failed",
+      "错误": "模型服务返回 HTTP 500（退出码 1）；HTTP 403",
+      "耗时秒": 12.22
+    },
+    {
+      "场景": "模型异常 invalid_json",
+      "通过": true,
+      "任务": "cfcc00db6cc391aad65e0e9148327a59",
+      "状态": "failed",
+      "错误": "模型没有返回合法 JSON 对象",
+      "耗时秒": 6.11
+    },
+    {
+      "场景": "模型异常 tools",
+      "通过": true,
+      "任务": "ecabbb9d3c05ea20f9299433d694cdf0",
+      "状态": "failed",
+      "错误": "模型响应未正常结束、已截断或尝试调用工具，不能作为完整审查结果（退出码 1）；HTTP 403",
+      "耗时秒": 7.15
+    },
+    {
+      "场景": "模型异常 truncated",
+      "通过": true,
+      "任务": "42079b01fca7edc29fe5172c86ca830c",
+      "状态": "failed",
+      "错误": "模型响应未正常结束、已截断或尝试调用工具，不能作为完整审查结果（退出码 1）；HTTP 403",
+      "耗时秒": 6.1
+    },
+    {
+      "场景": "模型执行期间 Push 只发布最新版本",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/19",
+      "任务": "ddb410d0fa7d6b839f17f03de5e81e75",
+      "Head": "2bfd9b150559d7479e235b3336ded320e42afcc6",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "race.c",
+          "new",
+          3
+        ]
+      ],
+      "实际位置": [
+        [
+          "race.c",
+          "new",
+          3
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 10.18,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "旧版本无正式评论",
+      "通过": true,
+      "旧Head": "88f56b61ed1962a292c32ab77d3ed4b9018aba33",
+      "正式Review数量": 1
+    },
+    {
+      "场景": "Worker 强制中断后租约恢复",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/20",
+      "任务": "359a6a8f2dce580011e7c2047094387a",
+      "Head": "1fab160ccde6dc6639431bb39c35b0438c94b6ff",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "restart.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "restart.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 95.24,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "重启不重复创建任务与 Review",
+      "通过": true,
+      "任务": "359a6a8f2dce580011e7c2047094387a",
+      "模型调用": 3
+    },
+    {
+      "场景": "后续提交重新定位并保留历史讨论",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/20",
+      "任务": "15d126eaf156547b58c51e24df00dd9a",
+      "Head": "ad5eac4e74f14614ed548c7c45795df7b75aa3fa",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 12.3,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "新版本锚点确实重新计算",
+      "通过": true,
+      "新行号": 3
+    },
+    {
+      "场景": "Rebase 与 force-push 绑定新 SHA",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/20",
+      "任务": "bfbbc22b93a731ca97a50aa530d932cd",
+      "Head": "3a4f37cc7e560b1bb503ca3dd3d85797706eca07",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 13.43,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "人工重新审查创建独立执行代次",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/20",
+      "任务": "00f72547457ee6793d0753e3f01a164a",
+      "Head": "3a4f37cc7e560b1bb503ca3dd3d85797706eca07",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 7.16,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "人工任务独立",
+      "通过": true,
+      "任务": "00f72547457ee6793d0753e3f01a164a"
+    },
+    {
+      "场景": "多 Commit 审查整个 PR",
+      "通过": true,
+      "PR": "http://127.0.0.1:64500/review-admin/boundary-fixtures/pulls/21",
+      "任务": "9cec88963d10d2da9303bc75d75eefdf",
+      "Head": "6c4246bb968a6a6a9d24d7eb82b60f3e57d265fe",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "cumulative.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "cumulative.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 10.21,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "部分覆盖不能伪装完整通过",
+      "通过": true,
+      "覆盖范围": {
+        "complete": false,
+        "files_reviewed": 1,
+        "files_total": 2,
+        "skipped": [
+          {
+            "path": "uncovered.txt",
+            "reason": "第一期重点支持 C/C++ 源码，该文件尚未覆盖"
+          }
+        ]
+      }
+    }
+  ]
+}

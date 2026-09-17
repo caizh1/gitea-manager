@@ -371,3 +371,38 @@ bash deploy.sh
 - 备份失败原因应该在备份管理页可见，不要只写告警。
 - 提交门禁的安装成功不等于运行链路一定生效，排查时进入 Gitea 容器检查 bare repo hooks。
 - 只改文档时不需要跑前端构建或后端编译；改代码时按影响范围跑 `py_compile`、`npm run build`，若用户要求部署包则重新打 tar。
+
+## 12. 仓库策略中心第一期
+
+- 新模块：`services/policy_rules.py`（字段与匹配差异）、`policy_gitea.py`（权限及共享限速）、`policy_tasks.py`（持久化批次、进程锁、双仓库执行）、`database_startup.py`（初始化互斥与锁自检）、`routes/policy_routes.py`、`RepositoryPolicies.vue`。
+- 模型：`PolicyTemplate`、`PolicyBatch`、`PolicyRepoResult`、`PolicyRequestSlot`；API 前缀 `/api/repository-policies`。写入要求现有登录与专用 CSRF。审计必须写“共享管理员”，不虚构个人身份。
+- `content_hash` 只防止过期编辑/预览；不能称为模板版本。已提交批次使用不可变内容快照，删除模板不能删除历史。
+- 每实例批次串行、每批最多两个仓库并发，SQLite 统一分配请求时隙。文件锁和数据库必须在同一个可靠本地持久卷；不支持多节点或不可靠共享文件系统，不能去掉启动自检来绕过环境问题。
+- Gitea 1.26.4 分单元团队可能总体 `permission=none`，必须检查 `units_map`。审批名单需 PR 读取权限，其他名单需代码写入权限。人员/团队可能被 Gitea 静默过滤，必须回读后才成功。
+- 只修改模板指定的同名规则；未管理规则必须保留；保留规则与模板规则范围重叠时阻断。规则覆盖范围使用确定性分析，不把现有分支枚举当作未来无冲突的证明。
+- 超时与进程中断不能盲目重复写入；保存部分修改/未知结果，并要求新预览。现有备份调度仅复用其原子领取与进度模式，不将策略任务塞入备份恢复业务状态机。
+- 本地测试使用 `compose.local.yml`、`scripts/local-env.py` 及真实验收脚本，凭据与仓库在 `work/`；部署包必须排除 `work/`、`.env`、SQLite、密钥、缓存和 `node_modules`，同时包含 `docs/`、`scripts/`、本地 Compose、前端 dist 和后端 wheels。
+- 完整边界、操作与后置范围以 `docs/仓库策略使用说明.md`、`docs/仓库策略待办清单.md` 为准。禁止把模拟 1,000 仓库测试写成真实千仓库验收，也禁止把 API 成功当作 Git/PR 保护行为通过。
+
+
+## 13. 一键升级与 AI 自动接入
+
+- 升级入口 `upgrade.sh`；控制器 `scripts/upgrade_runtime.py`，卷助手 `scripts/upgrade_volume.py`。保留同一 Compose 项目、实际挂载、端口、数据库、原 Review 主密钥和账号；已有 Review 数据不得生成新密钥代替。
+- `.gitea-manager-upgrades/` 与 `compose.managed.json` 仅在部署机保存，含秘密，不得打包或提交。升级验证期间必须保留共享维护标记，同时阻止 Web 请求、策略/备份调度、审查、进度、反馈与初始化后台写入；健康和历史核对后才能解除。
+- 自动接入在 `backend/ai_review/setup_service.py`、`setup_transport.py`、`host_policy.py` 与 `AIReviewSetup.vue`。管理端凭据只用于初始化；Worker/执行器不能新增 Docker socket、SSH 或管理凭据挂载。
+- Gitea 1.26.4 的 Webhook 测试只发 Push 且受订阅过滤；临时订阅必须恢复并回读。机器人身份和不确定的令牌回执必须先核对，不能盲目重建。
+- AI 完整交付使用当前 Linux amd64 构建镜像及 `scripts/review-package.py --export-images --source-image-tag <固定标签>`。不得用只含前后端的旧通用 tar 命令代替。打包器会拒绝并发打包及归档期间内容变化。
+- 使用独立标记实例验收，不操作用户现有环境。工程链路、实际内网模型效果、真实宿主机验收和人工精力指标分别报告，依据 `docs/一键升级验收报告.md`，不能互相替代。
+
+## 14. 外接审批规则（仅开发与隔离验收）
+
+- 2026-09-13 用户最新调整：先完成审批功能、权限、原生规则兼容、安装回退及最终包复验，交付内网测试包；多用户并发、容量、并发接入边界和影子与隔离强制各 24 小时改为发包后继续，不阻塞内网测试包。已有失败原样保留，生产强制接入仍受未关闭缺陷和完整验收门禁限制。
+
+- 新模块 `backend/approval/`、`routes/approval_routes.py`、`ApprovalRules.vue`；扩展表在 Manager，禁止改 Gitea 源码、结构、历史或现有原生规则。
+- 复用原生批准/撤回；总人数去重、每组单独计票。只支持官方 1.26.4 Linux amd64、明确分支、组织团队稳定 ID、新代码重新批准。
+- `APR-RACE-001`（最终检查后撤回/移组）是 P2 已知失败、暂缓修复、后续必修。原脚本和十个首次失败保持；禁止通过修改断言或开放生产开关掩盖。
+- 生产 enable 接口始终拒绝。隔离强制同时校验进程指定运行标识与独立容器标签，不能接受浏览器自报 test=true。
+- Hook 临时文件不得放入 pre-receive.d/update.d；不重建包装器。安装预览需摘要/权限核对、目录锁、原子替换、模板热重载和真实页面；回执丢失用原包 verify-installed，不重复换令牌。
+- 页面卸载和门禁停用分开；先记录停用原因，再移除本组件 Hook，保留新增业务和其他模板内容。不能恢复整个 Gitea 数据库或旧页脚覆盖他人更新。
+- `scripts/approval-integration.py` 只创建独立实例；`--packaged --image-tag offline` 验证交付镜像，不挂载源码。当前40项有限断言不能替代全矩阵、持续写流量、24小时、生产与人工精力验收。
+- 精确状态、证据与后续缺口见 `docs/审批规则开发验收报告.md`，不得根据核心路径通过宣称全部生产无感接入完成。

@@ -1,0 +1,110 @@
+{
+  "说明": "真实 Gitea、Manager、Worker、执行器和进度进程；模型为协议替身，不代表真实模型识别质量。",
+  "PR": "http://127.0.0.1:64300/review-admin/progress-acceptance/pulls/2",
+  "SHA": "b9ee2066e17e19b09ab514e72a79f5c03523a3c2",
+  "任务": "255a1d08ed48354c849e754fae0532c7",
+  "模式": "invalid_json",
+  "首次状态可见秒": 2.337,
+  "过程": [
+    {
+      "经过秒": 1.29,
+      "状态": null,
+      "任务": null
+    },
+    {
+      "经过秒": 1.81,
+      "状态": [
+        "queued",
+        "queued",
+        0,
+        null
+      ],
+      "任务": "255a1d08ed48354c849e754fae0532c7"
+    },
+    {
+      "经过秒": 2.34,
+      "状态": [
+        "queued",
+        "queued",
+        0,
+        "queued"
+      ],
+      "任务": "255a1d08ed48354c849e754fae0532c7"
+    },
+    {
+      "经过秒": 22.21,
+      "状态": [
+        "running",
+        "analysis",
+        0,
+        "queued"
+      ],
+      "任务": "255a1d08ed48354c849e754fae0532c7"
+    },
+    {
+      "经过秒": 22.74,
+      "状态": [
+        "running",
+        "analysis",
+        0,
+        "running"
+      ],
+      "任务": "255a1d08ed48354c849e754fae0532c7"
+    },
+    {
+      "经过秒": 23.27,
+      "状态": [
+        "failed",
+        "failed",
+        0,
+        "running"
+      ],
+      "任务": "255a1d08ed48354c849e754fae0532c7"
+    },
+    {
+      "经过秒": 28.09,
+      "状态": [
+        "failed",
+        "failed",
+        0,
+        "failed"
+      ],
+      "任务": "255a1d08ed48354c849e754fae0532c7"
+    }
+  ],
+  "最终载荷": {
+    "checked_at": 1789181430.1526332,
+    "coverage": {
+      "complete": true,
+      "files_reviewed": 1,
+      "files_total": 1
+    },
+    "current_head": "b9ee2066e17e19b09ab514e72a79f5c03523a3c2",
+    "detail": "执行失败",
+    "elapsed_seconds": 1,
+    "enabled": true,
+    "error": "模型没有返回合法 JSON 对象",
+    "findings": null,
+    "finished_at": 1789181425.3094745,
+    "generation": 1,
+    "head": "b9ee2066e17e19b09ab514e72a79f5c03523a3c2",
+    "job": "255a1d08ed48354c849e754fae0532c7",
+    "job_generation": 1,
+    "label": "审查失败",
+    "lease_until": null,
+    "number": 2,
+    "received_at": 1789181403.5684862,
+    "repository": "review-admin/progress-acceptance",
+    "repository_id": 1,
+    "review_fragment": "",
+    "review_id": null,
+    "sequence": 10,
+    "stage": "failed",
+    "started_at": 1789181423.9687164,
+    "status": "failed",
+    "units_completed": 0,
+    "units_total": 3,
+    "version": 1
+  },
+  "总体评论数": 1
+}

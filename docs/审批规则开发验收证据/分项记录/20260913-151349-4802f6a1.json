@@ -1,0 +1,44 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "ef50bc8494d611e0df622c2ad5242df639076e94e6b73fb51ed61f0830af7065",
+  "记录": {
+    "说明": "实际功能服务、原生审批和官方镜像隔离集成；不代表完整生产验收",
+    "运行标识": "20260913-151349-4802f6a1",
+    "结果": [],
+    "首次失败": [
+      {
+        "异常": "JSONDecodeError",
+        "原因": "Expecting value: line 1 column 1 (char 0)",
+        "调用位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 237, in <module>\n    try: run.execute_cases()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 189, in execute_cases\n    self.start(); self.fixtures(); self.start_manager(); self.create_repo(); self.setup_policy()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 140, in setup_policy\n    preview = self.manager('POST', self.prefix+'/preview', {})\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 58, in manager\n    value = json.loads(content) if content else {}\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py\", line 346, in loads\n    return _default_decoder.decode(s)\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py\", line 337, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py\", line 355, in raw_decode\n    raise JSONDecodeError(\"Expecting value\", s, err.value) from None\njson.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "隔离网段": "10.253.240.112/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "b1f3c11717a57fb7c0de1218328bf0c8d0c51a6f7ff6dc5852fbccf445376e5c",
+      "地址": "http://127.0.0.1:50002",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T07:13:55.005773461Z"
+    },
+    "状态": "失败，保留首次现场"
+  }
+}

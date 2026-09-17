@@ -15,7 +15,7 @@
     </div>
 
     <div v-else class="glass-card" style="padding:0;animation:fadeInUp 0.5s ease both;">
-      <el-table :data="backups" stripe v-loading="loading" style="width:100%">
+      <el-table :data="backups" stripe v-loading="loading" style="width:100%" max-height="var(--table-max-height)">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column label="来源服务器" width="180">
           <template #default="{ row }">
@@ -202,7 +202,7 @@ export default {
 }
 .icon-btn:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
 .error-summary { color: #ef4444; font-size: 12px; vertical-align: middle; }
-.text-muted { color: #d1d5db; }
+.text-muted { color: var(--text-muted); }
 .error-dialog { display: flex; flex-direction: column; gap: 12px; }
 .error-meta {
   display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #6b7280;

@@ -1,0 +1,107 @@
+# 与 docker-compose.yml 叠加；主密钥和执行器凭据需在部署前准备。
+services:
+  backend:
+    platform: linux/amd64
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?AI Review 部署必须配置独立强随机会话密钥}
+      INIT_PASSWORD: ${INIT_PASSWORD:?AI Review 部署必须配置初始管理员密码}
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
+      AI_REVIEW_MODEL_HOSTS: ${AI_REVIEW_MODEL_HOSTS:-}
+      AI_REVIEW_WEBHOOK_HOSTS: ${AI_REVIEW_WEBHOOK_HOSTS:-}
+    volumes:
+      - review-data:/app/review
+    secrets: [review_master]
+  review-worker:
+    platform: linux/amd64
+    build: ./backend
+    command: [python, -m, ai_review.worker]
+    environment:
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
+      AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
+      AI_REVIEW_MODEL_HOSTS: ${AI_REVIEW_MODEL_HOSTS:-}
+      AI_REVIEW_EXECUTOR_URL: http://review-executor:5052
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-data:/app/review]
+    secrets: [review_master, review_executor]
+    networks: [default, review-execution]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 1.0
+    restart: unless-stopped
+  review-progress:
+    platform: linux/amd64
+    build: ./backend
+    command: [python, -m, ai_review.progress]
+    environment:
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-data:/app/review]
+    secrets: [review_master]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+  review-feedback:
+    platform: linux/amd64
+    build: ./backend
+    command: [python, -m, ai_review.feedback]
+    environment:
+      AI_REVIEW_DB: /app/review/review.db
+      AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
+      AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-data:/app/review, ./data:/app/data:ro]
+    secrets: [review_master]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+  review-executor:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: review-runtime/Dockerfile
+    environment:
+      AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
+      AI_REVIEW_BROKER_URL: http://review-worker:5051/v1
+      PYTHONDONTWRITEBYTECODE: '1'
+    secrets: [review_executor]
+    networks: [review-execution]
+    dns: [127.0.0.1]
+    read_only: true
+    tmpfs: ['/tmp:size=384m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 2g
+    cpus: 2.0
+    restart: unless-stopped
+networks:
+  review-execution:
+    internal: true
+volumes:
+  review-data:
+secrets:
+  review_master:
+    file: ${AI_REVIEW_SECRET_DIR:?请配置秘密目录}/master.key
+  review_executor:
+    file: ${AI_REVIEW_SECRET_DIR:?请配置秘密目录}/executor.token

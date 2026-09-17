@@ -1,0 +1,31 @@
+[
+  {
+    "服务": "backend",
+    "网络": [
+      "gitea-review-progress-package_default"
+    ],
+    "公网测试": "公网连接已阻断"
+  },
+  {
+    "服务": "review-worker",
+    "网络": [
+      "gitea-review-progress-package_default",
+      "gitea-review-progress-package_review-execution"
+    ],
+    "公网测试": "公网连接已阻断"
+  },
+  {
+    "服务": "review-progress",
+    "网络": [
+      "gitea-review-progress-package_default"
+    ],
+    "公网测试": "公网连接已阻断"
+  },
+  {
+    "服务": "review-executor",
+    "网络": [
+      "gitea-review-progress-package_review-execution"
+    ],
+    "公网测试": "公网连接已阻断"
+  }
+]

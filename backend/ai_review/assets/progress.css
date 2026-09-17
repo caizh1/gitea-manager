@@ -1,0 +1,12 @@
+/* 使用 Gitea 主题变量；卡片与状态标识全部保留在正常文档流。 */
+.ai-review-progress { margin: 16px 0; padding: 16px 20px; border: 1px solid var(--color-secondary, #d6deeb); border-radius: 10px; background: var(--color-box-body, #fff); color: var(--color-text, #283448); min-width: 0; overflow-wrap: anywhere; }
+.ai-review-progress .air-heading, .ai-review-progress .air-metrics, .ai-review-progress .air-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; min-width: 0; }
+.ai-review-progress .air-heading { justify-content: space-between; }
+.ai-review-progress .air-status { display: inline-flex; align-items: center; gap: 6px; color: var(--color-primary, #246ab6); font-weight: 600; }
+.ai-review-progress p { margin: 10px 0; }
+.ai-review-progress .air-metrics, .ai-review-progress .air-notice { font-size: 12px; color: var(--color-text-light, #64748b); line-height: 1.8; }
+.ai-review-progress .air-footer { margin-top: 10px; justify-content: space-between; }
+.ai-review-progress [hidden] { display: none; }
+.ai-review-progress[data-status="failed"] .air-status, .ai-review-progress[data-status="interrupted"] .air-status, .ai-review-progress[data-status="publish_unknown"] .air-status { color: var(--color-warning-text, #9c640c); }
+.ai-review-progress[data-status="succeeded"] .air-status { color: var(--color-success-text, #218455); }
+@media (max-width: 600px) { .ai-review-progress { padding: 12px; } .ai-review-progress .air-heading { align-items: flex-start; } .ai-review-progress .air-metrics { flex-direction: column; align-items: flex-start; gap: 3px; } }

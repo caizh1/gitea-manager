@@ -1,0 +1,776 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "fce0f5c294ac37b9f9ba0717e3f73cefb387de3ac7af12005dc65ef98b0d7159",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-174112-849f7ea3",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-本人删除审批",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Does not have enough approvals",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.426,
+        "旧引用": "b1ad0b4c17abd7f58c053d9b74188fc2e9820b68",
+        "新引用": "b1ad0b4c17abd7f58c053d9b74188fc2e9820b68",
+        "耗时秒": 0.047
+      },
+      {
+        "场景": "合并-merge-本人删除审批",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.464,
+        "旧引用": "b1ad0b4c17abd7f58c053d9b74188fc2e9820b68",
+        "新引用": "05485ef42b803137ce149624cab41a1cbd8b90ee",
+        "耗时秒": 4.284
+      },
+      {
+        "场景": "合并-merge-原生通配优先级",
+        "结果": "通过",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Does not have enough approvals",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.482,
+        "旧引用": "05485ef42b803137ce149624cab41a1cbd8b90ee",
+        "新引用": "05485ef42b803137ce149624cab41a1cbd8b90ee",
+        "耗时秒": 0.049
+      },
+      {
+        "场景": "合并-merge-原生通配优先级",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.392,
+        "旧引用": "05485ef42b803137ce149624cab41a1cbd8b90ee",
+        "新引用": "06898bc84ccb036d16a736a630cd424fb2079bce",
+        "耗时秒": 4.072
+      },
+      {
+        "场景": "接入-持续页面读取-仅页面回退",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入19-页面卸载不取消门禁",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-门禁卸载",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入18-回退只移除组件且保留接入后数据",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入08-重复卸载回执可核对",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-回退后没有重启",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "生命周期03-本人撤回",
+        "场景": "本人删除唯一批准后指定组票失效",
+        "结果": "通过",
+        "证据": {
+          "PR": 2,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 6
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 7
+              }
+            ],
+            "base": "b1ad0b4c17abd7f58c053d9b74188fc2e9820b68",
+            "checked_at": 1789292535.0825312,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "f1b1819ded4d1afe00b9e634733cfbc99e13b487",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3",
+              "Committer1：0/1"
+            ],
+            "mode": "isolated_enforced",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 2,
+            "policy_id": 1,
+            "pr_id": 2,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789292550.0825317
+          }
+        },
+        "耗时秒": 10.29
+      },
+      {
+        "编号": "生命周期04-删除旧记录",
+        "场景": "删除旧审批ID不能取消已经产生的新批准",
+        "结果": "通过",
+        "证据": {
+          "PR": 3,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 11
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 9
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 10
+              }
+            ],
+            "base": "b1ad0b4c17abd7f58c053d9b74188fc2e9820b68",
+            "checked_at": 1789292543.560246,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "db3a6d13dde16b21185ce1c3c0052e03e1515b66",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "isolated_enforced",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 3,
+            "policy_id": 1,
+            "pr_id": 3,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789292558.5602465
+          }
+        },
+        "耗时秒": 12.753
+      },
+      {
+        "编号": "接入03-A-通配优先",
+        "场景": "优先级更高的通配五票不能被精确三票覆盖",
+        "结果": "失败",
+        "原因": "DELETE /repos/approval-probe/approval-live/branch_protections/ma%2A 返回 404：{'url': 'http://127.0.0.1:3000/api/swagger', 'errors': None, 'message': 'not found'}",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 45, in <lambda>\n    self.case('接入03-A-通配优先','优先级更高的通配五票不能被精确三票覆盖',lambda:wildcard(True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 43, in wildcard\n    self.api('DELETE',self.path+'/branch_protections/ma%2A')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 105, in api\n    raise RuntimeError(f'{method} {path} 返回 {response.code}：{str(value)[:500]}')\nRuntimeError: DELETE /repos/approval-probe/approval-live/branch_protections/ma%2A 返回 404：{'url': 'http://127.0.0.1:3000/api/swagger', 'errors': None, 'message': 'not found'}\n",
+        "耗时秒": 16.394
+      },
+      {
+        "编号": "接入03-A-精确优先",
+        "场景": "优先级相同时精确规则优先且与实际合并一致",
+        "结果": "失败",
+        "原因": "POST /repos/approval-probe/approval-live/branch_protections 返回 403：{'message': 'Branch protection already exist', 'url': 'http://127.0.0.1:3000/api/swagger'}",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 46, in <lambda>\n    self.case('接入03-A-精确优先','优先级相同时精确规则优先且与实际合并一致',lambda:wildcard(False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 30, in wildcard\n    self.api('POST',self.path+'/branch_protections',{'rule_name':'ma*','priority':1,'enable_push':False,\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 105, in api\n    raise RuntimeError(f'{method} {path} 返回 {response.code}：{str(value)[:500]}')\nRuntimeError: POST /repos/approval-probe/approval-live/branch_protections 返回 403：{'message': 'Branch protection already exist', 'url': 'http://127.0.0.1:3000/api/swagger'}\n",
+        "耗时秒": 0.261
+      },
+      {
+        "编号": "入口06-管理员覆盖请求",
+        "场景": "管理员 force_merge 仍不能跳过指定组要求",
+        "结果": "失败",
+        "原因": "",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 56, in administrator\n    assert (before!=after)==satisfied and self.get(self.path+f'/pulls/{pr[\"number\"]}')['merged']==satisfied\nAssertionError\n",
+        "耗时秒": 11.032
+      },
+      {
+        "编号": "并发04-同SHA不同PR",
+        "场景": "同一代码SHA不能共用不同PR的批准结果",
+        "结果": "失败",
+        "原因": "Manager /api/approval-rules/policies/1/status/7 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 67, in same_sha\n    no=self.status_is(second,False,count=3,groups=[0,1]);yes=self.status_is(first,True,count=3)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 153, in status_is\n    value = self.check(pr)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 242, in check\n    return self.manager('GET', self.prefix+'/status/'+str(pr['number']))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 64, in manager\n    raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))\nRuntimeError: Manager /api/approval-rules/policies/1/status/7 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果\n",
+        "耗时秒": 12.834
+      },
+      {
+        "编号": "兼容04-目标切换",
+        "场景": "PR改目标后重新匹配，返回受管目标需要新批准",
+        "结果": "失败",
+        "原因": "Manager /api/approval-rules/policies/1/status/8 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 76, in target_change\n    out=self.check(pr);assert out['applicable'] is False\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 242, in check\n    return self.manager('GET', self.prefix+'/status/'+str(pr['number']))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 64, in manager\n    raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))\nRuntimeError: Manager /api/approval-rules/policies/1/status/8 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果\n",
+        "耗时秒": 9.97
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [
+      {
+        "编号": "接入03-A-通配优先",
+        "场景": "优先级更高的通配五票不能被精确三票覆盖",
+        "结果": "失败",
+        "原因": "DELETE /repos/approval-probe/approval-live/branch_protections/ma%2A 返回 404：{'url': 'http://127.0.0.1:3000/api/swagger', 'errors': None, 'message': 'not found'}",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 45, in <lambda>\n    self.case('接入03-A-通配优先','优先级更高的通配五票不能被精确三票覆盖',lambda:wildcard(True))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 43, in wildcard\n    self.api('DELETE',self.path+'/branch_protections/ma%2A')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 105, in api\n    raise RuntimeError(f'{method} {path} 返回 {response.code}：{str(value)[:500]}')\nRuntimeError: DELETE /repos/approval-probe/approval-live/branch_protections/ma%2A 返回 404：{'url': 'http://127.0.0.1:3000/api/swagger', 'errors': None, 'message': 'not found'}\n"
+      },
+      {
+        "编号": "接入03-A-精确优先",
+        "场景": "优先级相同时精确规则优先且与实际合并一致",
+        "结果": "失败",
+        "原因": "POST /repos/approval-probe/approval-live/branch_protections 返回 403：{'message': 'Branch protection already exist', 'url': 'http://127.0.0.1:3000/api/swagger'}",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 46, in <lambda>\n    self.case('接入03-A-精确优先','优先级相同时精确规则优先且与实际合并一致',lambda:wildcard(False))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 30, in wildcard\n    self.api('POST',self.path+'/branch_protections',{'rule_name':'ma*','priority':1,'enable_push':False,\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 105, in api\n    raise RuntimeError(f'{method} {path} 返回 {response.code}：{str(value)[:500]}')\nRuntimeError: POST /repos/approval-probe/approval-live/branch_protections 返回 403：{'message': 'Branch protection already exist', 'url': 'http://127.0.0.1:3000/api/swagger'}\n"
+      },
+      {
+        "编号": "入口06-管理员覆盖请求",
+        "场景": "管理员 force_merge 仍不能跳过指定组要求",
+        "结果": "失败",
+        "原因": "",
+        "异常": "AssertionError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 56, in administrator\n    assert (before!=after)==satisfied and self.get(self.path+f'/pulls/{pr[\"number\"]}')['merged']==satisfied\nAssertionError\n"
+      },
+      {
+        "编号": "并发04-同SHA不同PR",
+        "场景": "同一代码SHA不能共用不同PR的批准结果",
+        "结果": "失败",
+        "原因": "Manager /api/approval-rules/policies/1/status/7 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 67, in same_sha\n    no=self.status_is(second,False,count=3,groups=[0,1]);yes=self.status_is(first,True,count=3)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 153, in status_is\n    value = self.check(pr)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 242, in check\n    return self.manager('GET', self.prefix+'/status/'+str(pr['number']))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 64, in manager\n    raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))\nRuntimeError: Manager /api/approval-rules/policies/1/status/7 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果\n"
+      },
+      {
+        "编号": "兼容04-目标切换",
+        "场景": "PR改目标后重新匹配，返回受管目标需要新批准",
+        "结果": "失败",
+        "原因": "Manager /api/approval-rules/policies/1/status/8 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 131, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-compat-matrix.py\", line 76, in target_change\n    out=self.check(pr);assert out['applicable'] is False\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 242, in check\n    return self.manager('GET', self.prefix+'/status/'+str(pr['number']))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 64, in manager\n    raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))\nRuntimeError: Manager /api/approval-rules/policies/1/status/8 返回 409：规则、成员或资格与启用预检不一致，需要重新预检；未沿用旧通过结果\n"
+      }
+    ],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "38495869955f346617c4ab19a045b09cd803c4d4191487cf34f94e00c692eedc",
+      "scripts/approval-integration.py": "855932edfc36ee7566713b6b9b84d78e85605b8447190e3c0ad3c66b02302d4b",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb"
+    },
+    "隔离网段": "10.253.242.144/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "875529e80d7f3a21e0b0ec3371ed249087202a3262fa369a0676f50f4b284dc2",
+      "地址": "http://127.0.0.1:60320",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:41:18.14586318Z"
+    },
+    "状态": "运行中",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789292495.2998984,
+      "fingerprint": "45bbe792cfd4a509fecfc24e785c0b193af3e700e36115572d2eea27ebfbf38f",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T09:41:27Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T09:41:27Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T09:41:30Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0216
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0102
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0053
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0049
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0428
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0383
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0261
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.0069
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.006
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0313
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0069
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        }
+      ],
+      "仅页面回退": [
+        {
+          "成功": true,
+          "耗时秒": 0.0066
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        }
+      ],
+      "门禁卸载": [
+        {
+          "成功": true,
+          "耗时秒": 0.0067
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        }
+      ]
+    }
+  }
+}

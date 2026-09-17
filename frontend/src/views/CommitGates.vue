@@ -20,7 +20,7 @@
 
         <el-empty v-if="!selectedServerId" description="请选择服务器" />
         <template v-else>
-          <el-table :data="rules" size="small" stripe class="rules-table" @row-click="editRule">
+          <el-table :data="rules" size="small" stripe class="rules-table" @row-click="editRule" max-height="var(--table-max-height)">
             <el-table-column prop="name" label="规则" min-width="130" />
             <el-table-column label="状态" width="72">
               <template #default="{ row }">
@@ -28,10 +28,10 @@
               </template>
             </el-table-column>
             <el-table-column prop="assignment_count" label="仓库" width="70" />
-            <el-table-column label="操作" width="92">
+            <el-table-column label="操作" width="100">
               <template #default="{ row }">
-                <el-button text size="small" :icon="Edit" @click.stop="editRule(row)" />
-                <el-button text size="small" type="danger" :icon="Delete" @click.stop="deleteRule(row)" />
+                <div class="rule-actions"><el-button text size="small" :icon="Edit" aria-label="编辑规则" @click.stop="editRule(row)" />
+                <el-button text size="small" type="danger" :icon="Delete" aria-label="删除规则" @click.stop="deleteRule(row)" /></div>
               </template>
             </el-table-column>
           </el-table>
@@ -82,7 +82,7 @@
           :data="repos"
           v-loading="loadingRepos"
           stripe
-          height="520"
+          max-height="min(520px, var(--table-max-height))"
           @selection-change="onRepoSelection"
         >
           <el-table-column type="selection" width="44" />
@@ -329,6 +329,8 @@ export default {
 .section-title { font-size: 18px; font-weight: 700; color: #1a1a2e; margin: 0; }
 .gate-toolbar { padding: 16px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center; }
 .server-select { width: 360px; max-width: 100%; }
+.rule-actions { display: inline-flex; align-items: center; gap: 6px; }
+.rule-actions :deep(.el-button) { width: 28px; height: 28px; padding: 6px; margin: 0; }
 .gate-grid { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .gate-panel { padding: 20px; }
 .repo-panel { min-width: 0; }

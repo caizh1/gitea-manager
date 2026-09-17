@@ -6,6 +6,54 @@ from werkzeug.security import generate_password_hash, check_password_hash
 db = SQLAlchemy()
 
 
+class ApprovalPolicy(db.Model):
+    __tablename__ = 'approval_policies'
+    id = db.Column(db.Integer, primary_key=True)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    repo_id = db.Column(db.Integer, nullable=False)
+    repo_name = db.Column(db.String(300), nullable=False)
+    owner_id = db.Column(db.Integer, nullable=False)
+    rule_json = db.Column(db.Text, nullable=False)
+    revision = db.Column(db.Integer, nullable=False, default=1)
+    mode = db.Column(db.String(30), nullable=False, default='draft')
+    preview_json = db.Column(db.Text, nullable=False, default='{}')
+    grandfather_json = db.Column(db.Text, nullable=False, default='[]')
+    hook_token_hash = db.Column(db.String(64), nullable=False, default='')
+    native_uninstall_token_hash = db.Column(db.String(64), nullable=False, default='')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('server_id', 'repo_id', name='uq_approval_repository'), {'sqlite_autoincrement': True})
+
+
+class ApprovalAudit(db.Model):
+    __tablename__ = 'approval_audits'
+    id = db.Column(db.Integer, primary_key=True)
+    policy_id = db.Column(db.Integer, nullable=False, index=True)
+    actor = db.Column(db.String(100), nullable=False, default='共享管理员')
+    action = db.Column(db.String(60), nullable=False)
+    detail_json = db.Column(db.Text, nullable=False, default='{}')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class ApprovalNonce(db.Model):
+    __tablename__ = 'approval_nonces'
+    policy_id = db.Column(db.Integer, primary_key=True)
+    nonce = db.Column(db.String(64), primary_key=True)
+    expires_at = db.Column(db.Float, nullable=False, index=True)
+
+
+class ApprovalViewCache(db.Model):
+    """仅保存短期展示快照；不能用于 Hook 授权，也不保存浏览器会话。"""
+    __tablename__ = 'approval_view_cache'
+    policy_id = db.Column(db.Integer, primary_key=True)
+    number = db.Column(db.Integer, primary_key=True)
+    context_hash = db.Column(db.String(64), nullable=False)
+    payload = db.Column(db.Text, nullable=False, default='{}')
+    expires_at = db.Column(db.Float, nullable=False, default=0, index=True)
+    lease = db.Column(db.String(64), nullable=False, default='')
+    lease_until = db.Column(db.Float, nullable=False, default=0)
+
+
 class GiteaServer(db.Model):
     __tablename__ = 'gitea_servers'
 
@@ -94,6 +142,69 @@ class RestoreStepLog(db.Model):
     completed_at = db.Column(db.DateTime, default=None)
 
     restore_task = db.relationship('RestoreTask', foreign_keys=[restore_task_id], lazy=True)
+
+
+class PolicyTemplate(db.Model):
+    __tablename__ = 'policy_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    server_id = db.Column(db.Integer, nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, default='')
+    rules_json = db.Column(db.Text, nullable=False)
+    organization_id = db.Column(db.Integer)
+    organization_name = db.Column(db.String(100), default='')
+    identities_json = db.Column(db.Text, default='{}')
+    source_json = db.Column(db.Text, default='{}')
+    content_hash = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PolicyBatch(db.Model):
+    __tablename__ = 'policy_batches'
+    id = db.Column(db.Integer, primary_key=True)
+    server_id = db.Column(db.Integer, nullable=False, index=True)
+    server_name = db.Column(db.String(100), nullable=False)
+    connection_hash = db.Column(db.String(64), nullable=False)
+    template_id = db.Column(db.Integer, nullable=False)
+    template_name = db.Column(db.String(100), nullable=False)
+    template_hash = db.Column(db.String(64), nullable=False)
+    template_json = db.Column(db.Text, nullable=False)
+    scope_json = db.Column(db.Text, default='{}')
+    actor = db.Column(db.String(100), default='共享管理员', nullable=False)
+    request_source = db.Column(db.String(200), default='')
+    status = db.Column(db.String(30), default='preview_queued', nullable=False, index=True)
+    total = db.Column(db.Integer, nullable=False)
+    error = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    submitted_at = db.Column(db.DateTime)
+    completed_at = db.Column(db.DateTime)
+
+
+class PolicyRepoResult(db.Model):
+    __tablename__ = 'policy_repo_results'
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, nullable=False, index=True)
+    repo_id = db.Column(db.Integer, nullable=False)
+    repo_name = db.Column(db.String(300), default='')
+    repo_identity_json = db.Column(db.Text, default='{}')
+    access_json = db.Column(db.Text, default='{}')
+    status = db.Column(db.String(30), default='pending', nullable=False)
+    before_json = db.Column(db.Text, default='[]')
+    desired_json = db.Column(db.Text, default='[]')
+    actual_json = db.Column(db.Text, default=None)
+    diff_json = db.Column(db.Text, default='[]')
+    matches_json = db.Column(db.Text, default='[]')
+    operations_json = db.Column(db.Text, default='[]')
+    error = db.Column(db.Text, default='')
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (db.UniqueConstraint('batch_id', 'repo_id', name='uq_policy_batch_repo'),)
+
+
+class PolicyRequestSlot(db.Model):
+    __tablename__ = 'policy_request_slots'
+    server_id = db.Column(db.Integer, primary_key=True)
+    next_at = db.Column(db.Float, default=0, nullable=False)
 
 
 class Setting(db.Model):
@@ -318,6 +429,7 @@ class CommitGateAssignment(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
     repo_name = db.Column(db.String(300), nullable=False)
+    repo_id = db.Column(db.Integer, nullable=False, default=0)
     rule_id = db.Column(db.Integer, db.ForeignKey('commit_message_rules.id'), nullable=False)
     install_status = db.Column(db.String(20), default='pending')
     install_log = db.Column(db.Text, default='')

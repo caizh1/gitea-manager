@@ -1,0 +1,277 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "c62807088876ba71a3b62786464a0de7cd2bc84eb6b33cc07476edc59ddcf68d",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-174040-1b2cf4dc",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [
+      {
+        "原因": "容器操作未完成（退出码 1）；未输出可能含凭据的命令或响应",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 898, in main\n    run.run_matrix(section)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 871, in run_matrix\n    self.install('shadow')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 188, in install\n    with self.traffic('安装-'+mode):result = obj.install(snapshot)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-174040-1b2cf4dc/组件-shadow/install.py\", line 190, in install\n    if hashlib.sha256(self.read(path)).hexdigest() != preview['文件'][path]:\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-174040-1b2cf4dc/组件-shadow/install.py\", line 115, in read\n    return self.exec(['sh', '-c', 'if [ -e \"$1\" ]; then [ -f \"$1\" ] || exit 4; cat \"$1\"; fi', '读取受管文件', path])\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-174040-1b2cf4dc/组件-shadow/install.py\", line 103, in exec\n    return self.run(['docker', 'exec', '--user', self.user, self.container, *args], **kwargs)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-174040-1b2cf4dc/组件-shadow/install.py\", line 38, in run\n    raise RuntimeError('容器操作未完成（退出码 '+str(result.returncode)+'）；未输出可能含凭据的命令或响应')\nRuntimeError: 容器操作未完成（退出码 1）；未输出可能含凭据的命令或响应\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "38495869955f346617c4ab19a045b09cd803c4d4191487cf34f94e00c692eedc",
+      "scripts/approval-integration.py": "855932edfc36ee7566713b6b9b84d78e85605b8447190e3c0ad3c66b02302d4b",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb"
+    },
+    "分项": "qualification",
+    "隔离网段": "10.253.242.128/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "c04b6f9906c35c27943b2421ed65f21d30d29f8d8885c6218f8897f8d1af1e1c",
+      "地址": "http://127.0.0.1:60246",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:40:45.874974513Z"
+    },
+    "状态": "基础设施或前置失败，保留现场",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789292462.7833989,
+      "fingerprint": "eaaf7db58f5ec6fbd4f6422335002f82175a2947541100c7bcc5b481142ba659",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T09:40:54Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T09:40:54Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T09:40:57Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0227
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0055
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0048
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0258
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0065
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0056
+        }
+      ]
+    }
+  }
+}

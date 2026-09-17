@@ -1,0 +1,197 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "b145f87c48ae857274497500d87ff23bea6129b68208053c766f565c4d3c5ac2",
+  "记录": {
+    "说明": "实际功能服务、原生审批和官方镜像隔离集成；不代表完整生产验收",
+    "运行标识": "20260913-152356-aa1e590d",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "规则-影子缺组显示",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-影子组票不足仍走原生流程",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "旧引用": "01e16c519304bbd94101d4352524ac9ea6ad78a9",
+        "新引用": "24ecf6b1d31e4e54964bda08b3c0175b883630c6",
+        "耗时秒": 1.732
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "合并-merge-存量PR",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "旧引用": "24ecf6b1d31e4e54964bda08b3c0175b883630c6",
+        "新引用": "16d04700a26e6d18713b23e0f81a7184040054bf",
+        "耗时秒": 1.844
+      },
+      {
+        "场景": "规则-merge缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "旧引用": "16d04700a26e6d18713b23e0f81a7184040054bf",
+        "新引用": "16d04700a26e6d18713b23e0f81a7184040054bf",
+        "耗时秒": 1.698
+      },
+      {
+        "场景": "规则-merge全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-新PR缺组票",
+        "结果": "失败",
+        "合并HTTP": 405,
+        "合并响应": {
+          "message": "Please try again later",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "旧引用": "16d04700a26e6d18713b23e0f81a7184040054bf",
+        "新引用": "16d04700a26e6d18713b23e0f81a7184040054bf",
+        "耗时秒": 0.041
+      }
+    ],
+    "首次失败": [
+      {
+        "异常": "RuntimeError",
+        "原因": "合并-merge-新PR缺组票 断言失败",
+        "调用位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 281, in <module>\n    run.execute_cases()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 215, in execute_cases\n    self.merge(pr, style, True)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 187, in merge\n    self.record('合并-'+style+'-'+pr['title'], (after != before) == expected and bool(actual['merged']) == expected,\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 150, in record\n    if not passed: raise RuntimeError(name+' 断言失败')\nRuntimeError: 合并-merge-新PR缺组票 断言失败\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "隔离网段": "10.253.240.176/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "486e5f9fb29c37b5bb8668214b831c19079ce5c1d72f0f4c77b6cf1cb284a878",
+      "地址": "http://127.0.0.1:50697",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T07:24:01.766543631Z"
+    },
+    "状态": "失败，保留首次现场",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789284258.730567,
+      "fingerprint": "3818b0a88c703dc4e9042e5e95a96b3516ed9d8112bb0c193e5bab5c4b8375ea",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T07:24:11Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T07:24:11Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵、长测及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T07:24:14Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    }
+  }
+}

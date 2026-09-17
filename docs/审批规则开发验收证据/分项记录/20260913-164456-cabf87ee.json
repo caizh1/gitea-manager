@@ -1,0 +1,2632 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "d22de87beec6b3e3d6e9e9514505b2ea28370cc8c501d1ff2851b35bd16714c5",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-164456-cabf87ee",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "规则01-0",
+        "场景": "原生总票数0",
+        "结果": "通过",
+        "证据": {
+          "PR": 2,
+          "结论": {
+            "applicable": true,
+            "approved": [],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289138.223485,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 4
+              }
+            ],
+            "head": "31d21b3fc060e275791260f26f1188ec446c119f",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：0/3",
+              "Committer1：0/1",
+              "Committer2：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 2,
+            "policy_id": 1,
+            "pr_id": 2,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 0,
+              "required": 3
+            },
+            "valid_until": 1789289153.2234852
+          }
+        },
+        "耗时秒": 4.811
+      },
+      {
+        "编号": "规则01-1",
+        "场景": "原生总票数1",
+        "结果": "通过",
+        "证据": {
+          "PR": 3,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 5
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289144.0039515,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 4
+              }
+            ],
+            "head": "eb0e3e3fc85232f612ab884f4a57ed479ef3e842",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：1/3",
+              "Committer2：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 3,
+            "policy_id": 1,
+            "pr_id": 3,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 1,
+              "required": 3
+            },
+            "valid_until": 1789289159.0039515
+          }
+        },
+        "耗时秒": 5.78
+      },
+      {
+        "编号": "规则01-2",
+        "场景": "原生总票数2",
+        "结果": "通过",
+        "证据": {
+          "PR": 4,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 6
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 7
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289150.388505,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "03c615872445e756af9905b4803bbdc528613957",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 4,
+            "policy_id": 1,
+            "pr_id": 4,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789289165.3885055
+          }
+        },
+        "耗时秒": 6.383
+      },
+      {
+        "编号": "规则02",
+        "场景": "指定组与合格组外第三票",
+        "结果": "通过",
+        "证据": {
+          "PR": 5,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 8
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 9
+              },
+              {
+                "id": 6,
+                "login": "dave",
+                "review_id": 10
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289156.4985976,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "dd2853b9901387414b435e6999fc65c860657ee4",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "Committer1：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 5,
+            "policy_id": 1,
+            "pr_id": 5,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289171.4985979
+          }
+        },
+        "耗时秒": 6.109
+      },
+      {
+        "编号": "规则03",
+        "场景": "指定组与合格组外第三票",
+        "结果": "通过",
+        "证据": {
+          "PR": 6,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 11
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 12
+              },
+              {
+                "id": 6,
+                "login": "dave",
+                "review_id": 13
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289162.1165395,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 4
+              }
+            ],
+            "head": "f5747d2cd921d58d321261f7812061b9159835aa",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "Committer2：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 6,
+            "policy_id": 1,
+            "pr_id": 6,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289177.11654
+          }
+        },
+        "耗时秒": 5.617
+      },
+      {
+        "编号": "规则05",
+        "场景": "指定组与合格组外第三票",
+        "结果": "通过",
+        "证据": {
+          "PR": 7,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 14
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 15
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 16
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289167.7292554,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "7f667d6eaf1865effb1329489560f4961d9ec936",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 7,
+            "policy_id": 1,
+            "pr_id": 7,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289182.7292557
+          }
+        },
+        "耗时秒": 5.609
+      },
+      {
+        "编号": "规则04",
+        "场景": "跨组满足两组但总票仅两人",
+        "结果": "通过",
+        "证据": {
+          "PR": 8,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 17
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 18
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289175.1976738,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "9756149bc41c86df44cdc34e1c7632088f6aedb7",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 8,
+            "policy_id": 1,
+            "pr_id": 8,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789289190.197674
+          }
+        },
+        "耗时秒": 7.507
+      },
+      {
+        "编号": "规则06",
+        "场景": "跨组第三人补齐，总票不重复",
+        "结果": "通过",
+        "证据": {
+          "PR": 9,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 19
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 20
+              },
+              {
+                "id": 6,
+                "login": "dave",
+                "review_id": 21
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289182.5950654,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "bac54cff698289d8dd4acf6bd03f66053dedf729",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 9,
+            "policy_id": 1,
+            "pr_id": 9,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289197.5950656
+          }
+        },
+        "耗时秒": 7.395
+      },
+      {
+        "编号": "规则07-重复批准",
+        "场景": "重复正式批准只算一人",
+        "结果": "通过",
+        "证据": {
+          "PR": 10,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 24
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 23
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289188.5074172,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "2931d1e5431536553099a232046bf232159a3b92",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 10,
+            "policy_id": 1,
+            "pr_id": 10,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789289203.5074174
+          }
+        },
+        "耗时秒": 5.87
+      },
+      {
+        "编号": "生命周期02",
+        "场景": "批准后COMMENT",
+        "结果": "通过",
+        "证据": {
+          "PR": 11,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 25
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 26
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 27
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289194.5882967,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "d5d861a8310a039a59d59c5bef5d9c02f3396475",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 11,
+            "policy_id": 1,
+            "pr_id": 11,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289209.5882971
+          }
+        },
+        "耗时秒": 6.079
+      },
+      {
+        "编号": "生命周期01",
+        "场景": "批准后REQUEST_CHANGES",
+        "结果": "通过",
+        "证据": {
+          "PR": 12,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 30
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 31
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289202.2107427,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "8fa54797199a6bd7a69505a580d6edafccfd6d43",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3",
+              "Committer1：0/1",
+              "原生规则存在请求修改"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 12,
+            "policy_id": 1,
+            "pr_id": 12,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789289217.2107432
+          }
+        },
+        "耗时秒": 7.621
+      },
+      {
+        "编号": "生命周期03-管理员驳回",
+        "场景": "原生驳回后指定组票失效",
+        "结果": "通过",
+        "证据": {
+          "PR": 13,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 34
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 35
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289209.0901558,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "6a60496cae21dd2ec420c70fd8e055dccf2faa6c",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3",
+              "Committer1：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 13,
+            "policy_id": 1,
+            "pr_id": 13,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789289224.0901563
+          }
+        },
+        "耗时秒": 6.877
+      },
+      {
+        "编号": "生命周期04",
+        "场景": "新审批后撤回旧审批ID",
+        "结果": "通过",
+        "证据": {
+          "PR": 14,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 39
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 37
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 38
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289216.7996652,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "7d499873a09908253c2b6f8d1b00ea0521b71fa7",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 14,
+            "policy_id": 1,
+            "pr_id": 14,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289231.7996657
+          }
+        },
+        "耗时秒": 7.708
+      },
+      {
+        "编号": "生命周期05-新提交",
+        "场景": "旧审批失效且新代码重新批准恢复",
+        "结果": "通过",
+        "证据": {
+          "PR": 15,
+          "结论": {
+            "applicable": true,
+            "approved": [],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289226.3166828,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 4
+              }
+            ],
+            "head": "232fd4705c82bbd293c06bff423da140c4cb659e",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：0/3",
+              "Committer1：0/1",
+              "Committer2：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 15,
+            "policy_id": 1,
+            "pr_id": 15,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 0,
+              "required": 3
+            },
+            "valid_until": 1789289241.3166833
+          },
+          "重新批准": {
+            "PR": 15,
+            "结论": {
+              "applicable": true,
+              "approved": [
+                {
+                  "id": 3,
+                  "login": "alice",
+                  "review_id": 43
+                },
+                {
+                  "id": 4,
+                  "login": "bob",
+                  "review_id": 44
+                },
+                {
+                  "id": 5,
+                  "login": "carol",
+                  "review_id": 45
+                }
+              ],
+              "base": "7359df0e035777157292aec2380362fc752d5d13",
+              "checked_at": 1789289228.8078558,
+              "closed": false,
+              "grandfathered": false,
+              "groups": [
+                {
+                  "approved_ids": [
+                    3
+                  ],
+                  "count": 1,
+                  "eligible_count": 2,
+                  "name": "Committer1",
+                  "required": 1,
+                  "satisfied": true,
+                  "team_id": 3
+                },
+                {
+                  "approved_ids": [
+                    4
+                  ],
+                  "count": 1,
+                  "eligible_count": 1,
+                  "name": "Committer2",
+                  "required": 1,
+                  "satisfied": true,
+                  "team_id": 4
+                }
+              ],
+              "head": "232fd4705c82bbd293c06bff423da140c4cb659e",
+              "known_defects": [
+                "APR-RACE-001"
+              ],
+              "missing": [],
+              "mode": "shadow",
+              "name": "三人及双组审批",
+              "native_required": 3,
+              "native_rule": "main",
+              "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+              "number": 15,
+              "policy_id": 1,
+              "pr_id": 15,
+              "release_allowed": false,
+              "repository_id": 1,
+              "revision": 1,
+              "satisfied": true,
+              "total": {
+                "count": 3,
+                "required": 3
+              },
+              "valid_until": 1789289243.807856
+            }
+          }
+        },
+        "耗时秒": 12.006
+      },
+      {
+        "编号": "接入12-C",
+        "场景": "存量关闭重开保持稳定豁免",
+        "结果": "通过",
+        "证据": {
+          "关闭": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 1
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 2
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 3
+              },
+              {
+                "id": 6,
+                "login": "dave",
+                "review_id": 4
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289229.7644703,
+            "closed": true,
+            "grandfathered": true,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "6855a3f6b75938c791cc1124580104ceb039100c",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "PR 已关闭或合并"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 1,
+            "policy_id": 1,
+            "pr_id": 1,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 4,
+              "required": 3
+            },
+            "valid_until": 1789289244.7644708
+          },
+          "重开": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 1
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 2
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 3
+              },
+              {
+                "id": 6,
+                "login": "dave",
+                "review_id": 4
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289230.5401914,
+            "closed": false,
+            "grandfathered": true,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "6855a3f6b75938c791cc1124580104ceb039100c",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 1,
+            "policy_id": 1,
+            "pr_id": 1,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 4,
+              "required": 3
+            },
+            "valid_until": 1789289245.540192
+          }
+        },
+        "耗时秒": 1.73
+      },
+      {
+        "编号": "资格03-禁止登录",
+        "场景": "被禁止登录的批准者不能计票",
+        "结果": "通过",
+        "证据": {
+          "PR": 16,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 47
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 48
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289237.4591303,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "1cf24bd6fd3de7878fa68581c2dc2d95a48cd44c",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：2/3",
+              "Committer1：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 16,
+            "policy_id": 1,
+            "pr_id": 16,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 2,
+              "required": 3
+            },
+            "valid_until": 1789289252.4591305
+          }
+        },
+        "耗时秒": 6.957
+      },
+      {
+        "编号": "资格02-退出加入",
+        "场景": "组资格即时变化且稳定ID不变",
+        "结果": "通过",
+        "证据": {
+          "PR": 17,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 49
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 50
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 51
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289244.0758824,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "3c97307e32e1eaff671a7266dd541a00c45f7c6d",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "Committer1：0/1"
+            ],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 17,
+            "policy_id": 1,
+            "pr_id": 17,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289259.0758855
+          },
+          "重新加入": {
+            "PR": 17,
+            "结论": {
+              "applicable": true,
+              "approved": [
+                {
+                  "id": 3,
+                  "login": "alice",
+                  "review_id": 49
+                },
+                {
+                  "id": 4,
+                  "login": "bob",
+                  "review_id": 50
+                },
+                {
+                  "id": 5,
+                  "login": "carol",
+                  "review_id": 51
+                }
+              ],
+              "base": "7359df0e035777157292aec2380362fc752d5d13",
+              "checked_at": 1789289244.5383496,
+              "closed": false,
+              "grandfathered": false,
+              "groups": [
+                {
+                  "approved_ids": [
+                    3
+                  ],
+                  "count": 1,
+                  "eligible_count": 2,
+                  "name": "Committer1",
+                  "required": 1,
+                  "satisfied": true,
+                  "team_id": 3
+                },
+                {
+                  "approved_ids": [
+                    4
+                  ],
+                  "count": 1,
+                  "eligible_count": 1,
+                  "name": "Committer2",
+                  "required": 1,
+                  "satisfied": true,
+                  "team_id": 4
+                }
+              ],
+              "head": "3c97307e32e1eaff671a7266dd541a00c45f7c6d",
+              "known_defects": [
+                "APR-RACE-001"
+              ],
+              "missing": [],
+              "mode": "shadow",
+              "name": "三人及双组审批",
+              "native_required": 3,
+              "native_rule": "main",
+              "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+              "number": 17,
+              "policy_id": 1,
+              "pr_id": 17,
+              "release_allowed": false,
+              "repository_id": 1,
+              "revision": 1,
+              "satisfied": true,
+              "total": {
+                "count": 3,
+                "required": 3
+              },
+              "valid_until": 1789289259.53835
+            }
+          }
+        },
+        "耗时秒": 7.037
+      },
+      {
+        "编号": "资格02-更名",
+        "场景": "团队按ID保留规则且展示新名称",
+        "结果": "通过",
+        "证据": {
+          "PR": 18,
+          "结论": {
+            "applicable": true,
+            "approved": [
+              {
+                "id": 3,
+                "login": "alice",
+                "review_id": 52
+              },
+              {
+                "id": 4,
+                "login": "bob",
+                "review_id": 53
+              },
+              {
+                "id": 5,
+                "login": "carol",
+                "review_id": 54
+              }
+            ],
+            "base": "7359df0e035777157292aec2380362fc752d5d13",
+            "checked_at": 1789289252.2986872,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [
+                  3
+                ],
+                "count": 1,
+                "eligible_count": 2,
+                "name": "Committer1-renamed",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [
+                  4
+                ],
+                "count": 1,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": true,
+                "team_id": 4
+              }
+            ],
+            "head": "a3967dc341ca85a13d7a27e31c45c9ac415e8feb",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [],
+            "mode": "shadow",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 18,
+            "policy_id": 1,
+            "pr_id": 18,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": true,
+            "total": {
+              "count": 3,
+              "required": 3
+            },
+            "valid_until": 1789289267.2986877
+          }
+        },
+        "耗时秒": 7.802
+      },
+      {
+        "编号": "接入02-1票",
+        "场景": "保留原生人数及审批池",
+        "结果": "通过",
+        "证据": {
+          "预检": {
+            "changes": [
+              "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+              "新增 PR 只读展示资源和页脚片段"
+            ],
+            "checked_at": 1789289253.0282905,
+            "fingerprint": "c8ddbc42746926b62f7635e957bfdfd69d427dc0926ab630f4f84e6af078a267",
+            "groups": [
+              {
+                "members_count": 2,
+                "name": "Committer1",
+                "team_id": 3
+              },
+              {
+                "members_count": 1,
+                "name": "Committer2",
+                "team_id": 4
+              }
+            ],
+            "native_rules": [
+              {
+                "approvals_whitelist_teams": [],
+                "approvals_whitelist_username": [
+                  "alice",
+                  "bob",
+                  "carol",
+                  "dave",
+                  "spare"
+                ],
+                "block_admin_merge_override": true,
+                "block_on_official_review_requests": false,
+                "block_on_outdated_branch": false,
+                "block_on_rejected_reviews": true,
+                "branch_name": "main",
+                "created_at": "2026-09-13T08:45:10Z",
+                "dismiss_stale_approvals": false,
+                "enable_approvals_whitelist": true,
+                "enable_force_push": false,
+                "enable_force_push_allowlist": false,
+                "enable_merge_whitelist": false,
+                "enable_push": false,
+                "enable_push_whitelist": false,
+                "enable_status_check": false,
+                "force_push_allowlist_deploy_keys": false,
+                "force_push_allowlist_teams": [],
+                "force_push_allowlist_usernames": [],
+                "ignore_stale_approvals": false,
+                "merge_whitelist_teams": [],
+                "merge_whitelist_usernames": [],
+                "priority": 1,
+                "protected_file_patterns": "",
+                "push_whitelist_deploy_keys": false,
+                "push_whitelist_teams": [],
+                "push_whitelist_usernames": [],
+                "require_signed_commits": false,
+                "required_approvals": 1,
+                "rule_name": "main",
+                "status_check_contexts": null,
+                "unprotected_file_patterns": "",
+                "updated_at": "2026-09-13T08:47:32Z"
+              }
+            ],
+            "pending_checks": [
+              "实际持久卷和其他 Hook",
+              "模板并发修改及热重载真实页面",
+              "代理同源路径及会话验证",
+              "正式切换的并发创建 PR 边界",
+              "APR-RACE-001：P2 已知竞态尚未修复",
+              "完整接入矩阵及现场验收尚未完成"
+            ],
+            "production_enforcement_allowed": false,
+            "revision": 1,
+            "snapshot": [
+              {
+                "created_at": "2026-09-13T08:45:13Z",
+                "id": 1,
+                "number": 1
+              },
+              {
+                "created_at": "2026-09-13T08:45:36Z",
+                "id": 2,
+                "number": 2
+              },
+              {
+                "created_at": "2026-09-13T08:45:40Z",
+                "id": 3,
+                "number": 3
+              },
+              {
+                "created_at": "2026-09-13T08:45:46Z",
+                "id": 4,
+                "number": 4
+              },
+              {
+                "created_at": "2026-09-13T08:45:53Z",
+                "id": 5,
+                "number": 5
+              },
+              {
+                "created_at": "2026-09-13T08:45:59Z",
+                "id": 6,
+                "number": 6
+              },
+              {
+                "created_at": "2026-09-13T08:46:04Z",
+                "id": 7,
+                "number": 7
+              },
+              {
+                "created_at": "2026-09-13T08:46:10Z",
+                "id": 8,
+                "number": 8
+              },
+              {
+                "created_at": "2026-09-13T08:46:17Z",
+                "id": 9,
+                "number": 9
+              },
+              {
+                "created_at": "2026-09-13T08:46:25Z",
+                "id": 10,
+                "number": 10
+              },
+              {
+                "created_at": "2026-09-13T08:46:31Z",
+                "id": 11,
+                "number": 11
+              },
+              {
+                "created_at": "2026-09-13T08:46:37Z",
+                "id": 12,
+                "number": 12
+              },
+              {
+                "created_at": "2026-09-13T08:46:44Z",
+                "id": 13,
+                "number": 13
+              },
+              {
+                "created_at": "2026-09-13T08:46:52Z",
+                "id": 14,
+                "number": 14
+              },
+              {
+                "created_at": "2026-09-13T08:46:59Z",
+                "id": 15,
+                "number": 15
+              },
+              {
+                "created_at": "2026-09-13T08:47:13Z",
+                "id": 16,
+                "number": 16
+              },
+              {
+                "created_at": "2026-09-13T08:47:20Z",
+                "id": 17,
+                "number": 17
+              },
+              {
+                "created_at": "2026-09-13T08:47:27Z",
+                "id": 18,
+                "number": 18
+              }
+            ]
+          },
+          "原生保持": [
+            {
+              "branch_name": "main",
+              "rule_name": "main",
+              "priority": 1,
+              "enable_push": false,
+              "enable_push_whitelist": false,
+              "push_whitelist_usernames": [],
+              "push_whitelist_teams": [],
+              "push_whitelist_deploy_keys": false,
+              "enable_force_push": false,
+              "enable_force_push_allowlist": false,
+              "force_push_allowlist_usernames": [],
+              "force_push_allowlist_teams": [],
+              "force_push_allowlist_deploy_keys": false,
+              "enable_merge_whitelist": false,
+              "merge_whitelist_usernames": [],
+              "merge_whitelist_teams": [],
+              "enable_status_check": false,
+              "status_check_contexts": null,
+              "required_approvals": 1,
+              "enable_approvals_whitelist": true,
+              "approvals_whitelist_username": [
+                "alice",
+                "bob",
+                "carol",
+                "dave",
+                "spare"
+              ],
+              "approvals_whitelist_teams": [],
+              "block_on_rejected_reviews": true,
+              "block_on_official_review_requests": false,
+              "block_on_outdated_branch": false,
+              "dismiss_stale_approvals": false,
+              "ignore_stale_approvals": false,
+              "require_signed_commits": false,
+              "protected_file_patterns": "",
+              "unprotected_file_patterns": "",
+              "block_admin_merge_override": true,
+              "created_at": "2026-09-13T08:45:10Z",
+              "updated_at": "2026-09-13T08:47:32Z"
+            }
+          ]
+        },
+        "耗时秒": 0.807
+      },
+      {
+        "编号": "接入02-3票",
+        "场景": "保留原生人数及审批池",
+        "结果": "通过",
+        "证据": {
+          "预检": {
+            "changes": [
+              "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+              "新增 PR 只读展示资源和页脚片段"
+            ],
+            "checked_at": 1789289253.6702049,
+            "fingerprint": "07064401157995d9b8a9254e3b177f707c7f6fa470b793d49d862501f726d769",
+            "groups": [
+              {
+                "members_count": 2,
+                "name": "Committer1",
+                "team_id": 3
+              },
+              {
+                "members_count": 1,
+                "name": "Committer2",
+                "team_id": 4
+              }
+            ],
+            "native_rules": [
+              {
+                "approvals_whitelist_teams": [],
+                "approvals_whitelist_username": [
+                  "alice",
+                  "bob",
+                  "carol",
+                  "dave",
+                  "spare"
+                ],
+                "block_admin_merge_override": true,
+                "block_on_official_review_requests": false,
+                "block_on_outdated_branch": false,
+                "block_on_rejected_reviews": true,
+                "branch_name": "main",
+                "created_at": "2026-09-13T08:45:10Z",
+                "dismiss_stale_approvals": false,
+                "enable_approvals_whitelist": true,
+                "enable_force_push": false,
+                "enable_force_push_allowlist": false,
+                "enable_merge_whitelist": false,
+                "enable_push": false,
+                "enable_push_whitelist": false,
+                "enable_status_check": false,
+                "force_push_allowlist_deploy_keys": false,
+                "force_push_allowlist_teams": [],
+                "force_push_allowlist_usernames": [],
+                "ignore_stale_approvals": false,
+                "merge_whitelist_teams": [],
+                "merge_whitelist_usernames": [],
+                "priority": 1,
+                "protected_file_patterns": "",
+                "push_whitelist_deploy_keys": false,
+                "push_whitelist_teams": [],
+                "push_whitelist_usernames": [],
+                "require_signed_commits": false,
+                "required_approvals": 3,
+                "rule_name": "main",
+                "status_check_contexts": null,
+                "unprotected_file_patterns": "",
+                "updated_at": "2026-09-13T08:47:33Z"
+              }
+            ],
+            "pending_checks": [
+              "实际持久卷和其他 Hook",
+              "模板并发修改及热重载真实页面",
+              "代理同源路径及会话验证",
+              "正式切换的并发创建 PR 边界",
+              "APR-RACE-001：P2 已知竞态尚未修复",
+              "完整接入矩阵及现场验收尚未完成"
+            ],
+            "production_enforcement_allowed": false,
+            "revision": 1,
+            "snapshot": [
+              {
+                "created_at": "2026-09-13T08:45:13Z",
+                "id": 1,
+                "number": 1
+              },
+              {
+                "created_at": "2026-09-13T08:45:36Z",
+                "id": 2,
+                "number": 2
+              },
+              {
+                "created_at": "2026-09-13T08:45:40Z",
+                "id": 3,
+                "number": 3
+              },
+              {
+                "created_at": "2026-09-13T08:45:46Z",
+                "id": 4,
+                "number": 4
+              },
+              {
+                "created_at": "2026-09-13T08:45:53Z",
+                "id": 5,
+                "number": 5
+              },
+              {
+                "created_at": "2026-09-13T08:45:59Z",
+                "id": 6,
+                "number": 6
+              },
+              {
+                "created_at": "2026-09-13T08:46:04Z",
+                "id": 7,
+                "number": 7
+              },
+              {
+                "created_at": "2026-09-13T08:46:10Z",
+                "id": 8,
+                "number": 8
+              },
+              {
+                "created_at": "2026-09-13T08:46:17Z",
+                "id": 9,
+                "number": 9
+              },
+              {
+                "created_at": "2026-09-13T08:46:25Z",
+                "id": 10,
+                "number": 10
+              },
+              {
+                "created_at": "2026-09-13T08:46:31Z",
+                "id": 11,
+                "number": 11
+              },
+              {
+                "created_at": "2026-09-13T08:46:37Z",
+                "id": 12,
+                "number": 12
+              },
+              {
+                "created_at": "2026-09-13T08:46:44Z",
+                "id": 13,
+                "number": 13
+              },
+              {
+                "created_at": "2026-09-13T08:46:52Z",
+                "id": 14,
+                "number": 14
+              },
+              {
+                "created_at": "2026-09-13T08:46:59Z",
+                "id": 15,
+                "number": 15
+              },
+              {
+                "created_at": "2026-09-13T08:47:13Z",
+                "id": 16,
+                "number": 16
+              },
+              {
+                "created_at": "2026-09-13T08:47:20Z",
+                "id": 17,
+                "number": 17
+              },
+              {
+                "created_at": "2026-09-13T08:47:27Z",
+                "id": 18,
+                "number": 18
+              }
+            ]
+          },
+          "原生保持": [
+            {
+              "branch_name": "main",
+              "rule_name": "main",
+              "priority": 1,
+              "enable_push": false,
+              "enable_push_whitelist": false,
+              "push_whitelist_usernames": [],
+              "push_whitelist_teams": [],
+              "push_whitelist_deploy_keys": false,
+              "enable_force_push": false,
+              "enable_force_push_allowlist": false,
+              "force_push_allowlist_usernames": [],
+              "force_push_allowlist_teams": [],
+              "force_push_allowlist_deploy_keys": false,
+              "enable_merge_whitelist": false,
+              "merge_whitelist_usernames": [],
+              "merge_whitelist_teams": [],
+              "enable_status_check": false,
+              "status_check_contexts": null,
+              "required_approvals": 3,
+              "enable_approvals_whitelist": true,
+              "approvals_whitelist_username": [
+                "alice",
+                "bob",
+                "carol",
+                "dave",
+                "spare"
+              ],
+              "approvals_whitelist_teams": [],
+              "block_on_rejected_reviews": true,
+              "block_on_official_review_requests": false,
+              "block_on_outdated_branch": false,
+              "dismiss_stale_approvals": false,
+              "ignore_stale_approvals": false,
+              "require_signed_commits": false,
+              "protected_file_patterns": "",
+              "unprotected_file_patterns": "",
+              "block_admin_merge_override": true,
+              "created_at": "2026-09-13T08:45:10Z",
+              "updated_at": "2026-09-13T08:47:33Z"
+            }
+          ]
+        },
+        "耗时秒": 0.73
+      },
+      {
+        "编号": "接入02-5票",
+        "场景": "保留原生人数及审批池",
+        "结果": "通过",
+        "证据": {
+          "预检": {
+            "changes": [
+              "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+              "新增 PR 只读展示资源和页脚片段"
+            ],
+            "checked_at": 1789289255.189421,
+            "fingerprint": "faa01736344a7a07fafd9463e67c060fa4a205e3b7c543c04e4a3c78581a7d11",
+            "groups": [
+              {
+                "members_count": 2,
+                "name": "Committer1",
+                "team_id": 3
+              },
+              {
+                "members_count": 1,
+                "name": "Committer2",
+                "team_id": 4
+              }
+            ],
+            "native_rules": [
+              {
+                "approvals_whitelist_teams": [],
+                "approvals_whitelist_username": [
+                  "alice",
+                  "bob",
+                  "carol",
+                  "dave",
+                  "spare"
+                ],
+                "block_admin_merge_override": true,
+                "block_on_official_review_requests": false,
+                "block_on_outdated_branch": false,
+                "block_on_rejected_reviews": true,
+                "branch_name": "main",
+                "created_at": "2026-09-13T08:45:10Z",
+                "dismiss_stale_approvals": false,
+                "enable_approvals_whitelist": true,
+                "enable_force_push": false,
+                "enable_force_push_allowlist": false,
+                "enable_merge_whitelist": false,
+                "enable_push": false,
+                "enable_push_whitelist": false,
+                "enable_status_check": false,
+                "force_push_allowlist_deploy_keys": false,
+                "force_push_allowlist_teams": [],
+                "force_push_allowlist_usernames": [],
+                "ignore_stale_approvals": false,
+                "merge_whitelist_teams": [],
+                "merge_whitelist_usernames": [],
+                "priority": 1,
+                "protected_file_patterns": "",
+                "push_whitelist_deploy_keys": false,
+                "push_whitelist_teams": [],
+                "push_whitelist_usernames": [],
+                "require_signed_commits": false,
+                "required_approvals": 5,
+                "rule_name": "main",
+                "status_check_contexts": null,
+                "unprotected_file_patterns": "",
+                "updated_at": "2026-09-13T08:47:34Z"
+              }
+            ],
+            "pending_checks": [
+              "实际持久卷和其他 Hook",
+              "模板并发修改及热重载真实页面",
+              "代理同源路径及会话验证",
+              "正式切换的并发创建 PR 边界",
+              "APR-RACE-001：P2 已知竞态尚未修复",
+              "完整接入矩阵及现场验收尚未完成"
+            ],
+            "production_enforcement_allowed": false,
+            "revision": 1,
+            "snapshot": [
+              {
+                "created_at": "2026-09-13T08:45:13Z",
+                "id": 1,
+                "number": 1
+              },
+              {
+                "created_at": "2026-09-13T08:45:36Z",
+                "id": 2,
+                "number": 2
+              },
+              {
+                "created_at": "2026-09-13T08:45:40Z",
+                "id": 3,
+                "number": 3
+              },
+              {
+                "created_at": "2026-09-13T08:45:46Z",
+                "id": 4,
+                "number": 4
+              },
+              {
+                "created_at": "2026-09-13T08:45:53Z",
+                "id": 5,
+                "number": 5
+              },
+              {
+                "created_at": "2026-09-13T08:45:59Z",
+                "id": 6,
+                "number": 6
+              },
+              {
+                "created_at": "2026-09-13T08:46:04Z",
+                "id": 7,
+                "number": 7
+              },
+              {
+                "created_at": "2026-09-13T08:46:10Z",
+                "id": 8,
+                "number": 8
+              },
+              {
+                "created_at": "2026-09-13T08:46:17Z",
+                "id": 9,
+                "number": 9
+              },
+              {
+                "created_at": "2026-09-13T08:46:25Z",
+                "id": 10,
+                "number": 10
+              },
+              {
+                "created_at": "2026-09-13T08:46:31Z",
+                "id": 11,
+                "number": 11
+              },
+              {
+                "created_at": "2026-09-13T08:46:37Z",
+                "id": 12,
+                "number": 12
+              },
+              {
+                "created_at": "2026-09-13T08:46:44Z",
+                "id": 13,
+                "number": 13
+              },
+              {
+                "created_at": "2026-09-13T08:46:52Z",
+                "id": 14,
+                "number": 14
+              },
+              {
+                "created_at": "2026-09-13T08:46:59Z",
+                "id": 15,
+                "number": 15
+              },
+              {
+                "created_at": "2026-09-13T08:47:13Z",
+                "id": 16,
+                "number": 16
+              },
+              {
+                "created_at": "2026-09-13T08:47:20Z",
+                "id": 17,
+                "number": 17
+              },
+              {
+                "created_at": "2026-09-13T08:47:27Z",
+                "id": 18,
+                "number": 18
+              }
+            ]
+          },
+          "原生保持": [
+            {
+              "branch_name": "main",
+              "rule_name": "main",
+              "priority": 1,
+              "enable_push": false,
+              "enable_push_whitelist": false,
+              "push_whitelist_usernames": [],
+              "push_whitelist_teams": [],
+              "push_whitelist_deploy_keys": false,
+              "enable_force_push": false,
+              "enable_force_push_allowlist": false,
+              "force_push_allowlist_usernames": [],
+              "force_push_allowlist_teams": [],
+              "force_push_allowlist_deploy_keys": false,
+              "enable_merge_whitelist": false,
+              "merge_whitelist_usernames": [],
+              "merge_whitelist_teams": [],
+              "enable_status_check": false,
+              "status_check_contexts": null,
+              "required_approvals": 5,
+              "enable_approvals_whitelist": true,
+              "approvals_whitelist_username": [
+                "alice",
+                "bob",
+                "carol",
+                "dave",
+                "spare"
+              ],
+              "approvals_whitelist_teams": [],
+              "block_on_rejected_reviews": true,
+              "block_on_official_review_requests": false,
+              "block_on_outdated_branch": false,
+              "dismiss_stale_approvals": false,
+              "ignore_stale_approvals": false,
+              "require_signed_commits": false,
+              "protected_file_patterns": "",
+              "unprotected_file_patterns": "",
+              "block_admin_merge_override": true,
+              "created_at": "2026-09-13T08:45:10Z",
+              "updated_at": "2026-09-13T08:47:34Z"
+            }
+          ]
+        },
+        "耗时秒": 1.711
+      },
+      {
+        "编号": "接入02-D",
+        "场景": "原生审批池排除指定组时不接管修复",
+        "结果": "通过",
+        "证据": {
+          "预检": {
+            "allow": false,
+            "error": "必需审批组不存在、缺少资格或被原生审批池排除"
+          },
+          "原生保持": [
+            {
+              "branch_name": "main",
+              "rule_name": "main",
+              "priority": 1,
+              "enable_push": false,
+              "enable_push_whitelist": false,
+              "push_whitelist_usernames": [],
+              "push_whitelist_teams": [],
+              "push_whitelist_deploy_keys": false,
+              "enable_force_push": false,
+              "enable_force_push_allowlist": false,
+              "force_push_allowlist_usernames": [],
+              "force_push_allowlist_teams": [],
+              "force_push_allowlist_deploy_keys": false,
+              "enable_merge_whitelist": false,
+              "merge_whitelist_usernames": [],
+              "merge_whitelist_teams": [],
+              "enable_status_check": false,
+              "status_check_contexts": null,
+              "required_approvals": 3,
+              "enable_approvals_whitelist": true,
+              "approvals_whitelist_username": [
+                "bob",
+                "carol",
+                "dave"
+              ],
+              "approvals_whitelist_teams": [],
+              "block_on_rejected_reviews": true,
+              "block_on_official_review_requests": false,
+              "block_on_outdated_branch": false,
+              "dismiss_stale_approvals": false,
+              "ignore_stale_approvals": false,
+              "require_signed_commits": false,
+              "protected_file_patterns": "",
+              "unprotected_file_patterns": "",
+              "block_admin_merge_override": true,
+              "created_at": "2026-09-13T08:45:10Z",
+              "updated_at": "2026-09-13T08:47:35Z"
+            }
+          ]
+        },
+        "耗时秒": 3.269
+      },
+      {
+        "编号": "接入03-B-enable_push",
+        "场景": "原生例外保持且预检拒绝",
+        "结果": "通过",
+        "证据": {
+          "拒绝原因": {
+            "allow": false,
+            "error": "原生规则允许直接推送或管理员覆盖；保留现状，禁止强制启用"
+          },
+          "原生值": true
+        },
+        "耗时秒": 1.005
+      },
+      {
+        "编号": "接入03-B-block_admin_merge_override",
+        "场景": "原生例外保持且预检拒绝",
+        "结果": "通过",
+        "证据": {
+          "拒绝原因": {
+            "allow": false,
+            "error": "原生规则允许直接推送或管理员覆盖；保留现状，禁止强制启用"
+          },
+          "原生值": false
+        },
+        "耗时秒": 3.177
+      },
+      {
+        "编号": "接入03-B-unprotected_file_patterns",
+        "场景": "原生例外保持且预检拒绝",
+        "结果": "通过",
+        "证据": {
+          "拒绝原因": {
+            "allow": false,
+            "error": "原生规则存在文件推送例外；保留现状，禁止强制启用"
+          },
+          "原生值": "*.md"
+        },
+        "耗时秒": 1.912
+      },
+      {
+        "编号": "生命周期06-多页",
+        "场景": "完整原生审批跨页读取且评论不替代批准",
+        "结果": "失败",
+        "原因": "Manager /api/approval-rules/policies/1/status/19 返回 409：读取期间列表总数变化，请重新核对",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 129, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 302, in pages\n    for i in range(51):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 151, in status_is\n    value = self.check(pr)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 241, in check\n    return self.manager('GET', self.prefix+'/status/'+str(pr['number']))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 64, in manager\n    raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))\nRuntimeError: Manager /api/approval-rules/policies/1/status/19 返回 409：读取期间列表总数变化，请重新核对\n",
+        "耗时秒": 26.526
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [
+      {
+        "编号": "生命周期06-多页",
+        "场景": "完整原生审批跨页读取且评论不替代批准",
+        "结果": "失败",
+        "原因": "Manager /api/approval-rules/policies/1/status/19 返回 409：读取期间列表总数变化，请重新核对",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 129, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 302, in pages\n    for i in range(51):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 151, in status_is\n    value = self.check(pr)\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 241, in check\n    return self.manager('GET', self.prefix+'/status/'+str(pr['number']))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 64, in manager\n    raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))\nRuntimeError: Manager /api/approval-rules/policies/1/status/19 返回 409：读取期间列表总数变化，请重新核对\n"
+      }
+    ],
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "57457917064f23ea8afcbcb6a76623c24b132132facd983c27c1528a44388528",
+      "scripts/approval-integration.py": "5c252c3e20faf0f13c7be536bdbee2f905a0de6302f474072498f8b0084fe9af",
+      "backend/approval/gitea.py": "d899badd1e5653d02ead6280cfe286753439e46e95d6e22c9428d5835848dc48",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9"
+    },
+    "隔离网段": "10.253.241.96/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "3bac69c15b66481d9ccfce1ffafdc97d5162284535d890e5fb26ab96dfb86f7f",
+      "地址": "http://127.0.0.1:55822",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T08:45:01.959576423Z"
+    },
+    "状态": "本轮分项执行完成，完整矩阵仍按所有分项证据判定",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789289117.9803205,
+      "fingerprint": "bb876e8d634f668b270e83f4c43d26d574dbfecf8ac68416324cdf6d38cd29d4",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T08:45:10Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T08:45:10Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T08:45:13Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0215
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0023
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0049
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0044
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0176
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0444
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0023
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0059
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        }
+      ]
+    }
+  }
+}

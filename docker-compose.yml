@@ -23,6 +23,24 @@ services:
       - INTEGRATION_SERVICE_TOKEN=${INTEGRATION_SERVICE_TOKEN:?必须配置独立的 Sentinel 服务令牌}
     restart: unless-stopped
 
+  approval-view:
+    build: ./backend
+    command: [gunicorn, --bind, '0.0.0.0:5000', --workers, '2', --threads, '8', --timeout, '30', 'approval.view_app:create_app()']
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+      SSH_KEY_PATH: /home/appuser/.ssh/id_rsa
+    volumes:
+      - ./data:/app/data
+      - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/home/appuser/.ssh/id_rsa:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on: [backend]
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+    restart: unless-stopped
+
   frontend:
     build: ./frontend
     container_name: gitea-manager-ui

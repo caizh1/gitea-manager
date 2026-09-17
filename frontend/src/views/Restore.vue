@@ -60,7 +60,7 @@
           <el-icon><Refresh /></el-icon>
         </button>
       </div>
-      <el-table :data="tasks" stripe style="width:100%">
+      <el-table :data="tasks" stripe style="width:100%" max-height="var(--table-max-height)">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="backup_filename" label="备份文件" min-width="250" />
         <el-table-column label="目标服务器" width="180">
@@ -84,7 +84,7 @@
             <span v-else>—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="error_msg" label="错误信息" min-width="200" />
+        <el-table-column prop="error_msg" label="错误信息" min-width="200" show-overflow-tooltip />
         <el-table-column label="执行详情" width="100" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="showSteps(row)">查看</el-button>
@@ -442,7 +442,7 @@ export default {
   background: rgba(0,0,0,0.02); border-radius: 10px;
 }
 .verify-stat { text-align: center; }
-.verify-stat-label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; }
+.verify-stat-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
 .verify-stat-num { font-size: 24px; font-weight: 700; color: #1a1a2e; }
 
 .verify-mismatches { margin-top: 12px; }
@@ -453,7 +453,7 @@ export default {
 }
 .verify-mismatch-repo { font-size: 13px; font-weight: 600; color: #1a1a2e; margin-bottom: 4px; }
 .verify-mismatch-info { font-size: 12px; color: #6b7280; }
-.verify-mismatch-detail { font-size: 11px; color: #9ca3af; font-family: monospace; margin-top: 2px; }
+.verify-mismatch-detail { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
 .verify-all-ok { text-align: center; padding: 20px; font-size: 15px; color: #10b981; font-weight: 600; }
 
 .step-dialog-header {
@@ -469,14 +469,14 @@ export default {
 .step-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .step-title-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .step-label { color: #1a1a2e; font-size: 14px; font-weight: 600; }
-.step-key { color: #9ca3af; font-family: monospace; font-size: 11px; }
+.step-key { color: var(--text-muted); font-family: monospace; font-size: 11px; }
 .step-elapsed { color: #6b7280; font-size: 12px; flex: 0 0 auto; }
 .step-detail { color: #4b5563; font-size: 12px; line-height: 1.6; margin-top: 8px; word-break: break-word; }
-.step-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #9ca3af; font-size: 11px; margin-top: 8px; }
+.step-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--text-muted); font-size: 11px; margin-top: 8px; }
 .step-path { color: #6b7280; font-family: monospace; font-size: 11px; margin-top: 8px; word-break: break-all; }
 .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-top: 10px; }
 .metric-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 7px; background: rgba(0,0,0,0.025); min-width: 0; }
-.metric-key { color: #9ca3af; font-size: 10px; }
+.metric-key { color: var(--text-muted); font-size: 10px; }
 .metric-value { color: #374151; font-size: 12px; word-break: break-word; }
 .step-logs { margin-top: 10px; color: var(--color-primary); font-size: 12px; }
 .step-logs summary { cursor: pointer; }

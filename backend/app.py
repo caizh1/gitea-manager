@@ -18,12 +18,15 @@ def create_app():
     app.secret_key = SECRET_KEY
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    if DATABASE_URL.startswith('sqlite:'):
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'connect_args': {'timeout': 30}}
     CORS(app, supports_credentials=True)
 
     db.init_app(app)
     init_auth(app)
 
-    with app.app_context():
+    from services.database_startup import database_startup_lock
+    with app.app_context(), database_startup_lock(app):
         import sqlalchemy.exc
         try:
             db.create_all()
@@ -31,6 +34,12 @@ def create_app():
             pass
 
         for sql in [
+            "ALTER TABLE policy_templates ADD COLUMN organization_id INTEGER",
+            "ALTER TABLE policy_templates ADD COLUMN organization_name VARCHAR(100) DEFAULT ''",
+            "ALTER TABLE policy_templates ADD COLUMN identities_json TEXT DEFAULT '{}'",
+            "ALTER TABLE policy_templates ADD COLUMN source_json TEXT DEFAULT '{}'",
+            "ALTER TABLE policy_batches ADD COLUMN scope_json TEXT DEFAULT '{}'",
+            "ALTER TABLE policy_repo_results ADD COLUMN access_json TEXT DEFAULT '{}'",
             "ALTER TABLE gitea_servers ADD COLUMN is_local BOOLEAN DEFAULT 0",
             "ALTER TABLE gitea_servers ADD COLUMN disk_usage VARCHAR(100) DEFAULT ''",
             "ALTER TABLE backups ADD COLUMN source_api_token VARCHAR(200) DEFAULT ''",
@@ -83,6 +92,8 @@ def create_app():
             "CREATE TABLE IF NOT EXISTS author_statistics (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), author_name VARCHAR(200) NOT NULL, author_email VARCHAR(300) DEFAULT '', repo_name VARCHAR(300) NOT NULL, commit_count INTEGER DEFAULT 0, additions INTEGER DEFAULT 0, deletions INTEGER DEFAULT 0, first_commit_date DATETIME, last_commit_date DATETIME, snapshot_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT uq_author_repo UNIQUE (server_id, author_name, repo_name))",
             "CREATE TABLE IF NOT EXISTS commit_message_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), name VARCHAR(100) NOT NULL, pattern TEXT NOT NULL, reject_message TEXT DEFAULT '', enabled BOOLEAN DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME)",
             "CREATE TABLE IF NOT EXISTS commit_gate_assignments (id INTEGER PRIMARY KEY AUTOINCREMENT, server_id INTEGER NOT NULL REFERENCES gitea_servers(id), repo_name VARCHAR(300) NOT NULL, rule_id INTEGER NOT NULL REFERENCES commit_message_rules(id), install_status VARCHAR(20) DEFAULT 'pending', install_log TEXT DEFAULT '', applied_at DATETIME, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT uq_commit_gate_repo UNIQUE (server_id, repo_name))",
+            "ALTER TABLE commit_gate_assignments ADD COLUMN repo_id INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE approval_policies ADD COLUMN native_uninstall_token_hash VARCHAR(64) NOT NULL DEFAULT ''",
             "CREATE TABLE IF NOT EXISTS integration_service_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(100) NOT NULL UNIQUE, token_hash VARCHAR(64) NOT NULL UNIQUE, active BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, rotated_at DATETIME, last_used_at DATETIME)",
             "CREATE TABLE IF NOT EXISTS integration_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, event_type VARCHAR(100) NOT NULL, task_type VARCHAR(30) NOT NULL, task_id INTEGER NOT NULL, status VARCHAR(30) NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)",
             "CREATE INDEX IF NOT EXISTS ix_integration_outbox_created_at ON integration_outbox (created_at)",
@@ -146,6 +157,9 @@ def create_app():
     from routes.statistics_routes import statistics_bp
     from routes.commit_gate_routes import commit_gate_bp
     from routes.integration_routes import integration_bp
+    from routes.policy_routes import policy_bp
+    from routes.ai_review_routes import ai_review_bp
+    from routes.approval_routes import approval_bp, approval_internal_bp, approval_view_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(server_bp, url_prefix='/api')
@@ -159,6 +173,21 @@ def create_app():
     app.register_blueprint(statistics_bp, url_prefix='/api')
     app.register_blueprint(commit_gate_bp, url_prefix='/api')
     app.register_blueprint(integration_bp, url_prefix='/api/integrations/v1')
+    app.register_blueprint(policy_bp, url_prefix='/api/repository-policies')
+    app.register_blueprint(ai_review_bp, url_prefix='/api/ai-review')
+    app.register_blueprint(approval_bp, url_prefix='/api/approval-rules')
+    app.register_blueprint(approval_internal_bp, url_prefix='/api/approval-internal')
+    app.register_blueprint(approval_view_bp, url_prefix='/api/approval-view')
+
+    if os.environ.get('AI_REVIEW_HOST_POLICY_FILE'):
+        from ai_review.host_policy import ensure
+        ensure()
+
+    @app.before_request
+    def upgrade_maintenance():
+        from services.upgrade_maintenance import active
+        if active() and request.path != '/api/session':
+            return jsonify(error='正在升级并核对数据，请稍后访问'), 503
 
     @app.before_request
     def check_host_ip():
@@ -177,6 +206,13 @@ def create_app():
         return None
 
     from services.scheduler_service import start_scheduler
-    start_scheduler(app)
+    if os.environ.get('DISABLE_BACKGROUND_TASKS') != '1':
+        start_scheduler(app)
+        from services.policy_tasks import start_policy_worker
+        start_policy_worker(app)
+
+    if os.environ.get('GM_UPGRADE_MAINTENANCE') != '1' and os.environ.get('AI_REVIEW_HOST_POLICY_FILE'):
+        from ai_review.setup_service import start
+        start(app)
 
     return app

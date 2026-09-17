@@ -1,0 +1,123 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "b2bdf012276cea98f0532d4f050bd40c08152b10ea5bc1adbf485d477204b528",
+  "记录": {
+    "说明": "实际功能服务、原生审批和官方镜像隔离集成；不代表完整生产验收",
+    "运行标识": "20260913-151931-e17183b4",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [
+      {
+        "异常": "ValueError",
+        "原因": "原生 Hook 包装器缺失或不支持子目录，未重建 Hook",
+        "调用位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 238, in <module>\n    try: run.execute_cases()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 191, in execute_cases\n    self.install('shadow')\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 161, in install\n    obj = install.Installer(self.container, folder)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-151931-e17183b4/组件-shadow/install.py\", line 99, in __init__\n    raise ValueError('原生 Hook 包装器缺失或不支持子目录，未重建 Hook')\nValueError: 原生 Hook 包装器缺失或不支持子目录，未重建 Hook\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "隔离网段": "10.253.240.144/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "0595dbb04503fa3de74b441830f12fd47e43292c1fa8bfa5836dc64e5fdc89ae",
+      "地址": "http://127.0.0.1:50332",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T07:19:37.062966467Z"
+    },
+    "状态": "失败，保留首次现场",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789283992.6079774,
+      "fingerprint": "ffb873302276d13a25f6e5a0e7a2ed619c2d66452c8447f0c6c6178f4b05a96e",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T07:19:45Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T07:19:45Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵、长测及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T07:19:48Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    }
+  }
+}

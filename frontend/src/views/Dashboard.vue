@@ -42,7 +42,7 @@
     </div>
 
     <el-row :gutter="18" class="recent-row">
-      <el-col :span="12">
+      <el-col :xs="24" :md="12">
         <div class="glass-card recent-card">
           <div class="recent-card-header">
             <span class="recent-card-title">最近备份记录</span>
@@ -74,7 +74,7 @@
           </div>
         </div>
       </el-col>
-      <el-col :span="12">
+      <el-col :xs="24" :md="12">
         <div class="glass-card recent-card">
           <div class="recent-card-header">
             <span class="recent-card-title">最近恢复记录</span>
@@ -112,8 +112,8 @@
       <h3 class="section-title" style="font-size:16px;">服务器概览</h3>
     </div>
 
-    <el-row :gutter="18">
-      <el-col :span="8" v-for="(s, idx) in servers" :key="s.id">
+    <el-row :gutter="18" class="server-overview-grid">
+      <el-col :xs="24" :sm="12" :lg="8" v-for="(s, idx) in servers" :key="s.id">
         <div class="glass-card server-card" :style="{ animationDelay: idx * 0.06 + 's' }">
           <div class="status-bar" :class="'bar-' + s.status"></div>
           <div class="server-header">
@@ -350,12 +350,15 @@ export default {
   background: rgba(0,122,255,0.16);
 }
 .recent-empty {
-  text-align: center; color: #9ca3af; padding: 20px 0; font-size: 13px;
+  text-align: center; color: var(--text-muted); padding: 20px 0; font-size: 13px;
 }
 .recent-list {
   display: flex; flex-direction: column; gap: 10px;
+  max-height: var(--table-detail-max-height); overflow: auto;
 }
+.server-overview-grid { max-height: var(--table-max-height); overflow: auto; }
 .recent-item {
+  flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px; border-radius: 10px;
   background: rgba(255,255,255,0.44); border: 1px solid rgba(15,23,42,0.06);
@@ -401,16 +404,16 @@ export default {
   font-size: 13px; font-weight: 600; color: var(--text-primary);
 }
 .recent-item-sub {
-  display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9ca3af;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--text-muted);
 }
 .recent-error-msg {
   color: #ef4444; font-size: 12px;
 }
 .recent-backup-name {
-  color: #9ca3af; font-size: 12px;
+  color: var(--text-muted); font-size: 12px;
 }
 .recent-time {
-  margin-left: auto; flex-shrink: 0; font-size: 11px; color: #d1d5db;
+  margin-left: auto; flex-shrink: 0; font-size: 11px; color: var(--text-muted);
 }
 .deleted-tag {
   margin-left: 6px; font-size: 10px; vertical-align: middle;
@@ -444,7 +447,7 @@ export default {
 }
 .disk-warn { color: #f59e0b !important; }
 .error-warn { color: #ef4444 !important; font-weight: 600; }
-.check-time { color: #9ca3af !important; font-size: 12px !important; }
+.check-time { color: var(--text-muted) !important; font-size: 12px !important; }
 .server-actions {
   display: flex; gap: 8px; margin-top: 16px; padding-top: 14px;
   border-top: 1px solid rgba(15,23,42,0.06);

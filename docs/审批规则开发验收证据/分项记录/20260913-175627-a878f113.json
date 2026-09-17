@@ -1,0 +1,584 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "a85f1607f5a869472383f4b1cbba17c366f7cdd8b0ea4057e11cda548d6de46b",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-175627-a878f113",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-仅页面回退",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入19-页面卸载不取消门禁",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-门禁卸载",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入18-回退只移除组件且保留接入后数据",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入08-重复卸载回执可核对",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-回退后没有重启",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "入口03-merge",
+        "场景": "自动合并等待CI、缺组拒绝、补票后实际合并",
+        "结果": "通过",
+        "证据": {
+          "PR": 2,
+          "第一次门禁退出码": 1,
+          "补票后门禁退出码": 0,
+          "旧引用": "edecde6e91da44b648b5b637f26a4991c1e73c73",
+          "新引用": "af77da7447d7d447936add6f9274c8424116ec67",
+          "原生已合并": true
+        },
+        "耗时秒": 19.124
+      },
+      {
+        "编号": "入口03-rebase",
+        "场景": "自动合并等待CI、缺组拒绝、补票后实际合并",
+        "结果": "失败",
+        "原因": "容器操作未完成（退出码 1）；未输出可能含凭据的命令或响应",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 133, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 603, in automatic\n    assert obj.read(marker)==b'0' and before!=after\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 114, in read\n    self.safe_path(path)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 111, in safe_path\n    self.exec(['sh', '-c', 'p=$1; while [ \"$p\" != / ]; do [ ! -L \"$p\" ] || exit 3; p=${p%/*}; [ -n \"$p\" ] || p=/; done', '校验路径', path])\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 103, in exec\n    return self.run(['docker', 'exec', '--user', self.user, self.container, *args], **kwargs)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 38, in run\n    raise RuntimeError('容器操作未完成（退出码 '+str(result.returncode)+'）；未输出可能含凭据的命令或响应')\nRuntimeError: 容器操作未完成（退出码 1）；未输出可能含凭据的命令或响应\n",
+        "耗时秒": 18.49
+      },
+      {
+        "编号": "入口03-rebase-merge",
+        "场景": "自动合并等待CI、缺组拒绝、补票后实际合并",
+        "结果": "通过",
+        "证据": {
+          "PR": 4,
+          "第一次门禁退出码": 1,
+          "补票后门禁退出码": 0,
+          "旧引用": "dacbdd223a6da72e763bf227d567592f8b297cc5",
+          "新引用": "164e9635bc4338857471502c75a77e8dca85f5f0",
+          "原生已合并": true
+        },
+        "耗时秒": 20.058
+      },
+      {
+        "编号": "入口03-squash",
+        "场景": "自动合并等待CI、缺组拒绝、补票后实际合并",
+        "结果": "通过",
+        "证据": {
+          "PR": 5,
+          "第一次门禁退出码": 1,
+          "补票后门禁退出码": 0,
+          "旧引用": "164e9635bc4338857471502c75a77e8dca85f5f0",
+          "新引用": "91bf4b3064d05d232fff0474cafe363a04fe8c43",
+          "原生已合并": true
+        },
+        "耗时秒": 20.949
+      },
+      {
+        "编号": "入口03-fast-forward-only",
+        "场景": "自动合并等待CI、缺组拒绝、补票后实际合并",
+        "结果": "通过",
+        "证据": {
+          "PR": 6,
+          "第一次门禁退出码": 1,
+          "补票后门禁退出码": 0,
+          "旧引用": "91bf4b3064d05d232fff0474cafe363a04fe8c43",
+          "新引用": "147f16d1fcbc4e263c574a1fdfbf69675854de6e",
+          "原生已合并": true
+        },
+        "耗时秒": 19.241
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [
+      {
+        "编号": "入口03-rebase",
+        "场景": "自动合并等待CI、缺组拒绝、补票后实际合并",
+        "结果": "失败",
+        "原因": "容器操作未完成（退出码 1）；未输出可能含凭据的命令或响应",
+        "异常": "RuntimeError",
+        "位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 133, in case\n    evidence = action()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-matrix.py\", line 603, in automatic\n    assert obj.read(marker)==b'0' and before!=after\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 114, in read\n    self.safe_path(path)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 111, in safe_path\n    self.exec(['sh', '-c', 'p=$1; while [ \"$p\" != / ]; do [ ! -L \"$p\" ] || exit 3; p=${p%/*}; [ -n \"$p\" ] || p=/; done', '校验路径', path])\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 103, in exec\n    return self.run(['docker', 'exec', '--user', self.user, self.container, *args], **kwargs)\n  File \"/Users/archer/Work/gitea-manager/work/审批可行性-20260913-175627-a878f113/组件-isolated_enforced/install.py\", line 38, in run\n    raise RuntimeError('容器操作未完成（退出码 '+str(result.returncode)+'）；未输出可能含凭据的命令或响应')\nRuntimeError: 容器操作未完成（退出码 1）；未输出可能含凭据的命令或响应\n"
+      }
+    ],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "backend/approval/__init__.py": "d8d200d2c243b369cfcdc14aee9b6b7d047a9d58d72dfa6475af0ab05cac135d",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "backend/approval/bundle.py": "7773ca6450253032d2349ee24a55952feaba76b89a7907282e40128360eabd9c",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/native_metadata.py": "d0b2709ba3a43f35c5d44f29d966f369383b47fdf70a4904e9b3d03fba0aaae0",
+      "backend/approval/rules.py": "4d6bb018a0a0a47e4dd9c4ff9df4c73030231f92414ec16785fb04415601583c",
+      "backend/approval/service.py": "36d78fec13c8ca11c2f8db961ae1d6e4ddcc70e5130c634e8dee8717f40dd3e5",
+      "backend/approval/timeline.py": "309aac558701f2d7a507ef011c91eb42b787ae17b9a679d19ff4fe9a59cf0d57",
+      "backend/routes/approval_routes.py": "ca12241c78f8d6eea6ace49ff992109290ffc716dfc594e8ab1cce1af01a7b33",
+      "scripts/approval-compat-matrix.py": "45bbcb4ba9b98e71696ed15eb689ee37b2acd5e39442a43fa562314068228d84",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb",
+      "scripts/approval-feasibility.py": "51cd0e4a60cd7b438839d58e77594427be0c7667fd9105e614baf4e259ff71e2",
+      "scripts/approval-integration.py": "855932edfc36ee7566713b6b9b84d78e85605b8447190e3c0ad3c66b02302d4b",
+      "scripts/approval-matrix.py": "5a23237c5c9861668e5e3ee2681724d0a73b3f80d5fcdc78eb43da1b2c5cd58b",
+      "scripts/approval-ssh-fixture.py": "544ae9abfdc9cb732238d44cd804044296538505a76edb347d29b1f489d38691",
+      "scripts/approval-ssh-matrix.py": "6ab4f814c9c43cf1cc3043481bdbd8e1c575fcd427ef9e34b186fc8a0e913f56"
+    },
+    "分项": "auto",
+    "隔离网段": "10.253.242.224/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "19de01bd6640c959649b5e8f9f6881f41e76c479799eee617483312264c84c8c",
+      "地址": "http://127.0.0.1:61386",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:56:33.092797215Z"
+    },
+    "状态": "本轮分项执行完成，完整矩阵仍按所有分项证据判定",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789293410.1143687,
+      "fingerprint": "1475211d8e519504b0b08957b64f1152448694c03eb264f1122a326cd5a32052",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T09:56:41Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T09:56:41Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T09:56:44Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0248
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.002
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.0059
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0146
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0257
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        }
+      ],
+      "仅页面回退": [
+        {
+          "成功": true,
+          "耗时秒": 0.0062
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        }
+      ],
+      "门禁卸载": [
+        {
+          "成功": true,
+          "耗时秒": 0.0064
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        }
+      ]
+    }
+  }
+}

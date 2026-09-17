@@ -8,3 +8,6 @@ cryptography==41.0.7
 requests==2.31.0
 gunicorn==21.2.0
 docker==7.1.0
+tree-sitter==0.25.2
+tree-sitter-c==0.24.1
+tree-sitter-cpp==0.23.4

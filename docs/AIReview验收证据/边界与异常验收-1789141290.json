@@ -1,0 +1,130 @@
+{
+  "说明": "真实 Gitea 与执行器，模型为协议替身；不计入模型准确率。",
+  "结果": [
+    {
+      "场景": "Worker 强制中断后租约恢复",
+      "通过": true,
+      "PR": "http://127.0.0.1:23000/review-admin/recovery-round1/pulls/1",
+      "任务": "8e06b9760ab0a30fa4fc02fecde046c2",
+      "Head": "ef32dddb212f4c35be157e602a22790a0f0ce906",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "restart.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "restart.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 97.47,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "重启不重复创建任务与 Review",
+      "通过": true,
+      "任务": "8e06b9760ab0a30fa4fc02fecde046c2",
+      "模型调用": 3
+    },
+    {
+      "场景": "后续提交重新定位并保留历史讨论",
+      "通过": true,
+      "PR": "http://127.0.0.1:23000/review-admin/recovery-round1/pulls/1",
+      "任务": "f40b50d7d11ea26950924deaf3616ba5",
+      "Head": "1d3f793329e8a0148470e3ee0f6d09ff75874d03",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 15.35,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "新版本锚点确实重新计算",
+      "通过": true,
+      "新行号": 3
+    },
+    {
+      "场景": "Rebase 与 force-push 绑定新 SHA",
+      "通过": true,
+      "PR": "http://127.0.0.1:23000/review-admin/recovery-round1/pulls/1",
+      "任务": "57549f64662e4dd5da2ae629d469e666",
+      "Head": "3878d29dba097bd5736b15a195557ab43313bdf4",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 14.43,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "人工重新审查创建独立执行代次",
+      "通过": true,
+      "PR": "http://127.0.0.1:23000/review-admin/recovery-round1/pulls/1",
+      "任务": "a7ae4f3d8fc57ab5cd8e954859a343df",
+      "Head": "3878d29dba097bd5736b15a195557ab43313bdf4",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 11.18,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "人工任务独立",
+      "通过": true,
+      "任务": "a7ae4f3d8fc57ab5cd8e954859a343df"
+    },
+    {
+      "场景": "多 Commit 审查整个 PR",
+      "通过": true,
+      "PR": "http://127.0.0.1:23000/review-admin/recovery-round1/pulls/2",
+      "任务": "a91f9a2f5ae4091f843e4f3c62793d1f",
+      "Head": "2d51f530d47789aed92b1ad8dd467bab1489b146",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "cumulative.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "cumulative.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 11.21,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "部分覆盖不能伪装完整通过",
+      "通过": true,
+      "覆盖范围": {
+        "complete": false,
+        "files_reviewed": 1,
+        "files_total": 2,
+        "skipped": [
+          {
+            "path": "uncovered.txt",
+            "reason": "第一期重点支持 C/C++ 源码，该文件尚未覆盖"
+          }
+        ]
+      }
+    }
+  ]
+}

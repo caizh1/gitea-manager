@@ -1,0 +1,53 @@
+{
+  "结论": "通过",
+  "组织副本团队ID": "26/27 与 28/29 明确分离",
+  "批次": {
+    "actor": "共享管理员",
+    "completed_at": "2026-09-12T13:30:19.381231Z",
+    "counts": {
+      "unchanged": 1
+    },
+    "created_at": "2026-09-12T13:30:00.172654Z",
+    "error": "",
+    "id": 26,
+    "organization": {
+      "id": 6,
+      "name": "policy-qa",
+      "server_id": 1
+    },
+    "progress_percent": 100,
+    "server_id": 1,
+    "server_name": "本地策略验收",
+    "status": "completed",
+    "submitted_at": "2026-09-12T13:30:07.380243Z",
+    "template_id": 16,
+    "template_name": "集团研发标准（组织验收）",
+    "total": 1
+  },
+  "容器": [
+    {
+      "名称": "gitea-policy-manager-api",
+      "镜像": "gitea-review-backend:org-policy-20260912",
+      "镜像ID": "sha256:51097dcc91b8435d412ae4cbd48a40e73276c308f0b4e5bc26964fd812a10179",
+      "运行中": true
+    },
+    {
+      "名称": "gitea-policy-manager-ui",
+      "镜像": "gitea-review-frontend:org-policy-20260912",
+      "镜像ID": "sha256:f21ebdc03d6eeb1eba3d5990670889685e373691b73a8ec81e84985c71db4cb0",
+      "运行中": true
+    }
+  ],
+  "页面验证": [
+    "空白创建",
+    "源仓库导入两条规则",
+    "源删除后编辑保存",
+    "同组织另存为",
+    "旧模板明确归属",
+    "跨组织团队清空后重选并确认",
+    "多人候选搜索和分页",
+    "桌面及窄屏完整页面",
+    "30库页面预览及下发",
+    "两页仓库选择保留"
+  ]
+}

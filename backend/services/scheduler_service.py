@@ -19,6 +19,10 @@ def start_scheduler(app):
 
         while True:
             try:
+                from services.upgrade_maintenance import active
+                if active():
+                    time.sleep(1)
+                    continue
                 with app.app_context():
                     now = datetime.utcnow()
                     tasks = ScheduledTask.query.filter_by(enabled=True).all()

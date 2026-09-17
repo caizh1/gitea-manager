@@ -1,0 +1,91 @@
+{
+  "结论": "通过",
+  "模板": {
+    "content_hash": "87323f83f5f774b066e1aa4793cf4aa1b687d46f30ad99df798f1290ebdbffd5",
+    "created_at": "2026-09-12T11:23:32.779535Z",
+    "description": "主分支禁止直接推送，双人审批并要求 CI 通过",
+    "id": 14,
+    "name": "Gitea 表单对齐验收",
+    "rules": [
+      {
+        "approvals_whitelist_teams": [
+          "reviewers"
+        ],
+        "approvals_whitelist_username": [
+          "policy-reviewer-one",
+          "policy-reviewer-two"
+        ],
+        "block_admin_merge_override": true,
+        "block_on_official_review_requests": true,
+        "block_on_outdated_branch": false,
+        "block_on_rejected_reviews": true,
+        "dismiss_stale_approvals": true,
+        "enable_approvals_whitelist": true,
+        "enable_force_push": false,
+        "enable_force_push_allowlist": false,
+        "enable_merge_whitelist": false,
+        "enable_push": false,
+        "enable_push_whitelist": false,
+        "enable_status_check": true,
+        "force_push_allowlist_deploy_keys": false,
+        "force_push_allowlist_teams": [],
+        "force_push_allowlist_usernames": [],
+        "ignore_stale_approvals": false,
+        "merge_whitelist_teams": [],
+        "merge_whitelist_usernames": [],
+        "priority": 1,
+        "protected_file_patterns": "",
+        "push_whitelist_deploy_keys": false,
+        "push_whitelist_teams": [],
+        "push_whitelist_usernames": [],
+        "require_signed_commits": false,
+        "required_approvals": 2,
+        "rule_name": "main",
+        "status_check_contexts": [
+          "policy/test"
+        ],
+        "team_org": "policy-qa",
+        "unprotected_file_patterns": ""
+      },
+      {
+        "approvals_whitelist_teams": [],
+        "approvals_whitelist_username": [],
+        "block_admin_merge_override": false,
+        "block_on_official_review_requests": false,
+        "block_on_outdated_branch": false,
+        "block_on_rejected_reviews": false,
+        "dismiss_stale_approvals": false,
+        "enable_approvals_whitelist": false,
+        "enable_force_push": true,
+        "enable_force_push_allowlist": true,
+        "enable_merge_whitelist": false,
+        "enable_push": true,
+        "enable_push_whitelist": true,
+        "enable_status_check": false,
+        "force_push_allowlist_deploy_keys": false,
+        "force_push_allowlist_teams": [],
+        "force_push_allowlist_usernames": [
+          "policy-developer"
+        ],
+        "ignore_stale_approvals": false,
+        "merge_whitelist_teams": [],
+        "merge_whitelist_usernames": [],
+        "priority": 2,
+        "protected_file_patterns": "secrets/**",
+        "push_whitelist_deploy_keys": false,
+        "push_whitelist_teams": [],
+        "push_whitelist_usernames": [
+          "policy-developer"
+        ],
+        "require_signed_commits": false,
+        "required_approvals": 0,
+        "rule_name": "release/ui-*",
+        "status_check_contexts": [],
+        "team_org": "",
+        "unprotected_file_patterns": ""
+      }
+    ],
+    "server_id": 1,
+    "updated_at": "2026-09-12T11:23:32.778872Z"
+  }
+}

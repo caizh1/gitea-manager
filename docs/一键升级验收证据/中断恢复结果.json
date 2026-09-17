@@ -1,0 +1,44 @@
+{
+  "结果": {
+    "created": 1789215814.466409,
+    "detail": {
+      "needs_callback": false,
+      "results": [
+        {
+          "name": "review-admin/first",
+          "ok": true,
+          "repository": 1
+        }
+      ],
+      "stage": "接入完成",
+      "steps": [
+        {
+          "name": "review-admin/first",
+          "ok": true,
+          "step": "回调地址"
+        },
+        {
+          "name": "review-admin/first",
+          "ok": true,
+          "step": "机器人与仓库权限"
+        },
+        {
+          "name": "review-admin/first",
+          "ok": true,
+          "step": "Webhook 安装及投递"
+        },
+        {
+          "name": "review-admin/first",
+          "ok": true,
+          "step": "PR 进度组件"
+        }
+      ]
+    },
+    "id": "049cbcedaa984fa121d9956c202e2734",
+    "status": "succeeded",
+    "updated": 1789215823.9733222
+  },
+  "机器人数量": 1,
+  "同一任务恢复": true,
+  "耗时秒": 10.12
+}

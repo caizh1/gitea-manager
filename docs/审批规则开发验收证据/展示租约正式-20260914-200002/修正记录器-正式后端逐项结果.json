@@ -1,0 +1,1905 @@
+{
+  "说明": "从当前新镜像内源码运行；没有挂载工作区产品源码。",
+  "总数": 316,
+  "失败": 0,
+  "异常": 0,
+  "跳过": 0,
+  "逐项": [
+    {
+      "用例": "test_ai_review.DiffTests.test_added_deleted_and_no_newline",
+      "结果": "通过",
+      "用时秒": 0.0023,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_anchor_failures_degrade_without_search",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_crlf_and_control_character_preserved",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_fifty_fixed_locations",
+      "结果": "通过",
+      "用时秒": 0.0047,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_function_boundaries_and_cpp",
+      "结果": "通过",
+      "用时秒": 0.0067,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_insertion_shifts_later_hunks",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_malformed_or_external_path",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_multiple_hunks_and_repeated_code",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_rename_and_quoted_utf8_path",
+      "结果": "通过",
+      "用时秒": 0.0004,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_repeated_statement_in_same_function_degrades",
+      "结果": "通过",
+      "用时秒": 0.001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_saved_hunk_checked_against_both_blobs",
+      "结果": "通过",
+      "用时秒": 0.0003,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_truncated_and_overlapping_hunks",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.DiffTests.test_wrong_blob_cannot_accept_even_matching_problem_line",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.OutputTests.test_unknown_candidates_and_incomplete_refutation_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_broker_rejects_tools_wrong_models_expired_capability",
+      "结果": "通过",
+      "用时秒": 0.0488,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_configuration_changes_fence_running_job",
+      "结果": "通过",
+      "用时秒": 0.0059,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_duplicate_events_atomic",
+      "结果": "通过",
+      "用时秒": 0.0313,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_encryption_and_public_projection",
+      "结果": "通过",
+      "用时秒": 0.0052,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_manual_rerun_is_distinct",
+      "结果": "通过",
+      "用时秒": 0.0047,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_new_generation_fences_old_owner",
+      "结果": "通过",
+      "用时秒": 0.0058,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_only_one_claim_and_lease_expiry",
+      "结果": "通过",
+      "用时秒": 0.0065,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_published_review_recovery_must_verify_formal_result",
+      "结果": "通过",
+      "用时秒": 0.0089,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_uncertain_publication_blocks_same_pr_not_other_pr",
+      "结果": "通过",
+      "用时秒": 0.0075,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review.StoreTests.test_webhook_signature_and_no_network_ingress",
+      "结果": "通过",
+      "用时秒": 0.0235,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.AdvisoryTests.test_exact_location_guards_remain",
+      "结果": "通过",
+      "用时秒": 0.001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.AdvisoryTests.test_null_finding_missing_checks_and_malformed_check_preserve_original",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.AdvisoryTests.test_only_substantive_rejection_removes_candidate",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.AdvisoryTests.test_optional_evidence_does_not_hide_valid_inline",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.AdvisoryTests.test_per_candidate_errors_and_no_usable_output",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_archive_survives_task_pruning",
+      "结果": "通过",
+      "用时秒": 0.01,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_conflict_scope_budget_and_current_source_only",
+      "结果": "通过",
+      "用时秒": 0.01,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_duplicate_notification_immediately_invalidates_once",
+      "结果": "通过",
+      "用时秒": 0.0056,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_expired_source_not_provided_to_model",
+      "结果": "通过",
+      "用时秒": 0.0057,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_literal_return_feedback_matches_parser_function_without_old_anchor",
+      "结果": "通过",
+      "用时秒": 0.0043,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_refutation_transport_error_preserves_advisory",
+      "结果": "通过",
+      "用时秒": 0.0086,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_related_code_receives_same_reference_as_primary_scope",
+      "结果": "通过",
+      "用时秒": 0.0044,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.DatasetTests.test_revision_export_and_disable_preserve_original",
+      "结果": "通过",
+      "用时秒": 0.0085,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackTests.test_bounded_exclusion_and_same_author_replacement",
+      "结果": "通过",
+      "用时秒": 0.006,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackTests.test_human_link_must_be_current_pr_same_origin",
+      "结果": "通过",
+      "用时秒": 0.0038,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackTests.test_old_event_does_not_authorize_new_body",
+      "结果": "通过",
+      "用时秒": 0.004,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackTests.test_readonly_cannot_mark_or_forge_user",
+      "结果": "通过",
+      "用时秒": 0.0036,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackTests.test_suspended_account_cannot_keep_confirming",
+      "结果": "通过",
+      "用时秒": 0.0034,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackTests.test_unit_team_requires_code_write_and_actual_membership",
+      "结果": "通过",
+      "用时秒": 0.0034,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackWebhookTests.test_dataset_endpoints_require_login_and_csrf",
+      "结果": "通过",
+      "用时秒": 0.0117,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.FeedbackWebhookTests.test_signed_native_review_and_comment_events_only_enqueue",
+      "结果": "通过",
+      "用时秒": 0.0122,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.ReceiptTests.test_lost_create_response_recovers_without_duplicate",
+      "结果": "通过",
+      "用时秒": 0.0045,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_feedback.ReceiptTests.test_unknown_receipt_does_not_blindly_resend",
+      "结果": "通过",
+      "用时秒": 0.0048,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_absent_uncertain_create_is_not_blindly_retried",
+      "结果": "通过",
+      "用时秒": 0.0099,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_budget_skips_are_not_counted_as_completed",
+      "结果": "通过",
+      "用时秒": 0.008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_closed_and_disabled_pr",
+      "结果": "通过",
+      "用时秒": 0.0103,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_expired_publisher_requires_reconciliation",
+      "结果": "通过",
+      "用时秒": 0.0081,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_expired_worker_is_not_reported_running",
+      "结果": "通过",
+      "用时秒": 0.0081,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_explicit_rejection_can_retry_after_permissions_repaired",
+      "结果": "通过",
+      "用时秒": 0.0088,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_export_has_no_secrets_and_installer_preserves_custom_footer",
+      "结果": "通过",
+      "用时秒": 0.0073,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_legacy_reference_rejects_other_version_or_owner",
+      "结果": "通过",
+      "用时秒": 0.0081,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_legacy_reference_uses_verified_review_not_issue_number",
+      "结果": "通过",
+      "用时秒": 0.008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_legacy_summary_is_adopted",
+      "结果": "通过",
+      "用时秒": 0.0064,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_lifecycle_and_read_only_progress",
+      "结果": "通过",
+      "用时秒": 0.0116,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_lost_create_response_is_adopted_without_duplicate",
+      "结果": "通过",
+      "用时秒": 0.0104,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_missing_webhook_detects_version_mismatch",
+      "结果": "通过",
+      "用时秒": 0.0071,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_new_generation_during_write_remains_dirty",
+      "结果": "通过",
+      "用时秒": 0.0093,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_progress_outage_does_not_change_review_success",
+      "结果": "通过",
+      "用时秒": 0.0086,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_pruned_results_do_not_claim_zero_findings",
+      "结果": "通过",
+      "用时秒": 0.0075,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_received_sha_and_no_invented_start",
+      "结果": "通过",
+      "用时秒": 0.0066,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_rollback_has_no_dirty_signal",
+      "结果": "通过",
+      "用时秒": 0.0055,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_schema_restart_preserves_pending_signal",
+      "结果": "通过",
+      "用时秒": 0.0056,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_stage_rate_limit_and_heartbeat_coalescing",
+      "结果": "通过",
+      "用时秒": 0.0111,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_stale_model_cannot_override_new_queue",
+      "结果": "通过",
+      "用时秒": 0.0076,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_progress.ProgressTests.test_wrong_author_and_wrong_pr_preserve_discussion",
+      "结果": "通过",
+      "用时秒": 0.0096,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_changed_summary_is_not_confirmed_or_overwritten",
+      "结果": "通过",
+      "用时秒": 0.0085,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_comment_contract_cannot_be_inline_code_anchor",
+      "结果": "通过",
+      "用时秒": 0.006,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_confirm_unpublished_requires_no_owned_review_or_bot_draft",
+      "结果": "通过",
+      "用时秒": 0.0101,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_corrupted_publication_is_retained_for_inspection",
+      "结果": "通过",
+      "用时秒": 0.0078,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_cpp_methods_include_class_and_namespace",
+      "结果": "通过",
+      "用时秒": 0.0083,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_empty_findings_only_publishes_summary",
+      "结果": "通过",
+      "用时秒": 0.0082,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_filtered_review_page_does_not_hide_later_reviews",
+      "结果": "通过",
+      "用时秒": 0.0056,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_final_response_loss_recovery_never_resubmits",
+      "结果": "通过",
+      "用时秒": 0.0078,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_gitea_short_display_hunk_retains_full_header_count",
+      "结果": "通过",
+      "用时秒": 0.0055,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_history_reference_survives_more_than_ten_reruns",
+      "结果": "通过",
+      "用时秒": 0.0216,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_invalid_local_anchor_degrades_before_write",
+      "结果": "通过",
+      "用时秒": 0.0081,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_manual_review_acknowledges_actual_version_without_new_job",
+      "结果": "通过",
+      "用时秒": 0.0077,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_many_ordinary_comments_are_read_once",
+      "结果": "通过",
+      "用时秒": 0.0055,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_one_formal_request_contains_explicit_sha_and_inline",
+      "结果": "通过",
+      "用时秒": 0.008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_owned_partial_or_legacy_draft_is_not_resumed",
+      "结果": "通过",
+      "用时秒": 0.006,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_poisoned_task_cannot_retry_forever",
+      "结果": "通过",
+      "用时秒": 0.008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_push_before_publication_prevents_write",
+      "结果": "通过",
+      "用时秒": 0.0068,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_recovery_only_reads_complete_formal_result",
+      "结果": "通过",
+      "用时秒": 0.0105,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_recovery_retains_pending_and_mismatched_formal_results",
+      "结果": "通过",
+      "用时秒": 0.0124,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_stock_gitea_publishes_inline_without_pending",
+      "结果": "通过",
+      "用时秒": 0.0078,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_summary_outage_cannot_fail_formal_publication",
+      "结果": "通过",
+      "用时秒": 0.0082,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_unknown_absent_result_is_not_replayed",
+      "结果": "通过",
+      "用时秒": 0.0057,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_unowned_draft_is_never_deleted_or_submitted",
+      "结果": "通过",
+      "用时秒": 0.0062,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_publication.PublicationTests.test_valid_json_is_not_enough_when_model_stream_is_truncated",
+      "结果": "通过",
+      "用时秒": 0.007,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_adjacent_preparation_line_is_not_root",
+      "结果": "通过",
+      "用时秒": 0.001,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_deleted_operation_can_use_old_side",
+      "结果": "通过",
+      "用时秒": 0.0006,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_disagreement_does_not_retarget",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_fifty_fixed_positions_through_quality_gate",
+      "结果": "通过",
+      "用时秒": 0.7408,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_fixed_direction_one_function_one_unit",
+      "结果": "通过",
+      "用时秒": 0.0007,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_missing_header_does_not_report_complete_coverage",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_multiline_operation_is_not_guessed",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_refutation_replaces_all_published_text",
+      "结果": "通过",
+      "用时秒": 0.0006,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_renamed_source_uses_header_path_from_each_version",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_shared_state_context_includes_other_entry_points",
+      "结果": "通过",
+      "用时秒": 0.0007,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_quality.QualityTests.test_wrong_evidence_and_version_are_uncertain",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_auth_and_csrf_reject_before_configuration",
+      "结果": "通过",
+      "用时秒": 0.0382,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_bot_identity_and_token_are_reused",
+      "结果": "通过",
+      "用时秒": 0.0197,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_broken_host_file_fails_closed",
+      "结果": "通过",
+      "用时秒": 0.0167,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_concurrent_host_updates_are_visible_without_restart",
+      "结果": "通过",
+      "用时秒": 0.0212,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_cross_origin_rejected",
+      "结果": "通过",
+      "用时秒": 0.0173,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_failed_delivery_still_restores_event_subscription",
+      "结果": "通过",
+      "用时秒": 0.0167,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_invalid_signature_cannot_fake_delivery",
+      "结果": "通过",
+      "用时秒": 0.0177,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_one_submission_persists_no_public_key",
+      "结果": "通过",
+      "用时秒": 0.0234,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_preexisting_unowned_account_is_not_adopted",
+      "结果": "通过",
+      "用时秒": 0.0164,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_probe_does_not_disclose_repository_or_configuration",
+      "结果": "通过",
+      "用时秒": 0.0179,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_probe_requires_unexpired_random_nonce",
+      "结果": "通过",
+      "用时秒": 0.019,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_real_test_event_subscription_is_restored",
+      "结果": "通过",
+      "用时秒": 0.0159,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_signed_test_hook_proves_delivery_without_review",
+      "结果": "通过",
+      "用时秒": 0.018,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_unsafe_model_addresses_do_not_expand_policy",
+      "结果": "通过",
+      "用时秒": 0.0187,
+      "说明": null
+    },
+    {
+      "用例": "test_ai_review_setup.SetupTests.test_untrusted_input_cannot_select_nonexistent_server",
+      "结果": "通过",
+      "用时秒": 0.0166,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_caller_budget_stops_waiting_before_default_lease_timeout",
+      "结果": "通过",
+      "用时秒": 0.0125,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_configuration_change_and_expiry_require_new_calculation",
+      "结果": "通过",
+      "用时秒": 0.0228,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_crashed_worker_lease_recovers_without_stale_publication",
+      "结果": "通过",
+      "用时秒": 0.021,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_expired_request_cannot_return_even_a_fresh_shared_snapshot",
+      "结果": "通过",
+      "用时秒": 0.0156,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_failure_cannot_reuse_previous_success",
+      "结果": "通过",
+      "用时秒": 0.0197,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_native_permission_check_remains_before_cache_entry",
+      "结果": "通过",
+      "用时秒": 0.0157,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_publish_commit_crossing_deadline_cannot_leave_reusable_success",
+      "结果": "通过",
+      "用时秒": 0.0205,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_reused_policy_id_in_another_instance_never_reuses_old_scope",
+      "结果": "通过",
+      "用时秒": 0.0178,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_separate_view_service_has_no_management_or_hook_routes",
+      "结果": "通过",
+      "用时秒": 0.0169,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_shared_snapshot_never_keeps_callers_identity_or_mutation",
+      "结果": "通过",
+      "用时秒": 0.0157,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_size_and_total_rows_are_bounded",
+      "结果": "通过",
+      "用时秒": 0.0247,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_two_processes_share_one_calculation",
+      "结果": "通过",
+      "用时秒": 0.3611,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_cache.DisplayCacheTests.test_waiting_then_calculation_cannot_restart_the_request_budget",
+      "结果": "通过",
+      "用时秒": 0.1331,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_atomic_different_generation",
+      "结果": "通过",
+      "用时秒": 0.0664,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_atomic_same_generation",
+      "结果": "通过",
+      "用时秒": 0.053,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_crashed_process_lease_and_expiry",
+      "结果": "通过",
+      "用时秒": 0.5032,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_instance_identity_change_during_compute",
+      "结果": "通过",
+      "用时秒": 0.0201,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_late_owner_cannot_delete_replacement",
+      "结果": "通过",
+      "用时秒": 0.0436,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_process_new_then_old",
+      "结果": "通过",
+      "用时秒": 0.9477,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_process_old_then_new",
+      "结果": "通过",
+      "用时秒": 0.8977,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_process_same_generation",
+      "结果": "通过",
+      "用时秒": 0.8662,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_repository_identity_change_during_compute",
+      "结果": "通过",
+      "用时秒": 0.0164,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_rule_change_during_compute",
+      "结果": "通过",
+      "用时秒": 0.0151,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_rule_change_while_waiting",
+      "结果": "通过",
+      "用时秒": 0.0121,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_thread_a_b_a",
+      "结果": "通过",
+      "用时秒": 0.0503,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_thread_new_then_old",
+      "结果": "通过",
+      "用时秒": 0.0486,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_thread_old_then_new",
+      "结果": "通过",
+      "用时秒": 0.0502,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_thread_same_generation",
+      "结果": "通过",
+      "用时秒": 0.0443,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_display_concurrency.DisplayLeaseConcurrencyTests.test_waiter_deadline_keeps_other_generation_lease",
+      "结果": "通过",
+      "用时秒": 0.1357,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_connection_rotates_between_kernel_and_database_snapshots",
+      "结果": "通过",
+      "用时秒": 0.0023,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_container_or_web_restart_invalidates_binding",
+      "结果": "通过",
+      "用时秒": 0.0009,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_empty_database_clients_does_not_scan_again",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_expired_budget_does_not_connect",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_invalid_config_and_identity_cannot_inject_or_leak_secrets",
+      "结果": "通过",
+      "用时秒": 0.001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_kernel_address_encoding",
+      "结果": "通过",
+      "用时秒": 0.0004,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_matches_running_web_socket_and_uses_readonly_transaction",
+      "结果": "通过",
+      "用时秒": 0.0003,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_restarted_or_duplicate_web_process_still_rejected",
+      "结果": "通过",
+      "用时秒": 0.0012,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_second_rotation_is_not_retried_indefinitely",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_second_snapshot_timeout_preserves_no_binding",
+      "结果": "通过",
+      "用时秒": 0.0004,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_stale_disk_config_does_not_identify_actual_database",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_still_wrong_connection_never_becomes_verified",
+      "结果": "通过",
+      "用时秒": 0.0004,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_native_metadata.MetadataTests.test_wrong_database_address_or_user_stops_before_query",
+      "结果": "通过",
+      "用时秒": 0.0004,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_admin_auth_csrf_and_origin",
+      "结果": "通过",
+      "用时秒": 0.0254,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_closed_pr_page_without_head_requires_native_closed_state",
+      "结果": "通过",
+      "用时秒": 0.0337,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_configuration_change_during_native_read_rejects",
+      "结果": "通过",
+      "用时秒": 0.0188,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_delete_requires_completed_uninstall",
+      "结果": "通过",
+      "用时秒": 0.0195,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_edit_revision_and_audit",
+      "结果": "通过",
+      "用时秒": 0.0208,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_hook_auth_wrong_repo_and_replay",
+      "结果": "通过",
+      "用时秒": 0.0196,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_hook_unknown_and_incomplete_state_never_allows",
+      "结果": "通过",
+      "用时秒": 0.0173,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_installed_shadow_cannot_lose_uninstall_credentials_by_edit",
+      "结果": "通过",
+      "用时秒": 0.0192,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_malformed_trusted_fields_are_rejected",
+      "结果": "通过",
+      "用时秒": 0.0201,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_native_reads_do_not_hold_manager_connection",
+      "结果": "通过",
+      "用时秒": 0.0246,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_prepared_bundle_not_regenerated",
+      "结果": "通过",
+      "用时秒": 0.0188,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_production_enable_cannot_be_overridden",
+      "结果": "通过",
+      "用时秒": 0.0182,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_status_preserves_remaining_budget_without_changing_default_hook_budget",
+      "结果": "通过",
+      "用时秒": 0.0171,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_view_budget_includes_authentication_and_rejects_late_success",
+      "结果": "通过",
+      "用时秒": 0.0281,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ApiTests.test_view_requires_gitea_cookie",
+      "结果": "通过",
+      "用时秒": 0.0169,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.InstallerTests.test_managed_fragment_preserves_other_content",
+      "结果": "通过",
+      "用时秒": 0.0026,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ReaderTests.test_complete_multiple_pages",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ReaderTests.test_delayed_normal_push_preserves_current_sha_approvals",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ReaderTests.test_final_review_revision_detects_native_decision_changes",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ReaderTests.test_incomplete_duplicate_changed_count_and_malformed",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.ReaderTests.test_unrecognized_push_event_fails_closed",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_a_b_a_code_generation",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_author_and_unqualified",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_changed_branch_closed_merged",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_comment_and_draft_do_not_remove_approval",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_cross_group_counted_once",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_duplicate_page_rejected",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_group_deleted_empty_and_member_removed",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_latest_revoke_cannot_resurrect_old_approval",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_missing_each_group",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_native_bypass_paths_stop",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_native_priority_before_exact_name",
+      "结果": "通过",
+      "用时秒": 0.0842,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_old_commit_stale_and_missing_flags",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_old_revoke_does_not_cancel_new_approval",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_repeated_approvals_one_vote",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_request_changes_removes_vote",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_rule_validation",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_team_review_request_without_user",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_three_and_both_groups",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_rules.RuleTests.test_total_zero_one_two",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_api_review_list_must_contain_referenced_review",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_empty_and_smaller_native_page_limit",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_filtered_middle_page_cannot_hide_force_push",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_forged_type_wrong_review_and_unexpected_event_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_header_and_duplicates_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_invalid_identity_ordinal_and_scale_rejected",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_metadata_change_during_read_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_approval_timeline.TimelineTests.test_missing_short_or_empty_relevant_page_is_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_backup_commit_snapshot.BackupCommitSnapshotTestCase.test_do_backup_fails_when_commit_snapshot_collection_fails",
+      "结果": "通过",
+      "用时秒": 0.0173,
+      "说明": null
+    },
+    {
+      "用例": "test_backup_commit_snapshot.BackupCommitSnapshotTestCase.test_do_backup_marks_success_only_after_commit_snapshot",
+      "结果": "通过",
+      "用时秒": 0.0144,
+      "说明": null
+    },
+    {
+      "用例": "test_backup_commit_snapshot.BackupCommitSnapshotTestCase.test_get_repo_commits_only_collects_recent_limit",
+      "结果": "通过",
+      "用时秒": 0.0107,
+      "说明": null
+    },
+    {
+      "用例": "test_backup_commit_snapshot.BackupCommitSnapshotTestCase.test_restore_route_rejects_legacy_success_backup_without_snapshot",
+      "结果": "通过",
+      "用时秒": 0.0129,
+      "说明": null
+    },
+    {
+      "用例": "test_backup_commit_snapshot.BackupCommitSnapshotTestCase.test_schedule_stops_before_restore_when_backup_snapshot_fails",
+      "结果": "通过",
+      "用时秒": 0.022,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_bootstrap_token_is_hashed_and_idempotent",
+      "结果": "通过",
+      "用时秒": 0.0138,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_incremental_events_are_monotonic_and_redacted",
+      "结果": "通过",
+      "用时秒": 0.0156,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_requires_service_token_and_audits_failure",
+      "结果": "通过",
+      "用时秒": 0.0432,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_task_detail_never_returns_credentials_or_paths",
+      "结果": "通过",
+      "用时秒": 0.0164,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_task_detail_转义html并脱敏高熵内容",
+      "结果": "通过",
+      "用时秒": 0.0169,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_terminal_backup_state_and_outbox_share_commit",
+      "结果": "通过",
+      "用时秒": 0.0184,
+      "说明": null
+    },
+    {
+      "用例": "test_integration_api.IntegrationApiTestCase.test_unknown_task_type_is_rejected",
+      "结果": "通过",
+      "用时秒": 0.015,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_authentication_guard",
+      "结果": "通过",
+      "用时秒": 0.0132,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_candidate_reads_use_shared_rate_limiter",
+      "结果": "通过",
+      "用时秒": 0.0155,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_cross_origin_guard",
+      "结果": "通过",
+      "用时秒": 0.0134,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_default_users_are_org_members_and_typed_search_allows_external_users",
+      "结果": "通过",
+      "用时秒": 0.0154,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_failure_is_not_returned_as_empty_success",
+      "结果": "通过",
+      "用时秒": 0.018,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_invalid_org_page_and_query_do_not_reach_gitea",
+      "结果": "通过",
+      "用时秒": 0.0167,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_malformed_upstream_is_rejected",
+      "结果": "通过",
+      "用时秒": 0.0169,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_missing_instance_and_empty_results",
+      "结果": "通过",
+      "用时秒": 0.0161,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_organization_search_paginates_without_losing_stable_ids",
+      "结果": "通过",
+      "用时秒": 0.0171,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_real_gitea_team_search_can_omit_organization_object",
+      "结果": "通过",
+      "用时秒": 0.015,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_team_candidates_keep_organization_and_name",
+      "结果": "通过",
+      "用时秒": 0.015,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_candidates.PolicyCandidateTests.test_users_are_paged_and_private_fields_are_removed",
+      "结果": "通过",
+      "用时秒": 0.0145,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_chinese_team_name_is_preserved",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_deleted_and_same_named_recreated_users_and_teams_are_blocked",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_duplicate_name_with_conflicting_ids_is_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_instance_mismatch_and_inactive_account_are_blocked",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_multiple_team_organizations_cannot_be_adopted_implicitly",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_names_require_explicit_legacy_resolution",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_org_recreation_and_repo_transfer_are_blocked",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_real_search_null_organization_requires_team_detail",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_rename_requires_explicit_refresh_and_preserves_id",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_repointed_instance_cannot_reuse_same_numbered_ids",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyIdentityTests.test_same_named_team_in_other_org_never_replaces_original",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_force_push_create_uses_verified_intermediate_then_patch",
+      "结果": "通过",
+      "用时秒": 0.067,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_force_push_intermediate_with_other_team_allowlists",
+      "结果": "通过",
+      "用时秒": 0.0954,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_force_push_lost_create_response_never_replays_or_completes_blindly",
+      "结果": "通过",
+      "用时秒": 0.0923,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_legacy_preview_cannot_be_submitted",
+      "结果": "通过",
+      "用时秒": 0.062,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_new_template_cannot_omit_organization",
+      "结果": "通过",
+      "用时秒": 0.0157,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_out_of_scope_repository_is_blocked_without_affecting_others",
+      "结果": "通过",
+      "用时秒": 0.0614,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_permission_changed_during_write_cannot_report_success",
+      "结果": "通过",
+      "用时秒": 0.0533,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_repo_transfer_and_permission_change_invalidate_old_preview",
+      "结果": "通过",
+      "用时秒": 0.0953,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_source_deletion_has_no_dependency_and_snapshot_survives",
+      "结果": "通过",
+      "用时秒": 0.0694,
+      "说明": null
+    },
+    {
+      "用例": "test_policy_organizations.PolicyOrganizationApiTests.test_unowned_template_is_preserved_and_requires_explicit_adoption",
+      "结果": "通过",
+      "用时秒": 0.0185,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_create_mirror_route_forces_push_mirror",
+      "结果": "通过",
+      "用时秒": 0.0132,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_deprecated_config_setup_is_rejected_by_route",
+      "结果": "通过",
+      "用时秒": 0.012,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_manual_sync_skips_missing_source_and_audits_it",
+      "结果": "通过",
+      "用时秒": 0.0207,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_manual_sync_uses_source_push_mirror_sync_api",
+      "结果": "通过",
+      "用时秒": 0.0179,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_setup_marks_missing_source_and_audits_it",
+      "结果": "通过",
+      "用时秒": 0.0229,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_setup_push_mirror_records_repo_failure_details",
+      "结果": "通过",
+      "用时秒": 0.0227,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_setup_push_mirror_uses_source_push_mirror_api",
+      "结果": "通过",
+      "用时秒": 0.0244,
+      "说明": null
+    },
+    {
+      "用例": "test_push_mirror.PushMirrorTestCase.test_setup_repairs_renamed_repo_by_source_repo_id",
+      "结果": "通过",
+      "用时秒": 0.0239,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.SSH命令测试.test_大量_stdout_stderr_会被同时读取",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.恢复步骤日志测试.test_日志尾部会截断且指标保持结构化",
+      "结果": "通过",
+      "用时秒": 0.0112,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_hooks失败会作为恢复失败向上抛出",
+      "结果": "通过",
+      "用时秒": 0.0012,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_上传哈希不一致会阻断恢复",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_仓库复制失败不会继续数据复制或启动",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_容器或数据库名不允许命令注入字符",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_数据库重建失败不会开始SQL导入",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_目标路径_SQL选项和app_ini覆盖符合恢复契约",
+      "结果": "通过",
+      "用时秒": 0.0022,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_空文本异常也会生成非空错误",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_解压空间不足会阻断恢复",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远程恢复编排测试.test_非法SQL停止后续复制和启动",
+      "结果": "通过",
+      "用时秒": 0.0008,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远端作业测试.test_SSH瞬断后轮询同一远端作业而不重复启动",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远端作业测试.test_包装器使用日志重定向和原子退出码",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远端作业测试.test_状态解析读取原子状态文件字段",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远端作业测试.test_超时会终止远端作业并保留日志尾部",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_remote_restore_jobs.远端作业测试.test_超过600秒的大仓库作业不会触发旧超时",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_1000_repository_pagination_queue_and_failure_isolation",
+      "结果": "通过",
+      "用时秒": 9.3634,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_batch_preview_apply_verify_and_duplicate_submission",
+      "结果": "通过",
+      "用时秒": 0.0708,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_login_csrf_and_cross_origin",
+      "结果": "通过",
+      "用时秒": 0.0138,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_partial_failure_and_response_loss_have_truthful_results",
+      "结果": "通过",
+      "用时秒": 0.0623,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_post_write_mismatch_is_never_success",
+      "结果": "通过",
+      "用时秒": 0.0672,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_process_lock_excludes_second_worker",
+      "结果": "通过",
+      "用时秒": 0.4759,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_read_only_template_rules_do_not_remove_unmanaged_rules",
+      "结果": "通过",
+      "用时秒": 0.0746,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_renamed_repo_and_permission_loss_are_rechecked",
+      "结果": "通过",
+      "用时秒": 0.0868,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_repo_change_blocks_only_affected_repository",
+      "结果": "通过",
+      "用时秒": 0.0601,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_request_slots_are_shared_by_multiple_processes",
+      "结果": "通过",
+      "用时秒": 1.2302,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_restart_records_interruption_without_replaying_write",
+      "结果": "通过",
+      "用时秒": 0.0484,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_template_change_invalidates_preview_and_historical_snapshot_survives_delete",
+      "结果": "通过",
+      "用时秒": 0.0454,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyApiTests.test_template_delete_after_submission_does_not_change_frozen_task",
+      "结果": "通过",
+      "用时秒": 0.0662,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyGiteaPeopleTests.test_explicit_read_access_is_sufficient_for_approval_only",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyGiteaPeopleTests.test_http_error_does_not_leak_response_or_token",
+      "结果": "通过",
+      "用时秒": 0.0004,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyGiteaPeopleTests.test_inactive_and_read_only_users_blocked",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyGiteaPeopleTests.test_personal_repository_never_queries_organization_teams",
+      "结果": "通过",
+      "用时秒": 0.0003,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyGiteaPeopleTests.test_team_membership_missing_does_not_grant_access",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyGiteaPeopleTests.test_unit_permissions_and_membership_override_none_aggregate",
+      "结果": "通过",
+      "用时秒": 0.0003,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_all_api_fields_present_and_false_zero_empty_are_preserved",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_conflict_and_priority_tie_block_before_writes",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_enabled_empty_lists_preserve_gitea_semantics",
+      "结果": "通过",
+      "用时秒": 0.0,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_glob_examples_and_exact_case_semantics",
+      "结果": "通过",
+      "用时秒": 0.0005,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_glob_intersection_includes_future_branches",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_invalid_ci_and_file_patterns_are_rejected",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_team_org_required_and_disabling_allowlist_clears_effective_members",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_unknown_fields_and_invalid_types_are_not_silently_dropped",
+      "结果": "通过",
+      "用时秒": 0.0001,
+      "说明": null
+    },
+    {
+      "用例": "test_repository_policies.PolicyRulesTests.test_unmanaged_rule_retained_and_lists_are_order_independent",
+      "结果": "通过",
+      "用时秒": 0.0002,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_commit_mismatch_fails_validation",
+      "结果": "通过",
+      "用时秒": 0.0278,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_empty_snapshot_fails_when_target_has_extra_repo",
+      "结果": "通过",
+      "用时秒": 0.0228,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_empty_snapshot_success_allows_empty_target",
+      "结果": "通过",
+      "用时秒": 0.0209,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_legacy_backup_without_snapshot_fails_before_api_checks",
+      "结果": "通过",
+      "用时秒": 0.0164,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_matching_commits_mark_restore_success",
+      "结果": "通过",
+      "用时秒": 0.0257,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_missing_target_repo_fails_validation",
+      "结果": "通过",
+      "用时秒": 0.0254,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_repo_list_api_failure_is_not_treated_as_empty_success",
+      "结果": "通过",
+      "用时秒": 0.0242,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_token_must_be_valid",
+      "结果": "通过",
+      "用时秒": 0.0208,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_transient_version_connection_reset_is_retried",
+      "结果": "通过",
+      "用时秒": 0.0235,
+      "说明": null
+    },
+    {
+      "用例": "test_restore_validation.RestoreValidationTestCase.test_version_must_be_reachable",
+      "结果": "通过",
+      "用时秒": 0.0213,
+      "说明": null
+    }
+  ]
+}

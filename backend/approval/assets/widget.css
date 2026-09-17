@@ -1,0 +1,12 @@
+.gm-approval { margin: 16px 0; padding: 16px; border: 1px solid var(--color-secondary, #d9dee7); border-radius: 8px; background: var(--color-box-body, #fff); color: var(--color-text, #222); }
+.gm-approval h3 { margin: 0 0 10px; font-size: 16px; }
+.gm-approval p { overflow-wrap: anywhere; }
+.gm-approval summary { cursor: pointer; padding: 8px 0; }
+.gm-approval-rows { display: grid; min-width: 0; }
+.gm-approval-row { display: grid; grid-template-columns: minmax(100px, 1fr) 90px minmax(0, 2fr); gap: 12px; padding: 12px 0; border-top: 1px solid var(--color-secondary, #d9dee7); align-items: center; }
+.gm-approval-row span { min-width: 0; overflow-wrap: anywhere; }
+.gm-approval-note { color: var(--color-text-light, #667085); font-size: 12px; line-height: 1.6; }
+.gm-approval button { display: inline-flex; align-items: center; justify-content: center; padding: 7px 14px; border: 1px solid var(--color-secondary, #d9dee7); border-radius: 6px; background: var(--color-button, #f5f6f8); color: inherit; cursor: pointer; }
+.gm-approval[data-state="missing"] { border-left: 4px solid #cf8d29; }
+.gm-approval[data-state="unknown"] { border-left: 4px solid #8a94a4; }
+@media (max-width: 560px) { .gm-approval-row { grid-template-columns: minmax(0, 1fr) 75px; } .gm-approval-row span:last-child { grid-column: 1 / -1; } }

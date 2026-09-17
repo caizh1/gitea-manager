@@ -1,0 +1,1482 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "68ced95327df31e3c273b70ce5067b28a72ff11d25c60e56ae4993d8f2306211",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-172309-90d3cbbd",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-过滤页之后的强推事件",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.417,
+        "旧引用": "cae73370a5ea545dde6b261b40ad6520a0214197",
+        "新引用": "cae73370a5ea545dde6b261b40ad6520a0214197",
+        "耗时秒": 3.437
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "分页修复预研-多页只读元数据",
+        "场景": "用只读记录标记确认原生时间线多页完整性",
+        "结果": "通过",
+        "证据": {
+          "PR": 2,
+          "只读完整性元数据": {
+            "pr_id": 2,
+            "repo_id": 1,
+            "number": 2,
+            "count": 55,
+            "max_id": 61,
+            "events": [
+              {
+                "id": 7,
+                "type": 29,
+                "review_id": 0,
+                "ordinal": 1
+              },
+              {
+                "id": 8,
+                "type": 22,
+                "review_id": 5,
+                "ordinal": 2
+              },
+              {
+                "id": 9,
+                "type": 22,
+                "review_id": 6,
+                "ordinal": 3
+              },
+              {
+                "id": 10,
+                "type": 22,
+                "review_id": 7,
+                "ordinal": 4
+              },
+              {
+                "id": 11,
+                "type": 22,
+                "review_id": 8,
+                "ordinal": 5
+              },
+              {
+                "id": 12,
+                "type": 22,
+                "review_id": 9,
+                "ordinal": 6
+              },
+              {
+                "id": 13,
+                "type": 22,
+                "review_id": 10,
+                "ordinal": 7
+              },
+              {
+                "id": 14,
+                "type": 22,
+                "review_id": 11,
+                "ordinal": 8
+              },
+              {
+                "id": 15,
+                "type": 22,
+                "review_id": 12,
+                "ordinal": 9
+              },
+              {
+                "id": 16,
+                "type": 22,
+                "review_id": 13,
+                "ordinal": 10
+              },
+              {
+                "id": 17,
+                "type": 22,
+                "review_id": 14,
+                "ordinal": 11
+              },
+              {
+                "id": 18,
+                "type": 22,
+                "review_id": 15,
+                "ordinal": 12
+              },
+              {
+                "id": 19,
+                "type": 22,
+                "review_id": 16,
+                "ordinal": 13
+              },
+              {
+                "id": 20,
+                "type": 22,
+                "review_id": 17,
+                "ordinal": 14
+              },
+              {
+                "id": 21,
+                "type": 22,
+                "review_id": 18,
+                "ordinal": 15
+              },
+              {
+                "id": 22,
+                "type": 22,
+                "review_id": 19,
+                "ordinal": 16
+              },
+              {
+                "id": 23,
+                "type": 22,
+                "review_id": 20,
+                "ordinal": 17
+              },
+              {
+                "id": 24,
+                "type": 22,
+                "review_id": 21,
+                "ordinal": 18
+              },
+              {
+                "id": 25,
+                "type": 22,
+                "review_id": 22,
+                "ordinal": 19
+              },
+              {
+                "id": 26,
+                "type": 22,
+                "review_id": 23,
+                "ordinal": 20
+              },
+              {
+                "id": 27,
+                "type": 22,
+                "review_id": 24,
+                "ordinal": 21
+              },
+              {
+                "id": 28,
+                "type": 22,
+                "review_id": 25,
+                "ordinal": 22
+              },
+              {
+                "id": 29,
+                "type": 22,
+                "review_id": 26,
+                "ordinal": 23
+              },
+              {
+                "id": 30,
+                "type": 22,
+                "review_id": 27,
+                "ordinal": 24
+              },
+              {
+                "id": 31,
+                "type": 22,
+                "review_id": 28,
+                "ordinal": 25
+              },
+              {
+                "id": 32,
+                "type": 22,
+                "review_id": 29,
+                "ordinal": 26
+              },
+              {
+                "id": 33,
+                "type": 22,
+                "review_id": 30,
+                "ordinal": 27
+              },
+              {
+                "id": 34,
+                "type": 22,
+                "review_id": 31,
+                "ordinal": 28
+              },
+              {
+                "id": 35,
+                "type": 22,
+                "review_id": 32,
+                "ordinal": 29
+              },
+              {
+                "id": 36,
+                "type": 22,
+                "review_id": 33,
+                "ordinal": 30
+              },
+              {
+                "id": 37,
+                "type": 22,
+                "review_id": 34,
+                "ordinal": 31
+              },
+              {
+                "id": 38,
+                "type": 22,
+                "review_id": 35,
+                "ordinal": 32
+              },
+              {
+                "id": 39,
+                "type": 22,
+                "review_id": 36,
+                "ordinal": 33
+              },
+              {
+                "id": 40,
+                "type": 22,
+                "review_id": 37,
+                "ordinal": 34
+              },
+              {
+                "id": 41,
+                "type": 22,
+                "review_id": 38,
+                "ordinal": 35
+              },
+              {
+                "id": 42,
+                "type": 22,
+                "review_id": 39,
+                "ordinal": 36
+              },
+              {
+                "id": 43,
+                "type": 22,
+                "review_id": 40,
+                "ordinal": 37
+              },
+              {
+                "id": 44,
+                "type": 22,
+                "review_id": 41,
+                "ordinal": 38
+              },
+              {
+                "id": 45,
+                "type": 22,
+                "review_id": 42,
+                "ordinal": 39
+              },
+              {
+                "id": 46,
+                "type": 22,
+                "review_id": 43,
+                "ordinal": 40
+              },
+              {
+                "id": 47,
+                "type": 22,
+                "review_id": 44,
+                "ordinal": 41
+              },
+              {
+                "id": 48,
+                "type": 22,
+                "review_id": 45,
+                "ordinal": 42
+              },
+              {
+                "id": 49,
+                "type": 22,
+                "review_id": 46,
+                "ordinal": 43
+              },
+              {
+                "id": 50,
+                "type": 22,
+                "review_id": 47,
+                "ordinal": 44
+              },
+              {
+                "id": 51,
+                "type": 22,
+                "review_id": 48,
+                "ordinal": 45
+              },
+              {
+                "id": 52,
+                "type": 22,
+                "review_id": 49,
+                "ordinal": 46
+              },
+              {
+                "id": 53,
+                "type": 22,
+                "review_id": 50,
+                "ordinal": 47
+              },
+              {
+                "id": 54,
+                "type": 22,
+                "review_id": 51,
+                "ordinal": 48
+              },
+              {
+                "id": 55,
+                "type": 22,
+                "review_id": 52,
+                "ordinal": 49
+              },
+              {
+                "id": 56,
+                "type": 22,
+                "review_id": 53,
+                "ordinal": 50
+              },
+              {
+                "id": 57,
+                "type": 22,
+                "review_id": 54,
+                "ordinal": 51
+              },
+              {
+                "id": 58,
+                "type": 22,
+                "review_id": 55,
+                "ordinal": 52
+              },
+              {
+                "id": 59,
+                "type": 22,
+                "review_id": 56,
+                "ordinal": 53
+              },
+              {
+                "id": 60,
+                "type": 22,
+                "review_id": 57,
+                "ordinal": 54
+              },
+              {
+                "id": 61,
+                "type": 22,
+                "review_id": 58,
+                "ordinal": 55
+              }
+            ],
+            "采集耗时秒": 0.4659
+          },
+          "API事件数": 55,
+          "前后元数据一致": true,
+          "数据库拒绝事务内写入": true,
+          "说明": "仅隔离 PostgreSQL 可行性，不代表生产适配已实现"
+        },
+        "耗时秒": 17.956
+      },
+      {
+        "编号": "生命周期05-过滤页ABA",
+        "场景": "完整过滤页后存在强推事件仍必须使旧批准失效",
+        "结果": "通过",
+        "证据": {
+          "PR": 3,
+          "各页可见条数": [
+            5,
+            0,
+            2
+          ],
+          "只读完整性标记": {
+            "pr_id": 3,
+            "repo_id": 1,
+            "number": 3,
+            "count": 107,
+            "max_id": 168,
+            "events": [
+              {
+                "id": 62,
+                "type": 29,
+                "review_id": 0,
+                "ordinal": 1
+              },
+              {
+                "id": 63,
+                "type": 29,
+                "review_id": 0,
+                "ordinal": 2
+              },
+              {
+                "id": 64,
+                "type": 22,
+                "review_id": 59,
+                "ordinal": 3
+              },
+              {
+                "id": 65,
+                "type": 22,
+                "review_id": 60,
+                "ordinal": 4
+              },
+              {
+                "id": 66,
+                "type": 22,
+                "review_id": 61,
+                "ordinal": 5
+              },
+              {
+                "id": 167,
+                "type": 22,
+                "review_id": 62,
+                "ordinal": 106
+              },
+              {
+                "id": 168,
+                "type": 29,
+                "review_id": 0,
+                "ordinal": 107
+              }
+            ],
+            "采集耗时秒": 0.34
+          },
+          "强推事件": [
+            {
+              "id": 168,
+              "type": "pull_push",
+              "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-168",
+              "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3",
+              "issue_url": "",
+              "user": {
+                "id": 2,
+                "login": "author",
+                "login_name": "",
+                "source_id": 0,
+                "full_name": "",
+                "email": "2+author@noreply.localhost",
+                "avatar_url": "http://127.0.0.1:58579/avatars/edbb1cb3857ae9df1062bc3dd31b75e3",
+                "html_url": "http://127.0.0.1:58579/author",
+                "language": "",
+                "is_admin": false,
+                "last_login": "0001-01-01T00:00:00Z",
+                "created": "2026-09-13T09:23:19Z",
+                "restricted": false,
+                "active": false,
+                "prohibit_login": false,
+                "location": "",
+                "website": "",
+                "description": "",
+                "visibility": "public",
+                "followers_count": 0,
+                "following_count": 0,
+                "starred_repos_count": 0,
+                "username": "author"
+              },
+              "body": "{\"is_force_push\":true,\"commit_ids\":[\"a57c981ad0302a7bcdd31e066760fb2c1781f319\",\"36ee79f6706e4860235ac6a6e13e36bb5894422c\"]}",
+              "created_at": "2026-09-13T09:24:35Z",
+              "updated_at": "2026-09-13T09:24:35Z",
+              "old_project_id": 0,
+              "project_id": 0,
+              "old_milestone": null,
+              "milestone": null,
+              "tracked_time": null,
+              "old_title": "",
+              "new_title": "",
+              "old_ref": "",
+              "new_ref": "",
+              "ref_issue": null,
+              "ref_comment": null,
+              "ref_action": "none",
+              "ref_commit_sha": "",
+              "review_id": 0,
+              "label": null,
+              "assignee": null,
+              "assignee_team": null,
+              "removed_assignee": false,
+              "resolve_doer": null,
+              "dependent_issue": null
+            }
+          ],
+          "当前审批计算": {
+            "applicable": true,
+            "approved": [],
+            "base": "cae73370a5ea545dde6b261b40ad6520a0214197",
+            "checked_at": 1789291481.566551,
+            "closed": false,
+            "grandfathered": false,
+            "groups": [
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 2,
+                "name": "Committer1",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 3
+              },
+              {
+                "approved_ids": [],
+                "count": 0,
+                "eligible_count": 1,
+                "name": "Committer2",
+                "required": 1,
+                "satisfied": false,
+                "team_id": 4
+              }
+            ],
+            "head": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+            "known_defects": [
+              "APR-RACE-001"
+            ],
+            "missing": [
+              "总票数不足：0/3",
+              "Committer1：0/1",
+              "Committer2：0/1"
+            ],
+            "mode": "isolated_enforced",
+            "name": "三人及双组审批",
+            "native_required": 3,
+            "native_rule": "main",
+            "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+            "number": 3,
+            "policy_id": 1,
+            "pr_id": 3,
+            "release_allowed": false,
+            "repository_id": 1,
+            "revision": 1,
+            "satisfied": false,
+            "total": {
+              "count": 0,
+              "required": 3
+            },
+            "valid_until": 1789291496.5665512
+          },
+          "原生审批": [
+            {
+              "id": 59,
+              "user": {
+                "id": 3,
+                "login": "alice",
+                "login_name": "",
+                "source_id": 0,
+                "full_name": "",
+                "email": "alice@example.invalid",
+                "avatar_url": "http://127.0.0.1:58579/avatars/43fcab1f4245d31e85b194dc2836a67d",
+                "html_url": "http://127.0.0.1:58579/alice",
+                "language": "",
+                "is_admin": false,
+                "last_login": "1970-01-01T00:00:00Z",
+                "created": "2026-09-13T09:23:19Z",
+                "restricted": false,
+                "active": true,
+                "prohibit_login": false,
+                "location": "",
+                "website": "",
+                "description": "",
+                "visibility": "public",
+                "followers_count": 0,
+                "following_count": 0,
+                "starred_repos_count": 0,
+                "username": "alice"
+              },
+              "team": null,
+              "state": "APPROVED",
+              "body": "隔离固定样本审批",
+              "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+              "stale": false,
+              "official": true,
+              "dismissed": false,
+              "comments_count": 0,
+              "submitted_at": "2026-09-13T09:24:27Z",
+              "updated_at": "2026-09-13T09:24:27Z",
+              "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-64",
+              "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+            },
+            {
+              "id": 60,
+              "user": {
+                "id": 4,
+                "login": "bob",
+                "login_name": "",
+                "source_id": 0,
+                "full_name": "",
+                "email": "bob@example.invalid",
+                "avatar_url": "http://127.0.0.1:58579/avatars/ca8fc89714afa04039d98923a0472669",
+                "html_url": "http://127.0.0.1:58579/bob",
+                "language": "",
+                "is_admin": false,
+                "last_login": "1970-01-01T00:00:00Z",
+                "created": "2026-09-13T09:23:19Z",
+                "restricted": false,
+                "active": true,
+                "prohibit_login": false,
+                "location": "",
+                "website": "",
+                "description": "",
+                "visibility": "public",
+                "followers_count": 0,
+                "following_count": 0,
+                "starred_repos_count": 0,
+                "username": "bob"
+              },
+              "team": null,
+              "state": "APPROVED",
+              "body": "隔离固定样本审批",
+              "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+              "stale": false,
+              "official": true,
+              "dismissed": false,
+              "comments_count": 0,
+              "submitted_at": "2026-09-13T09:24:27Z",
+              "updated_at": "2026-09-13T09:24:27Z",
+              "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-65",
+              "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+            },
+            {
+              "id": 61,
+              "user": {
+                "id": 5,
+                "login": "carol",
+                "login_name": "",
+                "source_id": 0,
+                "full_name": "",
+                "email": "carol@example.invalid",
+                "avatar_url": "http://127.0.0.1:58579/avatars/ee6690b07021d18ebb41590287ae5e0b",
+                "html_url": "http://127.0.0.1:58579/carol",
+                "language": "",
+                "is_admin": false,
+                "last_login": "1970-01-01T00:00:00Z",
+                "created": "2026-09-13T09:23:19Z",
+                "restricted": false,
+                "active": true,
+                "prohibit_login": false,
+                "location": "",
+                "website": "",
+                "description": "",
+                "visibility": "public",
+                "followers_count": 0,
+                "following_count": 0,
+                "starred_repos_count": 0,
+                "username": "carol"
+              },
+              "team": null,
+              "state": "APPROVED",
+              "body": "隔离固定样本审批",
+              "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+              "stale": false,
+              "official": true,
+              "dismissed": false,
+              "comments_count": 0,
+              "submitted_at": "2026-09-13T09:24:27Z",
+              "updated_at": "2026-09-13T09:24:27Z",
+              "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-66",
+              "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+            },
+            {
+              "id": 62,
+              "user": {
+                "id": 6,
+                "login": "dave",
+                "login_name": "",
+                "source_id": 0,
+                "full_name": "",
+                "email": "dave@example.invalid",
+                "avatar_url": "http://127.0.0.1:58579/avatars/e285a3c010bd4df5d54b093a75416be2",
+                "html_url": "http://127.0.0.1:58579/dave",
+                "language": "",
+                "is_admin": false,
+                "last_login": "1970-01-01T00:00:00Z",
+                "created": "2026-09-13T09:23:19Z",
+                "restricted": false,
+                "active": true,
+                "prohibit_login": false,
+                "location": "",
+                "website": "",
+                "description": "",
+                "visibility": "public",
+                "followers_count": 0,
+                "following_count": 0,
+                "starred_repos_count": 0,
+                "username": "dave"
+              },
+              "team": null,
+              "state": "COMMENT",
+              "body": "制造完整过滤页",
+              "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+              "stale": false,
+              "official": false,
+              "dismissed": false,
+              "comments_count": 100,
+              "submitted_at": "2026-09-13T09:24:27Z",
+              "updated_at": "2026-09-13T09:24:28Z",
+              "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-167",
+              "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+            }
+          ]
+        },
+        "耗时秒": 23.527
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "6a882d3257cbb44bdd5d7fe99f597672c61a265be7d217e43c82ede5a3cfffab",
+      "scripts/approval-integration.py": "855932edfc36ee7566713b6b9b84d78e85605b8447190e3c0ad3c66b02302d4b",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb"
+    },
+    "分项": "timeline",
+    "隔离网段": "10.253.242.16/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "920bfed521eb36c0e790da6151215dd03b543bc39a7f29c72f5fb8257fe6d43f",
+      "地址": "http://127.0.0.1:58579",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:23:15.415977054Z"
+    },
+    "状态": "本轮分项执行完成，完整矩阵仍按所有分项证据判定",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789291412.3024938,
+      "fingerprint": "51915fd358934364cdf85bbed6c0cb312d2879b498d95b1a68c99fada7f89e66",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T09:23:23Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T09:23:23Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T09:23:26Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.021
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0125
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.006
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0053
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0056
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0057
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0449
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0046
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        }
+      ]
+    },
+    "过滤页强推原始证据": {
+      "PR": 3,
+      "各页可见条数": [
+        5,
+        0,
+        2
+      ],
+      "只读完整性标记": {
+        "pr_id": 3,
+        "repo_id": 1,
+        "number": 3,
+        "count": 107,
+        "max_id": 168,
+        "events": [
+          {
+            "id": 62,
+            "type": 29,
+            "review_id": 0,
+            "ordinal": 1
+          },
+          {
+            "id": 63,
+            "type": 29,
+            "review_id": 0,
+            "ordinal": 2
+          },
+          {
+            "id": 64,
+            "type": 22,
+            "review_id": 59,
+            "ordinal": 3
+          },
+          {
+            "id": 65,
+            "type": 22,
+            "review_id": 60,
+            "ordinal": 4
+          },
+          {
+            "id": 66,
+            "type": 22,
+            "review_id": 61,
+            "ordinal": 5
+          },
+          {
+            "id": 167,
+            "type": 22,
+            "review_id": 62,
+            "ordinal": 106
+          },
+          {
+            "id": 168,
+            "type": 29,
+            "review_id": 0,
+            "ordinal": 107
+          }
+        ],
+        "采集耗时秒": 0.34
+      },
+      "强推事件": [
+        {
+          "id": 168,
+          "type": "pull_push",
+          "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-168",
+          "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3",
+          "issue_url": "",
+          "user": {
+            "id": 2,
+            "login": "author",
+            "login_name": "",
+            "source_id": 0,
+            "full_name": "",
+            "email": "2+author@noreply.localhost",
+            "avatar_url": "http://127.0.0.1:58579/avatars/edbb1cb3857ae9df1062bc3dd31b75e3",
+            "html_url": "http://127.0.0.1:58579/author",
+            "language": "",
+            "is_admin": false,
+            "last_login": "0001-01-01T00:00:00Z",
+            "created": "2026-09-13T09:23:19Z",
+            "restricted": false,
+            "active": false,
+            "prohibit_login": false,
+            "location": "",
+            "website": "",
+            "description": "",
+            "visibility": "public",
+            "followers_count": 0,
+            "following_count": 0,
+            "starred_repos_count": 0,
+            "username": "author"
+          },
+          "body": "{\"is_force_push\":true,\"commit_ids\":[\"a57c981ad0302a7bcdd31e066760fb2c1781f319\",\"36ee79f6706e4860235ac6a6e13e36bb5894422c\"]}",
+          "created_at": "2026-09-13T09:24:35Z",
+          "updated_at": "2026-09-13T09:24:35Z",
+          "old_project_id": 0,
+          "project_id": 0,
+          "old_milestone": null,
+          "milestone": null,
+          "tracked_time": null,
+          "old_title": "",
+          "new_title": "",
+          "old_ref": "",
+          "new_ref": "",
+          "ref_issue": null,
+          "ref_comment": null,
+          "ref_action": "none",
+          "ref_commit_sha": "",
+          "review_id": 0,
+          "label": null,
+          "assignee": null,
+          "assignee_team": null,
+          "removed_assignee": false,
+          "resolve_doer": null,
+          "dependent_issue": null
+        }
+      ],
+      "当前审批计算": {
+        "applicable": true,
+        "approved": [],
+        "base": "cae73370a5ea545dde6b261b40ad6520a0214197",
+        "checked_at": 1789291481.566551,
+        "closed": false,
+        "grandfathered": false,
+        "groups": [
+          {
+            "approved_ids": [],
+            "count": 0,
+            "eligible_count": 2,
+            "name": "Committer1",
+            "required": 1,
+            "satisfied": false,
+            "team_id": 3
+          },
+          {
+            "approved_ids": [],
+            "count": 0,
+            "eligible_count": 1,
+            "name": "Committer2",
+            "required": 1,
+            "satisfied": false,
+            "team_id": 4
+          }
+        ],
+        "head": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+        "known_defects": [
+          "APR-RACE-001"
+        ],
+        "missing": [
+          "总票数不足：0/3",
+          "Committer1：0/1",
+          "Committer2：0/1"
+        ],
+        "mode": "isolated_enforced",
+        "name": "三人及双组审批",
+        "native_required": 3,
+        "native_rule": "main",
+        "notice": "新增审批要求；原生审批、CI、冲突等检查仍独立生效",
+        "number": 3,
+        "policy_id": 1,
+        "pr_id": 3,
+        "release_allowed": false,
+        "repository_id": 1,
+        "revision": 1,
+        "satisfied": false,
+        "total": {
+          "count": 0,
+          "required": 3
+        },
+        "valid_until": 1789291496.5665512
+      },
+      "原生审批": [
+        {
+          "id": 59,
+          "user": {
+            "id": 3,
+            "login": "alice",
+            "login_name": "",
+            "source_id": 0,
+            "full_name": "",
+            "email": "alice@example.invalid",
+            "avatar_url": "http://127.0.0.1:58579/avatars/43fcab1f4245d31e85b194dc2836a67d",
+            "html_url": "http://127.0.0.1:58579/alice",
+            "language": "",
+            "is_admin": false,
+            "last_login": "1970-01-01T00:00:00Z",
+            "created": "2026-09-13T09:23:19Z",
+            "restricted": false,
+            "active": true,
+            "prohibit_login": false,
+            "location": "",
+            "website": "",
+            "description": "",
+            "visibility": "public",
+            "followers_count": 0,
+            "following_count": 0,
+            "starred_repos_count": 0,
+            "username": "alice"
+          },
+          "team": null,
+          "state": "APPROVED",
+          "body": "隔离固定样本审批",
+          "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+          "stale": false,
+          "official": true,
+          "dismissed": false,
+          "comments_count": 0,
+          "submitted_at": "2026-09-13T09:24:27Z",
+          "updated_at": "2026-09-13T09:24:27Z",
+          "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-64",
+          "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+        },
+        {
+          "id": 60,
+          "user": {
+            "id": 4,
+            "login": "bob",
+            "login_name": "",
+            "source_id": 0,
+            "full_name": "",
+            "email": "bob@example.invalid",
+            "avatar_url": "http://127.0.0.1:58579/avatars/ca8fc89714afa04039d98923a0472669",
+            "html_url": "http://127.0.0.1:58579/bob",
+            "language": "",
+            "is_admin": false,
+            "last_login": "1970-01-01T00:00:00Z",
+            "created": "2026-09-13T09:23:19Z",
+            "restricted": false,
+            "active": true,
+            "prohibit_login": false,
+            "location": "",
+            "website": "",
+            "description": "",
+            "visibility": "public",
+            "followers_count": 0,
+            "following_count": 0,
+            "starred_repos_count": 0,
+            "username": "bob"
+          },
+          "team": null,
+          "state": "APPROVED",
+          "body": "隔离固定样本审批",
+          "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+          "stale": false,
+          "official": true,
+          "dismissed": false,
+          "comments_count": 0,
+          "submitted_at": "2026-09-13T09:24:27Z",
+          "updated_at": "2026-09-13T09:24:27Z",
+          "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-65",
+          "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+        },
+        {
+          "id": 61,
+          "user": {
+            "id": 5,
+            "login": "carol",
+            "login_name": "",
+            "source_id": 0,
+            "full_name": "",
+            "email": "carol@example.invalid",
+            "avatar_url": "http://127.0.0.1:58579/avatars/ee6690b07021d18ebb41590287ae5e0b",
+            "html_url": "http://127.0.0.1:58579/carol",
+            "language": "",
+            "is_admin": false,
+            "last_login": "1970-01-01T00:00:00Z",
+            "created": "2026-09-13T09:23:19Z",
+            "restricted": false,
+            "active": true,
+            "prohibit_login": false,
+            "location": "",
+            "website": "",
+            "description": "",
+            "visibility": "public",
+            "followers_count": 0,
+            "following_count": 0,
+            "starred_repos_count": 0,
+            "username": "carol"
+          },
+          "team": null,
+          "state": "APPROVED",
+          "body": "隔离固定样本审批",
+          "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+          "stale": false,
+          "official": true,
+          "dismissed": false,
+          "comments_count": 0,
+          "submitted_at": "2026-09-13T09:24:27Z",
+          "updated_at": "2026-09-13T09:24:27Z",
+          "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-66",
+          "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+        },
+        {
+          "id": 62,
+          "user": {
+            "id": 6,
+            "login": "dave",
+            "login_name": "",
+            "source_id": 0,
+            "full_name": "",
+            "email": "dave@example.invalid",
+            "avatar_url": "http://127.0.0.1:58579/avatars/e285a3c010bd4df5d54b093a75416be2",
+            "html_url": "http://127.0.0.1:58579/dave",
+            "language": "",
+            "is_admin": false,
+            "last_login": "1970-01-01T00:00:00Z",
+            "created": "2026-09-13T09:23:19Z",
+            "restricted": false,
+            "active": true,
+            "prohibit_login": false,
+            "location": "",
+            "website": "",
+            "description": "",
+            "visibility": "public",
+            "followers_count": 0,
+            "following_count": 0,
+            "starred_repos_count": 0,
+            "username": "dave"
+          },
+          "team": null,
+          "state": "COMMENT",
+          "body": "制造完整过滤页",
+          "commit_id": "36ee79f6706e4860235ac6a6e13e36bb5894422c",
+          "stale": false,
+          "official": false,
+          "dismissed": false,
+          "comments_count": 100,
+          "submitted_at": "2026-09-13T09:24:27Z",
+          "updated_at": "2026-09-13T09:24:28Z",
+          "html_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3#issuecomment-167",
+          "pull_request_url": "http://127.0.0.1:58579/approval-probe/approval-live/pulls/3"
+        }
+      ]
+    }
+  }
+}

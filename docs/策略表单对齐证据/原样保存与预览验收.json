@@ -1,0 +1,173 @@
+{
+  "结论": "通过",
+  "字段数": 30,
+  "组织信息": "保留",
+  "模板内容哈希": "未变化",
+  "真实仓库预览": {
+    "batch": {
+      "actor": "共享管理员",
+      "completed_at": "2026-09-12T11:14:15.305075Z",
+      "counts": {
+        "unchanged": 1
+      },
+      "created_at": "2026-09-12T11:14:08.579085Z",
+      "error": "",
+      "id": 16,
+      "progress_percent": 100,
+      "server_id": 1,
+      "server_name": "本地策略验收",
+      "status": "ready",
+      "submitted_at": null,
+      "template_id": 1,
+      "template_name": "研发保护标准",
+      "total": 1
+    },
+    "items": [
+      {
+        "actual": null,
+        "before": [
+          {
+            "approvals_whitelist_teams": [
+              "reviewers"
+            ],
+            "approvals_whitelist_username": [
+              "policy-reviewer-one",
+              "policy-reviewer-two"
+            ],
+            "block_admin_merge_override": true,
+            "block_on_official_review_requests": true,
+            "block_on_outdated_branch": false,
+            "block_on_rejected_reviews": true,
+            "dismiss_stale_approvals": true,
+            "enable_approvals_whitelist": true,
+            "enable_force_push": false,
+            "enable_force_push_allowlist": false,
+            "enable_merge_whitelist": false,
+            "enable_push": false,
+            "enable_push_whitelist": false,
+            "enable_status_check": true,
+            "force_push_allowlist_deploy_keys": false,
+            "force_push_allowlist_teams": [],
+            "force_push_allowlist_usernames": [],
+            "ignore_stale_approvals": false,
+            "merge_whitelist_teams": [],
+            "merge_whitelist_usernames": [],
+            "priority": 1,
+            "protected_file_patterns": "",
+            "push_whitelist_deploy_keys": false,
+            "push_whitelist_teams": [],
+            "push_whitelist_usernames": [],
+            "require_signed_commits": false,
+            "required_approvals": 2,
+            "rule_name": "main",
+            "status_check_contexts": [
+              "policy/test"
+            ],
+            "unprotected_file_patterns": ""
+          }
+        ],
+        "desired": [
+          {
+            "approvals_whitelist_teams": [
+              "reviewers"
+            ],
+            "approvals_whitelist_username": [
+              "policy-reviewer-one",
+              "policy-reviewer-two"
+            ],
+            "block_admin_merge_override": true,
+            "block_on_official_review_requests": true,
+            "block_on_outdated_branch": false,
+            "block_on_rejected_reviews": true,
+            "dismiss_stale_approvals": true,
+            "enable_approvals_whitelist": true,
+            "enable_force_push": false,
+            "enable_force_push_allowlist": false,
+            "enable_merge_whitelist": false,
+            "enable_push": false,
+            "enable_push_whitelist": false,
+            "enable_status_check": true,
+            "force_push_allowlist_deploy_keys": false,
+            "force_push_allowlist_teams": [],
+            "force_push_allowlist_usernames": [],
+            "ignore_stale_approvals": false,
+            "merge_whitelist_teams": [],
+            "merge_whitelist_usernames": [],
+            "priority": 1,
+            "protected_file_patterns": "",
+            "push_whitelist_deploy_keys": false,
+            "push_whitelist_teams": [],
+            "push_whitelist_usernames": [],
+            "require_signed_commits": false,
+            "required_approvals": 2,
+            "rule_name": "main",
+            "status_check_contexts": [
+              "policy/test"
+            ],
+            "unprotected_file_patterns": ""
+          }
+        ],
+        "diff": [],
+        "error": "",
+        "id": 78,
+        "matches": [
+          {
+            "branches": [
+              "main"
+            ],
+            "future_branches": true,
+            "priority": 1,
+            "rule_name": "main"
+          }
+        ],
+        "operations": [],
+        "repo_id": 30,
+        "repo_name": "policy-qa/batch-30",
+        "status": "unchanged"
+      }
+    ],
+    "template_snapshot": [
+      {
+        "approvals_whitelist_teams": [
+          "reviewers"
+        ],
+        "approvals_whitelist_username": [
+          "policy-reviewer-one",
+          "policy-reviewer-two"
+        ],
+        "block_admin_merge_override": true,
+        "block_on_official_review_requests": true,
+        "block_on_outdated_branch": false,
+        "block_on_rejected_reviews": true,
+        "dismiss_stale_approvals": true,
+        "enable_approvals_whitelist": true,
+        "enable_force_push": false,
+        "enable_force_push_allowlist": false,
+        "enable_merge_whitelist": false,
+        "enable_push": false,
+        "enable_push_whitelist": false,
+        "enable_status_check": true,
+        "force_push_allowlist_deploy_keys": false,
+        "force_push_allowlist_teams": [],
+        "force_push_allowlist_usernames": [],
+        "ignore_stale_approvals": false,
+        "merge_whitelist_teams": [],
+        "merge_whitelist_usernames": [],
+        "priority": 1,
+        "protected_file_patterns": "",
+        "push_whitelist_deploy_keys": false,
+        "push_whitelist_teams": [],
+        "push_whitelist_usernames": [],
+        "require_signed_commits": false,
+        "required_approvals": 2,
+        "rule_name": "main",
+        "status_check_contexts": [
+          "policy/test"
+        ],
+        "team_org": "policy-qa",
+        "unprotected_file_patterns": ""
+      }
+    ],
+    "total": 1
+  }
+}

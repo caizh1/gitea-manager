@@ -1,0 +1,13 @@
+{
+  "说明": "八个独立登录会话同时请求同一待办的只读核对",
+  "结果": [
+    true,
+    false,
+    false,
+    "本机接口返回 HTTP 409：POST /api/ai-review/tasks/f30802e18622205fc7d62a2fe447b382/reconcile",
+    "本机接口返回 HTTP 409：POST /api/ai-review/tasks/f30802e18622205fc7d62a2fe447b382/reconcile",
+    "本机接口返回 HTTP 409：POST /api/ai-review/tasks/f30802e18622205fc7d62a2fe447b382/reconcile",
+    false,
+    "本机接口返回 HTTP 409：POST /api/ai-review/tasks/f30802e18622205fc7d62a2fe447b382/reconcile"
+  ]
+}

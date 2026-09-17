@@ -1,0 +1,352 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "913cd84e3d70ad50f9084b15df540a090738f440af44505d943be88005233365",
+  "记录": {
+    "说明": "实际功能服务、原生审批和官方镜像隔离集成；不代表完整生产验收",
+    "运行标识": "20260913-152555-f6b8a569",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "规则-影子缺组显示",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-影子组票不足仍走原生流程",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.408,
+        "旧引用": "2df9705a33d31c1d531abeeb17480caf5bc7dc10",
+        "新引用": "3011f5bf36ec108c51e40a8cfd6a6714365c7a93",
+        "耗时秒": 1.737
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "合并-merge-存量PR",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.436,
+        "旧引用": "3011f5bf36ec108c51e40a8cfd6a6714365c7a93",
+        "新引用": "3806b4115338e91dcf843826e041e5255a4ff25a",
+        "耗时秒": 1.952
+      },
+      {
+        "场景": "规则-merge缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.419,
+        "旧引用": "3806b4115338e91dcf843826e041e5255a4ff25a",
+        "新引用": "3806b4115338e91dcf843826e041e5255a4ff25a",
+        "耗时秒": 1.825
+      },
+      {
+        "场景": "规则-merge全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.408,
+        "旧引用": "3806b4115338e91dcf843826e041e5255a4ff25a",
+        "新引用": "2e48c78c48bdd8fd2bdbceb2f89c51ef539cabbd",
+        "耗时秒": 2.336
+      },
+      {
+        "场景": "规则-rebase缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.412,
+        "旧引用": "2e48c78c48bdd8fd2bdbceb2f89c51ef539cabbd",
+        "新引用": "2e48c78c48bdd8fd2bdbceb2f89c51ef539cabbd",
+        "耗时秒": 1.848
+      },
+      {
+        "场景": "规则-rebase全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 1.666,
+        "旧引用": "2e48c78c48bdd8fd2bdbceb2f89c51ef539cabbd",
+        "新引用": "206f4f5ce18ec6ce8273cd1891fbd5cd6982c46f",
+        "耗时秒": 2.341
+      },
+      {
+        "场景": "规则-rebase-merge缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.468,
+        "旧引用": "206f4f5ce18ec6ce8273cd1891fbd5cd6982c46f",
+        "新引用": "206f4f5ce18ec6ce8273cd1891fbd5cd6982c46f",
+        "耗时秒": 1.707
+      },
+      {
+        "场景": "规则-rebase-merge全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 1.692,
+        "旧引用": "206f4f5ce18ec6ce8273cd1891fbd5cd6982c46f",
+        "新引用": "32c6d6bea858fd6ed9386dfce8c7efe7d27bcdb5",
+        "耗时秒": 2.397
+      },
+      {
+        "场景": "规则-squash缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-squash-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.453,
+        "旧引用": "32c6d6bea858fd6ed9386dfce8c7efe7d27bcdb5",
+        "新引用": "32c6d6bea858fd6ed9386dfce8c7efe7d27bcdb5",
+        "耗时秒": 1.805
+      },
+      {
+        "场景": "规则-squash全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-squash-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 1.662,
+        "旧引用": "32c6d6bea858fd6ed9386dfce8c7efe7d27bcdb5",
+        "新引用": "992c2b6198acb3fa2d933c56c83416eb4e18b380",
+        "耗时秒": 2.29
+      },
+      {
+        "场景": "规则-fast-forward-only缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-fast-forward-only-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.4,
+        "旧引用": "992c2b6198acb3fa2d933c56c83416eb4e18b380",
+        "新引用": "992c2b6198acb3fa2d933c56c83416eb4e18b380",
+        "耗时秒": 1.618
+      },
+      {
+        "场景": "规则-fast-forward-only全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-fast-forward-only-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 1.688,
+        "旧引用": "992c2b6198acb3fa2d933c56c83416eb4e18b380",
+        "新引用": "47c060a8df06c7377a6ebf9787c38b40e7c99e22",
+        "耗时秒": 2.166
+      },
+      {
+        "场景": "合并-merge-强制服务故障阻断",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：审批服务不可用，暂停合并\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.447,
+        "旧引用": "47c060a8df06c7377a6ebf9787c38b40e7c99e22",
+        "新引用": "47c060a8df06c7377a6ebf9787c38b40e7c99e22",
+        "耗时秒": 9.359
+      },
+      {
+        "场景": "原生规则与包装器保持",
+        "结果": "通过"
+      },
+      {
+        "场景": "Gitea没有重启",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [
+      {
+        "异常": "RuntimeError",
+        "原因": "docker 执行失败（125）：docker: Error response from daemon: Invalid container name (gm-approval-probe-20260913-152555-f6b8a569-页面代理), only [a-zA-Z0-9][a-zA-Z0-9_.-] are allowed\n\nRun 'docker run --help' for more information\n",
+        "调用位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 290, in <module>\n    if args.ui_window_seconds:run.ui_window(min(args.ui_window_seconds,1800))\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 263, in ui_window\n    self.run(['docker','run','-d','--name',proxy,'--label',module.LABEL+'='+self.run_id,\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 48, in run\n    raise RuntimeError(message) from None\nRuntimeError: docker 执行失败（125）：docker: Error response from daemon: Invalid container name (gm-approval-probe-20260913-152555-f6b8a569-页面代理), only [a-zA-Z0-9][a-zA-Z0-9_.-] are allowed\n\nRun 'docker run --help' for more information\n\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "隔离网段": "10.253.240.192/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "81bfda0dce2b25fa494e1287a35060d85154440fd4aebdd909f7d15fec5b4fcd",
+      "地址": "http://127.0.0.1:50857",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T07:26:00.943708964Z"
+    },
+    "状态": "失败，保留首次现场",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789284376.7485623,
+      "fingerprint": "e7feb37a4b4403e6b75f82c0927e574eec5d8d17cb9c1d0c43454563d99d3e24",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T07:26:09Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T07:26:09Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵、长测及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T07:26:12Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    }
+  }
+}

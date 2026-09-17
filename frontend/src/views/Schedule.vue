@@ -20,16 +20,16 @@
     />
 
     <div class="glass-card" style="padding:0;animation:fadeInUp 0.5s ease both;">
-      <el-table :data="tasks" stripe v-loading="loading" @expand-change="loadLogs" style="width:100%">
+      <el-table :data="tasks" row-key="id" stripe v-loading="loading" @expand-change="loadLogs" style="width:100%" max-height="var(--table-max-height)">
         <el-table-column type="expand">
           <template #default="{ row }">
             <div v-if="logsCache[row.id]" style="padding:0 20px 10px">
-              <el-table v-if="logsCache[row.id].length" :data="flatLogs(logsCache[row.id])" :key="row.id + '-' + logsCache[row.id].length" size="small">
+              <el-table v-if="logsCache[row.id].length" :data="flatLogs(logsCache[row.id])" :key="row.id + '-' + logsCache[row.id].length" size="small" max-height="var(--table-detail-max-height)">
                 <el-table-column label="时间" width="160">
                   <template #default="{ row: lr }">{{ fmt(lr.started_at) }}</template>
                 </el-table-column>
                 <el-table-column prop="stage" label="阶段" width="130" />
-                <el-table-column label="状态" width="80">
+                <el-table-column label="状态" width="110">
                   <template #default="{ row: lr }">
                     <el-tag :type="statusType(lr.status)" size="small">{{ lr.status }}</el-tag>
                   </template>
@@ -38,7 +38,7 @@
               </el-table>
               <div v-else class="log-empty">暂无执行历史</div>
             </div>
-            <div v-else style="padding:10px 20px;color:#9ca3af">加载中...</div>
+            <div v-else style="padding:10px 20px;color:var(--text-muted)">加载中...</div>
           </template>
         </el-table-column>
         <el-table-column prop="name" label="名称" width="160" />
@@ -61,7 +61,7 @@
             <el-switch v-model="row.enabled" size="small" @change="toggleEnabled(row)" />
           </template>
         </el-table-column>
-        <el-table-column prop="last_status" label="上次" width="80">
+        <el-table-column prop="last_status" label="上次" width="110">
           <template #default="{ row }">
             <el-tag v-if="row.last_status" :type="statusType(row.last_status)" size="small">{{ row.last_status }}</el-tag>
           </template>
@@ -126,7 +126,7 @@
             <el-option v-for="m in 60" :key="m-1" :label="pad(m-1)" :value="m-1" />
           </el-select>
           <span style="margin-left:8px">分</span>
-          <span style="color:#9ca3af;margin-left:12px;font-size:12px">UTC 时间</span>
+          <span style="color:var(--text-muted);margin-left:12px;font-size:12px">UTC 时间</span>
         </el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>
@@ -403,6 +403,6 @@ export default {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; word-break: break-all;
 }
-.log-empty { padding: 14px 0; color: #9ca3af; font-size: 12px; text-align: center; }
-.text-muted { color: #d1d5db; }
+.log-empty { padding: 14px 0; color: var(--text-muted); font-size: 12px; text-align: center; }
+.text-muted { color: var(--text-muted); }
 </style>

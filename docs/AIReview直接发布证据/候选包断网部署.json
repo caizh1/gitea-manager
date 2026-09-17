@@ -1,0 +1,14 @@
+{
+  "通过": true,
+  "说明": "从指定 SHA-256 离线包导入镜像并在全新原生卷上冷启动；真实 Git/PR/Webhook/OpenCode/Review，模型为本机协议替身。",
+  "部署包SHA256": "d5e19eb45e07621f316d062d805953eb082e1bbf3dc73d8012fdec725ad7ae6a",
+  "项目": "gitea-review-direct-package",
+  "Gitea版本": "1.26.4",
+  "默认全局关闭": true,
+  "默认没有模型密钥": true,
+  "Worker公网TCP被阻止": true,
+  "测试阶段": "boundaries,cumulative,duplicates",
+  "Manager": "http://127.0.0.1:65487",
+  "Gitea": "http://127.0.0.1:64600",
+  "限制": "不代表内部模型质量或请求处理期间并发 Push 的位置保证。"
+}

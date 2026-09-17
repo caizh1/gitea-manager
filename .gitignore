@@ -9,3 +9,14 @@ data/gitea-manager.db-shm
 data/backups/
 *.egg-info/
 dist/
+work/
+.gitea-manager-upgrades/
+compose.managed.json
+data/ai-review/
+review-runtime/vendor/opencode-linux-x64
+offline/
+/gitea-compat/gitea-1.26.4-review.1
+/gitea-compat/源码与固定资源.tar.gz
+/outputs/
+/*离线包复验.json
+/gitea-manager.*包复验.json

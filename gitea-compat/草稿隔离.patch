@@ -1,0 +1,59 @@
+diff --git a/models/issues/review.go b/models/issues/review.go
+index 311366c..a6b3700 100644
+--- a/models/issues/review.go
++++ b/models/issues/review.go
+@@ -493,6 +493,10 @@ func SubmitReview(ctx context.Context, doer *user_model.User, issue *Issue, revi
+ 		}
+ 	}
+ 
++	// 待提交草稿只保存审查状态，不生成公开动态或触发通知。
++	if reviewType == ReviewTypePending {
++		return review, nil, committer.Commit()
++	}
+ 	comm, err := CreateComment(ctx, &CreateCommentOptions{
+ 		Type:        CommentTypeReview,
+ 		Doer:        doer,
+diff --git a/models/issues/review_test.go b/models/issues/review_test.go
+index a384dbd..fddc26e 100644
+--- a/models/issues/review_test.go
++++ b/models/issues/review_test.go
+@@ -303,6 +303,24 @@ func TestDeleteDismissedReview(t *testing.T) {
+ 	unittest.AssertNotExistsBean(t, &issues_model.Comment{ID: comment.ID})
+ }
+ 
++func TestPendingReviewDoesNotCreatePublicTimeline(t *testing.T) {
++	assert.NoError(t, unittest.PrepareTestDatabase())
++	issue := unittest.AssertExistsAndLoadBean(t, &issues_model.Issue{ID: 3})
++	assert.NoError(t, issue.LoadRepo(t.Context()))
++	assert.NoError(t, issue.Repo.LoadOwner(t.Context()))
++	reviewer := unittest.AssertExistsAndLoadBean(t, &user_model.User{ID: 1})
++	review, comment, err := issues_model.SubmitReview(t.Context(), reviewer, issue, issues_model.ReviewTypePending, "未公开的草稿", "", false, nil)
++	assert.NoError(t, err)
++	assert.Nil(t, comment)
++	assert.Equal(t, issues_model.ReviewTypePending, review.Type)
++	unittest.AssertNotExistsBean(t, &issues_model.Comment{ReviewID: review.ID, Type: issues_model.CommentTypeReview})
++	final, comment, err := issues_model.SubmitReview(t.Context(), reviewer, issue, issues_model.ReviewTypeComment, "确认发布", "", false, nil)
++	assert.NoError(t, err)
++	assert.NotNil(t, comment)
++	assert.Equal(t, review.ID, final.ID)
++	assert.Equal(t, issues_model.ReviewTypeComment, final.Type)
++}
++
+ func TestSubmitReviewClearsStaleReviewRequest(t *testing.T) {
+ 	assert.NoError(t, unittest.PrepareTestDatabase())
+ 
+diff --git a/services/pull/review.go b/services/pull/review.go
+index 261cf23..6f04069 100644
+--- a/services/pull/review.go
++++ b/services/pull/review.go
+@@ -341,6 +341,10 @@ func SubmitReview(ctx context.Context, doer *user_model.User, gitRepo *git.Repos
+ 	if err != nil {
+ 		return nil, nil, err
+ 	}
++	// 草稿没有公开动态；仅在正式提交后通知订阅者。
++	if reviewType == issues_model.ReviewTypePending {
++		return review, nil, nil
++	}
+ 
+ 	mentions, err := issues_model.FindAndUpdateIssueMentions(ctx, issue, doer, comm.Content)
+ 	if err != nil {

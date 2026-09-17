@@ -1,0 +1,20 @@
+{
+  "版本": "1.26.4+review.1",
+  "PR": "http://127.0.0.1:43001/review-admin/private-draft-check/pulls/1",
+  "仓库": "review-admin/private-draft-check",
+  "编号": 1,
+  "Head": "1b083be066aff7481902aa2c3ba900307711b717",
+  "Review": 4,
+  "标记": "<!-- ai-review:compat-draft-visibility -->",
+  "ReviewAPI隐藏": true,
+  "无草稿动态URL": true,
+  "时间线API隐藏": true,
+  "没有新增通知": true,
+  "文件页面草稿隐藏": true,
+  "页面时间线草稿隐藏": true,
+  "正式Review沿用草稿ID": true,
+  "正式行内新侧位置": 2,
+  "正式动态唯一": true,
+  "正式通知可见": true,
+  "通知检查说明": "首次立即检查早于异步通知队列完成；后续已回读对应仓库通知，不重发 Review。"
+}

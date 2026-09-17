@@ -1,0 +1,42 @@
+{
+  "耗时秒": 16.17,
+  "结果": {
+    "created": 1789215489.9185224,
+    "detail": {
+      "needs_callback": false,
+      "results": [
+        {
+          "name": "review-admin/remote",
+          "ok": true,
+          "repository": 3
+        }
+      ],
+      "stage": "接入完成",
+      "steps": [
+        {
+          "name": "review-admin/remote",
+          "ok": true,
+          "step": "回调地址"
+        },
+        {
+          "name": "review-admin/remote",
+          "ok": true,
+          "step": "机器人与仓库权限"
+        },
+        {
+          "name": "review-admin/remote",
+          "ok": true,
+          "step": "Webhook 安装及投递"
+        },
+        {
+          "name": "review-admin/remote",
+          "ok": true,
+          "step": "PR 进度组件"
+        }
+      ]
+    },
+    "id": "45c80bc8bd363d8fca34cc989e93d2e5",
+    "status": "succeeded",
+    "updated": 1789215505.418972
+  }
+}

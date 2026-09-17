@@ -1,0 +1,64 @@
+{
+  "说明": "真实 Gitea；注入提交与模拟丢弃成功响应的控制器仅用于合成验收。",
+  "结果": [
+    {
+      "场景": "diff_race",
+      "通过": true,
+      "状态": "已阻止过期发布",
+      "快照Head": null,
+      "当前Head": "d411cdadebd376acd6db7faa7473f35dfa4762cf",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "PR": "http://127.0.0.1:43001/review-admin/publication-fixtures/pulls/1"
+    },
+    {
+      "场景": "draft_race",
+      "通过": true,
+      "状态": "已阻止过期发布",
+      "快照Head": "770c6cdd1bbd9beaf2c5767a8372aabd2b6e5809",
+      "当前Head": "1533bfca3f64e7224496e9912d1e2149d767d8f4",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "PR": "http://127.0.0.1:43001/review-admin/publication-fixtures/pulls/2"
+    },
+    {
+      "场景": "final_race",
+      "通过": true,
+      "状态": "已发布",
+      "快照Head": "cfb350490884dc1ddcaceb9f978e2d04b6138abe",
+      "当前Head": "365809b45294fd47468b24858917b18b36f0bdb1",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "cfb350490884dc1ddcaceb9f978e2d04b6138abe"
+      ],
+      "PR": "http://127.0.0.1:43001/review-admin/publication-fixtures/pulls/3"
+    },
+    {
+      "场景": "response_lost",
+      "通过": true,
+      "状态": "已发布",
+      "快照Head": "f0abe75ffcd9d9cb9da0a6ed54c5e16093b4769e",
+      "当前Head": "f0abe75ffcd9d9cb9da0a6ed54c5e16093b4769e",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "f0abe75ffcd9d9cb9da0a6ed54c5e16093b4769e"
+      ],
+      "PR": "http://127.0.0.1:43001/review-admin/publication-fixtures/pulls/4"
+    },
+    {
+      "场景": "expired_owner",
+      "通过": true,
+      "状态": "已阻止过期发布",
+      "快照Head": "52cebdcdbaa3069fea47548c4a88b23982e13353",
+      "当前Head": "52cebdcdbaa3069fea47548c4a88b23982e13353",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "PR": "http://127.0.0.1:43001/review-admin/publication-fixtures/pulls/5"
+    }
+  ]
+}

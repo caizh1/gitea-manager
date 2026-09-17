@@ -1,0 +1,10 @@
+# 根构建上下文仅供隔离执行器使用，不把运行数据与凭据发送到构建器。
+*
+!backend/
+backend/*
+!backend/wheels/
+!review-runtime/
+review-runtime/*
+!review-runtime/executor.py
+!review-runtime/vendor/
+!review-runtime/Dockerfile

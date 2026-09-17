@@ -1,0 +1,7 @@
+{
+  "说明": "首次记录器使用test.id()，已有ProgressTests将id用于业务记录，产生TypeError后中断；尚未形成完整回归结论。",
+  "已输出通过": 48,
+  "原因": "TypeError: str object is not callable",
+  "产品断言失败数": "中断前未报告，完整执行未完成",
+  "原始输出": "正式后端原始输出.txt"
+}

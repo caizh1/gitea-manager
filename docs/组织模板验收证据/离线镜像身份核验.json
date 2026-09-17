@@ -1,0 +1,48 @@
+{
+  "结论": "通过",
+  "说明": "七个离线镜像与固定构建一致；不影响正在运行的容器。",
+  "镜像": [
+    {
+      "镜像": "gitea-review-backend:offline",
+      "配置ID": "sha256:b70aeda31c9f0fba57a174da1e18cfe385f97fcd3ab75d48790fb06cac357041",
+      "镜像ID": "sha256:d615eafb6a4dc729b5dd3f4f32bd5a68b845d5f01921bc966d35abe80a93fa9f",
+      "架构": "linux/amd64"
+    },
+    {
+      "镜像": "gitea-review-frontend:offline",
+      "配置ID": "sha256:8ca19ed649a44ae10ece24665995c3279b236de893e4463f1f628709c074158a",
+      "镜像ID": "sha256:fa84740812295554f315c578976057a63879c1486594a2b1e7a8be74ac5111a7",
+      "架构": "linux/amd64"
+    },
+    {
+      "镜像": "gitea-review-executor:offline",
+      "配置ID": "sha256:10e477814897e3610b3fd5ea3930aee65f3b34a383c2860d02df5593ef2a6dd2",
+      "镜像ID": "sha256:3be30ef02793e3ff04523c4ad51f4a9ac86c1596f15b86cc8dfb9bcfda52ac79",
+      "架构": "linux/amd64"
+    },
+    {
+      "镜像": "python:3.11-slim",
+      "配置ID": "sha256:5d7182676c848bb67861d09f69275cc8d20a55f9e694f6c5024ac370c0c1019c",
+      "镜像ID": "sha256:272efc3f94bec901e2bc7a5c9984b3d113c317839edca2714c6a388b9476f8fc",
+      "架构": "linux/amd64"
+    },
+    {
+      "镜像": "nginx:1.31.1",
+      "配置ID": "sha256:936fef290c8f5ba8f81fb245148be818bef3f64badd90787c817ffde939cd6a5",
+      "镜像ID": "sha256:4a2d27f57e72adbc1e1cfed8db6cbdef22c080e058565f92647f7aad258292f2",
+      "架构": "linux/amd64"
+    },
+    {
+      "镜像": "gitea/gitea:1.26.4",
+      "配置ID": "sha256:028a5a345719fa4dfc58e69d1d07bada20e1010b436b23ebc9cab36f214c46c7",
+      "镜像ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+      "架构": "linux/amd64"
+    },
+    {
+      "镜像": "postgres:17.11-bookworm",
+      "配置ID": "sha256:a2ea0e68c465e0acf4c3672471b22b6b62972bb341e6f31544c855d85ba43745",
+      "镜像ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+      "架构": "linux/amd64"
+    }
+  ]
+}

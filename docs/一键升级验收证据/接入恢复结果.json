@@ -1,0 +1,64 @@
+{
+  "created": 1789215297.9398518,
+  "detail": {
+    "needs_callback": false,
+    "results": [
+      {
+        "name": "review-admin/first",
+        "ok": true,
+        "repository": 1
+      },
+      {
+        "name": "review-admin/second",
+        "ok": true,
+        "repository": 2
+      }
+    ],
+    "stage": "接入完成",
+    "steps": [
+      {
+        "name": "review-admin/first",
+        "ok": true,
+        "step": "回调地址"
+      },
+      {
+        "name": "review-admin/first",
+        "ok": true,
+        "step": "机器人与仓库权限"
+      },
+      {
+        "name": "review-admin/first",
+        "ok": true,
+        "step": "Webhook 安装及投递"
+      },
+      {
+        "name": "review-admin/first",
+        "ok": true,
+        "step": "PR 进度组件"
+      },
+      {
+        "name": "review-admin/second",
+        "ok": true,
+        "step": "回调地址"
+      },
+      {
+        "name": "review-admin/second",
+        "ok": true,
+        "step": "机器人与仓库权限"
+      },
+      {
+        "name": "review-admin/second",
+        "ok": true,
+        "step": "Webhook 安装及投递"
+      },
+      {
+        "name": "review-admin/second",
+        "ok": true,
+        "step": "PR 进度组件"
+      }
+    ]
+  },
+  "id": "11cdd6a37b58e9f1c2ba262b8de5884c",
+  "status": "succeeded",
+  "updated": 1789215454.083713
+}

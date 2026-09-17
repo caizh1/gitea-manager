@@ -1,0 +1,27 @@
+{
+  "说明": "真实 Git 提交、Gitea Webhook、独立 Worker、真实模型与正式行内回写；页面检查另行记录。",
+  "通过": true,
+  "Gitea版本": "1.26.4",
+  "模型": "deepseek-flash",
+  "引擎": "opencode_cli",
+  "PR": "http://127.0.0.1:64500/review-admin/direct-real-model/pulls/1",
+  "任务": "e08622578bb204465812de0a842f8b01",
+  "SHA": "40649c2ed6d2ae6730599aba48e000627945f776",
+  "状态": "succeeded",
+  "耗时秒": 19.2,
+  "错误": "",
+  "预期文件": "sample_at.c",
+  "预期位置": "新侧第 5 行条件或第 6 行访问",
+  "实际位置": [
+    {
+      "文件": "sample_at.c",
+      "新侧行号": 5,
+      "旧侧行号": 0,
+      "代码片段": "@@ -0,0 +2,4 @@\n+\n+int sample_at(const int *values, size_t count, size_t index)\n+{\n+    if (values == NULL || index > count) return 0;"
+    }
+  ],
+  "Review编号": [
+    1
+  ],
+  "限制": "发布期间版本稳定；不代表内网模型质量或并发 Push 防错位验收。"
+}

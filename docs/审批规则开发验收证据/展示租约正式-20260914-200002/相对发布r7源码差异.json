@@ -1,0 +1,10 @@
+[
+  {
+    "文件": "backend/approval/display_cache.py",
+    "变化": "字节变化"
+  },
+  {
+    "文件": "backend/tests/test_approval_display_concurrency.py",
+    "变化": "正式新增"
+  }
+]

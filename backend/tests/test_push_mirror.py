@@ -13,7 +13,7 @@ from flask import Flask
 from models import db, GiteaServer, MirrorAuditLog, MirrorConfig, MirrorRepoStatus
 from routes.mirror_routes import create_mirror as create_mirror_route
 from routes.mirror_routes import setup_mirror as setup_mirror_route
-from services.mirror_service import PUSH_MIRROR_MODE, setup_mirror, sync_mirror
+from services.mirror_service import MirrorServiceError, PUSH_MIRROR_MODE, _ensure_target_repo, setup_mirror, sync_mirror
 
 
 class FakeResponse:
@@ -116,7 +116,7 @@ class PushMirrorTestCase(unittest.TestCase):
             if host == 'backup.local' and path == '/api/v1/orgs':
                 return FakeResponse(201, {'username': 'org'})
             if host == 'backup.local' and path == '/api/v1/org/org/repos':
-                return FakeResponse(201, {'id': 99})
+                return FakeResponse(201, {'id': 99, 'private': True})
             if host == 'source.local' and path == '/api/v1/repos/org/repo/push_mirrors':
                 if method == 'GET':
                     return FakeResponse(200, [])
@@ -141,6 +141,59 @@ class PushMirrorTestCase(unittest.TestCase):
         self.assertEqual(push_call['json']['remote_password'], 'target-token')
         self.assertEqual(push_call['json']['interval'], '45m')
         self.assertTrue(push_call['json']['sync_on_commit'])
+
+    def test_setup_native_subgroup_uses_full_path_and_target_clone_url(self):
+        config = self.add_config()
+        calls = []
+
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            calls.append({'method': method, 'url': url, 'json': kwargs.get('json'), 'params': kwargs.get('params')})
+            path = urlparse(url).path
+            host = urlparse(url).hostname
+            if host == 'source.local' and path == '/api/v1/repos/search':
+                return FakeResponse(200, {'data': [{'id': 7, 'full_name': 'internal/repo', 'full_path': 'root/sub/repo', 'private': True, 'internal': True}]})
+            if host == 'backup.local' and path == '/api/v1/governance/capabilities':
+                return FakeResponse(200, {'hierarchical_groups': True, 'repository_visibility': ['public', 'internal', 'private']})
+            if host == 'backup.local' and path == '/api/v1/governance/groups' and method == 'GET':
+                parent_id = (kwargs.get('params') or {}).get('parent_id')
+                if parent_id == 0:
+                    return FakeResponse(200, [{'id': 10, 'full_path': 'root', 'compatibility_name': 'root-internal'}])
+                return FakeResponse(200, [])
+            if host == 'backup.local' and path == '/api/v1/governance/groups' and method == 'POST':
+                return FakeResponse(201, {'id': 11, 'full_path': 'root/sub', 'compatibility_name': 'sub-internal'})
+            if host == 'backup.local' and path == '/api/v1/repos/sub-internal/repo':
+                return FakeResponse(404, {}, 'not found')
+            if host == 'backup.local' and path == '/api/v1/org/sub-internal/repos':
+                return FakeResponse(201, {'id': 99, 'clone_url': 'http://backup.local/root/sub/repo.git', 'private': True, 'internal': True})
+            if host == 'backup.local' and path == '/api/v1/user':
+                return FakeResponse(200, {'login': 'mirrorbot'})
+            if host == 'source.local' and path == '/api/v1/repos/internal/repo/push_mirrors':
+                return FakeResponse(200, [] if method == 'GET' else {'remote_name': 'backup'})
+            if host == 'source.local' and path == '/api/v1/repos/internal/repo/push_mirrors-sync':
+                return FakeResponse(200, {})
+            return FakeResponse(500, {}, f'unexpected {method} {url}')
+
+        with patch('services.mirror_service.requests.request', side_effect=fake_request):
+            setup_mirror(config.id)
+
+        push_call = next(c for c in calls if c['method'] == 'POST' and c['url'].endswith('/push_mirrors'))
+        self.assertEqual(push_call['json']['remote_address'], 'http://backup.local/root/sub/repo.git')
+        create_call = next(c for c in calls if c['url'].endswith('/api/v1/org/sub-internal/repos'))
+        self.assertTrue(create_call['json']['internal'])
+        self.assertFalse(create_call['json']['private'])
+
+    def test_renamed_private_source_rejects_existing_public_target(self):
+        def fake_request(method, url, headers=None, timeout=None, **kwargs):
+            path = urlparse(url).path
+            if path == '/api/v1/repos/org/new':
+                return FakeResponse(200, {'id': 91, 'private': False})
+            if path == '/api/v1/repositories/91':
+                return FakeResponse(200, {'id': 91, 'private': False, 'clone_url': 'http://backup.local/org/new.git'})
+            return FakeResponse(500, {}, f'unexpected {method} {url}')
+
+        with patch('services.mirror_service.requests.request', side_effect=fake_request):
+            with self.assertRaisesRegex(MirrorServiceError, '可见性比源仓库更开放'):
+                _ensure_target_repo(self.target, {'full_name': 'org/new', 'private': True}, old_full_name='org/old')
 
     def test_setup_push_mirror_records_repo_failure_details(self):
         config = self.add_config()
@@ -284,6 +337,8 @@ class PushMirrorTestCase(unittest.TestCase):
                     'private': True,
                     'description': 'renamed',
                 }]})
+            if host == 'backup.local' and path == '/api/v1/repositories/88':
+                return FakeResponse(200, {'id': 88, 'private': True, 'clone_url': 'http://backup.local/org/old-repo.git'})
             if host == 'backup.local' and path == '/api/v1/repos/org/new-repo':
                 return FakeResponse(404, {}, 'not found')
             if host == 'backup.local' and path == '/api/v1/repos/org/old-repo':
@@ -309,16 +364,12 @@ class PushMirrorTestCase(unittest.TestCase):
             setup_mirror(config.id)
 
         repo = MirrorRepoStatus.query.filter_by(mirror_config_id=config.id, repo_name='org/new-repo').first()
-        rename_audit = MirrorAuditLog.query.filter_by(mirror_config_id=config.id, action='rename_target_repo').first()
-        update_audit = MirrorAuditLog.query.filter_by(mirror_config_id=config.id, action='update_push_mirror').first()
         config = MirrorConfig.query.get(config.id)
         self.assertIsNotNone(repo)
         self.assertEqual(repo.status, 'success')
         self.assertEqual(config.progress_percent, 100)
-        self.assertIsNotNone(rename_audit)
-        self.assertIsNotNone(update_audit)
-        self.assertTrue(any(c['method'] == 'PATCH' and c['url'].endswith('/api/v1/repos/org/old-repo') for c in calls))
-        self.assertTrue(any(c['method'] == 'DELETE' and c['url'].endswith('/push_mirrors/backup') for c in calls))
+        self.assertEqual(repo.target_repo_id, 88)
+        self.assertTrue(any(c['url'].endswith('/api/v1/repositories/88') for c in calls))
 
     def test_deprecated_config_setup_is_rejected_by_route(self):
         config = self.add_config(mode='gitea_mirror')

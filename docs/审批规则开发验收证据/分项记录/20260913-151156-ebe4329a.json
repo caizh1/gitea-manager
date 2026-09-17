@@ -1,0 +1,44 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "93b611ffdadb2160bb21a7f82ddbc2b3eacf29e077cceabe5d217799b7553373",
+  "记录": {
+    "说明": "实际功能服务、原生审批和官方镜像隔离集成；不代表完整生产验收",
+    "运行标识": "20260913-151156-ebe4329a",
+    "结果": [],
+    "首次失败": [
+      {
+        "异常": "RuntimeError",
+        "原因": "docker 执行失败（1）：3.11/site-packages/sqlalchemy/engine/default.py\", line 922, in do_execute\n    cursor.execute(statement, parameters)\nsqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: gitea_servers.gitea_port\n[SQL: INSERT INTO gitea_servers (name, role, host, ssh_port, ssh_user, gitea_container, pg_container, pg_dbname, pg_user, gitea_port, gitea_url, api_token, status, version, repo_count, user_count, is_local, disk_usage, last_check_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: ('审批隔离实例', 'backup', 'localhost', 22, 'root', '9ae2bab91cbea8a1920d53f41a772b80a34a1a5af266395dadc7a85f22990bae', 'gitea-postgres', 'gitea', 'gitea', None, 'http://gitea:3000', 'c7b062c2ce5426bc793a64e49c4d7ca90cec3309', 'unknown', '', 0, 0, 1, '', None, '2026-09-13 07:12:08.434533')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)\n",
+        "调用位置": "Traceback (most recent call last):\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 226, in <module>\n    try: run.execute_cases()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 178, in execute_cases\n    self.start(); self.fixtures(); self.start_manager(); self.create_repo(); self.setup_policy()\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-integration.py\", line 88, in start_manager\n    self.server_id = int(self.run(['docker', 'exec', '-i', name, 'python', '/tmp/初始化.py'],\n  File \"/Users/archer/Work/gitea-manager/scripts/approval-feasibility.py\", line 72, in run\n    raise RuntimeError(f'{args[0]} 执行失败（{result.returncode}）：{detail}')\nRuntimeError: docker 执行失败（1）：3.11/site-packages/sqlalchemy/engine/default.py\", line 922, in do_execute\n    cursor.execute(statement, parameters)\nsqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) NOT NULL constraint failed: gitea_servers.gitea_port\n[SQL: INSERT INTO gitea_servers (name, role, host, ssh_port, ssh_user, gitea_container, pg_container, pg_dbname, pg_user, gitea_port, gitea_url, api_token, status, version, repo_count, user_count, is_local, disk_usage, last_check_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]\n[parameters: ('审批隔离实例', 'backup', 'localhost', 22, 'root', '9ae2bab91cbea8a1920d53f41a772b80a34a1a5af266395dadc7a85f22990bae', 'gitea-postgres', 'gitea', 'gitea', None, 'http://gitea:3000', 'c7b062c2ce5426bc793a64e49c4d7ca90cec3309', 'unknown', '', 0, 0, 1, '', None, '2026-09-13 07:12:08.434533')]\n(Background on this error at: https://sqlalche.me/e/20/gkpj)\n\n"
+      }
+    ],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "隔离网段": "10.253.240.96/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "9ae2bab91cbea8a1920d53f41a772b80a34a1a5af266395dadc7a85f22990bae",
+      "地址": "http://127.0.0.1:49889",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T07:12:02.311981298Z"
+    },
+    "状态": "失败，保留首次现场"
+  }
+}

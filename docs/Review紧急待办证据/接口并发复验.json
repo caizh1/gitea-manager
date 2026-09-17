@@ -1,0 +1,14 @@
+{
+  "说明": "八个独立会话并发请求，同一任务只接受一次请求，其他回执合并",
+  "结果": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "通过": true
+}

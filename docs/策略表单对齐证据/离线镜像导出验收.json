@@ -1,0 +1,56 @@
+{
+  "结论": "通过",
+  "镜像数量": 7,
+  "导出与固定构建身份": "一致",
+  "镜像": [
+    {
+      "镜像": "gitea-review-backend:offline",
+      "ID": "sha256:85c12562bdf6091a90ab048b89b0e62cd46397947d3d6cb66d3e1cfead226b3a",
+      "配置ID": "sha256:5f426a33af9264c27d5252511477a3f2fb27c7fd552be09bf80105ddc82cd862",
+      "架构": "amd64",
+      "系统": "linux"
+    },
+    {
+      "镜像": "gitea-review-frontend:offline",
+      "ID": "sha256:9a19e02974091f19d4037bb752485c2afa51394951439148d0c802f90ca59c28",
+      "配置ID": "sha256:cf57f0cf899108a4c4c011210ceea8ddf4bd0682a314a28f98290859a39f36d4",
+      "架构": "amd64",
+      "系统": "linux"
+    },
+    {
+      "镜像": "gitea-review-executor:offline",
+      "ID": "sha256:8ca84a63846ee43d659cf2ae650ad4c9384ea3a39895265f2ed16c0806ca8df9",
+      "配置ID": "sha256:19a1db5312a5a4ac571264ebcd0476ca35ffba19f0ae95c39d6e218b83534b61",
+      "架构": "amd64",
+      "系统": "linux"
+    },
+    {
+      "镜像": "python:3.11-slim",
+      "ID": "sha256:272efc3f94bec901e2bc7a5c9984b3d113c317839edca2714c6a388b9476f8fc",
+      "配置ID": "sha256:5d7182676c848bb67861d09f69275cc8d20a55f9e694f6c5024ac370c0c1019c",
+      "架构": "amd64",
+      "系统": "linux"
+    },
+    {
+      "镜像": "nginx:1.31.1",
+      "ID": "sha256:4a2d27f57e72adbc1e1cfed8db6cbdef22c080e058565f92647f7aad258292f2",
+      "配置ID": "sha256:936fef290c8f5ba8f81fb245148be818bef3f64badd90787c817ffde939cd6a5",
+      "架构": "amd64",
+      "系统": "linux"
+    },
+    {
+      "镜像": "gitea/gitea:1.26.4",
+      "ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+      "配置ID": "sha256:028a5a345719fa4dfc58e69d1d07bada20e1010b436b23ebc9cab36f214c46c7",
+      "架构": "amd64",
+      "系统": "linux"
+    },
+    {
+      "镜像": "postgres:17.11-bookworm",
+      "ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+      "配置ID": "sha256:a2ea0e68c465e0acf4c3672471b22b6b62972bb341e6f31544c855d85ba43745",
+      "架构": "amd64",
+      "系统": "linux"
+    }
+  ]
+}

@@ -1,26 +1,33 @@
 <template>
   <div class="alert-bell-wrapper">
-    <span v-if="latestAlert" class="alert-latest-text" :class="{ 'text-danger': activeCount > 0 && latestAlert }">
-      {{ latestAlert.alert_type === 'backup_failed' ? '备份失败' : '恢复失败' }}: {{ latestAlert.server_name }}
+    <span v-if="reviewCount" class="alert-latest-text text-danger">{{ reviewCount }} 个 PR 需要处理</span>
+    <span v-else-if="latestAlert" class="alert-latest-text" :class="{ 'text-danger': activeCount > 0 && latestAlert }">
+      {{ alertLabel(latestAlert.alert_type) }}: {{ latestAlert.server_name }}
     </span>
     <span v-else class="alert-latest-text">无告警</span>
     <el-popover placement="bottom-end" :width="420" trigger="click" popper-class="alert-popover">
       <template #reference>
-        <div class="bell-icon-wrap">
+        <button type="button" class="bell-icon-wrap" :aria-label="`告警中心，${activeCount + reviewCount} 项未解决`">
           <el-icon :size="20" class="bell-icon"><Bell /></el-icon>
-          <span v-if="activeCount > 0" class="bell-badge">{{ activeCount > 99 ? '99+' : activeCount }}</span>
-        </div>
+          <span v-if="activeCount + reviewCount > 0" class="bell-badge">{{ activeCount + reviewCount > 99 ? '99+' : activeCount + reviewCount }}</span>
+        </button>
       </template>
       <div class="alert-panel">
         <div class="alert-panel-header">
           <span class="alert-panel-title">告警中心</span>
           <el-button v-if="resolvedCount > 0" size="small" text type="primary" @click="clearResolved">清除已解决</el-button>
         </div>
+        <section v-if="reviewCount" class="review-priority">
+          <strong>Review 紧急待办 · {{ reviewCount }} 个 PR</strong>
+          <div v-for="item in reviewAttention.items.slice(0, 3)" :key="`${item.repository}-${item.number}`" class="review-alert-row"><span>{{ item.repo_name }} #{{ item.number }}<small>{{ item.blocked_count ? `阻塞 ${item.blocked_count} 条审查` : '发布结果待核对' }}</small></span><el-button size="small" type="primary" @click="router.push(attentionRoute(item))">处理</el-button></div>
+          <el-button link type="primary" @click="router.push(attentionRoute())">查看全部待办</el-button>
+        </section>
+        <div v-if="reviewAttention.error" class="failure">Review 待办更新失败，保留最后数据</div>
         <div class="alert-list" v-if="alerts.length > 0">
           <div v-for="a in alerts" :key="a.id" class="alert-item" :class="'alert-' + a.status">
             <div class="alert-item-header">
               <span class="alert-type-dot" :class="a.status === 'active' ? 'dot-active' : 'dot-resolved'"></span>
-              <span class="alert-item-type">{{ a.alert_type === 'backup_failed' ? '备份失败' : '恢复失败' }}</span>
+              <span class="alert-item-type">{{ alertLabel(a.alert_type) }}</span>
               <span class="alert-item-server">— {{ a.server_name }}</span>
               <el-tag v-if="a.status === 'resolved'" type="success" size="small" effect="plain" class="resolved-tag">已解决</el-tag>
             </div>
@@ -31,25 +38,31 @@
             </div>
           </div>
         </div>
-        <div v-else class="alert-empty">暂无告警</div>
+        <div v-else-if="!reviewCount" class="alert-empty">暂无告警</div>
       </div>
     </el-popover>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { Bell } from '@element-plus/icons-vue'
 import { api } from '../api'
+import { useRouter } from 'vue-router'
+import { useReviewAttention, attentionRoute } from '../composables/useReviewAttention'
 
 export default {
   components: { Bell },
   setup() {
+    const router = useRouter(), reviewAttention = useReviewAttention()
+    const reviewCount = computed(() => reviewAttention.summary?.pr_count || 0)
     const alerts = ref([])
     const activeCount = ref(0)
     const resolvedCount = ref(0)
     const latestAlert = ref(null)
     let timer = null
+
+    const alertLabel = type => ({ backup_failed: '备份失败', restore_failed: '恢复失败', policy_failed: '策略应用失败' }[type] || '任务失败')
 
     function loadSummary() {
       api.get('/alerts/summary').then(res => {
@@ -98,12 +111,17 @@ export default {
       if (timer) clearInterval(timer)
     })
 
-    return { alerts, activeCount, resolvedCount, latestAlert, clearOne, clearResolved, fmtTime }
+    return { router, reviewAttention, reviewCount, attentionRoute, alertLabel, alerts, activeCount, resolvedCount, latestAlert, clearOne, clearResolved, fmtTime }
   },
 }
 </script>
 
 <style scoped>
+.review-priority { padding: 12px; margin-bottom: 12px; border-radius: 10px; background: #fff3f2; }
+.review-alert-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: 14px 0; }
+.review-alert-row span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.review-alert-row small { display: block; margin-top: 6px; color: #b45349; }
+.failure { color: #b45349; font-size: 12px; margin-bottom: 10px; }
 .alert-bell-wrapper {
   display: flex;
   align-items: center;
@@ -112,7 +130,7 @@ export default {
 
 .alert-latest-text {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-muted);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -126,9 +144,13 @@ export default {
 
 .bell-icon-wrap {
   cursor: pointer;
-  display: grid;
-  place-items: center;
-  width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 36px;
+  padding: 0 6px;
+  flex-shrink: 0;
   height: 36px;
   border-radius: 8px;
   background: var(--glass-control);
@@ -144,7 +166,7 @@ export default {
 
 .bell-icon {
   color: #6b7280;
-  grid-area: 1 / 1;
+  flex-shrink: 0;
   transition: color 0.2s;
 }
 
@@ -153,9 +175,7 @@ export default {
 }
 
 .bell-badge {
-  grid-area: 1 / 1;
-  align-self: start;
-  justify-self: end;
+  flex-shrink: 0;
   background: var(--color-danger);
   color: #fff;
   font-size: 10px;
@@ -185,7 +205,7 @@ export default {
 }
 
 .alert-list {
-  max-height: 360px;
+  max-height: min(360px, calc(100dvh - 200px));
   overflow-y: auto;
 }
 
@@ -208,12 +228,12 @@ export default {
 
 .alert-item.alert-resolved {
   border-left: 3px solid #10b981;
-  opacity: 0.75;
 }
 
 .alert-item-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 4px;
 }
@@ -235,12 +255,16 @@ export default {
 }
 
 .alert-item-type {
+  flex-shrink: 0;
   font-size: 13px;
   font-weight: 600;
   color: #1a1a2e;
 }
 
 .alert-item-server {
+  min-width: 0;
+  flex: 1 1 120px;
+  overflow-wrap: anywhere;
   font-size: 12px;
   color: #6b7280;
 }
@@ -251,7 +275,7 @@ export default {
 
 .alert-item-msg {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-secondary);
   margin-bottom: 4px;
   word-break: break-all;
   line-height: 1.4;
@@ -265,12 +289,12 @@ export default {
 
 .alert-time {
   font-size: 11px;
-  color: #d1d5db;
+  color: var(--text-muted);
 }
 
 .alert-empty {
   text-align: center;
-  color: #9ca3af;
+  color: var(--text-muted);
   padding: 24px 0;
   font-size: 13px;
 }

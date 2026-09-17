@@ -1,0 +1,84 @@
+"""在交付后端镜像内核对升级日志原子性、配置转义及原密钥校验。"""
+import importlib.util
+import json
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+from cryptography.fernet import Fernet
+
+spec=importlib.util.spec_from_file_location('runtime',Path(__file__).with_name('upgrade_runtime.py'))
+runtime=importlib.util.module_from_spec(spec);spec.loader.exec_module(runtime)
+
+
+class RuntimeChecks(unittest.TestCase):
+    def setUp(self):
+        self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup);self.root=Path(self.folder.name)
+
+    def test_failed_atomic_replace_preserves_previous_transaction(self):
+        path=self.root/'状态.json';runtime.write(path,{'阶段':'已备份'})
+        with patch.object(runtime.os,'replace',side_effect=OSError('模拟替换失败')):
+            with self.assertRaises(OSError):runtime.write(path,{'阶段':'开始替换'})
+        self.assertEqual(json.loads(path.read_text()),{'阶段':'已备份'})
+        self.assertEqual(list(self.root.iterdir()),[path])
+
+    def test_private_transaction_and_secret_modes(self):
+        path=self.root/'状态.json';runtime.write(path,{'阶段':'完成'})
+        self.assertEqual(path.stat().st_mode&0o777,0o600)
+        token=self.root/'令牌';runtime.atomic_text(token,'仅测试令牌',0o444)
+        self.assertEqual(token.stat().st_mode&0o777,0o444)
+
+    def test_compose_does_not_interpolate_literal_secret(self):
+        source={'environment':{'SECRET':'原有$KEY及$$符号'},'port':5000}
+        self.assertEqual(runtime.escaped(source),{'environment':{'SECRET':'原有$$KEY及$$$$符号'},'port':5000})
+        self.assertEqual(source['environment']['SECRET'],'原有$KEY及$$符号')
+
+    def test_approval_view_preserves_custom_mounts_without_review_secrets(self):
+        backend={'environment':{'DATABASE_URL':'sqlite:////custom/state/manager.db',
+            'SSH_KEY_PATH':'/custom/key','SSH_KEY_PASSPHRASE':'原密钥口令',
+            'GM_UPGRADE_MAINTENANCE_FILE':'/review/.upgrade-maintenance','SECRET_KEY':'管理会话密钥'},
+            'volumes':[{'type':'volume','source':'原管理卷','target':'/custom/state'},
+                       {'type':'bind','source':'/host/key','target':'/custom/key','read_only':True},
+                       {'type':'bind','source':'/var/run/docker.sock','target':'/var/run/docker.sock'},
+                       {'type':'volume','source':'原审查卷','target':'/review'},
+                       {'type':'bind','source':'/host/master.key','target':'/run/secrets/review_master'}]}
+        original=json.loads(json.dumps(backend))
+        networks={'原业务网络':None}
+        spec=runtime.approval_view_spec(backend,'sha256:固定后端',networks)
+        self.assertEqual(spec['image'],'sha256:固定后端')
+        self.assertEqual(spec['environment']['DATABASE_URL'],backend['environment']['DATABASE_URL'])
+        self.assertEqual(spec['environment']['SSH_KEY_PASSPHRASE'],'原密钥口令')
+        self.assertNotIn('SECRET_KEY',spec['environment'])
+        self.assertEqual(spec['volumes'],backend['volumes'][:4])
+        self.assertNotIn('ports',spec)
+        self.assertEqual(spec['networks'],networks)
+        spec['volumes'][0]['source']='不能修改原卷';spec['networks'].clear()
+        self.assertEqual(backend,original);self.assertEqual(networks,{'原业务网络':None})
+
+    def test_approval_view_chooses_longest_mount_and_deduplicates(self):
+        backend={'environment':{'DATABASE_URL':'sqlite:////state/sub/manager.db',
+            'SSH_KEY_PATH':'/state/sub/key','GM_UPGRADE_MAINTENANCE_FILE':'/state/sub/.maintenance'},
+            'volumes':[{'type':'volume','source':'父卷','target':'/state'},
+                       {'type':'volume','source':'实际子卷','target':'/state/sub'}]}
+        spec=runtime.approval_view_spec(backend,'固定镜像',{'default':None})
+        self.assertEqual(spec['volumes'],[backend['volumes'][1]])
+        self.assertIn('approval-view',runtime.WRITERS)
+        self.assertIn('approval-view',runtime.SERVICES)
+
+    def test_existing_encrypted_data_requires_original_key(self):
+        key=Fernet.generate_key();path=self.root/'主密钥';path.write_bytes(key)
+        database=self.root/'review.db'
+        with sqlite3.connect(database) as c:
+            c.execute('CREATE TABLE settings(value TEXT)')
+            c.execute('INSERT INTO settings VALUES (?)',(json.dumps({'api_key':Fernet(key).encrypt('原有模型凭据'.encode()).decode()}),))
+        def check():return subprocess.run([sys.executable,'-c',runtime.CHECK_KEY,str(path),str(database)],capture_output=True)
+        result=check();self.assertEqual(result.returncode,0);self.assertEqual(result.stdout,key)
+        path.write_bytes(Fernet.generate_key());result=check()
+        self.assertNotEqual(result.returncode,0);self.assertEqual(result.stdout,b'')
+        path.unlink();result=check();self.assertNotEqual(result.returncode,0)
+
+
+if __name__=='__main__':unittest.main()

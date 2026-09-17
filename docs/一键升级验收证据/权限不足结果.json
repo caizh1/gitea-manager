@@ -1,0 +1,17 @@
+{
+  "created": 1789216199.426108,
+  "detail": {
+    "needs_callback": false,
+    "results": [
+      {
+        "error": "Gitea 请求失败：HTTP 404",
+        "name": "review-admin/permission-check",
+        "ok": false
+      }
+    ],
+    "stage": "部分检查未完成，请查看具体原因"
+  },
+  "id": "519574a7f79eea9a4d01846896e2012d",
+  "status": "failed",
+  "updated": 1789216200.608813
+}

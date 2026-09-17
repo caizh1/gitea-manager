@@ -1,0 +1,82 @@
+说明：新候选镜像完整后端自动化，以下保留测试器原始输出。
+test_added_deleted_and_no_newline (test_ai_review.DiffTests.test_added_deleted_and_no_newline) ... ok
+test_anchor_failures_degrade_without_search (test_ai_review.DiffTests.test_anchor_failures_degrade_without_search) ... ok
+test_crlf_and_control_character_preserved (test_ai_review.DiffTests.test_crlf_and_control_character_preserved) ... ok
+test_fifty_fixed_locations (test_ai_review.DiffTests.test_fifty_fixed_locations) ... ok
+test_function_boundaries_and_cpp (test_ai_review.DiffTests.test_function_boundaries_and_cpp) ... ok
+test_insertion_shifts_later_hunks (test_ai_review.DiffTests.test_insertion_shifts_later_hunks) ... ok
+test_malformed_or_external_path (test_ai_review.DiffTests.test_malformed_or_external_path) ... ok
+test_multiple_hunks_and_repeated_code (test_ai_review.DiffTests.test_multiple_hunks_and_repeated_code) ... ok
+test_rename_and_quoted_utf8_path (test_ai_review.DiffTests.test_rename_and_quoted_utf8_path) ... ok
+test_repeated_statement_in_same_function_degrades (test_ai_review.DiffTests.test_repeated_statement_in_same_function_degrades) ... ok
+test_saved_hunk_checked_against_both_blobs (test_ai_review.DiffTests.test_saved_hunk_checked_against_both_blobs) ... ok
+test_truncated_and_overlapping_hunks (test_ai_review.DiffTests.test_truncated_and_overlapping_hunks) ... ok
+test_wrong_blob_cannot_accept_even_matching_problem_line (test_ai_review.DiffTests.test_wrong_blob_cannot_accept_even_matching_problem_line) ... ok
+test_unknown_candidates_and_incomplete_refutation_rejected (test_ai_review.OutputTests.test_unknown_candidates_and_incomplete_refutation_rejected) ... ok
+test_broker_rejects_tools_wrong_models_expired_capability (test_ai_review.StoreTests.test_broker_rejects_tools_wrong_models_expired_capability) ... ok
+test_configuration_changes_fence_running_job (test_ai_review.StoreTests.test_configuration_changes_fence_running_job) ... ok
+test_duplicate_events_atomic (test_ai_review.StoreTests.test_duplicate_events_atomic) ... ok
+test_encryption_and_public_projection (test_ai_review.StoreTests.test_encryption_and_public_projection) ... ok
+test_manual_rerun_is_distinct (test_ai_review.StoreTests.test_manual_rerun_is_distinct) ... ok
+test_new_generation_fences_old_owner (test_ai_review.StoreTests.test_new_generation_fences_old_owner) ... ok
+test_only_one_claim_and_lease_expiry (test_ai_review.StoreTests.test_only_one_claim_and_lease_expiry) ... ok
+test_published_review_recovery_must_verify_formal_result (test_ai_review.StoreTests.test_published_review_recovery_must_verify_formal_result) ... ok
+test_uncertain_publication_blocks_same_pr_not_other_pr (test_ai_review.StoreTests.test_uncertain_publication_blocks_same_pr_not_other_pr) ... ok
+test_webhook_signature_and_no_network_ingress (test_ai_review.StoreTests.test_webhook_signature_and_no_network_ingress) ... ok
+test_exact_location_guards_remain (test_ai_review_feedback.AdvisoryTests.test_exact_location_guards_remain) ... ok
+test_null_finding_missing_checks_and_malformed_check_preserve_original (test_ai_review_feedback.AdvisoryTests.test_null_finding_missing_checks_and_malformed_check_preserve_original) ... ok
+test_only_substantive_rejection_removes_candidate (test_ai_review_feedback.AdvisoryTests.test_only_substantive_rejection_removes_candidate) ... ok
+test_optional_evidence_does_not_hide_valid_inline (test_ai_review_feedback.AdvisoryTests.test_optional_evidence_does_not_hide_valid_inline) ... ok
+test_per_candidate_errors_and_no_usable_output (test_ai_review_feedback.AdvisoryTests.test_per_candidate_errors_and_no_usable_output) ... ok
+test_archive_survives_task_pruning (test_ai_review_feedback.DatasetTests.test_archive_survives_task_pruning) ... ok
+test_conflict_scope_budget_and_current_source_only (test_ai_review_feedback.DatasetTests.test_conflict_scope_budget_and_current_source_only) ... ok
+test_duplicate_notification_immediately_invalidates_once (test_ai_review_feedback.DatasetTests.test_duplicate_notification_immediately_invalidates_once) ... ok
+test_expired_source_not_provided_to_model (test_ai_review_feedback.DatasetTests.test_expired_source_not_provided_to_model) ... ok
+test_literal_return_feedback_matches_parser_function_without_old_anchor (test_ai_review_feedback.DatasetTests.test_literal_return_feedback_matches_parser_function_without_old_anchor) ... ok
+test_refutation_transport_error_preserves_advisory (test_ai_review_feedback.DatasetTests.test_refutation_transport_error_preserves_advisory) ... ok
+test_related_code_receives_same_reference_as_primary_scope (test_ai_review_feedback.DatasetTests.test_related_code_receives_same_reference_as_primary_scope) ... ok
+test_revision_export_and_disable_preserve_original (test_ai_review_feedback.DatasetTests.test_revision_export_and_disable_preserve_original) ... ok
+test_bounded_exclusion_and_same_author_replacement (test_ai_review_feedback.FeedbackTests.test_bounded_exclusion_and_same_author_replacement) ... ok
+test_human_link_must_be_current_pr_same_origin (test_ai_review_feedback.FeedbackTests.test_human_link_must_be_current_pr_same_origin) ... ok
+test_old_event_does_not_authorize_new_body (test_ai_review_feedback.FeedbackTests.test_old_event_does_not_authorize_new_body) ... ok
+test_readonly_cannot_mark_or_forge_user (test_ai_review_feedback.FeedbackTests.test_readonly_cannot_mark_or_forge_user) ... ok
+test_suspended_account_cannot_keep_confirming (test_ai_review_feedback.FeedbackTests.test_suspended_account_cannot_keep_confirming) ... ok
+test_unit_team_requires_code_write_and_actual_membership (test_ai_review_feedback.FeedbackTests.test_unit_team_requires_code_write_and_actual_membership) ... ok
+test_dataset_endpoints_require_login_and_csrf (test_ai_review_feedback.FeedbackWebhookTests.test_dataset_endpoints_require_login_and_csrf) ... ok
+test_signed_native_review_and_comment_events_only_enqueue (test_ai_review_feedback.FeedbackWebhookTests.test_signed_native_review_and_comment_events_only_enqueue) ... ok
+test_lost_create_response_recovers_without_duplicate (test_ai_review_feedback.ReceiptTests.test_lost_create_response_recovers_without_duplicate) ... ok
+test_unknown_receipt_does_not_blindly_resend (test_ai_review_feedback.ReceiptTests.test_unknown_receipt_does_not_blindly_resend) ... ok
+test_absent_uncertain_create_is_not_blindly_retried (test_ai_review_progress.ProgressTests.test_absent_uncertain_create_is_not_blindly_retried) ... ok
+Traceback (most recent call last):
+  File "/结果/正式后端执行.py", line 20, in <module>
+    result=unittest.TextTestRunner(verbosity=2,resultclass=Results).run(suite)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/unittest/runner.py", line 217, in run
+    test(result)
+  File "/usr/local/lib/python3.11/unittest/suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/unittest/suite.py", line 122, in run
+    test(result)
+  File "/usr/local/lib/python3.11/unittest/suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/unittest/suite.py", line 122, in run
+    test(result)
+  File "/usr/local/lib/python3.11/unittest/suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/unittest/suite.py", line 122, in run
+    test(result)
+  File "/usr/local/lib/python3.11/unittest/case.py", line 678, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/unittest/case.py", line 636, in run
+    result.addSuccess(self)
+  File "/结果/正式后端执行.py", line 10, in addSuccess
+    super().addSuccess(test);self.record(test,'通过')
+                             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/结果/正式后端执行.py", line 8, in record
+    rows.append({'用例':test.id(),'结果':state,'用时秒':round(time.monotonic()-self.started,4),'说明':detail})
+                        ^^^^^^^^^
+TypeError: 'str' object is not callable

@@ -1,0 +1,18 @@
+{
+  "created": 1789215664.5800345,
+  "detail": {
+    "needs_callback": true,
+    "results": [
+      {
+        "error": "Gitea 无法回连当前 Manager，请修正回调地址",
+        "name": "review-admin/first",
+        "ok": false
+      }
+    ],
+    "stage": "部分检查未完成，请查看具体原因",
+    "steps": []
+  },
+  "id": "55dba4bb4f3fd1dfeece05dc4dbc0de6",
+  "status": "failed",
+  "updated": 1789215666.4801314
+}

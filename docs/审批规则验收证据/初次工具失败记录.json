@@ -1,0 +1,203 @@
+{
+  "说明": "环境和测试工具调试的首次失败，未计入业务测试结果；所有本次创建的容器现已停止。",
+  "记录": [
+    {
+      "说明": "官方镜像独立实例第一阶段反证，不代表完整审批功能或生产验收。",
+      "运行标识": "20260913-134956-1d7c6f58",
+      "状态": "实验未完成",
+      "检查": [],
+      "阻断": [],
+      "未执行": [
+        "生产接入矩阵",
+        "网页与自动合并入口",
+        "代码更新竞争",
+        "影子和强制模式各24小时",
+        "现场负载与人工精力指标"
+      ],
+      "镜像": {
+        "gitea/gitea:1.26.4": {
+          "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+          "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+        },
+        "postgres:17.11-bookworm": {
+          "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+          "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+        }
+      },
+      "错误": "docker 执行失败（1）： Network gm-approval-probe-20260913-134956-1d7c6f58_default Creating \n Network gm-approval-probe-20260913-134956-1d7c6f58_default Error Error response from daemon: all predefined address pools have been fully subnetted\nfailed to create network gm-approval-probe-20260913-134956-1d7c6f58_default: Error response from daemon: all predefined address pools have been fully subnetted\n",
+      "隔离实例已停止": true
+    },
+    {
+      "说明": "官方镜像独立实例第一阶段反证，不代表完整审批功能或生产验收。",
+      "运行标识": "20260913-135029-289d733b",
+      "状态": "实验未完成",
+      "检查": [],
+      "阻断": [],
+      "未执行": [
+        "生产接入矩阵",
+        "网页与自动合并入口",
+        "代码更新竞争",
+        "影子和强制模式各24小时",
+        "现场负载与人工精力指标"
+      ],
+      "错误": "'NoneType' object is not iterable"
+    },
+    {
+      "说明": "官方镜像独立实例第一阶段反证，不代表完整审批功能或生产验收。",
+      "运行标识": "20260913-135044-ecf95b24",
+      "状态": "实验未完成",
+      "检查": [],
+      "阻断": [],
+      "未执行": [
+        "生产接入矩阵",
+        "网页与自动合并入口",
+        "代码更新竞争",
+        "影子和强制模式各24小时",
+        "现场负载与人工精力指标"
+      ],
+      "隔离网段": "10.253.240.0/28",
+      "镜像": {
+        "gitea/gitea:1.26.4": {
+          "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+          "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+        },
+        "postgres:17.11-bookworm": {
+          "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+          "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+        }
+      },
+      "错误": "list index out of range",
+      "停止错误": "'实例'"
+    },
+    {
+      "说明": "官方镜像独立实例第一阶段反证，不代表完整审批功能或生产验收。",
+      "运行标识": "20260913-135145-6239fe8d",
+      "状态": "实验未完成",
+      "检查": [],
+      "阻断": [],
+      "未执行": [
+        "生产接入矩阵",
+        "网页与自动合并入口",
+        "代码更新竞争",
+        "影子和强制模式各24小时",
+        "现场负载与人工精力指标"
+      ],
+      "隔离网段": "10.253.240.16/28",
+      "镜像": {
+        "gitea/gitea:1.26.4": {
+          "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+          "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+        },
+        "postgres:17.11-bookworm": {
+          "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+          "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+        }
+      },
+      "实例": {
+        "容器": "2f1ef54826ebf348023b6b0417c0e4ee24103a978bdf4856e6ca49d1b887528f",
+        "初始启动时间": "2026-09-13T05:51:50.659429918Z",
+        "实验结束启动时间": "2026-09-13T05:51:50.659429918Z",
+        "实验期间未重启": true
+      },
+      "错误": "Remote end closed connection without response",
+      "隔离实例已停止": true
+    },
+    {
+      "说明": "官方镜像独立实例第一阶段反证，不代表完整审批功能或生产验收。",
+      "运行标识": "20260913-135227-5b21f40b",
+      "状态": "实验未完成",
+      "检查": [],
+      "阻断": [],
+      "未执行": [
+        "生产接入矩阵",
+        "网页与自动合并入口",
+        "代码更新竞争",
+        "影子和强制模式各24小时",
+        "现场负载与人工精力指标"
+      ],
+      "隔离网段": "10.253.240.32/28",
+      "镜像": {
+        "gitea/gitea:1.26.4": {
+          "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+          "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+        },
+        "postgres:17.11-bookworm": {
+          "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+          "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+        }
+      },
+      "实例": {
+        "容器": "ea6f002bbb429247f982016b0433b9c2ada88d0a8dfbcf6ebc0e2b9119a08466",
+        "地址": "http://127.0.0.1:61835",
+        "版本": "1.26.4",
+        "初始启动时间": "2026-09-13T05:52:32.796462632Z",
+        "实验结束启动时间": "2026-09-13T05:52:32.796462632Z",
+        "实验期间未重启": true
+      },
+      "错误": "'ascii' codec can't encode characters in position 52-55: ordinal not in range(128)",
+      "错误位置": [
+        {
+          "文件": "approval-feasibility.py",
+          "行": 441,
+          "函数": "main"
+        },
+        {
+          "文件": "approval-feasibility.py",
+          "行": 300,
+          "函数": "case"
+        },
+        {
+          "文件": "approval-feasibility.py",
+          "行": 97,
+          "函数": "api"
+        },
+        {
+          "文件": "request.py",
+          "行": 517,
+          "函数": "open"
+        },
+        {
+          "文件": "request.py",
+          "行": 534,
+          "函数": "_open"
+        },
+        {
+          "文件": "request.py",
+          "行": 494,
+          "函数": "_call_chain"
+        },
+        {
+          "文件": "request.py",
+          "行": 1375,
+          "函数": "http_open"
+        },
+        {
+          "文件": "request.py",
+          "行": 1346,
+          "函数": "do_open"
+        },
+        {
+          "文件": "client.py",
+          "行": 1257,
+          "函数": "request"
+        },
+        {
+          "文件": "client.py",
+          "行": 1268,
+          "函数": "_send_request"
+        },
+        {
+          "文件": "client.py",
+          "行": 1106,
+          "函数": "putrequest"
+        },
+        {
+          "文件": "client.py",
+          "行": 1186,
+          "函数": "_encode_request"
+        }
+      ],
+      "隔离实例已停止": true
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+校验通过，正在导入离线运行镜像。
+安装包与文件清单校验通过
+升级记录：/Users/archer/Work/gitea-manager/work/一键升级验收/.gitea-manager-upgrades/records/20260912-203455-43579
+升级未完成：Manager 存在运行中的任务，请完成后再次执行升级

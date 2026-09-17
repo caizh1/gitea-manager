@@ -1,0 +1,128 @@
+{
+  "说明": "真实 Gitea；注入提交与模拟丢弃成功响应的控制器仅用于合成验收。",
+  "结果": [
+    {
+      "场景": "normal",
+      "通过": true,
+      "状态": "已发布",
+      "快照Head": "85dc09d279712693a31e3d617648372f3354946d",
+      "当前Head": "85dc09d279712693a31e3d617648372f3354946d",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "85dc09d279712693a31e3d617648372f3354946d"
+      ],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [
+        [
+          "probe.c",
+          2,
+          0
+        ]
+      ],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/1"
+    },
+    {
+      "场景": "diff_race",
+      "通过": true,
+      "状态": "已阻止过期发布",
+      "快照Head": null,
+      "当前Head": "8f1266fd9dae3d4e3b1d10b03c25a07dae261e86",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "Worker提交事件": [],
+      "实际位置": [],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/2"
+    },
+    {
+      "场景": "before_publish",
+      "通过": true,
+      "状态": "已阻止过期发布",
+      "快照Head": "6a25f93a9881a02385b83925e410305602eed85c",
+      "当前Head": "6d7d7fa2bff8a597e1a0cff470f8755a5516a318",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "Worker提交事件": [],
+      "实际位置": [],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/3"
+    },
+    {
+      "场景": "response_lost",
+      "通过": true,
+      "状态": "已发布",
+      "快照Head": "eee7e3f37c5e083a0adf6dc7f0c39698a5396bb9",
+      "当前Head": "eee7e3f37c5e083a0adf6dc7f0c39698a5396bb9",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "eee7e3f37c5e083a0adf6dc7f0c39698a5396bb9"
+      ],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [
+        [
+          "probe.c",
+          2,
+          0
+        ]
+      ],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/4"
+    },
+    {
+      "场景": "partial_write",
+      "通过": true,
+      "状态": "部分写入待核对",
+      "快照Head": "7f9271c1ed5a3b1e187c2a71f054e33df0cb55ac",
+      "当前Head": "7f9271c1ed5a3b1e187c2a71f054e33df0cb55ac",
+      "Review数量": 1,
+      "评论数量": 1,
+      "Review版本": [
+        "7f9271c1ed5a3b1e187c2a71f054e33df0cb55ac"
+      ],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [
+        [
+          "probe.c",
+          2,
+          0
+        ]
+      ],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/5"
+    },
+    {
+      "场景": "rejected",
+      "通过": true,
+      "状态": "明确拒绝写入",
+      "快照Head": "7450bf605f78f2fceddf1cb851c9b500760bcd70",
+      "当前Head": "7450bf605f78f2fceddf1cb851c9b500760bcd70",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "Worker提交事件": [
+        "COMMENT"
+      ],
+      "实际位置": [],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/6"
+    },
+    {
+      "场景": "expired_owner",
+      "通过": true,
+      "状态": "已阻止过期发布",
+      "快照Head": "5325ef7361d3b5fcbbeb552afcfcebbda7224107",
+      "当前Head": "5325ef7361d3b5fcbbeb552afcfcebbda7224107",
+      "Review数量": 0,
+      "评论数量": 0,
+      "Review版本": [],
+      "Worker提交事件": [],
+      "实际位置": [],
+      "PR": "http://127.0.0.1:64500/review-admin/publication-fixtures/pulls/7"
+    }
+  ]
+}

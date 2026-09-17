@@ -1,0 +1,82 @@
+{
+  "PR2评论": [
+    {
+      "编号": 9,
+      "内容": "浏览器普通评论：保持此前批准。"
+    },
+    {
+      "编号": 15,
+      "内容": "浏览器故障测试：展示服务停止时仍能正常发表评论。"
+    }
+  ],
+  "PR2审批": [
+    {
+      "编号": 5,
+      "用户": "alice",
+      "状态": "APPROVED"
+    },
+    {
+      "编号": 6,
+      "用户": "alice",
+      "状态": "REQUEST_CHANGES"
+    },
+    {
+      "编号": 7,
+      "用户": "alice",
+      "状态": "APPROVED"
+    },
+    {
+      "编号": 8,
+      "用户": "alice",
+      "状态": "APPROVED"
+    },
+    {
+      "编号": 9,
+      "用户": "bob",
+      "状态": "APPROVED"
+    },
+    {
+      "编号": 10,
+      "用户": "carol",
+      "状态": "APPROVED"
+    }
+  ],
+  "原生规则": [
+    {
+      "branch_name": "main",
+      "rule_name": "main",
+      "priority": 1,
+      "enable_push": false,
+      "enable_push_whitelist": false,
+      "push_whitelist_usernames": [],
+      "push_whitelist_teams": [],
+      "push_whitelist_deploy_keys": false,
+      "enable_force_push": false,
+      "enable_force_push_allowlist": false,
+      "force_push_allowlist_usernames": [],
+      "force_push_allowlist_teams": [],
+      "force_push_allowlist_deploy_keys": false,
+      "enable_merge_whitelist": false,
+      "merge_whitelist_usernames": [],
+      "merge_whitelist_teams": [],
+      "enable_status_check": false,
+      "status_check_contexts": [],
+      "required_approvals": 3,
+      "enable_approvals_whitelist": false,
+      "approvals_whitelist_username": [],
+      "approvals_whitelist_teams": [],
+      "block_on_rejected_reviews": true,
+      "block_on_official_review_requests": false,
+      "block_on_outdated_branch": false,
+      "dismiss_stale_approvals": false,
+      "ignore_stale_approvals": false,
+      "require_signed_commits": false,
+      "protected_file_patterns": "",
+      "unprotected_file_patterns": "",
+      "block_admin_merge_override": true,
+      "created_at": "2026-09-13T11:49:37Z",
+      "updated_at": "2026-09-13T12:37:49Z"
+    }
+  ],
+  "目标引用": "bc336151b2aedca4719cb6a5afd565bc17332ea7"
+}

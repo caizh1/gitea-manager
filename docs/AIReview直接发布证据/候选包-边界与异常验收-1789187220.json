@@ -1,0 +1,373 @@
+{
+  "说明": "真实 Gitea 与执行器，模型为协议替身；不计入模型准确率。",
+  "结果": [
+    {
+      "场景": "新增",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/1",
+      "任务": "d62654f264316be555ff5a84b532c55e",
+      "Head": "9da0024f7e75bec0e8a3ac30fda45c934cb8f1ba",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "added.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "added.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 12.16,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "修改",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/2",
+      "任务": "1512c1931566ae05a01fa96cfeb933ab",
+      "Head": "1ef1eea2bca5bacd522aa46239544adfdc735e80",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "modify.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "modify.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 13.16,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "删除行",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/3",
+      "任务": "67275b16cf8809112a6f62c467808d8f",
+      "Head": "7a5dda3ca2da954dfc13c29d67403f3bc32914e2",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "delete.c",
+          "old",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "delete.c",
+          "old",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 13.17,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "删除文件",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/4",
+      "任务": "1e474262babddb5bad8058997fd4fa17",
+      "Head": "1d60975b483fb498f22ec7bc1902a241e76dc258",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "deleted-file.c",
+          "old",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "deleted-file.c",
+          "old",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 11.17,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "重命名特殊路径",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/5",
+      "任务": "d53a1c688b952cb962456b8b8d1b7796",
+      "Head": "9b77e8025ecebc45996410878e946d8fd42ed611",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "目录/带 空格名称.c",
+          "new",
+          19
+        ]
+      ],
+      "实际位置": [
+        [
+          "目录/带 空格名称.c",
+          "new",
+          19
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 13.2,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "CRLF",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/6",
+      "任务": "4b10c7066400d2cbdc1a85292de9dfce",
+      "Head": "514c3bf6298bb1415b75d4595a1bcc3ca68e6b2a",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "crlf.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "crlf.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 9.15,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "末尾无换行",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/7",
+      "任务": "d0528bffaf4e1b3f1cfeee13352c2cab",
+      "Head": "e1e48865c5318b9b5d155b095989b86c7c6199ff",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "no-eol.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "no-eol.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 10.14,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "多个修改区域",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/8",
+      "任务": "39aa716d18701342710a8a4083dc5050",
+      "Head": "b82231f85876092d8f729a8f2c104cd7d91ba36c",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "multi.c",
+          "new",
+          2
+        ],
+        [
+          "multi.c",
+          "new",
+          30
+        ]
+      ],
+      "实际位置": [
+        [
+          "multi.c",
+          "new",
+          2
+        ],
+        [
+          "multi.c",
+          "new",
+          30
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 22.35,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "重复函数片段",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/9",
+      "任务": "8d59dbdaaf4e68719c639536b4c6925b",
+      "Head": "366ef2d6560bcfbd5555e10abceab24fac760c33",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "similar.c",
+          "new",
+          2
+        ],
+        [
+          "similar.c",
+          "new",
+          5
+        ]
+      ],
+      "实际位置": [
+        [
+          "similar.c",
+          "new",
+          2
+        ],
+        [
+          "similar.c",
+          "new",
+          5
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 15.27,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "函数内重复原文降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/10",
+      "任务": "44ebf6560d92d67292d5a7e900c36eb8",
+      "Head": "22ee8548f4ea0b8c9b333e71d5a3ab813dd61bc4",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 9.16,
+      "错误": "",
+      "降级原因": [
+        "同一函数中存在重复的问题行文本，无法唯一确认代码块，已降级为普通意见"
+      ]
+    },
+    {
+      "场景": "wrong_anchor 安全降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/11",
+      "任务": "3a813d635e0bf4e359812394a7a57c8b",
+      "Head": "ef88f0affbaa4a7b64f7fe67244bf9621c3d792b",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 11.23,
+      "错误": "",
+      "降级原因": [
+        "未返回本任务的有效锚点，已降级为普通意见"
+      ]
+    },
+    {
+      "场景": "wrong_quote 安全降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/12",
+      "任务": "f7d66bd2fe98d2558649657d5c36e652",
+      "Head": "067257d81dd8d3c9275c4f47fc6479b12e219839",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 10.18,
+      "错误": "",
+      "降级原因": [
+        "引用与该位置源码不完全一致，已降级为普通意见"
+      ]
+    },
+    {
+      "场景": "unlocated 安全降级",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/13",
+      "任务": "659fa6f3ea056c3f1dd30d56ebdc817f",
+      "Head": "29c8da7a7de6452b9f7f22a237e798e5dbd14f7a",
+      "状态": "succeeded",
+      "预期位置": [],
+      "实际位置": [],
+      "动态唯一": true,
+      "耗时秒": 11.25,
+      "错误": "",
+      "降级原因": [
+        "反证检查未确认问题与该位置的对应关系"
+      ]
+    },
+    {
+      "场景": "多 Commit 审查整个 PR",
+      "通过": true,
+      "PR": "http://127.0.0.1:64600/review-admin/package-fixtures/pulls/14",
+      "任务": "0a69ca79cfb226da4ac5881403919a91",
+      "Head": "ed67dfe9d901c21917fcad99bc277b41ff1c2459",
+      "状态": "succeeded",
+      "预期位置": [
+        [
+          "cumulative.c",
+          "new",
+          2
+        ]
+      ],
+      "实际位置": [
+        [
+          "cumulative.c",
+          "new",
+          2
+        ]
+      ],
+      "动态唯一": true,
+      "耗时秒": 9.16,
+      "错误": "",
+      "降级原因": []
+    },
+    {
+      "场景": "部分覆盖不能伪装完整通过",
+      "通过": true,
+      "覆盖范围": {
+        "complete": false,
+        "files_reviewed": 1,
+        "files_total": 2,
+        "skipped": [
+          {
+            "path": "uncovered.txt",
+            "reason": "第一期重点支持 C/C++ 源码，该文件尚未覆盖"
+          }
+        ]
+      }
+    },
+    {
+      "场景": "同一真实 PR 重复事件不增加任务或 Review",
+      "通过": true,
+      "事件次数": 20,
+      "任务数之前": 14,
+      "任务数之后": 14,
+      "Review数": 1,
+      "PR编号": 14
+    }
+  ]
+}

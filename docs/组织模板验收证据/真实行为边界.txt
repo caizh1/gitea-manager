@@ -1,0 +1,43 @@
+批次 19：preview_queued 0%
+批次 19：previewing 0%
+批次 19：ready 100%
+批次 19：apply_queued 0%
+批次 19：applying 0%
+批次 19：completed 100%
+组织验收：双人审批及状态检查 54823602000 经 Manager 预览应用回读：通过
+真实 Git 直接推送被拒绝：通过
+零审批禁止合并：通过
+一人审批仍禁止合并：通过
+两人审批但缺少 CI 禁止合并：通过
+CI 失败禁止合并：通过
+双人审批且 CI 成功允许合并：通过
+批次 20：preview_queued 0%
+批次 20：previewing 100%
+批次 20：ready 100%
+批次 20：apply_queued 0%
+批次 20：applying 0%
+批次 20：completed 100%
+组织验收：禁止强推 54823602000 经 Manager 预览应用回读：通过
+允许直接推送时真实 Git 提交成功：通过
+禁止强推时真实 Force Push 被拒绝：通过
+批次 21：preview_queued 0%
+批次 21：previewing 0%
+批次 21：ready 100%
+批次 21：apply_queued 0%
+批次 21：applying 0%
+批次 21：applying 100%
+批次 21：completed 100%
+组织验收：允许强推 54823602000 经 Manager 预览应用回读：通过
+允许强推时真实 Force Push 成功：通过
+批次 22：preview_queued 0%
+批次 22：previewing 0%
+批次 22：previewing 50%
+批次 22：previewing 75%
+批次 22：ready 100%
+批次 22：apply_queued 0%
+批次 22：applying 25%
+批次 22：applying 50%
+批次 22：applying 75%
+批次 22：completed_with_errors 100%
+仓库转移、权限变化、规则变化分别阻塞且不影响正常仓库：通过
+组织模板真实行为与时序边界验收完成

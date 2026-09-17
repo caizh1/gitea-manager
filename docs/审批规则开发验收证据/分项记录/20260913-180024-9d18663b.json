@@ -1,0 +1,370 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "f075b60c4896035e107a82a69175fd94426e031cda049cad291b11bb4fc7eab5",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-180024-9d18663b",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "接入05-A",
+        "场景": "真实在途HTTP推送期间安装或替换受管Hook",
+        "结果": "通过",
+        "证据": {
+          "暂停阶段": "pre-receive",
+          "安装": {
+            "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+            "模式": "shadow"
+          },
+          "推送": {
+            "退出码": 0,
+            "输出": "",
+            "错误输出": "remote: \nremote: Create a new pull request for '在途-pre-receive-9078846d':        \nremote:   http://127.0.0.1:3000/approval-probe/approval-live/pulls/new/%E5%9C%A8%E9%80%94-pre-receive-9078846d        \nremote: \nremote: . Processing 1 references        \nremote: Processed 1 references in total        \nTo http://127.0.0.1:61886/approval-probe/approval-live.git\n * [new branch]      HEAD -> 在途-pre-receive-9078846d\n"
+          },
+          "实际引用": "b66720e4643ec7eb33a3eeb2442835399199339c",
+          "无重启": true
+        },
+        "耗时秒": 9.57
+      },
+      {
+        "编号": "接入05-B",
+        "场景": "真实在途HTTP推送期间安装或替换受管Hook",
+        "结果": "通过",
+        "证据": {
+          "暂停阶段": "update",
+          "安装": {
+            "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+            "模式": "shadow"
+          },
+          "推送": {
+            "退出码": 0,
+            "输出": "",
+            "错误输出": "remote: \nremote: Create a new pull request for '在途-update-fe61fc39':        \nremote:   http://127.0.0.1:3000/approval-probe/approval-live/pulls/new/%E5%9C%A8%E9%80%94-update-fe61fc39        \nremote: \nremote: . Processing 1 references        \nremote: Processed 1 references in total        \nTo http://127.0.0.1:61886/approval-probe/approval-live.git\n * [new branch]      HEAD -> 在途-update-fe61fc39\n"
+          },
+          "实际引用": "c7a1e1b3528da7bacaac801d58340cf56be3613d",
+          "无重启": true
+        },
+        "耗时秒": 8.84
+      },
+      {
+        "编号": "接入09-B-真实语法故障",
+        "场景": "磁盘上存在无效模板时不能破坏当前可用页面",
+        "结果": "通过",
+        "证据": {
+          "安装拒绝类型": "RuntimeError",
+          "真实页面HTTP": 200,
+          "页面有内容": true,
+          "主进程持续运行": true,
+          "启动时间保持": true
+        },
+        "耗时秒": 7.741
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "backend/approval/__init__.py": "d8d200d2c243b369cfcdc14aee9b6b7d047a9d58d72dfa6475af0ab05cac135d",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "backend/approval/bundle.py": "7773ca6450253032d2349ee24a55952feaba76b89a7907282e40128360eabd9c",
+      "backend/approval/gitea.py": "75d8822e4ddc1bad668adf0066ac778b3cdc108dc6518602599eeaa05af3c179",
+      "backend/approval/native_metadata.py": "d0b2709ba3a43f35c5d44f29d966f369383b47fdf70a4904e9b3d03fba0aaae0",
+      "backend/approval/rules.py": "4d6bb018a0a0a47e4dd9c4ff9df4c73030231f92414ec16785fb04415601583c",
+      "backend/approval/service.py": "36d78fec13c8ca11c2f8db961ae1d6e4ddcc70e5130c634e8dee8717f40dd3e5",
+      "backend/approval/timeline.py": "309aac558701f2d7a507ef011c91eb42b787ae17b9a679d19ff4fe9a59cf0d57",
+      "backend/routes/approval_routes.py": "ca12241c78f8d6eea6ace49ff992109290ffc716dfc594e8ab1cce1af01a7b33",
+      "scripts/approval-capacity-probe.py": "0d4135f25464b1b604a58d9351360b5f4ec60784f68be84e6cd764de4042abff",
+      "scripts/approval-compat-matrix.py": "45bbcb4ba9b98e71696ed15eb689ee37b2acd5e39442a43fa562314068228d84",
+      "scripts/approval-concurrency-matrix.py": "358f8cc7337e566b8474dad7cd10611491adb4b625f4fa5e9ef61872e771d3ec",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb",
+      "scripts/approval-feasibility.py": "51cd0e4a60cd7b438839d58e77594427be0c7667fd9105e614baf4e259ff71e2",
+      "scripts/approval-integration.py": "9c3c99d3838d5c16fdbc7f5451004a3c676cf11702f953a37a2ab9acef5df7e1",
+      "scripts/approval-matrix.py": "5a23237c5c9861668e5e3ee2681724d0a73b3f80d5fcdc78eb43da1b2c5cd58b",
+      "scripts/approval-pause-proxy.py": "4fced6ed6af04746e4e420783308105b5461c55abb75335ce957d651bcc3d3cf",
+      "scripts/approval-ssh-fixture.py": "544ae9abfdc9cb732238d44cd804044296538505a76edb347d29b1f489d38691",
+      "scripts/approval-ssh-matrix.py": "6ab4f814c9c43cf1cc3043481bdbd8e1c575fcd427ef9e34b186fc8a0e913f56"
+    },
+    "分项": "inflight",
+    "隔离网段": "10.253.243.16/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "e1bf722abfff64842d001bc54cddcaffc8cf79d0db60d200a7d03a2c00fe1359",
+      "地址": "http://127.0.0.1:61886",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T10:00:30.044711713Z"
+    },
+    "状态": "本轮分项执行完成，完整矩阵仍按所有分项证据判定",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789293647.717521,
+      "fingerprint": "0aabd6a37fe1759316cf74f7b44da62e6635feb2ec015ff896cdd4878ca81f84",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T10:00:39Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T10:00:39Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T10:00:41Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0221
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0039
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0063
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0048
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0739
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0047
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0066
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0351
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0061
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        }
+      ]
+    },
+    "容器操作首次失败": [
+      {
+        "类别": [
+          "docker",
+          "exec"
+        ],
+        "退出码": 1,
+        "错误输出": "internal API error response, status=500\n",
+        "时间": 1789293691.1795032
+      }
+    ],
+    "模板语法故障原始结果": {
+      "安装拒绝类型": "RuntimeError",
+      "真实页面HTTP": 200,
+      "页面有内容": true,
+      "主进程持续运行": true,
+      "启动时间保持": true
+    }
+  }
+}

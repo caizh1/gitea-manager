@@ -1,0 +1,648 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "8f8c9acbfaae77fe485d9aed081db7d89c5eaa8d6fd11f9a18b4811f11c54729",
+  "记录": {
+    "说明": "完整矩阵分项实际执行；本文件只证明列出的独立子项，未执行项不能自动通过",
+    "运行标识": "20260913-170209-ac9c641d",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "矩阵子项": [
+      {
+        "编号": "分页修复预研-多页只读元数据",
+        "场景": "用只读记录标记确认原生时间线多页完整性",
+        "结果": "通过",
+        "证据": {
+          "PR": 2,
+          "只读完整性元数据": {
+            "pr_id": 2,
+            "repo_id": 1,
+            "number": 2,
+            "count": 56,
+            "max_id": 62,
+            "events": [
+              {
+                "id": 7,
+                "type": 29,
+                "review_id": 0,
+                "ordinal": 1
+              },
+              {
+                "id": 8,
+                "type": 29,
+                "review_id": 0,
+                "ordinal": 2
+              },
+              {
+                "id": 9,
+                "type": 22,
+                "review_id": 5,
+                "ordinal": 3
+              },
+              {
+                "id": 10,
+                "type": 22,
+                "review_id": 6,
+                "ordinal": 4
+              },
+              {
+                "id": 11,
+                "type": 22,
+                "review_id": 7,
+                "ordinal": 5
+              },
+              {
+                "id": 12,
+                "type": 22,
+                "review_id": 8,
+                "ordinal": 6
+              },
+              {
+                "id": 13,
+                "type": 22,
+                "review_id": 9,
+                "ordinal": 7
+              },
+              {
+                "id": 14,
+                "type": 22,
+                "review_id": 10,
+                "ordinal": 8
+              },
+              {
+                "id": 15,
+                "type": 22,
+                "review_id": 11,
+                "ordinal": 9
+              },
+              {
+                "id": 16,
+                "type": 22,
+                "review_id": 12,
+                "ordinal": 10
+              },
+              {
+                "id": 17,
+                "type": 22,
+                "review_id": 13,
+                "ordinal": 11
+              },
+              {
+                "id": 18,
+                "type": 22,
+                "review_id": 14,
+                "ordinal": 12
+              },
+              {
+                "id": 19,
+                "type": 22,
+                "review_id": 15,
+                "ordinal": 13
+              },
+              {
+                "id": 20,
+                "type": 22,
+                "review_id": 16,
+                "ordinal": 14
+              },
+              {
+                "id": 21,
+                "type": 22,
+                "review_id": 17,
+                "ordinal": 15
+              },
+              {
+                "id": 22,
+                "type": 22,
+                "review_id": 18,
+                "ordinal": 16
+              },
+              {
+                "id": 23,
+                "type": 22,
+                "review_id": 19,
+                "ordinal": 17
+              },
+              {
+                "id": 24,
+                "type": 22,
+                "review_id": 20,
+                "ordinal": 18
+              },
+              {
+                "id": 25,
+                "type": 22,
+                "review_id": 21,
+                "ordinal": 19
+              },
+              {
+                "id": 26,
+                "type": 22,
+                "review_id": 22,
+                "ordinal": 20
+              },
+              {
+                "id": 27,
+                "type": 22,
+                "review_id": 23,
+                "ordinal": 21
+              },
+              {
+                "id": 28,
+                "type": 22,
+                "review_id": 24,
+                "ordinal": 22
+              },
+              {
+                "id": 29,
+                "type": 22,
+                "review_id": 25,
+                "ordinal": 23
+              },
+              {
+                "id": 30,
+                "type": 22,
+                "review_id": 26,
+                "ordinal": 24
+              },
+              {
+                "id": 31,
+                "type": 22,
+                "review_id": 27,
+                "ordinal": 25
+              },
+              {
+                "id": 32,
+                "type": 22,
+                "review_id": 28,
+                "ordinal": 26
+              },
+              {
+                "id": 33,
+                "type": 22,
+                "review_id": 29,
+                "ordinal": 27
+              },
+              {
+                "id": 34,
+                "type": 22,
+                "review_id": 30,
+                "ordinal": 28
+              },
+              {
+                "id": 35,
+                "type": 22,
+                "review_id": 31,
+                "ordinal": 29
+              },
+              {
+                "id": 36,
+                "type": 22,
+                "review_id": 32,
+                "ordinal": 30
+              },
+              {
+                "id": 37,
+                "type": 22,
+                "review_id": 33,
+                "ordinal": 31
+              },
+              {
+                "id": 38,
+                "type": 22,
+                "review_id": 34,
+                "ordinal": 32
+              },
+              {
+                "id": 39,
+                "type": 22,
+                "review_id": 35,
+                "ordinal": 33
+              },
+              {
+                "id": 40,
+                "type": 22,
+                "review_id": 36,
+                "ordinal": 34
+              },
+              {
+                "id": 41,
+                "type": 22,
+                "review_id": 37,
+                "ordinal": 35
+              },
+              {
+                "id": 42,
+                "type": 22,
+                "review_id": 38,
+                "ordinal": 36
+              },
+              {
+                "id": 43,
+                "type": 22,
+                "review_id": 39,
+                "ordinal": 37
+              },
+              {
+                "id": 44,
+                "type": 22,
+                "review_id": 40,
+                "ordinal": 38
+              },
+              {
+                "id": 45,
+                "type": 22,
+                "review_id": 41,
+                "ordinal": 39
+              },
+              {
+                "id": 46,
+                "type": 22,
+                "review_id": 42,
+                "ordinal": 40
+              },
+              {
+                "id": 47,
+                "type": 22,
+                "review_id": 43,
+                "ordinal": 41
+              },
+              {
+                "id": 48,
+                "type": 22,
+                "review_id": 44,
+                "ordinal": 42
+              },
+              {
+                "id": 49,
+                "type": 22,
+                "review_id": 45,
+                "ordinal": 43
+              },
+              {
+                "id": 50,
+                "type": 22,
+                "review_id": 46,
+                "ordinal": 44
+              },
+              {
+                "id": 51,
+                "type": 22,
+                "review_id": 47,
+                "ordinal": 45
+              },
+              {
+                "id": 52,
+                "type": 22,
+                "review_id": 48,
+                "ordinal": 46
+              },
+              {
+                "id": 53,
+                "type": 22,
+                "review_id": 49,
+                "ordinal": 47
+              },
+              {
+                "id": 54,
+                "type": 22,
+                "review_id": 50,
+                "ordinal": 48
+              },
+              {
+                "id": 55,
+                "type": 22,
+                "review_id": 51,
+                "ordinal": 49
+              },
+              {
+                "id": 56,
+                "type": 22,
+                "review_id": 52,
+                "ordinal": 50
+              },
+              {
+                "id": 57,
+                "type": 22,
+                "review_id": 53,
+                "ordinal": 51
+              },
+              {
+                "id": 58,
+                "type": 22,
+                "review_id": 54,
+                "ordinal": 52
+              },
+              {
+                "id": 59,
+                "type": 22,
+                "review_id": 55,
+                "ordinal": 53
+              },
+              {
+                "id": 60,
+                "type": 22,
+                "review_id": 56,
+                "ordinal": 54
+              },
+              {
+                "id": 61,
+                "type": 22,
+                "review_id": 57,
+                "ordinal": 55
+              },
+              {
+                "id": 62,
+                "type": 22,
+                "review_id": 58,
+                "ordinal": 56
+              }
+            ],
+            "采集耗时秒": 0.3824
+          },
+          "API事件数": 56,
+          "前后元数据一致": true,
+          "数据库拒绝事务内写入": true,
+          "说明": "仅隔离 PostgreSQL 可行性，不代表生产适配已实现"
+        },
+        "耗时秒": 19.422
+      }
+    ],
+    "发包后执行": [
+      "接入24-A：影子24小时",
+      "接入24-B：隔离强制24小时"
+    ],
+    "首次产品失败": [],
+    "首次产品失败说明": "历史兼容字段名；包含测试前置和脚本失败，须单独归因，不能直接当作产品缺陷。",
+    "执行源码摘要": {
+      "scripts/approval-matrix.py": "743527ec58713bb5c8a8c6306561da17d07ae730f7939d27181f374bda481148",
+      "scripts/approval-integration.py": "5c252c3e20faf0f13c7be536bdbee2f905a0de6302f474072498f8b0084fe9af",
+      "backend/approval/gitea.py": "d899badd1e5653d02ead6280cfe286753439e46e95d6e22c9428d5835848dc48",
+      "backend/approval/assets/install.py": "efb4501ff6b0c57d3cd25ee57edf78858e14c7dc349a2fb6e17d7bd2867a59b9",
+      "scripts/approval-fault-proxy.py": "58227a63050e9719fdbcc54571a9b8aa338eb6f709544a181f4ce557c75486cb"
+    },
+    "分项": "timeline",
+    "隔离网段": "10.253.241.208/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "2581b274366cae4adbc4ac2ceafd4668d72a24d2af027163f70e9f247eb48573",
+      "地址": "http://127.0.0.1:57645",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T09:02:15.519676971Z"
+    },
+    "状态": "本轮分项执行完成，完整矩阵仍按所有分项证据判定",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789290153.0207691,
+      "fingerprint": "e4265481515c5886fa8b432da5ef5376c4747a164ff297537a0ac07c9dc752b9",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T09:02:25Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T09:02:25Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T09:02:28Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0228
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0047
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0041
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0023
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.009
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        }
+      ]
+    }
+  }
+}

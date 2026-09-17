@@ -1,0 +1,696 @@
+{
+  "说明": "原始断言与失败内容保留；凭据字段脱敏，源码快照摘要用于区分历史版本",
+  "原记录SHA256": "cecfabc5454a7d6c140d911671d78696d97ae67ba390a74c4fb2afa176b8daff",
+  "记录": {
+    "说明": "实际功能服务、原生审批和官方镜像隔离集成；不代表完整生产验收",
+    "运行标识": "20260913-192209-6cf04c72",
+    "结果": [
+      {
+        "场景": "接入01-只读预检",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入07-模板并发修改拒绝且保留",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-安装-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-shadow",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "shadow"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-shadow",
+        "结果": "通过"
+      },
+      {
+        "场景": "规则-影子缺组显示",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-影子组票不足仍走原生流程",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.399,
+        "旧引用": "569ffafbaa5900940ab56655bd14f827123120c4",
+        "新引用": "0c1f977a7818cb37ef3a084f4ec584e812c93460",
+        "耗时秒": 1.702
+      },
+      {
+        "场景": "接入-持续页面读取-安装-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-安装-isolated_enforced",
+        "结果": "通过",
+        "说明": {
+          "说明": "已核对 Hook 完整性和运行时模板；真实 PR 及持续流量仍需验收",
+          "模式": "isolated_enforced"
+        }
+      },
+      {
+        "场景": "接入04-其他Hook和模板保持-isolated_enforced",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-存量PR",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.383,
+        "旧引用": "0c1f977a7818cb37ef3a084f4ec584e812c93460",
+        "新引用": "d3ac135dcaf5c59b9a45e17030dfd474d4cc3adb",
+        "耗时秒": 1.883
+      },
+      {
+        "场景": "规则-merge缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.389,
+        "旧引用": "d3ac135dcaf5c59b9a45e17030dfd474d4cc3adb",
+        "新引用": "d3ac135dcaf5c59b9a45e17030dfd474d4cc3adb",
+        "耗时秒": 4.005
+      },
+      {
+        "场景": "规则-merge全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.405,
+        "旧引用": "d3ac135dcaf5c59b9a45e17030dfd474d4cc3adb",
+        "新引用": "5d520ace1e352da490979de97083bb26fb3a7ffe",
+        "耗时秒": 4.668
+      },
+      {
+        "场景": "规则-rebase缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.406,
+        "旧引用": "5d520ace1e352da490979de97083bb26fb3a7ffe",
+        "新引用": "5d520ace1e352da490979de97083bb26fb3a7ffe",
+        "耗时秒": 3.94
+      },
+      {
+        "场景": "规则-rebase全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.386,
+        "旧引用": "5d520ace1e352da490979de97083bb26fb3a7ffe",
+        "新引用": "dfe0dced16d6b2543a908cfafc56bdb82de16c73",
+        "耗时秒": 4.942
+      },
+      {
+        "场景": "规则-rebase-merge缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.416,
+        "旧引用": "dfe0dced16d6b2543a908cfafc56bdb82de16c73",
+        "新引用": "dfe0dced16d6b2543a908cfafc56bdb82de16c73",
+        "耗时秒": 4.422
+      },
+      {
+        "场景": "规则-rebase-merge全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-rebase-merge-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.418,
+        "旧引用": "dfe0dced16d6b2543a908cfafc56bdb82de16c73",
+        "新引用": "3d2f935e3e20b352542c402cb7360292dac10017",
+        "耗时秒": 4.654
+      },
+      {
+        "场景": "规则-squash缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-squash-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.403,
+        "旧引用": "3d2f935e3e20b352542c402cb7360292dac10017",
+        "新引用": "3d2f935e3e20b352542c402cb7360292dac10017",
+        "耗时秒": 3.937
+      },
+      {
+        "场景": "规则-squash全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-squash-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.38,
+        "旧引用": "3d2f935e3e20b352542c402cb7360292dac10017",
+        "新引用": "41246df66e44ca3c2efd011317afbb87d37f133a",
+        "耗时秒": 4.703
+      },
+      {
+        "场景": "规则-fast-forward-only缺组",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-fast-forward-only-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：新增审批要求尚未满足或校验响应不一致\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.4,
+        "旧引用": "41246df66e44ca3c2efd011317afbb87d37f133a",
+        "新引用": "41246df66e44ca3c2efd011317afbb87d37f133a",
+        "耗时秒": 4.004
+      },
+      {
+        "场景": "规则-fast-forward-only全部满足",
+        "结果": "通过"
+      },
+      {
+        "场景": "合并-fast-forward-only-新PR缺组票",
+        "结果": "通过",
+        "合并HTTP": 200,
+        "合并响应": null,
+        "原生合并就绪": true,
+        "原生就绪等待秒": 0.408,
+        "旧引用": "41246df66e44ca3c2efd011317afbb87d37f133a",
+        "新引用": "c9f78643fcffccbbffc3f35aca6c7ebb81a3ef66",
+        "耗时秒": 4.614
+      },
+      {
+        "场景": "合并-merge-强制服务故障阻断",
+        "结果": "通过",
+        "合并HTTP": 409,
+        "合并响应": {
+          "message": "PushRejected with remote message: 审批门禁：审批服务不可用，暂停合并\nhook declined to update refs/heads/main",
+          "url": "http://127.0.0.1:3000/api/swagger"
+        },
+        "原生合并就绪": false,
+        "原生就绪等待秒": 0.403,
+        "旧引用": "c9f78643fcffccbbffc3f35aca6c7ebb81a3ef66",
+        "新引用": "c9f78643fcffccbbffc3f35aca6c7ebb81a3ef66",
+        "耗时秒": 9.367
+      },
+      {
+        "场景": "原生规则与包装器保持",
+        "结果": "通过"
+      },
+      {
+        "场景": "Gitea没有重启",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-仅页面回退",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入19-页面卸载不取消门禁",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-持续页面读取-门禁卸载",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入18-回退只移除组件且保留接入后数据",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入08-重复卸载回执可核对",
+        "结果": "通过"
+      },
+      {
+        "场景": "接入-回退后没有重启",
+        "结果": "通过"
+      }
+    ],
+    "首次失败": [],
+    "未执行": [
+      "全部生产接入矩阵",
+      "各24小时长测",
+      "现场峰值和两倍峰值",
+      "人工精力指标",
+      "目标现场验收"
+    ],
+    "已知缺陷": [
+      "APR-RACE-001：P2，暂缓修复，原反证断言和证据保留"
+    ],
+    "隔离网段": "10.253.244.64/28",
+    "镜像": {
+      "gitea/gitea:1.26.4": {
+        "摘要": "gitea/gitea@sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849",
+        "本地ID": "sha256:ebe815a4e594bb9a180dc7b3a7946e11cb7389f8ae2daa2beb31287416c94849"
+      },
+      "postgres:17.11-bookworm": {
+        "摘要": "postgres@sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6",
+        "本地ID": "sha256:038d25adb4476ba9be6404b2b02fb7a94b8e523884e5700f98d921b9a2d169f6"
+      }
+    },
+    "实例": {
+      "容器": "a9e94736ea6cc4cc65e473f5942a0021902213ee80f37e79c3f6e81e73880832",
+      "地址": "http://127.0.0.1:54790",
+      "版本": "1.26.4",
+      "初始启动时间": "2026-09-13T11:22:15.153633637Z"
+    },
+    "状态": "本轮有限集成通过；完整验收未完成",
+    "预检": {
+      "changes": [
+        "新增独立审批 Hook（默认影子、不同步等待外部服务）",
+        "新增 PR 只读展示资源和页脚片段"
+      ],
+      "checked_at": 1789298554.1451507,
+      "fingerprint": "4151878e2ff2563450020baaea00b592f2e31e0501b042d3ec08c12540f43c2d",
+      "groups": [
+        {
+          "members_count": 2,
+          "name": "Committer1",
+          "team_id": 3
+        },
+        {
+          "members_count": 1,
+          "name": "Committer2",
+          "team_id": 4
+        }
+      ],
+      "native_rules": [
+        {
+          "approvals_whitelist_teams": [],
+          "approvals_whitelist_username": [],
+          "block_admin_merge_override": true,
+          "block_on_official_review_requests": false,
+          "block_on_outdated_branch": false,
+          "block_on_rejected_reviews": true,
+          "branch_name": "main",
+          "created_at": "2026-09-13T11:22:25Z",
+          "dismiss_stale_approvals": false,
+          "enable_approvals_whitelist": false,
+          "enable_force_push": false,
+          "enable_force_push_allowlist": false,
+          "enable_merge_whitelist": false,
+          "enable_push": false,
+          "enable_push_whitelist": false,
+          "enable_status_check": false,
+          "force_push_allowlist_deploy_keys": false,
+          "force_push_allowlist_teams": [],
+          "force_push_allowlist_usernames": [],
+          "ignore_stale_approvals": false,
+          "merge_whitelist_teams": [],
+          "merge_whitelist_usernames": [],
+          "priority": 1,
+          "protected_file_patterns": "",
+          "push_whitelist_deploy_keys": false,
+          "push_whitelist_teams": [],
+          "push_whitelist_usernames": [],
+          "require_signed_commits": false,
+          "required_approvals": 3,
+          "rule_name": "main",
+          "status_check_contexts": null,
+          "unprotected_file_patterns": "",
+          "updated_at": "2026-09-13T11:22:25Z"
+        }
+      ],
+      "pending_checks": [
+        "实际持久卷和其他 Hook",
+        "模板并发修改及热重载真实页面",
+        "代理同源路径及会话验证",
+        "正式切换的并发创建 PR 边界",
+        "APR-RACE-001：P2 已知竞态尚未修复",
+        "完整接入矩阵及现场验收尚未完成"
+      ],
+      "production_enforcement_allowed": false,
+      "revision": 1,
+      "snapshot": [
+        {
+          "created_at": "2026-09-13T11:22:28Z",
+          "id": 1,
+          "number": 1
+        }
+      ]
+    },
+    "有限持续流量": {
+      "安装-shadow": [
+        {
+          "成功": true,
+          "耗时秒": 0.0219
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0473
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0436
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0456
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0035
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0054
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        }
+      ],
+      "安装-isolated_enforced": [
+        {
+          "成功": true,
+          "耗时秒": 0.007
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.004
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0031
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0025
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0026
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0043
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0036
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0047
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0045
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0034
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0024
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0033
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0032
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.003
+        }
+      ],
+      "仅页面回退": [
+        {
+          "成功": true,
+          "耗时秒": 0.0046
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0029
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0037
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0027
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0067
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0144
+        }
+      ],
+      "门禁卸载": [
+        {
+          "成功": true,
+          "耗时秒": 0.0433
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0028
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0042
+        },
+        {
+          "成功": true,
+          "耗时秒": 0.0038
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+[
+  {
+    "组件": "backend",
+    "镜像": [
+      "gitea-review-backend:approval-lease-20260914-200002-r8"
+    ],
+    "ID": "sha256:4df417a8825ef7c13146e0ec27b01e4cb5b6364ca512f3d50cd034ccebee29b9",
+    "架构": "amd64",
+    "系统": "linux"
+  },
+  {
+    "组件": "frontend",
+    "镜像": [
+      "gitea-review-frontend:approval-lease-20260914-200002-r8"
+    ],
+    "ID": "sha256:43f16dac2268aa9bba8bab977aa0cadae897ef92a4d731b9e3753360e52dd46a",
+    "架构": "amd64",
+    "系统": "linux"
+  },
+  {
+    "组件": "executor",
+    "镜像": [
+      "gitea-review-executor:approval-lease-20260914-200002-r8"
+    ],
+    "ID": "sha256:5c34cc26cdd92b27629a23c68c376ac3bc1eee84a2c1f7262af319a60e59026e",
+    "架构": "amd64",
+    "系统": "linux"
+  }
+]

@@ -8,7 +8,7 @@
       <p class="login-subtitle">安全登录到管理控制台</p>
       <el-form @submit.prevent="doLogin" class="login-form">
         <el-form-item>
-          <el-input v-model="password" type="password" show-password placeholder="请输入管理员密码" size="large" prefix-icon="Lock" />
+          <el-input v-model="password" type="password" show-password placeholder="请输入管理员密码" aria-label="管理员密码" size="large" prefix-icon="Lock" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="doLogin" :loading="loading" class="login-btn">登 录</el-button>
