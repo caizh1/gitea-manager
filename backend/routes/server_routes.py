@@ -21,7 +21,8 @@ def server_to_dict(s):
         'pg_user': s.pg_user,
         'gitea_port': s.gitea_port,
         'gitea_url': s.gitea_url,
-        'api_token': s.api_token,
+        'api_token_configured': bool(s.api_token),
+        'connection_mode': s.connection_mode,
         'status': s.status,
         'version': s.version,
         'repo_count': s.repo_count,
@@ -67,6 +68,7 @@ def add_server():
         gitea_port=data.get('gitea_port', 3000),
         gitea_url=data.get('gitea_url', ''),
         api_token=data.get('api_token', ''),
+        connection_mode='ssh',
         status='unknown',
         created_at=datetime.utcnow(),
     )
@@ -124,12 +126,14 @@ def update_server(sid):
                 ~ApprovalPolicy.mode.in_(('draft', 'disabled'))).first():
             return jsonify({'error': '请先停用并卸载此实例的审批组件，再修改连接身份，避免门禁关联到其他实例'}), 409
         ApprovalPolicy.query.filter_by(server_id=sid).update({'preview_json': '{}'})
+        from access.scopes import invalidate_server
+        invalidate_server(s)
 
     fields = ['name', 'role', 'host', 'ssh_port', 'ssh_user',
               'gitea_container', 'pg_container', 'pg_dbname', 'pg_user',
               'gitea_port', 'gitea_url', 'api_token']
     for f in fields:
-        if f in data:
+        if f in data and (f != 'api_token' or data[f]):
             setattr(s, f, data[f])
     db.session.commit()
     return jsonify(server_to_dict(s))

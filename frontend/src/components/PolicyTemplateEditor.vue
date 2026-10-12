@@ -40,7 +40,7 @@
       </div>
       <el-empty v-else description="添加新规则，或从本组织仓库导入。" />
     </section>
-    <el-dialog v-model="importVisible" title="从仓库导入保护规则" width="min(740px, 96vw)" :close-on-click-modal="false">
+    <el-dialog append-to-body v-model="importVisible" title="从仓库导入保护规则" width="min(740px, 96vw)" :close-on-click-modal="false">
       <div class="template-actions"><el-select v-model="sourceRepoId" filterable remote :remote-method="sourceSearch.search" :loading="sourceState.loading" @visible-change="v => v && sourceSearch.open()" @change="clearImported" placeholder="搜索并选择源仓库" aria-label="选择源仓库" class="source-select">
         <el-option v-for="repo in sourceState.items" :key="repo.id" :value="repo.id" :label="repo.full_name" :disabled="!repo.manageable" />
         <template v-if="sourceState.hasMore || sourceState.error" #footer><div class="template-actions"><span>{{ sourceState.error }}</span><el-button link @click.stop="sourceState.error ? sourceSearch.retry() : sourceSearch.more()">{{ sourceState.error ? '重试查询' : '加载更多仓库' }}</el-button></div></template>

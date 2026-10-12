@@ -1,5 +1,6 @@
 <template>
   <div>
+    <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" />
     <div class="section-header">
       <div class="header-left">
         <h3 class="section-title">定时任务</h3>
@@ -71,21 +72,7 @@
         </el-table-column>
         <el-table-column label="进度" min-width="260">
           <template #default="{ row }">
-            <div v-if="row.last_status === 'running'" class="schedule-progress">
-              <div class="progress-header">
-                <span class="progress-label">{{ scheduleProgressLabel(row) }}</span>
-                <span class="progress-pct">{{ scheduleProgressPct(row) }}%</span>
-              </div>
-              <el-progress
-                :percentage="scheduleProgressPct(row)"
-                :status="scheduleProgressStatus(row)"
-                :stroke-width="7"
-                :show-text="false"
-              />
-              <div v-if="scheduleProgressDetail(row)" class="progress-detail">
-                {{ scheduleProgressDetail(row) }}
-              </div>
-            </div>
+            <OperationProgress v-if="row.last_status" :task="row" />
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
@@ -104,7 +91,7 @@
       </el-table>
     </div>
 
-    <el-dialog :title="isEdit ? '编辑定时任务' : '创建定时任务'" v-model="dialogVisible" width="550px" destroy-on-close>
+    <el-dialog append-to-body :title="isEdit ? '编辑定时任务' : '创建定时任务'" v-model="dialogVisible" width="550px" destroy-on-close>
       <el-form :model="form" label-width="100px">
         <el-form-item label="名称"><el-input v-model="form.name" placeholder="每日凌晨备份" /></el-form-item>
         <el-form-item label="源服务器">
@@ -142,8 +129,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
+import OperationProgress from '../components/OperationProgress.vue'
+import { useOperationPolling } from '../composables/useOperationPolling'
+import { operationActive } from '../components/operationDisplay'
 
 export default {
+  components: { OperationProgress },
   setup() {
     const tasks = ref([])
     const servers = ref([])
@@ -184,17 +175,6 @@ export default {
       return list.some(t => t.last_status === 'running')
     }
 
-    function syncPolling() {
-      if (hasRunningTasks()) {
-        if (!pollTimer) {
-          pollTimer = setInterval(() => loadData({ silent: true }), 2000)
-        }
-      } else if (pollTimer) {
-        clearInterval(pollTimer)
-        pollTimer = null
-      }
-    }
-
     function notifyFinished(prevRunning) {
       tasks.value.forEach(t => {
         if (!prevRunning.has(t.id) || t.last_status === 'running') return
@@ -206,24 +186,19 @@ export default {
       })
     }
 
-    function refreshExpandedLogs() {
-      expandedTaskIds.value.forEach(id => fetchLogs(id))
-    }
-
-    function loadData(options = {}) {
-      const silent = Boolean(options.silent)
-      const prevRunning = new Set(tasks.value.filter(t => t.last_status === 'running').map(t => t.id))
-      if (!silent) loading.value = true
-      Promise.all([api.get('/schedules'), api.get('/servers')]).then(([tRes, sRes]) => {
-        tasks.value = tRes.data
-        servers.value = sRes.data
-        notifyFinished(prevRunning)
-        syncPolling()
-        refreshExpandedLogs()
-      }).finally(() => {
-        if (!silent) loading.value = false
-      })
-    }
+    const { refresh: loadData, error: pollError } = useOperationPolling(
+      config => Promise.all([
+        api.get('/schedules', config), api.get('/servers', config),
+        Promise.all([...expandedTaskIds.value].map(async id => [id, (await api.get(`/schedules/${id}/logs`, config)).data])),
+      ]),
+      ([tRes, sRes, logs]) => {
+        const previous = new Set(tasks.value.filter(t => t.last_status === 'running').map(t => t.id))
+        tasks.value = tRes.data; servers.value = sRes.data
+        logsCache.value = { ...logsCache.value, ...Object.fromEntries(logs) }
+        notifyFinished(previous)
+      },
+      () => tasks.value.some(operationActive),
+    )
 
     function openDialog(row) {
       if (row) {
@@ -308,18 +283,11 @@ export default {
       return ''
     }
 
-    function fetchLogs(taskId) {
-      logsCache.value = { ...logsCache.value, [taskId]: logsCache.value[taskId] || [] }
-      return api.get(`/schedules/${taskId}/logs`).then(res => {
-        logsCache.value = { ...logsCache.value, [taskId]: res.data }
-      })
-    }
-
     function loadLogs(row, expandedRows) {
       const expanded = expandedRows.some(r => r.id === row.id)
       if (expanded) {
         expandedTaskIds.value.add(row.id)
-        fetchLogs(row.id)
+        loadData()
       } else {
         expandedTaskIds.value.delete(row.id)
       }
@@ -359,9 +327,8 @@ export default {
       return rows
     }
 
-    onMounted(loadData)
     onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); clearInterval(clockTimer) })
-    return { tasks, loading, saving, dialogVisible, isEdit, form,
+    return { tasks, pollError, loading, saving, dialogVisible, isEdit, form,
              primaryServers, backupServers, serverNameMap, logsCache, criticalAlert,
              loadData, openDialog, saveTask, deleteTask, toggleEnabled, runNow,
               pad, loadLogs, fmt, flatLogs, now, isCooldown, cooldownTip, statusType,

@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["coverage", "findings"],
+  "properties": {
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewed_paths", "skipped"],
+      "properties": {
+        "reviewed_paths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "reason"],
+            "properties": {
+              "path": {"type": "string"},
+              "reason": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity", "title", "trigger", "explanation", "impact",
+          "recommendation", "path", "side", "line", "quote", "scope",
+          "verification", "assessment", "support"
+        ],
+        "properties": {
+          "severity": {"type": "string", "enum": ["P1", "P2"]},
+          "title": {"type": "string"},
+          "trigger": {"type": "string"},
+          "explanation": {"type": "string"},
+          "impact": {"type": "string"},
+          "recommendation": {"type": "string"},
+          "path": {"type": "string"},
+          "side": {"type": "string", "enum": ["new", "old"]},
+          "line": {"type": "integer", "minimum": 0},
+          "quote": {"type": "string"},
+          "scope": {"type": "string"},
+          "verification": {"type": "string"},
+          "assessment": {"type": "string", "enum": ["confirmed", "uncertain"]},
+          "support": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "side", "quote"],
+              "properties": {
+                "path": {"type": "string"},
+                "side": {"type": "string", "enum": ["before", "after"]},
+                "quote": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

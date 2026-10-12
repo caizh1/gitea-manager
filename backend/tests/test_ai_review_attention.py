@@ -4,7 +4,7 @@ import time
 import unittest
 from unittest.mock import patch, Mock
 from flask import Flask
-from auth import init_auth
+from tests.access_helpers import init_test_auth as init_auth, login_platform
 from routes.ai_review_routes import ai_review_bp
 from ai_review.attention import listing, request_reconciliation
 from ai_review.progress import state_for, payload_for
@@ -131,7 +131,7 @@ class AttentionTests(unittest.TestCase):
         init_auth(app); app.register_blueprint(ai_review_bp, url_prefix='/api/ai-review')
         client = app.test_client()
         self.assertEqual(client.get('/api/ai-review/attention').status_code, 401)
-        with client.session_transaction() as session: session['_user_id'] = '1'; session['_fresh'] = True
+        login_platform(client)
         self.assertEqual(client.get('/api/ai-review/attention').json['summary']['pr_count'], 1)
         for query in ('number=-1', 'repository=x', 'page=0'):
             self.assertEqual(client.get('/api/ai-review/attention?'+query).status_code, 400)

@@ -1,0 +1,81 @@
+# 独立权限验收环境；只能通过 scripts/access-env.py 使用随机项目标记启动。
+services:
+  openldap:
+    image: ${DIRECTORY_IMAGE}
+    platform: linux/amd64
+    hostname: openldap
+    environment:
+      DIRECTORY_PASSWORD: ${DIRECTORY_PASSWORD}
+      CERT_NAME: ${OPENLDAP_CERT:-trusted}
+    volumes:
+      - ${ACCESS_STATE}/fixtures:/fixtures:ro
+      - ldap-data:/var/lib/ldap
+    ports:
+      - 127.0.0.1:${LDAP_PORT}:389
+      - 127.0.0.1:${LDAPS_PORT}:636
+    labels:
+      gitea-manager.access-test: ${ACCESS_PROJECT}
+  samba:
+    image: ${DIRECTORY_IMAGE}
+    platform: linux/amd64
+    hostname: dc1
+    environment:
+      DIRECTORY_MODE: samba
+      DIRECTORY_PASSWORD: ${DIRECTORY_PASSWORD}
+    volumes:
+      - ${ACCESS_STATE}/fixtures:/fixtures:ro
+      - samba-data:/var/lib/samba
+      - samba-config:/etc/samba
+    ports:
+      - 127.0.0.1:${AD_PORT}:389
+      - 127.0.0.1:${AD_LDAPS_PORT}:636
+    labels:
+      gitea-manager.access-test: ${ACCESS_PROJECT}
+  probe:
+    image: ${DIRECTORY_IMAGE}
+    platform: linux/amd64
+    entrypoint: ["sleep", "infinity"]
+    volumes:
+      - ./backend/access:/manager/access:ro
+      - ./scripts:/acceptance:ro
+    labels:
+      gitea-manager.access-test: ${ACCESS_PROJECT}
+  gitea:
+    image: ${GITEA_IMAGE}
+    platform: linux/amd64
+    environment: &gitea-env
+      GITEA__security__INSTALL_LOCK: 'true'
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__service__DISABLE_REGISTRATION: 'true'
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__log__LEVEL: Warn
+    volumes:
+      - gitea-data:/data
+      - ${ACCESS_STATE}/fixtures/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
+    ports:
+      - 127.0.0.1:${GITEA_PORT}:3000
+    labels:
+      gitea-manager.access-test: ${ACCESS_PROJECT}
+  enhanced:
+    image: ${ENHANCED_IMAGE}
+    platform: linux/amd64
+    environment: *gitea-env
+    volumes:
+      - enhanced-data:/data
+      - ${ACCESS_STATE}/fixtures/ca-bundle.pem:/etc/ssl/certs/ca-certificates.crt:ro
+    ports:
+      - 127.0.0.1:${ENHANCED_PORT}:3000
+    labels:
+      gitea-manager.access-test: ${ACCESS_PROJECT}
+volumes:
+  ldap-data:
+  samba-data:
+  samba-config:
+  gitea-data:
+  enhanced-data:
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${ACCESS_SUBNET}

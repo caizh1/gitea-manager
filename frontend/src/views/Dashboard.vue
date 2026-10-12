@@ -1,5 +1,7 @@
 <template>
-  <div>
+  <OrganizationDashboard v-if="!isPlatformAdmin" />
+  <div v-else>
+    <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" />
     <div class="section-header">
       <h3 class="section-title">服务器仪表盘</h3>
       <div class="header-actions">
@@ -55,14 +57,15 @@
                 <span class="recent-status-icon" :class="b.status === 'success' ? 'icon-success' : 'icon-failed'">
                   <el-icon>
                     <CircleCheckFilled v-if="b.status === 'success'" />
-                    <CircleCloseFilled v-else />
+                    <Loading v-else-if="b.status === 'running'" /><Loading v-else-if="r.status === 'running'" /><CircleCloseFilled v-else />
                   </el-icon>
                 </span>
                 <div class="recent-item-info">
                   <div class="recent-item-main">
                     <span class="recent-item-name">{{ b.source_server_name }}<el-tag v-if="b.source_server_deleted" type="danger" size="small" effect="plain" class="deleted-tag">服务器已删除</el-tag></span>
-                    <el-tag :type="b.status === 'success' ? 'success' : 'danger'" size="small" effect="dark">{{ b.status === 'success' ? '成功' : '失败' }}</el-tag>
+
                   </div>
+                  <OperationProgress :task="b" kind="backup" />
                   <div class="recent-item-sub">
                     <span v-if="b.status === 'success'">{{ b.file_size_display }}</span>
                     <span v-else class="recent-error-msg">{{ b.error_msg.slice(0, 60) }}</span>
@@ -93,8 +96,9 @@
                 <div class="recent-item-info">
                   <div class="recent-item-main">
                     <span class="recent-item-name">{{ r.target_server_name }}<el-tag v-if="r.target_server_deleted" type="danger" size="small" effect="plain" class="deleted-tag">服务器已删除</el-tag></span>
-                    <el-tag :type="r.status === 'success' ? 'success' : 'danger'" size="small" effect="dark">{{ r.status === 'success' ? '成功' : '失败' }}</el-tag>
+
                   </div>
+                  <OperationProgress :task="r" kind="restore" />
                   <div class="recent-item-sub">
                     <span v-if="r.status === 'success'" class="recent-backup-name">{{ r.backup_filename.slice(0, 30) }}</span>
                     <span v-else class="recent-error-msg">{{ r.error_msg.slice(0, 60) }}</span>
@@ -140,7 +144,7 @@
               type="primary"
               size="small"
               :disabled="backingUpId === s.id"
-              :loading="backingUpId === s.id"
+              :loading="backingUpId === s.id || activeBackups.some(b => b.source_server_id === s.id)"
               @click="doBackup(s)"
             >
               {{ backingUpId === s.id ? '备份中...' : '立即备份' }}
@@ -167,9 +171,16 @@
 <script>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
+import { isPlatformAdmin } from '../composables/accessState.js'
+import OrganizationDashboard from '../components/OrganizationDashboard.vue'
+import OperationProgress from '../components/OperationProgress.vue'
+import { useOperationPolling } from '../composables/useOperationPolling'
+import { operationActive } from '../components/operationDisplay'
 
 export default {
+  components: { OperationProgress, OrganizationDashboard },
   setup() {
+    if (!isPlatformAdmin.value) return { isPlatformAdmin }
     const servers = ref([])
     const backingUpId = ref(null)
     const refreshingAll = ref(false)
@@ -226,20 +237,22 @@ export default {
       )).finally(() => { refreshingAll.value = false })
     }
 
-    function doBackup(s) {
+    const activeBackups = ref([])
+    const { refresh: refreshTasks, error: pollError } = useOperationPolling(
+      config => Promise.all([api.get('/dashboard/recent', config), api.get('/backups', config), api.get('/restore-tasks', config)]),
+      ([recent, backups, restores]) => {
+        activeBackups.value = backups.data.filter(operationActive)
+        const combine = (active, recent) => [...new Map([...active, ...recent].map(t => [t.id, t])).values()]
+        recentBackups.value = combine(activeBackups.value, recent.data.recent_backups)
+        recentRestores.value = combine(restores.data.filter(operationActive), recent.data.recent_restores)
+        backupCount.value = backups.data.length
+      },
+      () => [...recentBackups.value, ...recentRestores.value].some(operationActive),
+    )
+    async function doBackup(s) {
       backingUpId.value = s.id
-      api.post('/backups', { source_server_id: s.id }).then(() => {
-        pollTimer = setInterval(() => {
-          api.get('/backups').then(res => {
-            const running = res.data.find(b => b.source_server_id === s.id && b.status === 'running')
-            if (!running) {
-              backingUpId.value = null
-              if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-              loadData()
-            }
-          })
-        }, 2000)
-      }).catch(() => { backingUpId.value = null })
+      try { await api.post('/backups', { source_server_id: s.id }); await refreshTasks() }
+      finally { backingUpId.value = null }
     }
 
     function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
@@ -252,7 +265,7 @@ export default {
     onMounted(loadData)
     onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 
-    return { servers, backingUpId, refreshingAll, backupCount, restoreRate, scheduleCount, failedRestoreServers, recentBackups, recentRestores, loadData, doBackup, refreshServer, refreshAll, fmt, fmtShort }
+    return { isPlatformAdmin, servers, pollError, activeBackups, backingUpId, refreshingAll, backupCount, restoreRate, scheduleCount, failedRestoreServers, recentBackups, recentRestores, loadData, doBackup, refreshServer, refreshAll, fmt, fmtShort }
   },
 }
 </script>

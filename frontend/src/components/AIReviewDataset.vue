@@ -1,7 +1,7 @@
 <template>
   <div class="glass-card dataset-panel">
     <div class="dataset-toolbar">
-      <el-select v-model="repository" filterable placeholder="选择审查仓库" aria-label="数据集仓库" @change="page = 1; load()"><el-option v-for="r in repositories" :key="r.id" :value="r.id" :label="r.repo_name" /></el-select>
+      <el-select v-model="repository" filterable placeholder="选择审查仓库" aria-label="数据集仓库" @change="page = 1; load()"><el-option v-for="r in repositories" :key="r.id" :value="r.id" :label="`${r.server_name} / ${r.repo_name}${r.access_archived ? '（已归档）' : ''}`" /></el-select>
       <el-select v-model="status" clearable placeholder="全部状态" aria-label="样本状态" @change="page = 1; load()"><el-option v-for="(label, key) in states" :key="key" :value="key" :label="label" /></el-select>
       <el-button :icon="Refresh" :loading="busy" :disabled="!repository" @click="load">刷新</el-button>
       <el-button :disabled="!repository" @click="download(false)">导出生效样本</el-button>
@@ -25,7 +25,7 @@
       <el-table-column label="操作" width="150"><template #default="{ row }"><div class="dataset-toolbar"><el-button link @click="open(row)">原文与修订</el-button><el-button link type="warning" :disabled="row.status === 'disabled'" @click="disable(row)">停用</el-button></div></template></el-table-column>
     </el-table>
     <el-pagination v-if="repository" v-model:current-page="page" :total="total" :page-size="30" layout="prev, pager, next, total" @current-change="load" />
-    <el-drawer v-model="visible" title="样本原文与不可变修订" size="min(820px, 96vw)"><article v-for="r in history" :key="r.revision"><h3>修订 {{ r.revision }} · {{ states[r.status] }}</h3><p>确认者 ID：{{ r.confirmed_by || '尚无' }}；PR #{{ r.pr }}；版本：{{ r.head || '未知' }}</p><p>{{ r.source_url }}</p><h4>原始意见</h4><pre>{{ r.original?.explanation }}</pre><h4>人工纠正与适用条件</h4><pre>{{ r.correction || '尚无' }}</pre><p v-if="r.invalidation">失效原因：{{ r.invalidation }}</p><details><summary>固定版本上下文</summary><pre>{{ JSON.stringify(r.context, null, 2) }}</pre></details></article></el-drawer>
+    <el-drawer append-to-body v-model="visible" title="样本原文与不可变修订" size="min(820px, 96vw)"><article v-for="r in history" :key="r.revision"><h3>修订 {{ r.revision }} · {{ states[r.status] }}</h3><p>确认者 ID：{{ r.confirmed_by || '尚无' }}；PR #{{ r.pr }}；版本：{{ r.head || '未知' }}</p><p>{{ r.source_url }}</p><h4>原始意见</h4><pre>{{ r.original?.explanation }}</pre><h4>人工纠正与适用条件</h4><pre>{{ r.correction || '尚无' }}</pre><p v-if="r.invalidation">失效原因：{{ r.invalidation }}</p><details><summary>固定版本上下文</summary><pre>{{ JSON.stringify(r.context, null, 2) }}</pre></details></article></el-drawer>
   </div>
 </template>
 <script setup>
@@ -43,7 +43,7 @@ const fail = e => { error.value = e.response?.data?.error || '数据集操作失
 async function load() { const current = ++generation; if (!repository.value) { items.value = []; return } busy.value = true; error.value = ''; try { const r = await api.get(path(), { params: { page: page.value, status: status.value || undefined } }); if (current !== generation) return; items.value = r.data.items; total.value = r.data.total; pending.value = r.data.pending_events; syncError.value = r.data.sync_error } catch (e) { if (current === generation) fail(e) } finally { if (current === generation) busy.value = false } }
 async function open(row) { try { history.value = (await api.get(path() + `/${row.id}/history`)).data; visible.value = true } catch (e) { fail(e) } }
 async function disable(row) { const target = path(); try { await ElMessageBox.confirm('停用后不再提供给新审查任务，原始意见和历史修订保留。', '停用样本', { confirmButtonText: '停用', cancelButtonText: '取消' }); const csrf = (await api.get('/ai-review/csrf')).data.token; await api.post(target + `/${row.id}/disable`, {}, { headers: { 'X-Review-CSRF': csrf } }); ElMessage.success('样本已停用'); await load() } catch (e) { if (e !== 'cancel' && e !== 'close') fail(e) } }
-async function download(all) { try { const r = await api.get(path() + '/export', { params: { history: all ? '1' : '0' }, responseType: 'blob' }); const url = URL.createObjectURL(r.data); const link = document.createElement('a'); link.href = url; link.download = `审查数据集-${repository.value}-${all ? '历史' : '生效'}.zip`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (e) { fail(e) } }
+async function download(all) { try { const r = await api.get(path() + '/export', { params: { history: all ? '1' : '0' }, responseType: 'blob' }); const url = URL.createObjectURL(r.data); const link = document.createElement('a'); link.href = url; link.download = `review-dataset-${repository.value}-${all ? 'history' : 'active'}.zip`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (e) { fail(e) } }
 </script>
 <style scoped>
 .dataset-panel { padding: 24px; min-width: 0; overflow-wrap: anywhere; }

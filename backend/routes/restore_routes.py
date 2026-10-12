@@ -1,3 +1,4 @@
+from services.operation_progress import progress_for_response
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
@@ -29,11 +30,8 @@ def restore_to_dict(r):
         'target_server_deleted': not server_exists,
         'status': r.status,
         'error_msg': r.error_msg,
-        'progress_stage': r.progress_stage,
-        'progress_label': r.progress_label,
-        'progress_percent': r.progress_percent or 0,
-        'progress_detail': r.progress_detail,
-        'progress_updated_at': r.progress_updated_at.isoformat() if r.progress_updated_at else None,
+        'diagnostic_id': r.diagnostic_id,
+        **progress_for_response(r),
         'started_at': r.started_at.isoformat() if r.started_at else None,
         'completed_at': r.completed_at.isoformat() if r.completed_at else None,
         'verification_status': verification_status,

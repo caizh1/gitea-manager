@@ -1,5 +1,6 @@
 <template>
   <div v-loading="loading">
+    <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" />
     <div class="detail-header">
       <button class="back-btn" @click="$router.push('/servers')">← 返回</button>
       <span class="detail-title">{{ server.name }}</span>
@@ -69,14 +70,10 @@
       <el-collapse-item name="backups" :title="`备份记录 (共 ${detail.backup_count} 条)`">
         <el-table :data="detail.backups || []" size="small" v-if="(detail.backups || []).length" max-height="var(--table-max-height)">
           <el-table-column prop="id" label="ID" width="60" />
+          <el-table-column label="状态与进度" min-width="300"><template #default="{ row }"><OperationProgress :task="row" kind="backup" /></template></el-table-column>
           <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip />
           <el-table-column label="大小" width="90">
             <template #default="{ row }">{{ fmtSize(row.file_size) }}</template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
-            </template>
           </el-table-column>
           <el-table-column label="时间" width="150">
             <template #default="{ row }">{{ fmt(row.started_at) }}</template>
@@ -88,12 +85,8 @@
       <el-collapse-item name="restores" :title="`恢复记录 (共 ${detail.restore_count} 条)`">
         <el-table :data="detail.restores || []" size="small" v-if="(detail.restores || []).length" max-height="var(--table-max-height)">
           <el-table-column prop="id" label="ID" width="60" />
+          <el-table-column label="状态与进度" min-width="300"><template #default="{ row }"><OperationProgress :task="row" kind="restore" /></template></el-table-column>
           <el-table-column prop="backup_filename" label="备份文件" min-width="220" show-overflow-tooltip />
-          <el-table-column prop="status" label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
-            </template>
-          </el-table-column>
           <el-table-column label="时间" width="150">
             <template #default="{ row }">{{ fmt(row.started_at) }}</template>
           </el-table-column>
@@ -108,8 +101,12 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
+import OperationProgress from '../components/OperationProgress.vue'
+import { useOperationPolling } from '../composables/useOperationPolling'
+import { operationActive } from '../components/operationDisplay'
 
 export default {
+  components: { OperationProgress },
   setup() {
     const route = useRoute()
     const loading = ref(false)
@@ -124,6 +121,12 @@ export default {
         detail.value = res.data.detail || {}
       }).finally(() => { loading.value = false })
     }
+
+    const { error: pollError } = useOperationPolling(
+      config => Promise.all([api.get('/backups', config), api.get('/restore-tasks', config)]),
+      ([b, r]) => { const id = Number(route.params.id); detail.value = { ...detail.value, backups: b.data.filter(t => t.source_server_id === id), restores: r.data.filter(t => t.target_server_id === id) } },
+      () => [...(detail.value.backups || []), ...(detail.value.restores || [])].some(operationActive),
+    )
 
     function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
     function fmtSize(b) {
@@ -140,7 +143,7 @@ export default {
     }
 
     onMounted(loadData)
-    return { loading, server, detail, activeSections, loadData, fmt, fmtSize, fmtMem }
+    return { pollError, loading, server, detail, activeSections, loadData, fmt, fmtSize, fmtMem }
   },
 }
 </script>

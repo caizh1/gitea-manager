@@ -75,7 +75,7 @@
       </div>
     </div>
 
-    <el-dialog v-model="showCreateDialog" :title="editingMirror ? '编辑镜像配置' : '新建镜像配置'" width="520px" @close="resetForm">
+    <el-dialog append-to-body v-model="showCreateDialog" :title="editingMirror ? '编辑镜像配置' : '新建镜像配置'" width="520px" @close="resetForm">
       <el-form label-width="110px">
         <el-form-item label="源服务器">
           <el-select v-model="form.source_server_id" placeholder="选择主服务器" style="width:100%" :disabled="!!editingMirror">
@@ -104,7 +104,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="镜像仓库详情" width="min(1120px, 92vw)" class="mirror-detail-dialog">
+    <el-dialog append-to-body v-model="detailVisible" title="镜像仓库详情" width="min(1120px, 92vw)" class="mirror-detail-dialog">
       <div class="detail-shell">
         <div v-if="detailMirror && isMirrorRunning(detailMirror)" class="mirror-progress detail-progress">
           <div class="progress-header">

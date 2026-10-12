@@ -1,4 +1,5 @@
 <template>
+  <el-button @click="$router.push('/management-setup')">服务器接入与安装诊断</el-button>
   <div>
     <div class="section-header">
       <h3 class="section-title">系统设置</h3>

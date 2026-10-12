@@ -10,6 +10,7 @@
       <el-button type="primary" @click="showCreateDialog = true" :disabled="primaryServers.length === 0">创建备份</el-button>
     </div>
 
+    <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" />
     <div v-if="backups.length === 0">
       <el-empty description="暂无备份记录" />
     </div>
@@ -23,14 +24,12 @@
             <el-tag v-if="row.source_server_deleted" type="danger" size="small" effect="plain" style="margin-left:4px;font-size:10px">服务器已删除</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="状态与进度" min-width="300">
+          <template #default="{ row }"><OperationProgress :task="row" kind="backup" /></template>
+        </el-table-column>
         <el-table-column prop="filename" label="文件名" min-width="280" />
         <el-table-column label="大小" width="100">
           <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
-          </template>
         </el-table-column>
         <el-table-column label="Commit 快照" width="150">
           <template #default="{ row }">
@@ -55,6 +54,7 @@
           <template #default="{ row }">
             <el-button size="small" type="primary" v-if="row.status === 'success'"
               @click="downloadBackup(row)">下载</el-button>
+            <a v-if="row.diagnostic_id" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`">诊断包</a>
             <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
               <template #reference><el-button size="small" type="danger">删除</el-button></template>
             </el-popconfirm>
@@ -63,7 +63,7 @@
       </el-table>
     </div>
 
-    <el-dialog title="创建备份" v-model="showCreateDialog" width="450px">
+    <el-dialog append-to-body title="创建备份" v-model="showCreateDialog" width="450px">
       <el-form label-width="100px">
         <el-form-item label="源服务器">
           <el-select v-model="selectedServerId" placeholder="选择主服务器" style="width:100%">
@@ -77,7 +77,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog title="备份失败原因" v-model="errorDialogVisible" width="720px">
+    <el-dialog append-to-body title="备份失败原因" v-model="errorDialogVisible" width="720px">
       <div v-if="selectedErrorBackup" class="error-dialog">
         <div class="error-meta">
           <span>{{ selectedErrorBackup.filename }}</span>
@@ -92,8 +92,12 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
+import OperationProgress from '../components/OperationProgress.vue'
+import { useOperationPolling } from '../composables/useOperationPolling'
+import { operationActive, utcTime } from '../components/operationDisplay'
 
 export default {
+  components: { OperationProgress },
   setup() {
     const backups = ref([])
     const servers = ref([])
@@ -106,14 +110,11 @@ export default {
 
     const primaryServers = ref([])
 
-    function load() {
-      loading.value = true
-      Promise.all([api.get('/backups'), api.get('/servers')]).then(([bRes, sRes]) => {
-        backups.value = bRes.data
-        servers.value = sRes.data
-        primaryServers.value = sRes.data.filter(s => s.role === 'primary')
-      }).finally(() => { loading.value = false })
-    }
+    const { refresh: load, error: pollError } = useOperationPolling(
+      config => Promise.all([api.get('/backups', config), api.get('/servers', config)]),
+      ([bRes, sRes]) => { backups.value = bRes.data; servers.value = sRes.data; primaryServers.value = sRes.data.filter(s => s.role === 'primary') },
+      () => backups.value.some(operationActive),
+    )
 
     function createBackup() {
       if (!selectedServerId.value) return
@@ -175,11 +176,10 @@ export default {
       return 'info'
     }
 
-    function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
+    function fmt(d) { return d ? new Date(utcTime(d)).toLocaleString() : '-' }
 
-    onMounted(load)
 
-    return { backups, loading, creating, showCreateDialog, selectedServerId, primaryServers,
+    return { backups, pollError, loading, creating, showCreateDialog, selectedServerId, primaryServers,
              errorDialogVisible, selectedErrorBackup,
              load, createBackup, downloadBackup, deleteBackup, shortError, showError,
              formatSize, statusType, snapshotText, snapshotType, fmt }

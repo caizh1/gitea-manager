@@ -18,8 +18,9 @@
       const p = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
       if (p.version !== 1 || p.repository_id !== identity.id || p.repository !== identity.name || p.number !== identity.number ||
           !Object.hasOwn(labels, p.status) || !/^[0-9a-f]{32}$/.test(p.job) || !sha(p.head) || !sha(p.current_head) ||
-          ![p.generation, p.job_generation, p.sequence, p.units_completed].every(integer) || p.job_generation > p.generation ||
-          !(p.units_total === null || (integer(p.units_total) && p.units_completed <= p.units_total)) ||
+          ![p.generation, p.job_generation, p.sequence].every(integer) || p.job_generation > p.generation ||
+          !(integer(p.units_completed) || (p.native_session === true && p.units_completed === null && p.units_total === null)) ||
+          !(p.units_total === null || (integer(p.units_total) && integer(p.units_completed) && p.units_completed <= p.units_total)) ||
           ![p.received_at, p.started_at, p.finished_at, p.lease_until, p.checked_at].every(timeValue) ||
           typeof p.enabled !== 'boolean' || typeof p.detail !== 'string' || p.detail.length > 1000 ||
           typeof p.error !== 'string' || p.error.length > 1000 || typeof p.stage !== 'string' || p.stage.length > 80 ||
@@ -27,9 +28,16 @@
           typeof p.review_fragment !== 'string' || !/^(?:issuecomment-[1-9][0-9]*)?$/.test(p.review_fragment)) return null;
       if (p.coverage !== null && (!p.coverage || typeof p.coverage.complete !== 'boolean' ||
           !integer(p.coverage.files_reviewed) || !integer(p.coverage.files_total) || p.coverage.files_reviewed > p.coverage.files_total)) return null;
-      if (p.attention != null && (typeof p.attention.required !== 'boolean' ||
-          !integer(p.attention.pending_count) || p.attention.number !== identity.number ||
-          typeof p.attention.reason !== 'string' || p.attention.reason.length > 1000)) return null;
+      // 老版本没有待办字段；新字段必须属于当前 PR 且计数与开关一致。
+      if (p.attention != null) {
+        const attention = p.attention;
+        if (typeof attention !== 'object' || Array.isArray(attention) ||
+            typeof attention.required !== 'boolean' || !integer(attention.pending_count) ||
+            attention.required !== (attention.pending_count > 0) || attention.number !== identity.number ||
+            typeof attention.reason !== 'string' || attention.reason.length > 1000 ||
+            ('since' in attention && !timeValue(attention.since)) ||
+            ('repository' in attention && (!integer(attention.repository) || attention.repository === 0))) return null;
+      }
       return p;
     } catch { return null; }
   }
@@ -79,10 +87,7 @@
   const fmt = value => value ? new Date(value * 1000).toLocaleString('zh-CN') : '尚无';
   function textMetric(label, value) { const span = document.createElement('span'); span.textContent = `${label}：${value}`; metrics.append(span); }
   function render(p, pr) {
-    const state = effectiveStatus(p, pr);
-    const blocked = state === 'queued' && p.attention?.required === true;
-    card.dataset.status = blocked ? 'publish_unknown' : state;
-    status.textContent = blocked ? '等待人工处理' : labels[state];
+    const state = effectiveStatus(p, pr); card.dataset.status = state; status.textContent = labels[state];
     detail.textContent = state === 'outdated' ? '当前 PR 已有新提交，下方审查结果属于历史版本。' : state === 'interrupted' ? labels[state] : p.detail;
     metrics.replaceChildren(); textMetric('审查版本', p.head ? p.head.slice(0, 12) : '等待读取');
     textMetric('接收', fmt(p.received_at));

@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import tempfile
 import sys
 import unittest
 from datetime import datetime
@@ -18,6 +21,7 @@ from services.integration_outbox_service import emit_event, synchronize_bootstra
 class IntegrationApiTestCase(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
+        self.app.config['INTEGRATION_ENABLED'] = True
         self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
         self.app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
         db.init_app(self.app)
@@ -45,6 +49,46 @@ class IntegrationApiTestCase(unittest.TestCase):
         db.session.remove()
         db.drop_all()
         self.ctx.pop()
+
+    def test_disabled_rejects_existing_token_on_all_endpoints(self):
+        for enabled in (False, None):
+            self.app.config.pop('INTEGRATION_ENABLED', None)
+            if enabled is not None:
+                self.app.config['INTEGRATION_ENABLED'] = enabled
+            for path in ('health', 'events', f'tasks/backup/{self.backup_id}'):
+                response = self.client.get('/api/integrations/v1/' + path, headers=self.headers)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.get_json()['error'], '外部集成未启用')
+        self.assertIsNone(IntegrationServiceToken.query.filter_by(name='sentinel-test').one().last_used_at)
+
+    def test_application_startup_switch(self):
+        code = """
+from app import create_app
+from models import IntegrationServiceToken
+app = create_app()
+client = app.test_client()
+assert client.get('/api/session').status_code == 200
+with app.app_context():
+    assert IntegrationServiceToken.query.count() == int(app.config['INTEGRATION_ENABLED'])
+response = client.get('/api/integrations/v1/health', headers={'Authorization': 'Bearer test-token'})
+assert response.status_code == (200 if app.config['INTEGRATION_ENABLED'] else 404)
+"""
+        for enabled, token, succeeds in ((None, '', True), ('false', 'test-token', True),
+                                         ('true', '', False), ('true', 'test-token', True)):
+            with tempfile.TemporaryDirectory() as directory:
+                env = dict(os.environ, DATABASE_URL=f'sqlite:///{directory}/manager.db',
+                           DISABLE_BACKGROUND_TASKS='1', INTEGRATION_SERVICE_TOKEN=token)
+                env.pop('INTEGRATION_ENABLED', None)
+                env.pop('AI_REVIEW_HOST_POLICY_FILE', None)
+                if enabled is not None:
+                    env['INTEGRATION_ENABLED'] = enabled
+                result = subprocess.run([sys.executable, '-c', code], cwd=BACKEND_DIR,
+                                        env=env, capture_output=True, text=True)
+                if succeeds:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('启用外部集成时必须配置 INTEGRATION_SERVICE_TOKEN', result.stderr)
 
     def test_requires_service_token_and_audits_failure(self):
         response = self.client.get('/api/integrations/v1/health')

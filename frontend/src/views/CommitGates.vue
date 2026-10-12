@@ -5,8 +5,8 @@
     </div>
 
     <div class="glass-card gate-toolbar">
-      <el-select v-model="selectedServerId" placeholder="选择 Gitea 服务器" class="server-select" @change="onServerChange">
-        <el-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
+      <el-select v-model="selectedServerId" :disabled="!isPlatformAdmin" placeholder="选择 Gitea 服务器" class="server-select" @change="onServerChange">
+        <el-option v-for="s in servers" :key="s.id" :label="s.host ? `${s.name} (${s.host})` : s.name" :value="s.id" />
       </el-select>
       <el-button :icon="Refresh" :disabled="!selectedServerId" @click="reloadAll">刷新</el-button>
     </div>
@@ -113,6 +113,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Close, Delete, Edit, Finished, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
 import { api } from '../api'
+import { isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 
 export default {
   setup() {
@@ -137,7 +138,7 @@ export default {
 
     function loadServers() {
       return api.get('/servers').then(res => {
-        servers.value = res.data
+        servers.value = scopedServers(res.data)
         if (!selectedServerId.value && servers.value.length) {
           selectedServerId.value = servers.value[0].id
         }
@@ -271,7 +272,7 @@ export default {
     }
 
     function applyAll() {
-      ElMessageBox.confirm('将当前规则应用到该服务器当前全部仓库？', '确认应用', { type: 'warning' })
+      ElMessageBox.confirm(isPlatformAdmin.value ? '将当前规则应用到该服务器当前全部仓库？' : '将当前规则应用到当前组织的全部仓库？', '确认应用', { type: 'warning' })
         .then(() => applyGate({ apply_all: true }))
         .catch(() => {})
     }
@@ -312,7 +313,7 @@ export default {
     })
 
     return {
-      servers, selectedServerId, rules, repos, selectedRepoNames, selectedRuleId,
+      isPlatformAdmin, servers, selectedServerId, rules, repos, selectedRepoNames, selectedRuleId,
       enabledRules, canApplySelected, ruleForm, editingRuleId, savingRule,
       loadingRepos, applying, removing, testMessage, testResult,
       loadDefaultRule, newRule, editRule, saveRule, deleteRule, testRule,

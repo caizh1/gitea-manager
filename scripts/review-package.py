@@ -16,16 +16,20 @@ try: fcntl.flock(package_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 except BlockingIOError: raise RuntimeError('另一次离线打包正在执行，未覆盖其临时文件') from None
 parser=argparse.ArgumentParser();parser.add_argument('--export-images',action='store_true')
 parser.add_argument('--source-image-tag',default='local',help='导出已固定构建的镜像标签，避免并行开发改写 local 标签')
+parser.add_argument('--include-legacy-executor',action='store_true')
+parser.add_argument('--upgrade-only',action='store_true',help='仅包含应用镜像与升级回退必需文件')
 args=parser.parse_args()
 def run(command):subprocess.run(command,cwd=ROOT,check=True)
-run(['python3','scripts/review-runtime-prepare.py'])
+if not args.upgrade_only: run(['python3','scripts/review-runtime-prepare.py'])
 offline=ROOT/'offline';offline.mkdir(exist_ok=True)
 images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline',
         'python:3.11-slim','nginx:1.31.1','gitea/gitea:1.26.4','postgres:17.11-bookworm']
+if args.upgrade_only: images=images[:3]
+if args.include_legacy_executor: images.append('gitea-review-executor-legacy:offline')
 expected_images={}
 if args.export_images:
-    for component in ('backend','frontend','executor'):
-        source='gitea-review-'+component+':'+args.source_image_tag
+    for component in (('backend','frontend','executor','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor')):
+        source=('gitea-review-executor:'+args.source_image_tag+'-legacy') if component=='executor-legacy' else 'gitea-review-'+component+':'+args.source_image_tag
         dest='gitea-review-'+component+':offline'
         expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect','--platform','linux/amd64',source],text=True))[0]['Id']
         run(['docker','tag',source,dest])
@@ -48,8 +52,11 @@ with tarfile.open(offline/'运行镜像.tar') as archive:
                          '架构':value['architecture'],'系统':value['os']})
 (offline/'镜像清单.json').write_text(json.dumps({'说明':'本交付包固定镜像；启动使用 --no-build --pull never。','镜像':manifest},ensure_ascii=False,indent=2)+'\n')
 roots=['frontend','backend','review-runtime','docs','scripts','offline','docker-compose.yml','compose.ai-review.yml',
-       'compose.ai-review.images.yml','compose.review-local.yml','compose.local.yml','deploy.sh','upgrade.sh','AGENTS.md','README.md','.dockerignore','.gitignore']
+       'compose.ai-review.images.yml','compose.tls.yml','compose.review-local.yml','compose.local.yml','deploy.sh','upgrade.sh','install.sh','uninstall.sh','deployment','AGENTS.md','README.md','.dockerignore','.gitignore']
 excluded={'node_modules','__pycache__','.git','.DS_Store','.env','work','data'}
+if args.upgrade_only:
+    roots=['offline/运行镜像.tar','offline/镜像清单.json','scripts/upgrade_runtime.py',
+           'scripts/upgrade_volume.py','upgrade.sh']
 files=[]
 for name in roots:
     path=ROOT/name

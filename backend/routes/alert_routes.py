@@ -1,6 +1,11 @@
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from models import db, Alert
+from access.scopes import visible_keys, require_resource
+
+def scoped_alerts():
+    allowed = visible_keys('alert')
+    return Alert.query if allowed is None else Alert.query.filter(Alert.id.in_([int(i) for i in allowed]))
 
 alert_bp = Blueprint('alert', __name__)
 
@@ -22,7 +27,7 @@ def alert_to_dict(a):
 @alert_bp.route('/alerts', methods=['GET'])
 @login_required
 def list_alerts():
-    alerts = Alert.query.filter(Alert.status != 'cleared')\
+    alerts = scoped_alerts().filter(Alert.status != 'cleared')\
         .order_by(Alert.created_at.desc()).limit(200).all()
     return jsonify([alert_to_dict(a) for a in alerts])
 
@@ -30,8 +35,8 @@ def list_alerts():
 @alert_bp.route('/alerts/summary', methods=['GET'])
 @login_required
 def alert_summary():
-    active_count = Alert.query.filter_by(status='active').count()
-    latest = Alert.query.filter_by(status='active')\
+    active_count = scoped_alerts().filter_by(status='active').count()
+    latest = scoped_alerts().filter_by(status='active')\
         .order_by(Alert.created_at.desc()).first()
     return jsonify({
         'active_count': active_count,
@@ -42,6 +47,7 @@ def alert_summary():
 @alert_bp.route('/alerts/<int:aid>/clear', methods=['POST'])
 @login_required
 def clear_alert(aid):
+    require_resource('alert', aid)
     alert = Alert.query.get_or_404(aid)
     alert.status = 'cleared'
     db.session.commit()
@@ -51,6 +57,6 @@ def clear_alert(aid):
 @alert_bp.route('/alerts/clear-resolved', methods=['POST'])
 @login_required
 def clear_resolved():
-    Alert.query.filter_by(status='resolved').update({'status': 'cleared'})
+    scoped_alerts().filter_by(status='resolved').update({'status': 'cleared'})
     db.session.commit()
     return jsonify({'ok': True})

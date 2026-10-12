@@ -1,0 +1,15 @@
+{
+  "说明": "比较已完成真实备份恢复验收的构建输入与最终候选构建；后续变更集中于启动探针、运行诊断及对应测试，不能声称整个后端镜像不变",
+  "输入发生变化的文件": [
+    "backend/ai_review/runtime_status.py",
+    "runtime/runtime_probe.py"
+  ],
+  "备份恢复和SSH核心源文件保持相同": [
+    "backend/services/local_restore.py",
+    "backend/services/gitea_service.py",
+    "backend/services/docker_service.py",
+    "backend/services/ssh_service.py",
+    "backend/services/commit_service.py"
+  ],
+  "最终变更补验": "见运行诊断专项测试和候选安装验收；冷重启仍未通过"
+}

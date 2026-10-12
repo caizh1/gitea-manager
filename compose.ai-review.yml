@@ -8,12 +8,14 @@ services:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
       AI_REVIEW_MODEL_HOSTS: ${AI_REVIEW_MODEL_HOSTS:-}
       AI_REVIEW_WEBHOOK_HOSTS: ${AI_REVIEW_WEBHOOK_HOSTS:-}
     volumes:
       - review-data:/app/review
-    secrets: [review_master]
+    secrets: [review_master, access_authorization]
   review-worker:
     platform: linux/amd64
     build: ./backend
@@ -22,13 +24,15 @@ services:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
       AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
       AI_REVIEW_MODEL_HOSTS: ${AI_REVIEW_MODEL_HOSTS:-}
       AI_REVIEW_EXECUTOR_URL: http://review-executor:5052
       PYTHONDONTWRITEBYTECODE: '1'
     volumes: [review-data:/app/review]
-    secrets: [review_master, review_executor]
+    secrets: [review_master, review_executor, access_authorization]
     networks: [default, review-execution]
     read_only: true
     tmpfs: ['/tmp:size=128m,mode=1777']
@@ -45,10 +49,12 @@ services:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
       PYTHONDONTWRITEBYTECODE: '1'
     volumes: [review-data:/app/review]
-    secrets: [review_master]
+    secrets: [review_master, access_authorization]
     read_only: true
     tmpfs: ['/tmp:size=128m,mode=1777']
     cap_drop: [ALL]
@@ -64,10 +70,12 @@ services:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_GITEA_HOSTS: ${AI_REVIEW_GITEA_HOSTS:-}
       PYTHONDONTWRITEBYTECODE: '1'
     volumes: [review-data:/app/review, ./data:/app/data:ro]
-    secrets: [review_master]
+    secrets: [review_master, access_authorization]
     read_only: true
     tmpfs: ['/tmp:size=128m,mode=1777']
     cap_drop: [ALL]
@@ -105,3 +113,5 @@ secrets:
     file: ${AI_REVIEW_SECRET_DIR:?请配置秘密目录}/master.key
   review_executor:
     file: ${AI_REVIEW_SECRET_DIR:?请配置秘密目录}/executor.token
+  access_authorization:
+    file: ${AI_REVIEW_SECRET_DIR:?请配置秘密目录}/access-authorization.token

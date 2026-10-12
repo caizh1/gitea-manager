@@ -23,6 +23,13 @@ def address(value):
         raise ReviewError('请输入完整的 HTTP/HTTPS 服务地址，不含凭据、查询或片段') from None
 
 
+def gitea_address(value):
+    """服务器管理允许省略协议，统一规范化后再进行严格校验。"""
+    if isinstance(value, str) and '://' not in value:
+        value = 'http://' + value
+    return address(value)[0]
+
+
 def path():
     value = os.environ.get('AI_REVIEW_HOST_POLICY_FILE')
     return Path(value) if value else None

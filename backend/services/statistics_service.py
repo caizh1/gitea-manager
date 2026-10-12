@@ -38,7 +38,7 @@ def _get_all_repos(server):
                 headers=headers, params={'page': page, 'limit': 50}, timeout=30
             )
             if resp.status_code != 200:
-                break
+                raise RuntimeError('统计查询失败，未采用不完整结果')
             data = resp.json()
             items = data.get('data', [])
             if not items:
@@ -47,8 +47,8 @@ def _get_all_repos(server):
             if len(items) < 50:
                 break
             page += 1
-        except Exception:
-            break
+        except requests.RequestException as exc:
+            raise RuntimeError('统计采集连接中断，未采用不完整结果') from exc
     return repos
 
 
@@ -63,7 +63,7 @@ def _get_repo_commits(server, owner, repo):
                 headers=headers, params={'page': page, 'limit': 50, 'stat': 'true'}, timeout=30
             )
             if resp.status_code != 200:
-                break
+                raise RuntimeError('统计查询失败，未采用不完整结果')
             data = resp.json()
             if not data:
                 break
@@ -71,8 +71,8 @@ def _get_repo_commits(server, owner, repo):
             if len(data) < 50:
                 break
             page += 1
-        except Exception:
-            break
+        except requests.RequestException as exc:
+            raise RuntimeError('统计采集连接中断，未采用不完整结果') from exc
     return commits
 
 
@@ -136,13 +136,17 @@ def _parse_commit_date(cdate_str):
         return None
 
 
-def collect_statistics(server_id):
+def collect_statistics(server_id, binding_id=None, access_actor=None):
     server = GiteaServer.query.get(server_id)
     if not server:
         return
 
     logging.info('[统计] 开始采集 - server=%s', server.name)
-    repos = _get_all_repos(server)
+    if binding_id:
+        from access.scopes import binding_for, repositories_for
+        repos = list(repositories_for(binding_for(binding_id)).values())
+    else:
+        repos = _get_all_repos(server)
     logging.info('[统计] 发现 %d 个仓库', len(repos))
 
     period_commits = defaultdict(lambda: {
@@ -153,6 +157,9 @@ def collect_statistics(server_id):
     })
 
     for repo_info in repos:
+        if access_actor:
+            from access.scopes import check_task_actor
+            check_task_actor(access_actor, server_id, repo_info['id'])
         full_name = repo_info.get('full_name', '')
         if not full_name:
             continue
@@ -161,7 +168,7 @@ def collect_statistics(server_id):
             continue
         owner, repo_name = parts
 
-        commits = _get_repo_commits(server, owner, repo_name)
+        commits = [] if repo_info.get('empty') else _get_repo_commits(server, owner, repo_name)
         commit_count = len(commits)
 
         last_sha = commits[0].get('sha', '') if commits else ''
@@ -234,7 +241,7 @@ def collect_statistics(server_id):
         except Exception:
             db.session.rollback()
 
-        languages = _get_repo_languages(server, owner, repo_name)
+        languages = {} if repo_info.get('empty') else _get_repo_languages(server, owner, repo_name)
         code_lines = 0
         doc_lines = 0
         other_lines = 0
@@ -249,7 +256,7 @@ def collect_statistics(server_id):
                 code_lines += estimated_lines
 
         default_branch = repo_info.get('default_branch', 'master') or 'master'
-        tree = _get_repo_tree(server, owner, repo_name, default_branch)
+        tree = [] if repo_info.get('empty') else _get_repo_tree(server, owner, repo_name, default_branch)
         code_files = 0
         doc_files = 0
         other_files = 0
@@ -300,6 +307,17 @@ def collect_statistics(server_id):
             ))
         db.session.commit()
 
+        from access.statistics import save_snapshot
+        if access_actor:
+            check_task_actor(access_actor, server_id, repo_info['id'])
+        save_snapshot(server, repo_info, commits, {'commits': commit_count, 'commit_count': commit_count,
+            'code_lines': code_lines, 'doc_lines': doc_lines, 'other_lines': other_lines,
+            'code_files': code_files, 'doc_files': doc_files, 'other_files': other_files,
+            'language_breakdown': lang_breakdown, 'last_commit_sha': last_sha,
+            'last_commit_date': last_date.isoformat() if last_date else None})
+
+    if binding_id:
+        return
     for (pt, pk), data in period_commits.items():
         author_commits = data['author_commits']
         authors_sorted = sorted(author_commits.keys(), key=lambda a: -author_commits[a])

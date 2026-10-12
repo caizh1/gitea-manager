@@ -25,7 +25,8 @@ def validate_shape(row):
 
 
 def source_evidence(row, item):
-    sources = {s['source_id']: s for s in [item['before'], item['after'], *item['context']]}
+    references=[s for symbol in item.get('changed_symbols',[]) for s in symbol.get('references',[])]
+    sources = {s['source_id']: s for s in [item['before'], item['after'], *item['context'], *references]}
     verified = []
     for ref in row['support']:
         s = sources.get(ref['source_id'])
@@ -65,6 +66,18 @@ def revalidate_location(finding, snapshot):
     proof = finding.get('location_evidence')
     if not anchor or not file or not isinstance(proof, dict):
         return False
+    if proof.get('kind') == 'native_snapshot':
+        import hashlib
+        side = proof.get('side')
+        if side not in ('old', 'new') or proof != {
+                'kind': 'native_snapshot', 'snapshot_id': snapshot['id'], 'path': file['path'],
+                'side': side, 'line': anchor['line'], 'quote': anchor['quote'],
+                'source_sha256': hashlib.sha256(file[side].encode()).hexdigest()}:
+            return False
+        from .diff import file_lines, quote_text
+        lines = file_lines(file[side].encode())
+        return (anchor == snapshot['anchors'].get(anchor['id']) and anchor['line'] <= len(lines)
+                and quote_text(lines[anchor['line']-1]) == anchor['quote'])
     # 使用全部函数锚点之外的行只影响成员列表，不影响节点及版本身份；生成时按该函数范围过滤。
     own = [snapshot['anchors'][aid] for aid in file['anchors']
            if snapshot['anchors'][aid]['id'] in proof.get('anchor_ids', [])]

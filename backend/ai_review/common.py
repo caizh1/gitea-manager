@@ -6,9 +6,16 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+# TCP 与 TLS 建连仍有明确上限；慢握手不能占用整次模型生成预算。
+MODEL_CONNECT_TIMEOUT = 15
+
 
 class ReviewError(Exception):
     pass
+
+
+class AccessRevoked(ReviewError):
+    fatal_job = True
 
 
 class Stale(ReviewError):

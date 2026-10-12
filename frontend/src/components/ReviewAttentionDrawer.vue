@@ -1,5 +1,5 @@
 <template>
-  <el-drawer v-model="visible" :title="selected ? '处理 Review 待办' : '全部 Review 待办'" size="min(760px, 96vw)">
+  <el-drawer append-to-body v-model="visible" :title="selected ? '处理 Review 待办' : '全部 Review 待办'" size="min(760px, 96vw)">
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="selected">
       <div class="drawer-heading"><div><h3>{{ group?.repo_name || `仓库 ${repository}` }} #{{ number }}</h3><p>{{ pendingTotal }} 项发布结果待核对，{{ waitingTotal }} 条后续审查正在等待</p></div><el-button link type="primary" @click="router.push(attentionRoute())">全部待办</el-button></div>

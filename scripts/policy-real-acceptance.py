@@ -17,6 +17,7 @@ FIXTURES = json.loads((STATE / '真实验收样本.json').read_text())
 REPORT = {'说明': '真实 Gitea 1.26.4 本机隔离验收，不包含模拟测试或生产性能承诺', '检查': []}
 OPENER = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
 CSRF = ''
+ACCESS_CSRF = ''
 SERVER_ID = None
 REPO_IDS = {item['名称'].split('/')[-1]: item['ID'] for item in FIXTURES['仓库']}
 
@@ -28,9 +29,13 @@ def record(name, detail):
 
 
 def api(method, path, payload=None, user=None, manager=False, expected=(200, 201, 202, 204)):
+    global ACCESS_CSRF
     headers = {'Content-Type': 'application/json'}
     if manager:
+        if method == 'POST' and path == '/login' and not ACCESS_CSRF:
+            api('GET', '/session', manager=True)
         headers['X-Policy-CSRF'] = CSRF
+        headers['X-CSRF-Token'] = ACCESS_CSRF
     elif user:
         password = FIXTURES['用户'][user]['密码']
         headers['Authorization'] = 'Basic ' + base64.b64encode((user + ':' + password).encode()).decode()
@@ -46,7 +51,10 @@ def api(method, path, payload=None, user=None, manager=False, expected=(200, 201
         body = response.read()
         if response.code not in expected:
             raise AssertionError(f'{method} {path} 实际 HTTP {response.code}，预期 {expected}；{body.decode()[:350]}')
-        return json.loads(body) if body else None
+        value = json.loads(body) if body else None
+        if manager and isinstance(value, dict) and value.get('csrf_token'):
+            ACCESS_CSRF = value['csrf_token']
+        return value
 
 
 def manager(method, path, payload=None, **kwargs):

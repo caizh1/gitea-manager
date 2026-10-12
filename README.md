@@ -35,6 +35,8 @@
 
 ### 部署
 
+**Ubuntu 24.04 amd64 首次离线安装：** 使用独立的 `manager-ubuntu24-amd64-installer.tar.gz`，解压后运行 `sudo bash install.sh`，输入访问地址和端口。脚本包含离线 Docker 依赖安装、随机凭据生成、数据库初始化及完整后台服务就绪检查。见 [一键安装说明](docs/oneclick-installation.md)。下方源码部署流程属于旧的基础启动方式；已有实例升级继续使用 `upgrade.sh`。
+
 ```bash
 git clone https://github.com/caizh1/gitea-manager.git
 cd gitea-manager
@@ -89,7 +91,8 @@ npm run dev
 | `RESTORE_JOB_POLL_SECONDS` | 远端作业状态轮询间隔 | `5` |
 | `RESTORE_SSH_RECONNECT_GRACE_SECONDS` | 轮询期间 SSH 连续不可用的容忍时间 | `300` |
 | `RESTORE_DIAGNOSTIC_INTERVAL_SECONDS` | 长步骤诊断指标记录间隔 | `30` |
-| `INTEGRATION_SERVICE_TOKEN` | AIOps Sentinel 只读增量接口服务令牌，数据库仅保存 SHA-256 | 无，必须显式配置 |
+| `INTEGRATION_ENABLED` | 是否启用 AIOps Sentinel 外部只读集成，设为 `true` 才启用 | `false` |
+| `INTEGRATION_SERVICE_TOKEN` | 外部集成服务令牌，数据库仅保存 SHA-256 | 空；仅启用集成时必填 |
 
 **注意：** 生产环境部署前请务必修改 `SECRET_KEY` 和 `INIT_PASSWORD`。
 
@@ -152,6 +155,8 @@ gitea-manager/
 | `/api/integrations/v1/health` | GET | 服务令牌认证的只读集成健康检查 |
 | `/api/integrations/v1/events?after_seq=&limit=` | GET | 单调序号增量事件与补传游标 |
 | `/api/integrations/v1/tasks/:type/:id` | GET | 不含凭据和敏感配置的任务详情 |
+
+外部集成默认关闭，接口返回 HTTP 404；即使数据库保留旧令牌也不能访问。需要接入时，配置 `INTEGRATION_ENABLED=true` 和独立的 `INTEGRATION_SERVICE_TOKEN`，重新创建后端容器使配置生效。未显式启用的旧部署升级后也默认关闭；已接入 Sentinel 的部署需要补充启用开关。关闭不删除历史事件和令牌记录。
 
 集成接口使用 `Authorization: Bearer <INTEGRATION_SERVICE_TOKEN>`。备份、恢复、镜像和定时任务的状态变化写入同库 outbox；接口不会返回 Gitea API token、SSH 密钥、密码、备份路径或未脱敏配置。轮换环境变量后重启服务会吊销旧服务令牌并记录审计。
 

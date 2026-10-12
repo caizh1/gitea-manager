@@ -204,7 +204,7 @@ class FeedbackWebhookTests(unittest.TestCase):
     setUp=base_tests.StoreTests.setUp
     def client(self):
         from flask import Flask
-        from auth import init_auth
+        from tests.access_helpers import init_test_auth as init_auth, login_platform
         from routes.ai_review_routes import ai_review_bp
         app=Flask(__name__);app.config.update(SECRET_KEY='测试会话秘密',AI_REVIEW_DB=str(self.store.path))
         init_auth(app);app.register_blueprint(ai_review_bp,url_prefix='/api/ai-review')
@@ -225,7 +225,8 @@ class FeedbackWebhookTests(unittest.TestCase):
         client=self.client();root=f'/api/ai-review/repositories/{self.repo}/dataset'
         for suffix in ('','/export','/DS-不存在/history'):
             self.assertEqual(client.get(root+suffix).status_code,401)
-        with client.session_transaction() as session:session['_user_id']='1';session['_fresh']=True
+        from tests.access_helpers import login_platform
+        login_platform(client)
         self.assertEqual(client.get(root).status_code,200)
         self.assertEqual(client.post(root+'/DS-不存在/disable',json={}).status_code,403)
         self.assertEqual(client.get(root,headers={'Origin':'https://unrelated.example'}).status_code,403)

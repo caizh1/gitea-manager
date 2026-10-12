@@ -74,15 +74,18 @@ services:
       BACKUP_DIR: /app/data/backups
       SECRET_KEY: ${MANAGER_SECRET}
       INIT_PASSWORD: ${MANAGER_PASSWORD}
-      INTEGRATION_SERVICE_TOKEN: ${INTEGRATION_TOKEN}
+      INTEGRATION_ENABLED: ${INTEGRATION_ENABLED:-false}
+      INTEGRATION_SERVICE_TOKEN: ${INTEGRATION_TOKEN:-}
       DISABLE_BACKGROUND_TASKS: '1'
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_GITEA_HOSTS: gitea
       AI_REVIEW_MODEL_HOSTS: ${REVIEW_MODEL_HOSTS:-review-model-fixture}
       AI_REVIEW_WEBHOOK_HOSTS: backend
     volumes: [review-manager:/app/data, review-data:/app/review]
-    secrets: [review_master]
+    secrets: [review_master, access_authorization]
   approval-view:
     image: gitea-review-backend:${REVIEW_IMAGE_TAG:-local}
     pull_policy: never
@@ -112,13 +115,15 @@ services:
     environment:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
       AI_REVIEW_GITEA_HOSTS: gitea
       AI_REVIEW_MODEL_HOSTS: ${REVIEW_MODEL_HOSTS:-review-model-fixture}
       AI_REVIEW_EXECUTOR_URL: http://review-executor:5052
       PYTHONDONTWRITEBYTECODE: '1'
     volumes: [review-data:/app/review]
-    secrets: [review_master, review_executor]
+    secrets: [review_master, review_executor, access_authorization]
     networks: [default, review-execution]
     read_only: true
     tmpfs: ['/tmp:size=128m,mode=1777']
@@ -135,10 +140,12 @@ services:
     environment:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_GITEA_HOSTS: gitea
       PYTHONDONTWRITEBYTECODE: '1'
     volumes: [review-data:/app/review]
-    secrets: [review_master]
+    secrets: [review_master, access_authorization]
     read_only: true
     tmpfs: ['/tmp:size=128m,mode=1777']
     cap_drop: [ALL]
@@ -154,10 +161,12 @@ services:
     environment:
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
+      AI_REVIEW_AUTHORIZATION_URL: http://backend:5000/api/internal/authorization/check
+      AI_REVIEW_AUTHORIZATION_TOKEN_FILE: /run/secrets/access_authorization
       AI_REVIEW_GITEA_HOSTS: gitea
       PYTHONDONTWRITEBYTECODE: '1'
     volumes: [review-data:/app/review, review-manager:/app/data:ro]
-    secrets: [review_master]
+    secrets: [review_master, access_authorization]
     read_only: true
     tmpfs: ['/tmp:size=128m,mode=1777']
     cap_drop: [ALL]
@@ -205,3 +214,5 @@ secrets:
     file: ${REVIEW_STATE_DIR:-./work/AIReview本机}/secrets/master.key
   review_executor:
     file: ${REVIEW_STATE_DIR:-./work/AIReview本机}/secrets/executor.token
+  access_authorization:
+    file: ${REVIEW_STATE_DIR:-./work/AIReview本机}/secrets/access-authorization.token

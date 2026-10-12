@@ -75,6 +75,9 @@ class GiteaServer(db.Model):
     repo_count = db.Column(db.Integer, default=0)
     user_count = db.Column(db.Integer, default=0)
     is_local = db.Column(db.Boolean, default=False)
+    connection_mode = db.Column(db.String(20), nullable=False, default='ssh')
+    instance_identity = db.Column(db.String(200), nullable=False, default='')
+    access_epoch = db.Column(db.String(64), nullable=False, default=lambda: __import__('uuid').uuid4().hex)
     disk_usage = db.Column(db.String(100), default='')
     last_check_at = db.Column(db.DateTime, default=None)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -90,12 +93,23 @@ class Backup(db.Model):
     file_size = db.Column(db.BigInteger, default=0)
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
+    diagnostic_id = db.Column(db.String(100), nullable=False, default='')
     source_api_token = db.Column(db.String(200), default='')
     source_server_name = db.Column(db.String(100), default='')
     commit_snapshot_status = db.Column(db.String(20), default='')
     commit_snapshot_repo_count = db.Column(db.Integer, default=0)
     commit_snapshot_error = db.Column(db.Text, default='')
     commit_snapshot_collected_at = db.Column(db.DateTime, default=None)
+    progress_stage = db.Column(db.String(50), default='')
+    progress_label = db.Column(db.String(100), default='')
+    progress_percent = db.Column(db.Integer, default=0)
+    progress_detail = db.Column(db.Text, default='')
+    progress_updated_at = db.Column(db.DateTime, default=None)
+    progress_current = db.Column(db.BigInteger, default=None)
+    progress_total = db.Column(db.BigInteger, default=None)
+    progress_unit = db.Column(db.String(20), default='')
+    progress_item = db.Column(db.String(1000), default='')
+    progress_step_started_at = db.Column(db.DateTime, default=None)
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, default=None)
 
@@ -111,11 +125,17 @@ class RestoreTask(db.Model):
     target_server_name = db.Column(db.String(100), default='')
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
+    diagnostic_id = db.Column(db.String(100), nullable=False, default='')
     progress_stage = db.Column(db.String(50), default='')
     progress_label = db.Column(db.String(100), default='')
     progress_percent = db.Column(db.Integer, default=0)
     progress_detail = db.Column(db.Text, default='')
     progress_updated_at = db.Column(db.DateTime, default=None)
+    progress_current = db.Column(db.BigInteger, default=None)
+    progress_total = db.Column(db.BigInteger, default=None)
+    progress_unit = db.Column(db.String(20), default='')
+    progress_item = db.Column(db.String(1000), default='')
+    progress_step_started_at = db.Column(db.DateTime, default=None)
     started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime, default=None)
 
@@ -142,6 +162,27 @@ class RestoreStepLog(db.Model):
     completed_at = db.Column(db.DateTime, default=None)
 
     restore_task = db.relationship('RestoreTask', foreign_keys=[restore_task_id], lazy=True)
+
+
+class BackupStepLog(db.Model):
+    __tablename__ = 'backup_step_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    backup_id = db.Column(db.Integer, db.ForeignKey('backups.id'), nullable=False)
+    step_key = db.Column(db.String(50), nullable=False)
+    label = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='running')
+    detail = db.Column(db.Text, default='')
+    metrics_json = db.Column(db.Text, default='{}')
+    exit_code = db.Column(db.Integer, default=None)
+    stdout_tail = db.Column(db.Text, default='')
+    stderr_tail = db.Column(db.Text, default='')
+    remote_job_dir = db.Column(db.String(1000), default='')
+    elapsed_ms = db.Column(db.BigInteger, default=0)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, default=None)
+
+    backup = db.relationship('Backup', foreign_keys=[backup_id], lazy=True)
 
 
 class PolicyTemplate(db.Model):

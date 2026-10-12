@@ -1,15 +1,14 @@
 <template>
   <div class="alert-bell-wrapper">
-    <span v-if="reviewCount" class="alert-latest-text text-danger">{{ reviewCount }} 个 PR 需要处理</span>
-    <span v-else-if="latestAlert" class="alert-latest-text" :class="{ 'text-danger': activeCount > 0 && latestAlert }">
+    <span v-if="latestAlert" class="alert-latest-text" :class="{ 'text-danger': activeCount > 0 && latestAlert }">
       {{ alertLabel(latestAlert.alert_type) }}: {{ latestAlert.server_name }}
     </span>
     <span v-else class="alert-latest-text">无告警</span>
     <el-popover placement="bottom-end" :width="420" trigger="click" popper-class="alert-popover">
       <template #reference>
-        <button type="button" class="bell-icon-wrap" :aria-label="`告警中心，${activeCount + reviewCount} 项未解决`">
+        <button type="button" class="bell-icon-wrap" :aria-label="`告警中心，${activeCount} 条未解决`">
           <el-icon :size="20" class="bell-icon"><Bell /></el-icon>
-          <span v-if="activeCount + reviewCount > 0" class="bell-badge">{{ activeCount + reviewCount > 99 ? '99+' : activeCount + reviewCount }}</span>
+          <span v-if="activeCount > 0" class="bell-badge">{{ activeCount > 99 ? '99+' : activeCount }}</span>
         </button>
       </template>
       <div class="alert-panel">
@@ -17,12 +16,6 @@
           <span class="alert-panel-title">告警中心</span>
           <el-button v-if="resolvedCount > 0" size="small" text type="primary" @click="clearResolved">清除已解决</el-button>
         </div>
-        <section v-if="reviewCount" class="review-priority">
-          <strong>Review 紧急待办 · {{ reviewCount }} 个 PR</strong>
-          <div v-for="item in reviewAttention.items.slice(0, 3)" :key="`${item.repository}-${item.number}`" class="review-alert-row"><span>{{ item.repo_name }} #{{ item.number }}<small>{{ item.blocked_count ? `阻塞 ${item.blocked_count} 条审查` : '发布结果待核对' }}</small></span><el-button size="small" type="primary" @click="router.push(attentionRoute(item))">处理</el-button></div>
-          <el-button link type="primary" @click="router.push(attentionRoute())">查看全部待办</el-button>
-        </section>
-        <div v-if="reviewAttention.error" class="failure">Review 待办更新失败，保留最后数据</div>
         <div class="alert-list" v-if="alerts.length > 0">
           <div v-for="a in alerts" :key="a.id" class="alert-item" :class="'alert-' + a.status">
             <div class="alert-item-header">
@@ -38,24 +31,20 @@
             </div>
           </div>
         </div>
-        <div v-else-if="!reviewCount" class="alert-empty">暂无告警</div>
+        <div v-else class="alert-empty">暂无告警</div>
       </div>
     </el-popover>
   </div>
 </template>
 
 <script>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Bell } from '@element-plus/icons-vue'
 import { api } from '../api'
-import { useRouter } from 'vue-router'
-import { useReviewAttention, attentionRoute } from '../composables/useReviewAttention'
 
 export default {
   components: { Bell },
   setup() {
-    const router = useRouter(), reviewAttention = useReviewAttention()
-    const reviewCount = computed(() => reviewAttention.summary?.pr_count || 0)
     const alerts = ref([])
     const activeCount = ref(0)
     const resolvedCount = ref(0)
@@ -111,17 +100,12 @@ export default {
       if (timer) clearInterval(timer)
     })
 
-    return { router, reviewAttention, reviewCount, attentionRoute, alertLabel, alerts, activeCount, resolvedCount, latestAlert, clearOne, clearResolved, fmtTime }
+    return { alertLabel, alerts, activeCount, resolvedCount, latestAlert, clearOne, clearResolved, fmtTime }
   },
 }
 </script>
 
 <style scoped>
-.review-priority { padding: 12px; margin-bottom: 12px; border-radius: 10px; background: #fff3f2; }
-.review-alert-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: 14px 0; }
-.review-alert-row span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
-.review-alert-row small { display: block; margin-top: 6px; color: #b45349; }
-.failure { color: #b45349; font-size: 12px; margin-bottom: 10px; }
 .alert-bell-wrapper {
   display: flex;
   align-items: center;

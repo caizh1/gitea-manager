@@ -1,0 +1,52 @@
+{
+  "说明": "隔离 Ubuntu 真实 API 验收，不涉及生产数据",
+  "运行时": {
+    "binary_sha256": "a807224f7c13bcc6df63b0d81795b5cc320a3069bd612dba2296898cbeaff69e",
+    "checked_at": 1789985721.219254,
+    "checks": [
+      {
+        "stderr": "",
+        "stdout": "1.18.7\n",
+        "步骤": "版本命令",
+        "耗时秒": 6.53,
+        "退出信号": null,
+        "退出码": 0
+      },
+      {
+        "日志": "Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.\nopencode server listening on http://127.0.0.1:45485\n",
+        "步骤": "服务与会话",
+        "耗时秒": 16.69,
+        "退出码": null
+      }
+    ],
+    "container_state": {
+      "Dead": false,
+      "Error": "",
+      "ExitCode": 0,
+      "FinishedAt": "2026-09-21T10:13:31.37431Z",
+      "OOMKilled": false,
+      "Paused": false,
+      "Pid": 0,
+      "Restarting": false,
+      "Running": false,
+      "StartedAt": "2026-09-21T10:13:04.232196Z",
+      "Status": "exited"
+    },
+    "cpu": [
+      "model name\t: QEMU TCG CPU version 2.5+",
+      "flags\t\t: fpu de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush acpi mmx fxsr sse sse2 ss ht syscall nx mmxext pdpe1gb rdtscp lm 3dnowext 3dnow nopl cpuid pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a 3dnowprefetch vmmcall fsgsbase bmi1 avx2 smep bmi2 erms mpx rdseed adx smap clflushopt clwb sha_ni xsaveopt xgetbv1 xsaveerptr wbnoinvd arat npt vgif umip pku ospke vaes la57 rdpid fsrm"
+    ],
+    "image": "gitea-review-executor:oneclick-v2",
+    "mode": "standard",
+    "ready": true,
+    "reason": "版本、服务及会话接口通过",
+    "selected_image": "gitea-review-executor:oneclick-v2",
+    "version": "1.18.7"
+  },
+  "源服务器": 1,
+  "备份": 1,
+  "提交": "5500ebd91313285374226d50095fffaaa5f05384",
+  "ZIP字节数": 59314,
+  "ZIP校验": "40fcc4ca35a8a139179dee1417a3b06e01cf22d4b9983a4378cd5ac27a647e23",
+  "状态": "同机添加与备份通过"
+}

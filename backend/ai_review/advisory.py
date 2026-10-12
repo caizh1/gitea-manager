@@ -7,12 +7,10 @@ from .evidence import root_location, source_evidence, TEXT_FIELDS
 def normalize(row):
     if not isinstance(row, dict):
         raise ReviewError('没有可用的问题对象')
-    if any(not isinstance(row.get(k), str) or not row[k].strip() or len(row[k]) > 3000
+    if any(not isinstance(row.get(k), str) or not row[k].strip()
            for k in ('title', 'explanation')):
         raise ReviewError('建议缺少具体问题或自然语言原因')
     value = {k: row.get(k, '') if isinstance(row.get(k, ''), str) else '' for k in TEXT_FIELDS}
-    if any(len(v) > 3000 for v in value.values()):
-        raise ReviewError('建议文本超过长度限制')
     if value['severity'] not in ('P1', 'P2'):
         value['severity'] = 'P2'
     value['trace'] = [s for s in row.get('trace', []) if isinstance(s, str) and len(s) <= 1200][:8] if isinstance(row.get('trace'), list) else []
@@ -24,7 +22,7 @@ def normalize(row):
 
 def parse(value):
     rows = value.get('findings') if isinstance(value, dict) else None
-    if not isinstance(rows, list) or len(rows) > 6:
+    if not isinstance(rows, list):
         raise ReviewError('模型没有返回可识别的建议列表')
     result, diagnostics = [], []
     for index, row in enumerate(rows):

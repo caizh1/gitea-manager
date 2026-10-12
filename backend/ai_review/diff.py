@@ -53,8 +53,6 @@ def git_path(raw):
 
 
 def parse_diff(data):
-    if len(data) > 4 * 1024 * 1024:
-        raise ReviewError('PR 补丁超过 4 MB，未执行完整审查')
     lines = file_lines(data)
     patches, patch, hunk = [], None, None
     for line in lines:

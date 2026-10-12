@@ -1,3 +1,4 @@
+from services.operation_progress import progress_for_response
 from flask import Blueprint, jsonify
 from flask_login import login_required
 from models import Backup, RestoreTask
@@ -34,6 +35,7 @@ def recent_activity():
         server_exists = b.source_server is not None
         backup_list.append({
             'id': b.id,
+            **progress_for_response(b),
             'filename': b.filename,
             'source_server_name': _get_server_name(b, 'source_server', 'source_server_name'),
             'source_server_deleted': not server_exists,
@@ -50,6 +52,7 @@ def recent_activity():
         server_exists = r.target_server is not None
         restore_list.append({
             'id': r.id,
+            **progress_for_response(r),
             'backup_filename': r.backup.filename if r.backup else '',
             'target_server_name': _get_server_name(r, 'target_server', 'target_server_name'),
             'target_server_deleted': not server_exists,

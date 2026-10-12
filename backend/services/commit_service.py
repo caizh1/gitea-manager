@@ -7,6 +7,7 @@ from datetime import datetime
 from urllib.parse import quote
 from models import db, BackupRepoCommit, RestoreVerification, GiteaServer, Backup, RestoreTask
 from services.restore_progress import update_restore_progress
+from services.operation_progress import update_backup_progress
 
 
 RECENT_COMMIT_LIMIT = 100
@@ -115,10 +116,11 @@ def _require_target_health(server):
     )
 
 
-def _get_all_repos(server):
+def _get_all_repos(server, progress=None):
     repos = []
     page = 1
     while True:
+        if progress: progress(page, len(repos))
         data = _api_get_json(
             server,
             '/api/v1/repos/search',
@@ -141,7 +143,7 @@ def _get_all_repos(server):
     return repos
 
 
-def _get_repo_commits(server, owner, repo, max_commits=RECENT_COMMIT_LIMIT):
+def _get_repo_commits(server, owner, repo, max_commits=RECENT_COMMIT_LIMIT, progress=None):
     commits = []
     if max_commits <= 0:
         return commits
@@ -151,6 +153,7 @@ def _get_repo_commits(server, owner, repo, max_commits=RECENT_COMMIT_LIMIT):
     repo_path = quote(repo, safe='')
     path = f'/api/v1/repos/{owner_path}/{repo_path}/commits'
     while len(commits) < max_commits:
+        if progress: progress(page, len(commits))
         remaining = max_commits - len(commits)
         page_size = min(COMMIT_API_PAGE_SIZE, remaining)
         data = _api_get_json(
@@ -214,9 +217,9 @@ def _mark_restore_validation_failed(task, verification, message, details=None):
     verification.mismatch_repos = len(details)
     verification.mismatch_details = json.dumps(details, ensure_ascii=False)
     verification.verified_at = datetime.utcnow()
-    task.status = 'failed'
+    task.status = 'running' if getattr(task, '_defer_completion', False) else 'failed'
     task.error_msg = _compact_text(message, 2000)
-    task.completed_at = datetime.utcnow()
+    task.completed_at = None if getattr(task, '_defer_completion', False) else datetime.utcnow()
     update_restore_progress(task, 'verify_failed', '恢复验证失败', 100, _compact_text(message, 500))
     db.session.commit()
 
@@ -227,10 +230,13 @@ def _mark_restore_validation_success(task, verification, matched):
     verification.mismatch_repos = 0
     verification.mismatch_details = '[]'
     verification.verified_at = datetime.utcnow()
-    task.status = 'success'
+    task.status = 'running' if getattr(task, '_defer_completion', False) else 'success'
     task.error_msg = ''
-    task.completed_at = datetime.utcnow()
-    update_restore_progress(task, 'completed', '恢复完成，健康检查和 Commit ID 验证通过', 100, '')
+    task.completed_at = None if getattr(task, '_defer_completion', False) else datetime.utcnow()
+    if getattr(task, '_defer_completion', False):
+        update_restore_progress(task, 'finalizing', '验证通过，正在完成事务与清理', 99, '')
+    else:
+        update_restore_progress(task, 'completed', '恢复完成，健康检查和 Commit ID 验证通过', 100, '')
     db.session.commit()
 
 
@@ -251,13 +257,12 @@ def collect_backup_commits(backup_id, max_commits=RECENT_COMMIT_LIMIT):
         }])
 
     logging.info('[Commit采集] 开始 - backup_id=%d server=%s', backup_id, server.name)
-    repos = _get_all_repos(server)
+    repos = _get_all_repos(server, progress=lambda page, count: update_backup_progress(backup, 'scan_repos', '正在读取源仓库列表', 70, f'第 {page} 页，已发现 {count} 个仓库'))
     logging.info('[Commit采集] 发现 %d 个仓库', len(repos))
-    BackupRepoCommit.query.filter_by(backup_id=backup_id).delete()
-    db.session.flush()
+    rows = []
     saved_count = 0
 
-    for repo_info in repos:
+    for index, repo_info in enumerate(repos):
         full_name = repo_info.get('full_name', '')
         if not full_name:
             continue
@@ -266,7 +271,8 @@ def collect_backup_commits(backup_id, max_commits=RECENT_COMMIT_LIMIT):
             continue
         owner, repo_name = parts
 
-        commits = _get_repo_commits(server, owner, repo_name, max_commits=max_commits)
+        update_backup_progress(backup, 'collect_commits', '正在采集 Commit 快照', 75 + int(15 * index / max(1, len(repos))), f'已完成 {index}/{len(repos)} 个仓库', current=index, total=len(repos), unit='repos', item=full_name)
+        commits = _get_repo_commits(server, owner, repo_name, max_commits=max_commits, progress=lambda page, count: update_backup_progress(backup, 'collect_commits', '正在采集 Commit 快照', 75 + int(15 * index / max(1, len(repos))), f'当前仓库第 {page} 页，已读取 {count} 条 Commit', current=index, total=len(repos), unit='repos', item=full_name))
         commit_count = len(commits)
         latest_sha = commits[0] if commits else ''
 
@@ -277,7 +283,7 @@ def collect_backup_commits(backup_id, max_commits=RECENT_COMMIT_LIMIT):
         if commit_count <= 10000:
             commit_ids_json = json.dumps(sorted_commits)
 
-        db.session.add(BackupRepoCommit(
+        rows.append(BackupRepoCommit(
             backup_id=backup_id,
             repo_name=full_name,
             commit_count=commit_count,
@@ -288,16 +294,21 @@ def collect_backup_commits(backup_id, max_commits=RECENT_COMMIT_LIMIT):
         ))
         saved_count += 1
 
+    update_backup_progress(backup, 'collect_commits', 'Commit 快照采集完成', 90, f'{saved_count} 个仓库', current=len(repos), total=len(repos), unit='repos')
+    update_backup_progress(backup, 'save_snapshot', '正在保存 Commit 快照', 92, f'{saved_count} 个仓库', current=len(repos), total=len(repos), unit='repos')
+    BackupRepoCommit.query.filter_by(backup_id=backup_id).delete()
+    db.session.add_all(rows)
     db.session.commit()
     logging.info('[Commit采集] 完成 - backup_id=%d repos=%d', backup_id, saved_count)
     return saved_count
 
 
-def verify_restore(task_id):
+def verify_restore(task_id, defer_completion=False):
     task = RestoreTask.query.get(task_id)
     if not task:
         return
 
+    task._defer_completion = defer_completion
     verification = _get_or_create_verification(task_id)
     verification.status = 'running'
     verification.verified_at = None
@@ -336,6 +347,7 @@ def verify_restore(task_id):
 
         backup_commits = BackupRepoCommit.query.filter_by(backup_id=backup.id).all()
         backup_commit_map = {bc.repo_name: bc for bc in backup_commits}
+        update_restore_progress(task, 'verify_commits', '正在对比 Commit ID', 97, f'已完成 {len(backup_commits)}/{len(backup_commits)} 个仓库', current=len(backup_commits), total=len(backup_commits), unit='repos')
         verification.total_repos = len(backup_commits)
 
         if expected_repo_count > 0 and len(backup_commits) != expected_repo_count:
@@ -375,8 +387,9 @@ def verify_restore(task_id):
             })
 
         update_restore_progress(task, 'verify_commits', '正在对比 Commit ID', 97, f'{len(backup_commits)} 个仓库')
-        for bc in sorted(backup_commits, key=lambda item: item.repo_name):
+        for index, bc in enumerate(sorted(backup_commits, key=lambda item: item.repo_name)):
             full_name = bc.repo_name
+            update_restore_progress(task, 'verify_commits', '正在对比 Commit ID', 97, f'已完成 {index}/{len(backup_commits)} 个仓库', current=index, total=len(backup_commits), unit='repos', item=full_name)
             parts = full_name.split('/', 1)
             if len(parts) != 2:
                 mismatch_details.append({
@@ -441,6 +454,7 @@ def verify_restore(task_id):
                 'message': '目标仓库 Commit ID 集合与备份快照不一致',
             })
 
+        update_restore_progress(task, 'verify_commits', '正在对比 Commit ID', 97, f'已完成 {len(backup_commits)}/{len(backup_commits)} 个仓库', current=len(backup_commits), total=len(backup_commits), unit='repos')
         verification.total_repos = len(backup_commits)
         verification.matched_repos = matched
         if mismatch_details:
@@ -461,6 +475,7 @@ def verify_restore(task_id):
     except Exception as e:
         _mark_restore_validation_failed(task, verification, str(e))
         logging.error('[验证] 异常 - task_id=%d: %s', task_id, e, exc_info=True)
+    return verification.status == 'success'
 
 
 def get_verification(task_id):

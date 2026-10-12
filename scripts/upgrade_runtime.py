@@ -43,6 +43,25 @@ sys.stdout.buffer.write(key)
 '''
 
 
+CHECK_ACCESS_KEYS = r'''
+from pathlib import Path
+from cryptography.fernet import Fernet
+import hashlib, json, sqlite3, sys
+path=Path(sys.argv[1]); key=Path(sys.argv[2]) if sys.argv[2] else path.parent/'access.key'
+files=[key,path.parent/'.session-key']; encrypted=[]
+if path.is_file():
+    with sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True) as c:
+        names={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if 'access_directory_sources' in names:
+            encrypted=[r[0] for r in c.execute("SELECT password_ciphertext FROM access_directory_sources WHERE password_ciphertext != ''")]
+if encrypted:
+    cipher=Fernet(key.read_bytes().strip())
+    for value in encrypted: cipher.decrypt(value.encode())
+result={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in files if p.is_file()}
+print(json.dumps(result))
+'''
+
+
 def atomic_text(path, value, mode=0o600):
     with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, delete=False) as stream:
         temporary = Path(stream.name)
@@ -185,13 +204,34 @@ class Upgrade:
         if any(c.attrs['State'].get('Paused') for c in rows.values()):
             raise RuntimeError('原服务处于暂停状态，未自动改变其状态')
         loaded_images = {}
-        for image in ('backend', 'frontend', 'executor'):
+        manifest = json.loads(Path('/release/offline/镜像清单.json').read_text())['镜像']
+        components = ['backend', 'frontend', 'executor']
+        if any(r['镜像'] == 'gitea-review-executor-legacy:offline' for r in manifest): components.append('executor-legacy')
+        for image in components:
             actual = self.client.images.get('gitea-review-' + image + ':offline')
             if actual.attrs['Architecture'] != 'amd64' or actual.attrs['Os'] != 'linux': raise RuntimeError('应用镜像架构不匹配')
             manifest = json.loads(Path('/release/offline/镜像清单.json').read_text())['镜像']
             expected = next(r for r in manifest if r['镜像'] == 'gitea-review-' + image + ':offline')
             if actual.id not in (expected['ID'], expected['配置ID']): raise RuntimeError('导入后的镜像与交付清单不一致')
             loaded_images[image] = actual.id
+        probes = []
+        for component in ('executor', 'executor-legacy'):
+            if component not in loaded_images: continue
+            probe = self.client.containers.create(loaded_images[component],
+                ['python', '/opt/review/runtime_probe.py'], platform='linux/amd64', network_disabled=True,
+                read_only=True, tmpfs={'/tmp':'size=384m,mode=1777'}, mem_limit='2g', pids_limit=128,
+                cap_drop=['ALL'], security_opt=['no-new-privileges:true'])
+            try:
+                probe.start(); code = probe.wait(timeout=75)['StatusCode']
+                try: result = json.loads(probe.logs(stdout=True, stderr=False))
+                except ValueError: result = {'ready': False, 'reason': '执行器检测输出无效'}
+                probes.append({'component':component, 'exit_code':code, 'result':result})
+                write(STATE / 'runtime-probes.json', probes)
+                if code == 0 and result.get('ready'):
+                    loaded_images['executor'] = loaded_images[component]
+                    break
+            finally: probe.remove(force=True)
+        else: raise RuntimeError('执行器真实启动检测失败，原 Manager 未停止；请查看 runtime-probes.json')
         env = environment(self.backend.attrs)
         uri = env.get('DATABASE_URL', '')
         if not uri.startswith('sqlite:////') or '?' in uri:
@@ -199,6 +239,11 @@ class Upgrade:
         db_path = uri.removeprefix('sqlite:///')
         mount, relative = volume_at(self.backend.attrs, db_path)
         if not mount or mount['read_only']: raise RuntimeError('原 Manager 数据库没有可写持久挂载，未创建空库替代')
+        access_key_probe = self.backend.exec_run(['python', '-c', CHECK_ACCESS_KEYS, db_path, env.get('ACCESS_KEY_FILE', '')])
+        if access_key_probe.exit_code:
+            raise RuntimeError('原目录密码无法用持久密钥解密，禁止生成替代密钥或继续升级')
+        access_keys = json.loads(access_key_probe.output)
+
         backup_path = env.get('BACKUP_DIR', '/app/data/backups')
         excluded = backup_path.removeprefix(mount['target'] + '/') if backup_path.startswith(mount['target'] + '/') else ''
         if excluded and len(Path(excluded).parts) != 1:
@@ -239,7 +284,7 @@ class Upgrade:
                 saved_secrets.append({'service': service, 'variable': key, 'path': path, 'value': base64.b64encode(result.output).decode()})
         write(STATE / '原密钥备份.json', saved_secrets)
         self.info = {'project': self.project, 'phase': 'checked', 'started_at': float(os.environ.get('GM_UPGRADE_STARTED_AT', time.time())), 'loaded_images': loaded_images, 'original': {name: c.attrs for name, c in rows.items()},
-                     'manager_mount': mount, 'manager_parameters': parameters, 'review_mount': review_mount,
+                     'manager_mount': mount, 'manager_parameters': parameters, 'access_keys': access_keys, 'review_mount': review_mount,
                      'review_parameters': {'database': review_relative or 'review.db'}, 'review_existed': bool(review_status and review_status['database']['exists']),
                      'master_mount': master_mount, 'release_host': self.release_host, 'state_host': self.state_host,
                      'work_host': self.work_host, 'paused': [], 'running': [name for name, c in rows.items() if c.attrs['State']['Running']]}
@@ -311,11 +356,23 @@ class Upgrade:
         if any(m['target'] in ('/app', '/usr/share/nginx/html') for spec in (backend, frontend) for m in spec.get('volumes', [])):
             raise RuntimeError('原部署直接挂载应用源码，请先改用已构建镜像，再执行一键升级')
         env = backend['environment']
+        # 新功能所需卷必须共享；旧部署尚无这些目录时由 Compose 新建。
+        def runtime_mount(service, target, name, read_only=False):
+            attrs = self.info['original'].get(service, {})
+            old = next((m for m in attrs.get('Mounts', []) if m['Destination'] == target), None)
+            mount = mount_value(old) if old else {'type': 'volume', 'source': self.project + '-' + name, 'target': target}
+            mount['read_only'] = read_only
+            if mount['type'] == 'volume':
+                current.setdefault('volumes', {})[mount['source']] = {'name': mount['source'], **({'external': True} if old else {})}
+            return mount
+        workspace = runtime_mount('review-worker', '/app/review-workspaces', 'review-workspaces')
+        native = runtime_mount('review-executor', '/app/review-native', 'review-native')
         for key in ('AI_REVIEW_GITEA_HOSTS', 'AI_REVIEW_MODEL_HOSTS', 'AI_REVIEW_WEBHOOK_HOSTS'):
             hosts = {h.strip().lower() for attrs in self.info['original'].values() for h in environment(attrs).get(key, '').split(',') if h.strip()}
             env[key] = ','.join(sorted(hosts))
-        for key in ('SECRET_KEY', 'INIT_PASSWORD', 'INTEGRATION_SERVICE_TOKEN'):
-            if not env.get(key) or env[key] in ('change-me-in-production', 'admin123'):
+        env.setdefault('TRUSTED_PROXY_HOSTS', 'frontend')
+        for key in ('SECRET_KEY', 'INIT_PASSWORD'):
+            if not env.get(key) or env[key] in ('change-me-in-production', 'admin123') or (key == 'SECRET_KEY' and len(env[key]) < 32):
                 env[key] = secrets.token_urlsafe(40)
         secret_dir = Path('/deployment/.gitea-manager-upgrades/secrets'); secret_dir.mkdir(parents=True, exist_ok=True); secret_dir.chmod(0o700)
         def secret(name, content, target, mode=0o600):
@@ -339,6 +396,20 @@ class Upgrade:
             raise RuntimeError('管理目录中的执行令牌与原运行令牌不同')
         executor = secret('executor.token', token, '/run/secrets/review_executor', 0o444)
         if len(executor_path.read_text().strip()) < 32: raise RuntimeError('执行令牌格式无效，请保留升级记录')
+        authorization_tokens = {row['value'] for row in saved if row['variable'] == 'AI_REVIEW_AUTHORIZATION_TOKEN_FILE'}
+        if len(authorization_tokens) > 1:
+            raise RuntimeError('原组织授权服务令牌不一致，未覆盖现有令牌')
+        authorization_token = (base64.b64decode(next(iter(authorization_tokens))).decode().strip()
+                               if authorization_tokens else secrets.token_urlsafe(48))
+        authorization_path = secret_dir / 'access-authorization.token'
+        if authorization_path.exists() and authorization_tokens and authorization_path.read_text().strip() != authorization_token:
+            raise RuntimeError('管理目录中的组织授权令牌与原运行令牌不同')
+        authorization = secret('access-authorization.token', authorization_token, '/run/secrets/access_authorization')
+        if len(authorization_path.read_text().strip()) < 32:
+            raise RuntimeError('组织授权令牌格式无效，请保留升级记录')
+        env.update(AI_REVIEW_AUTHORIZATION_URL='http://backend:5000/api/internal/authorization/check',
+                   AI_REVIEW_AUTHORIZATION_TOKEN_FILE='/run/secrets/access_authorization')
+
         review = self.info['review_mount']
         if not review:
             name = self.project + '-review-data'
@@ -352,9 +423,23 @@ class Upgrade:
         if review['type'] == 'volume': current.setdefault('volumes', {})[review['source']] = {'external': True, 'name': review['source']}
         env.update(AI_REVIEW_DB='/app/review/' + review_root, AI_REVIEW_HOST_POLICY_FILE='/app/review/hosts.json',
                    AI_REVIEW_MASTER_KEY_FILE='/run/secrets/review_master', GM_UPGRADE_MAINTENANCE_FILE='/app/review/.upgrade-maintenance')
-        common = {k: v for k, v in env.items() if k.startswith('AI_REVIEW_') and (k.endswith('_HOSTS') or k in ('AI_REVIEW_DB', 'AI_REVIEW_HOST_POLICY_FILE', 'AI_REVIEW_MASTER_KEY_FILE'))}
+        gate_mounts = []
+        diagnostic_mounts = []
+        if env.get('AI_REVIEW_RUNTIME_STATUS'):
+            status_path = env['AI_REVIEW_RUNTIME_STATUS']
+            candidates = [m for m in backend['volumes'] if status_path == m['target'] or status_path.startswith(m['target'].rstrip('/') + '/')]
+            if not candidates:
+                raise RuntimeError('原执行器安装状态缺少持久化挂载，未绕过运行时门禁')
+            gate_mounts = [dict(max(candidates, key=lambda m: len(m['target'])), read_only=True)]
+            diagnostic_path = env.get('MANAGEMENT_DIAGNOSTICS', '/app/data/diagnostics')
+            diagnostic_mounts = [dict(m, read_only=False) for m in backend['volumes'] if m['target'] == diagnostic_path]
+            if not diagnostic_mounts:
+                # 不为诊断把整个 Manager 数据卷暴露给 Worker，使用已有共享 Review 卷。
+                diagnostic_path = '/app/review/runtime-diagnostics'
+            env['MANAGEMENT_DIAGNOSTICS'] = diagnostic_path
+        common = {k: v for k, v in env.items() if k.startswith('AI_REVIEW_') and (k.endswith('_HOSTS') or k in ('AI_REVIEW_DB', 'AI_REVIEW_HOST_POLICY_FILE', 'AI_REVIEW_MASTER_KEY_FILE', 'AI_REVIEW_RUNTIME_STATUS', 'AI_REVIEW_AUTHORIZATION_URL', 'AI_REVIEW_AUTHORIZATION_TOKEN_FILE'))}
         common.update(GM_UPGRADE_MAINTENANCE_FILE=env['GM_UPGRADE_MAINTENANCE_FILE'], PYTHONDONTWRITEBYTECODE='1')
-        backend['volumes'] = [m for m in backend.get('volumes', []) if m['target'] not in (self.info.get('review_mount', {}).get('target'), '/app/review', master['target'])] + [review, master]
+        backend['volumes'] = [m for m in backend.get('volumes', []) if m['target'] not in (self.info.get('review_mount', {}).get('target'), '/app/review', master['target'], authorization['target'])] + [review, master, authorization]
         # 保留原业务网络并复用实际网络名，避免另起项目导致数据或连接失联。
         default_networks = backend.get('networks') or {'default': None}
         for key in default_networks:
@@ -375,10 +460,14 @@ class Upgrade:
             execution['internal'] = True
         current['networks'][execution_key] = execution
         for name, module, memory in [('review-worker', 'worker', '1g'), ('review-progress', 'progress', '256m'), ('review-feedback', 'feedback', '256m')]:
-            service_env = dict(common); mounts = [review, master]
+            service_env = dict(common); mounts = [review, master, authorization] + gate_mounts
             networks = dict(default_networks) if isinstance(default_networks, dict) else {k: None for k in default_networks}
             if name == 'review-worker':
-                mounts += [executor]; networks[execution_key] = None
+                mounts += [executor, workspace]; networks[execution_key] = None
+                if env.get('AI_REVIEW_RUNTIME_STATUS'):
+                    mounts += diagnostic_mounts
+                    service_env['MANAGEMENT_DIAGNOSTICS'] = env['MANAGEMENT_DIAGNOSTICS']
+                service_env['AI_REVIEW_WORKSPACE_ROOT'] = '/app/review-workspaces'
                 service_env.update(AI_REVIEW_EXECUTOR_TOKEN_FILE='/run/secrets/review_executor', AI_REVIEW_EXECUTOR_URL='http://review-executor:5052')
             if name == 'review-feedback':
                 mounts += [dict(self.info['manager_mount'], target='/app/data', read_only=True)]
@@ -390,8 +479,9 @@ class Upgrade:
             if name in self.info['original']: spec['container_name'] = self.info['original'][name]['Name'].lstrip('/')
             current['services'][name] = spec
         spec = dict(image=images['executor'], platform='linux/amd64', pull_policy='never', restart='unless-stopped',
-                    environment={'AI_REVIEW_EXECUTOR_TOKEN_FILE': '/run/secrets/review_executor', 'AI_REVIEW_BROKER_URL': 'http://review-worker:5051/v1', 'PYTHONDONTWRITEBYTECODE': '1'},
-                    volumes=[executor], networks=[execution_key], dns=['127.0.0.1'], read_only=True,
+                    environment={'AI_REVIEW_EXECUTOR_TOKEN_FILE': '/run/secrets/review_executor', 'AI_REVIEW_BROKER_URL': 'http://review-worker:5051/v1', 'PYTHONDONTWRITEBYTECODE': '1',
+                                 'AI_REVIEW_WORKSPACE_ROOT': '/app/review-workspaces', 'AI_REVIEW_NATIVE_ROOT': '/app/review-native'},
+                    volumes=[executor, native, dict(workspace, read_only=True)], networks=[execution_key], dns=['127.0.0.1'], read_only=True,
                     tmpfs=['/tmp:size=384m,mode=1777'], cap_drop=['ALL'], security_opt=['no-new-privileges:true'], pids_limit=128, mem_limit='2g', cpus=2.0)
         if 'review-executor' in self.info['original']: spec['container_name'] = self.info['original']['review-executor']['Name'].lstrip('/')
         current['services']['review-executor'] = spec
@@ -419,11 +509,20 @@ class Upgrade:
             rows = self.containers()
             if all(name in rows and rows[name].attrs['State']['Running'] for name in SERVICES):
                 result = rows['backend'].exec_run(['python', '-c', "import requests,re; r=requests.get('http://127.0.0.1:5000/api/session',timeout=3); assert r.status_code==200; r=requests.get('http://frontend/api/session',timeout=3); assert r.status_code==200 and 'authenticated' in r.json(); page=requests.get('http://frontend/',timeout=3); assert page.status_code==200; asset=re.search(r'src=\"(/assets/[^\"]+\\.js)\"',page.text); assert asset and requests.get('http://frontend'+asset[1],timeout=3).status_code==200"])
-                health = rows['review-worker'].exec_run(['python', '-c', "import requests,time; from ai_review.store import Store; h=Store().health_status(); assert all(any(x['name']==n and time.time()-x['updated']<30 for x in h) for n in ('worker','progress','feedback')); assert requests.get('http://review-executor:5052/health',timeout=3).json()['opencode_version']=='1.18.7'"])
+                health = rows['review-worker'].exec_run(['python', '-c', "import requests,time; from ai_review.store import Store; h=Store().health_status(); assert all(any(x['name']==n and time.time()-x['updated']<30 for x in h) for n in ('worker','progress','feedback')); r=requests.get('http://review-executor:5052/health',timeout=3); assert r.status_code==200 and r.json().get('ready')"])
                 view_health=rows['approval-view'].exec_run(['python','-c',"import requests; r=requests.get('http://127.0.0.1:5000/health',timeout=3); assert r.status_code==200 and r.json().get('role')=='approval-view'; blocked=requests.get('http://127.0.0.1:5000/api/session',timeout=3); assert blocked.status_code==503 and blocked.json().get('error')=='正在升级并核对数据，请稍后访问'; from approval.view_app import create_app; assert '/api/session' not in {r.rule for r in create_app().url_map.iter_rules()}"])
-                if result.exit_code == 0 and health.exit_code == 0 and view_health.exit_code == 0: break
+                gate_health = rows['backend'].exec_run(['python', '-c', "from ai_review.runtime_status import available,status; assert available(), status().get('reason')"])
+                if result.exit_code == 0 and health.exit_code == 0 and view_health.exit_code == 0 and gate_health.exit_code == 0: break
             time.sleep(2)
         else: raise RuntimeError('新服务未通过健康检查，将恢复旧版本')
+        new_env = environment(rows['backend'].attrs)
+        access_key_probe = rows['backend'].exec_run(['python', '-c', CHECK_ACCESS_KEYS,
+            new_env['DATABASE_URL'].removeprefix('sqlite:///'), new_env.get('ACCESS_KEY_FILE', '')])
+        if access_key_probe.exit_code:
+            raise RuntimeError('升级后目录密钥解密检查失败，将恢复旧版本')
+        actual_keys = json.loads(access_key_probe.output)
+        if any(actual_keys.get(path) != value for path, value in self.info.get('access_keys', {}).items()):
+            raise RuntimeError('升级后目录或会话持久密钥发生变化，将恢复旧版本')
         paused = []
         try:
             for name in WRITERS:

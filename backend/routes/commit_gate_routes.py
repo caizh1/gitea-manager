@@ -4,12 +4,15 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required
 
 from models import db, GiteaServer, CommitMessageRule, CommitGateAssignment
+from access.scopes import current_binding, visible_keys, bind_resource, repositories_for, actor_snapshot
+from access.errors import AccessError
 from services.commit_gate_service import (
     DEFAULT_PATTERN,
     DEFAULT_REJECT_MESSAGE,
     apply_rule,
     list_repos_with_assignments,
     remove_gate,
+    record_gate_audit,
     rule_to_dict,
     test_message,
 )
@@ -22,6 +25,9 @@ commit_gate_bp = Blueprint('commit_gate', __name__)
 def list_rules():
     server_id = request.args.get('server_id', type=int)
     query = CommitMessageRule.query
+    allowed = visible_keys('commit_rule')
+    if allowed is not None:
+        query = query.filter(CommitMessageRule.id.in_([int(i) for i in allowed]))
     if server_id:
         query = query.filter_by(server_id=server_id)
     rules = query.order_by(CommitMessageRule.created_at.desc()).all()
@@ -62,6 +68,11 @@ def create_rule():
         created_at=datetime.utcnow(),
     )
     db.session.add(rule)
+    db.session.flush()
+    binding = current_binding()
+    if binding:
+        bind_resource('commit_rule', rule.id, rule.server_id, binding.organization_id)
+    record_gate_audit('创建提交规则', actor_snapshot(binding), server.id, rule_id=rule.id, status='success')
     db.session.commit()
     return jsonify(rule_to_dict(rule)), 201
 
@@ -91,6 +102,7 @@ def update_rule(rule_id):
         rule.enabled = bool(data.get('enabled'))
 
     rule.updated_at = datetime.utcnow()
+    record_gate_audit('更新提交规则', actor_snapshot(current_binding()), rule.server_id, rule_id=rule.id, status='success')
     db.session.commit()
     return jsonify(rule_to_dict(rule))
 
@@ -103,6 +115,7 @@ def delete_rule(rule_id):
     if assigned:
         return jsonify({'error': 'Rule is still applied to repositories'}), 400
     db.session.delete(rule)
+    record_gate_audit('删除提交规则', actor_snapshot(current_binding()), rule.server_id, rule_id=rule.id, status='success')
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -114,7 +127,11 @@ def list_repos():
     if not server_id:
         return jsonify({'error': 'server_id is required'}), 400
     try:
-        return jsonify(list_repos_with_assignments(server_id))
+        binding = current_binding()
+        values = list_repos_with_assignments(server_id, binding=binding)
+        return jsonify(values)
+    except AccessError:
+        raise
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
     except Exception as e:
@@ -131,8 +148,18 @@ def apply_gate():
             rule_id=data.get('rule_id'),
             repo_names=data.get('repo_names') or [],
             apply_all=bool(data.get('apply_all')),
+            access_actor=actor_snapshot(current_binding()),
         )
+        from access.scopes import is_platform
+        if not is_platform():
+            for row in results:
+                if 'install_log' in row:
+                    row['install_log'] = '门禁已安装' if row.get('install_status') == 'success' else '门禁操作未完成，请平台管理员查看安装诊断'
+                if 'log' in row:
+                    row['log'] = '门禁操作未完成，请平台管理员查看安装诊断'
         return jsonify({'results': results})
+    except AccessError:
+        raise
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -148,8 +175,15 @@ def remove_gate_route():
             server_id=data.get('server_id'),
             repo_names=data.get('repo_names') or [],
             remove_all=bool(data.get('remove_all')),
+            access_actor=actor_snapshot(current_binding()),
         )
+        from access.scopes import is_platform
+        if not is_platform():
+            for row in results:
+                row['log'] = '门禁已移除' if row.get('status') == 'success' else '门禁操作未完成，请平台管理员查看安装诊断'
         return jsonify({'results': results})
+    except AccessError:
+        raise
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:

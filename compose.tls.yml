@@ -1,0 +1,19 @@
+# 在通用部署上启用企业 HTTPS；证书与私钥保存在宿主机，不进入镜像或发布包。
+services:
+  frontend:
+    ports:
+      - "${MANAGER_TLS_PORT:-5443}:443"
+    volumes:
+      - type: bind
+        source: ${MANAGER_TLS_CERT:?请设置企业证书绝对路径}
+        target: /etc/nginx/tls/cert.pem
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${MANAGER_TLS_KEY:?请设置企业私钥绝对路径}
+        target: /etc/nginx/tls/key.pem
+        read_only: true
+        bind: {create_host_path: false}
+  backend:
+    environment:
+      TRUSTED_PROXY_HOSTS: frontend

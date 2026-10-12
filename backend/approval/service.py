@@ -16,7 +16,8 @@ POST_RELEASE_CHECKS = ['多用户并发及容量验收', '并发接入边界回�
 
 
 def audit(policy, action, detail):
-    db.session.add(ApprovalAudit(policy_id=policy.id, action=action, detail_json=encode(detail)))
+    from access.scopes import actor_name
+    db.session.add(ApprovalAudit(policy_id=policy.id, actor=actor_name(), action=action, detail_json=encode(detail)))
 
 
 def serialize(policy):

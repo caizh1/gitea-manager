@@ -107,6 +107,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
+import { currentOrganization } from '../composables/accessState.js'
 import { useChartResize } from '../composables/useChartResize'
 import { ArrowLeft } from '@element-plus/icons-vue'
 
@@ -116,7 +117,7 @@ export default {
     const route = useRoute()
     const router = useRouter()
     const authorName = ref(decodeURIComponent(route.params.name))
-    const serverId = ref(route.query.server_id || '')
+    const serverId = ref(currentOrganization.value?.server_id || route.query.server_id || '')
     const detail = ref(null)
     const repos = ref([])
     const trendData = ref([])

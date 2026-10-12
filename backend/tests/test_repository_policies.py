@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask
-from auth import init_auth
+from tests.access_helpers import init_test_auth as init_auth, login_platform
 from models import db, GiteaServer, PolicyBatch, PolicyTemplate, PolicyRepoResult, PolicyRequestSlot
 from routes.policy_routes import policy_bp
 from services.policy_rules import (PolicyError, API_FIELDS, BOOL_FIELDS, LIST_FIELDS, normalize_rule,
@@ -246,7 +246,7 @@ class PolicyApiTests(unittest.TestCase):
         self.patches = [patch('services.policy_tasks.PolicyGitea', FakeGitea), patch('routes.policy_routes.PolicyGitea', FakeGitea)]
         for p in self.patches: p.start()
         self.client = self.app.test_client()
-        with self.client.session_transaction() as s: s['_user_id'] = '1'; s['_fresh'] = True
+        login_platform(self.client)
         self.csrf = self.client.get('/api/repository-policies/csrf').get_json()['token']
         self.headers = {'X-Policy-CSRF': self.csrf}
 

@@ -1,30 +1,33 @@
+"""个人登录、会话与退出接口。"""
 from flask import Blueprint, request, jsonify
-from flask_login import login_user, logout_user, login_required, current_user
-from auth import Auth
+from flask_login import login_required
+from access.errors import AccessError
+from access.authentication import authenticate_login, logout_session, session_payload
 
 auth_bp = Blueprint('auth', __name__)
 
 
-@auth_bp.route('/session', methods=['GET'])
+@auth_bp.errorhandler(AccessError)
+def handle_access_error(error):
+    return jsonify(error=str(error)), error.status
+
+
+@auth_bp.get('/session')
 def check_session():
-    if current_user.is_authenticated:
-        return jsonify({'authenticated': True})
-    return jsonify({'authenticated': False})
+    return jsonify(session_payload())
 
 
-@auth_bp.route('/login', methods=['POST'])
+@auth_bp.post('/login')
 def login():
-    data = request.get_json()
-    password = data.get('password', '') if data else ''
-    user = Auth.login(password)
-    if user:
-        login_user(user)
-        return jsonify({'ok': True})
-    return jsonify({'error': 'Wrong password'}), 401
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise AccessError('登录参数必须为对象')
+    authenticate_login(data)
+    return jsonify(session_payload() | {'ok': True})
 
 
-@auth_bp.route('/logout', methods=['POST'])
+@auth_bp.post('/logout')
 @login_required
 def logout():
-    logout_user()
-    return jsonify({'ok': True})
+    logout_session()
+    return jsonify(session_payload() | {'ok': True})

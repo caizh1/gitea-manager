@@ -58,6 +58,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
+import { currentOrganization } from '../composables/accessState.js'
 import { ArrowLeft } from '@element-plus/icons-vue'
 
 export default {
@@ -65,7 +66,7 @@ export default {
   setup() {
     const route = useRoute()
     const router = useRouter()
-    const serverId = ref(route.query.server_id || '')
+    const serverId = ref(currentOrganization.value?.server_id || route.query.server_id || '')
     const authors = ref([])
     const searchText = ref('')
     const sortBy = ref('commits')

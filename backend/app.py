@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from config import SECRET_KEY, DATABASE_URL, INIT_PASSWORD, INTEGRATION_SERVICE_TOKEN
+from config import SECRET_KEY, DATABASE_URL, INIT_PASSWORD, INTEGRATION_SERVICE_TOKEN, INTEGRATION_ENABLED
 from models import db, Setting, User
 from auth import init_auth
 import os
@@ -15,25 +15,50 @@ logging.basicConfig(
 
 def create_app():
     app = Flask(__name__)
-    app.secret_key = SECRET_KEY
+    app.config['INTEGRATION_ENABLED'] = INTEGRATION_ENABLED
+    if INTEGRATION_ENABLED and not INTEGRATION_SERVICE_TOKEN.strip():
+        raise RuntimeError('启用外部集成时必须配置 INTEGRATION_SERVICE_TOKEN')
+    from access.runtime import signing_key, configure_transport
+    app.secret_key = signing_key(SECRET_KEY, DATABASE_URL)
+    configure_transport(app)
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     if DATABASE_URL.startswith('sqlite:'):
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'connect_args': {'timeout': 30}}
-    CORS(app, supports_credentials=True)
+    # 浏览器管理接口同源；机器接口自行校验签名，不开放凭据跨域。
 
     db.init_app(app)
     init_auth(app)
 
+    from access import models as access_models
+    from access import scopes as access_scopes
+    from access import statistics as access_statistics
     from services.database_startup import database_startup_lock
     with app.app_context(), database_startup_lock(app):
         import sqlalchemy.exc
-        try:
-            db.create_all()
-        except sqlalchemy.exc.OperationalError:
-            pass
+        db.create_all()
 
+        server_columns = {row[1] for row in db.session.execute(db.text('PRAGMA table_info(gitea_servers)'))} if DATABASE_URL.startswith('sqlite:') else set()
         for sql in [
+            'ALTER TABLE backups ADD COLUMN progress_current BIGINT',
+            'ALTER TABLE backups ADD COLUMN progress_total BIGINT',
+            "ALTER TABLE backups ADD COLUMN progress_unit VARCHAR(20) DEFAULT ''",
+            "ALTER TABLE backups ADD COLUMN progress_item VARCHAR(1000) DEFAULT ''",
+            'ALTER TABLE backups ADD COLUMN progress_step_started_at DATETIME',
+            "ALTER TABLE backups ADD COLUMN progress_stage VARCHAR(50) DEFAULT ''",
+            "ALTER TABLE backups ADD COLUMN progress_label VARCHAR(100) DEFAULT ''",
+            'ALTER TABLE backups ADD COLUMN progress_percent INTEGER DEFAULT 0',
+            "ALTER TABLE backups ADD COLUMN progress_detail TEXT DEFAULT ''",
+            'ALTER TABLE backups ADD COLUMN progress_updated_at DATETIME',
+            'ALTER TABLE restore_tasks ADD COLUMN progress_current BIGINT',
+            'ALTER TABLE restore_tasks ADD COLUMN progress_total BIGINT',
+            "ALTER TABLE restore_tasks ADD COLUMN progress_unit VARCHAR(20) DEFAULT ''",
+            "ALTER TABLE restore_tasks ADD COLUMN progress_item VARCHAR(1000) DEFAULT ''",
+            'ALTER TABLE restore_tasks ADD COLUMN progress_step_started_at DATETIME',
+            "ALTER TABLE backups ADD COLUMN diagnostic_id VARCHAR(100) NOT NULL DEFAULT ''",
+            "ALTER TABLE restore_tasks ADD COLUMN diagnostic_id VARCHAR(100) NOT NULL DEFAULT ''",
+            "ALTER TABLE gitea_servers ADD COLUMN connection_mode VARCHAR(20) NOT NULL DEFAULT 'ssh'",
+            "ALTER TABLE gitea_servers ADD COLUMN instance_identity VARCHAR(200) NOT NULL DEFAULT ''",
             "ALTER TABLE policy_templates ADD COLUMN organization_id INTEGER",
             "ALTER TABLE policy_templates ADD COLUMN organization_name VARCHAR(100) DEFAULT ''",
             "ALTER TABLE policy_templates ADD COLUMN identities_json TEXT DEFAULT '{}'",
@@ -105,6 +130,10 @@ def create_app():
             except Exception:
                 db.session.rollback()
 
+        if 'is_local' in server_columns and 'connection_mode' not in server_columns:
+            db.session.execute(db.text("UPDATE gitea_servers SET connection_mode=CASE WHEN is_local=1 THEN 'local' ELSE 'ssh' END"))
+            db.session.commit()
+
         try:
             from services.commit_gate_service import (
                 DEFAULT_PATTERN,
@@ -141,8 +170,13 @@ def create_app():
         if not setting:
             User.set_password(INIT_PASSWORD)
 
+        from access.migration import initialize_schema
+        initialize_schema()
+        from access.authentication import initialize_access
+        initialize_access()
+
         from services.integration_outbox_service import synchronize_bootstrap_token
-        if synchronize_bootstrap_token(INTEGRATION_SERVICE_TOKEN):
+        if INTEGRATION_ENABLED and synchronize_bootstrap_token(INTEGRATION_SERVICE_TOKEN):
             db.session.commit()
 
     from routes.auth_routes import auth_bp
@@ -161,6 +195,11 @@ def create_app():
     from routes.ai_review_routes import ai_review_bp
     from routes.approval_routes import approval_bp, approval_internal_bp, approval_view_bp
 
+    from routes.access_routes import access_bp
+    from access.internal import internal_bp, context_bp
+    app.register_blueprint(access_bp, url_prefix='/api/access')
+    app.register_blueprint(internal_bp, url_prefix='/api/internal/authorization')
+    app.register_blueprint(context_bp, url_prefix='/api/access')
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(server_bp, url_prefix='/api')
     app.register_blueprint(restore_bp, url_prefix='/api')
@@ -178,6 +217,8 @@ def create_app():
     app.register_blueprint(approval_bp, url_prefix='/api/approval-rules')
     app.register_blueprint(approval_internal_bp, url_prefix='/api/approval-internal')
     app.register_blueprint(approval_view_bp, url_prefix='/api/approval-view')
+    from routes.management_routes import management_bp
+    app.register_blueprint(management_bp, url_prefix='/api/management')
 
     if os.environ.get('AI_REVIEW_HOST_POLICY_FILE'):
         from ai_review.host_policy import ensure
@@ -204,6 +245,9 @@ def create_app():
             if not host_ip:
                 return jsonify({'error': '请先在「系统设置」中配置本机IP'}), 400
         return None
+
+    from access.control import install as install_access_control
+    install_access_control(app)
 
     from services.scheduler_service import start_scheduler
     if os.environ.get('DISABLE_BACKGROUND_TASKS') != '1':

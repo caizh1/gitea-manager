@@ -7,7 +7,7 @@
           <el-icon><Refresh /></el-icon>
         </button>
       </div>
-      <el-button type="primary" @click="openDialog()">
+      <el-button type="primary" @click="$router.push('/management-setup')">
         <el-icon><Plus /></el-icon> 添加服务器
       </el-button>
     </div>
@@ -61,7 +61,7 @@
       </el-table>
     </div>
 
-    <el-dialog :title="isEdit ? '编辑服务器' : '添加服务器'" v-model="dialogVisible" width="650px" destroy-on-close>
+    <el-dialog append-to-body :title="isEdit ? '编辑服务器' : '添加服务器'" v-model="dialogVisible" width="650px" destroy-on-close>
       <el-form :model="form" label-width="130px">
         <el-row :gutter="16">
           <el-col :xs="24" :sm="12">

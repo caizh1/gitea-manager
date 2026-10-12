@@ -17,6 +17,13 @@ def create_alert(alert_type, server_id, message, source_id=0):
         created_at=datetime.utcnow(),
     )
     db.session.add(alert)
+    db.session.flush()
+    if alert_type == 'policy_failed':
+        import json
+        from access.scopes import ResourceScope, bind_resource
+        source = ResourceScope.query.filter_by(kind='policy_batch', resource_key=str(source_id), archived=False).first()
+        if source:
+            bind_resource('alert', alert.id, source.server_id, source.organization_id, json.loads(source.repo_ids_json), actor={})
     db.session.commit()
     logging.info('[告警] 创建: type=%s server=%s msg=%s', alert_type, server_name, message[:100])
 

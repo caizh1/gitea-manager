@@ -10,6 +10,7 @@ from models import db, GiteaServer, Backup, RestoreTask, Setting, get_setting
 from services.ssh_service import SSHService
 from services.docker_service import local_exec, local_cp_from, local_cp_to
 from services.restore_progress import update_restore_progress
+from services.operation_progress import update_backup_progress, progress_for_response
 from services.remote_job_service import RemoteJobError, run_remote_job
 from services.restore_step_service import (
     finish_restore_step,
@@ -18,6 +19,7 @@ from services.restore_step_service import (
 )
 from config import RESTORE_DIAGNOSTIC_INTERVAL_SECONDS, RESTORE_LONG_JOB_TIMEOUT_SECONDS
 from config import BACKUP_DIR
+from services.diagnostics import tracked_operation, CURRENT, register_secret
 
 
 def _ensure_url(url):
@@ -94,6 +96,7 @@ def _collect_backup_commit_snapshot(backup_id):
         from services.commit_service import collect_backup_commits
         repo_count = collect_backup_commits(backup_id)
     except Exception as e:
+        if CURRENT.get(): CURRENT.get().fail(e)
         db.session.rollback()
         backup = Backup.query.get(backup_id)
         if backup:
@@ -209,20 +212,7 @@ def fetch_server_info(server):
 
 
 def test_server_connection(server):
-    import socket
-
-    host_ip = get_setting('host_ip', '')
-    if not host_ip:
-        return False, '请先在「系统设置」中配置本机IP'
-
-    try:
-        target_ip = socket.gethostbyname(server.host)
-    except Exception:
-        target_ip = None
-
-    is_local = target_ip == host_ip
-    logging.info('[连接检测] configured_host_ip=%s target_ip=%s is_local=%s', host_ip, target_ip, is_local)
-
+    is_local = server.connection_mode == 'local'
     server.is_local = is_local
     db.session.commit()
 
@@ -238,7 +228,7 @@ def test_server_connection(server):
                 return False, f'Gitea API 返回 {resp.status_code}'
             return False, f'Docker exec 失败 (exit={exit_code})'
         except Exception as e:
-            logging.warning('[连接检测] 本地 Docker 失败: %s，尝试 SSH', e)
+            return False, f'本机 Docker 检查失败：{e}'
 
     try:
         ssh = SSHService(server.host, server.ssh_port, server.ssh_user)
@@ -265,16 +255,18 @@ def _backup_local(server, backup):
     os.makedirs(BACKUP_DIR, exist_ok=True)
 
     try:
+        update_backup_progress(backup, "permissions", "正在检查备份权限", 5, server.name)
         _repair_gitea_data_permissions_local(server)
         local_exec(server.gitea_container, f'rm -f "{container_tmp}"')
         dump_cmd = f'/usr/local/bin/gitea dump -c /data/gitea/conf/app.ini --tempdir /tmp -f "{container_tmp}"'
+        update_backup_progress(backup, 'dump', '正在导出数据库和仓库', 10, server.name, item=backup.filename)
         logging.info('[备份-本地] 执行: gitea dump ...')
         exit_code, out = local_exec(server.gitea_container, dump_cmd, user='git', workdir='/tmp')
         if exit_code != 0:
             raise Exception(_format_command_error('gitea dump failed', exit_code, stdout=out))
 
-        exit_code, out = local_exec(server.gitea_container, f'test -s "{container_tmp}" && echo ok')
-        if exit_code != 0 or 'ok' not in out:
+        exit_code, out = local_exec(server.gitea_container, ['test', '-s', container_tmp])
+        if exit_code != 0:
             raise Exception(_format_command_error(
                 'dump exited successfully but backup file is missing or empty',
                 exit_code,
@@ -282,7 +274,8 @@ def _backup_local(server, backup):
             ))
 
         logging.info('[备份-本地] 提取文件到: %s', local_path)
-        local_cp_from(server.gitea_container, container_tmp, local_path)
+        update_backup_progress(backup, 'transfer', '正在提取备份文件', 50, backup.filename)
+        local_cp_from(server.gitea_container, container_tmp, local_path, callback=lambda n, total: update_backup_progress(backup, 'transfer', '正在提取备份文件', 50, backup.filename, current=n, total=total, unit='bytes', item=backup.filename))
     finally:
         try:
             local_exec(server.gitea_container, f'rm -f "{container_tmp}"')
@@ -305,6 +298,7 @@ def _backup_remote(server, backup):
         f'rm -f "{remote_tmp}"',
     ]
     try:
+        update_backup_progress(backup, 'permissions', '正在检查备份权限', 5, server.name)
         _repair_gitea_data_permissions_remote(server, ssh)
         for cmd in cleanup_cmds:
             ssh.exec(cmd)
@@ -313,6 +307,7 @@ def _backup_remote(server, backup):
             f'docker exec -u git -w /tmp {server.gitea_container} '
             f'/usr/local/bin/gitea dump -c /data/gitea/conf/app.ini --tempdir /tmp -f "{container_tmp}"'
         )
+        update_backup_progress(backup, 'dump', '正在导出数据库和仓库', 10, server.name, item=backup.filename)
         logging.info('[备份-远程] 执行: gitea dump ...')
         exit_code, out, err = ssh.exec(dump_cmd)
         if exit_code != 0:
@@ -328,6 +323,7 @@ def _backup_remote(server, backup):
             ))
 
         cp_cmd = f'docker cp {server.gitea_container}:"{container_tmp}" "{remote_tmp}"'
+        update_backup_progress(backup, 'extract', '正在提取备份到源主机', 40, backup.filename)
         logging.info('[备份-远程] 拷贝文件到宿主机 ...')
         exit_code, out, err = ssh.exec(cp_cmd)
         if exit_code != 0:
@@ -336,7 +332,8 @@ def _backup_remote(server, backup):
         os.makedirs(BACKUP_DIR, exist_ok=True)
         local_path = os.path.join(BACKUP_DIR, backup.filename)
         logging.info('[备份-远程] 下载文件到本地: %s', local_path)
-        ssh.get_file(remote_tmp, local_path)
+        update_backup_progress(backup, 'transfer', '正在下载备份文件', 50, backup.filename)
+        ssh.get_file(remote_tmp, local_path, callback=lambda n, total: update_backup_progress(backup, 'transfer', '正在下载备份文件', 50, backup.filename, current=n, total=total, unit='bytes', item=backup.filename))
     finally:
         for cmd in cleanup_cmds:
             try:
@@ -350,6 +347,7 @@ def _backup_remote(server, backup):
     logging.info('[备份-远程] 完成 - 大小: %d 字节', file_size)
 
 
+@tracked_operation("备份", Backup)
 def do_backup(backup_id):
     backup = Backup.query.get(backup_id)
     if not backup:
@@ -360,31 +358,44 @@ def do_backup(backup_id):
         backup.status = 'failed'
         backup.error_msg = 'Server not found'
         backup.completed_at = datetime.utcnow()
+        update_backup_progress(backup, 'failed', '备份失败', 0, backup.error_msg)
         db.session.commit()
         return
 
+    register_secret(server.api_token)
     logging.info('[备份] 开始 - 源: %s (%s) is_local=%s', server.name, server.host, server.is_local)
     backup.status = 'running'
     backup.error_msg = ''
     _set_backup_snapshot_state(backup, 'pending', repo_count=0, error='', collected_at=None)
     db.session.commit()
+    update_backup_progress(backup, 'prepare', '正在准备备份任务', 0, server.name)
 
     try:
         if server.is_local:
-            try:
-                _backup_local(server, backup)
-            except Exception as e:
-                logging.warning('[备份] 本地失败 (%s)，回退到远程模式', e)
-                _backup_remote(server, backup)
+            _backup_local(server, backup)
         else:
             _backup_remote(server, backup)
         _collect_backup_commit_snapshot(backup_id)
+        update_backup_progress(backup, 'checksum', '正在生成备份校验信息', 95, backup.filename)
+        digest = hashlib.sha256()
+        size = os.path.getsize(backup.file_path)
+        count = 0
+        with open(backup.file_path, 'rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+                count += len(block)
+                update_backup_progress(backup, 'checksum', '正在生成备份校验信息', 95,
+                                       backup.filename, current=count, total=size, unit='bytes', item=backup.filename)
+        if CURRENT.get():
+            CURRENT.get().write('artifact.json', {'文件大小': size, 'SHA256': digest.hexdigest()})
         backup = Backup.query.get(backup_id)
         if backup:
             backup.status = 'success'
             backup.error_msg = ''
             backup.completed_at = datetime.utcnow()
+            update_backup_progress(backup, 'completed', '备份完成', 100, backup.filename)
     except Exception as e:
+        if CURRENT.get(): CURRENT.get().fail(e)
         backup = Backup.query.get(backup_id)
         if not backup:
             return
@@ -393,143 +404,15 @@ def do_backup(backup_id):
         if backup.commit_snapshot_status in ('', 'pending', 'running'):
             _set_backup_snapshot_state(backup, 'failed', repo_count=0, error=str(e), collected_at=None)
         backup.completed_at = datetime.utcnow()
+        update_backup_progress(backup, 'failed', '备份失败', backup.progress_percent or 0, backup.error_msg)
         logging.error('[备份] 失败 - %s', e)
 
     db.session.commit()
 
 
 def _restore_local(target, backup, task):
-    import zipfile, tarfile, io, shutil, docker as dk
-
-    local_work = f'/tmp/restore_work_{backup.id}'
-    os.makedirs(local_work, exist_ok=True)
-    update_restore_progress(task, 'extract', '正在解压备份包', 10, backup.filename)
-
-    logging.info('[恢复-本地] 解压备份包...')
-    with zipfile.ZipFile(backup.file_path, 'r') as zf:
-        zf.extractall(local_work)
-
-    dump_root = local_work
-    if not os.path.exists(os.path.join(dump_root, 'gitea-db.sql')):
-        for root, dirs, files in os.walk(local_work):
-            if 'gitea-db.sql' in files:
-                dump_root = root
-                break
-
-    client = dk.from_env()
-    container = client.containers.get(target.gitea_container)
-    image = container.attrs['Config']['Image']
-
-    logging.info('[恢复-本地] 停止目标 Gitea ...')
-    update_restore_progress(task, 'stop_gitea', '正在停止目标 Gitea 服务', 20, target.name)
-    container.stop()
-
-    dump_tar = f'/tmp/dump_{backup.id}.tar'
-    with tarfile.open(dump_tar, 'w') as tar:
-        tar.add(dump_root, arcname='dump')
-    with open(dump_tar, 'rb') as f:
-        dump_data = f.read()
-    os.unlink(dump_tar)
-
-    logging.info('[恢复-本地] 创建临时容器并覆盖数据 ...')
-    update_restore_progress(task, 'copy_files', '正在覆盖仓库和配置文件', 40, target.name)
-    temp = client.containers.run(
-        image=image,
-        command='sleep 300',
-        volumes_from=[target.gitea_container],
-        detach=True,
-    )
-    try:
-        ts = io.BytesIO(dump_data)
-        temp.put_archive('/tmp', ts)
-
-        copy_cmd = (
-            'rm -rf /data/gitea /data/git/repositories && '
-            'mkdir -p /data/gitea /data/git/repositories /data/gitea/conf && '
-            '(cp -a /tmp/dump/data/. /data/gitea/ 2>/dev/null || true) && '
-            '(cp -a /tmp/dump/repos/. /data/git/repositories/ 2>/dev/null || true) && '
-            '(cp /tmp/dump/app.ini /data/gitea/conf/app.ini 2>/dev/null || true)'
-        )
-        exit_code, out = temp.exec_run(f'sh -c "{copy_cmd}"')
-        if exit_code != 0:
-            raise Exception(f'Copy files failed (exit={exit_code})\n{out.decode("utf-8", errors="replace")[:500]}')
-
-        logging.info('[restore-local] Repairing Gitea data permissions ...')
-        update_restore_progress(task, 'fix_permissions', '正在修复 Gitea 数据目录权限', 82, target.name)
-        exit_code, out = temp.exec_run('chown -R git:git /data')
-        out = out.decode('utf-8', errors='replace')
-        if exit_code != 0:
-            raise Exception(_format_command_error('repair gitea data permissions failed', exit_code, stdout=out))
-    finally:
-        temp.stop(timeout=2)
-        temp.remove(force=True)
-
-    sql_file = os.path.join(dump_root, 'gitea-db.sql')
-    if os.path.exists(sql_file):
-        update_restore_progress(task, 'wait_database', '正在等待 PostgreSQL 就绪', 55, target.pg_container)
-        pg_container = client.containers.get(target.pg_container)
-        for i in range(30):
-            pg_container.reload()
-            if pg_container.status == 'running':
-                break
-            logging.info('[恢复-本地] PG 容器状态: %s，等待...', pg_container.status)
-            time.sleep(2)
-        else:
-            raise Exception('PostgreSQL 容器无法启动')
-
-        logging.info('[恢复-本地] 等待 PostgreSQL 稳定就绪 (最长5分钟) ...')
-        deadline = time.time() + 300
-        pg_ready = False
-        while time.time() < deadline:
-            ec, _ = pg_container.exec_run(f'pg_isready -U {target.pg_user}')
-            if ec != 0:
-                time.sleep(5)
-                continue
-            time.sleep(10)
-            ec2, _ = pg_container.exec_run(f'pg_isready -U {target.pg_user}')
-            if ec2 != 0:
-                time.sleep(5)
-                continue
-            time.sleep(5)
-            ec3, _ = pg_container.exec_run(f'psql -U {target.pg_user} -d postgres -c "SELECT 1"')
-            if ec3 == 0:
-                pg_ready = True
-                break
-            time.sleep(5)
-
-        if not pg_ready:
-            raise Exception('PostgreSQL 5 分钟内未能稳定启动。目标 Gitea 服务器可能完全不可用，请立即检查目标服务器！')
-
-        logging.info('[恢复-本地] 重建数据库 ...')
-        update_restore_progress(task, 'recreate_database', '正在重建目标数据库', 68, target.pg_dbname)
-        pg_container.exec_run(f'dropdb -U {target.pg_user} --if-exists {target.pg_dbname}')
-        pg_container.exec_run(f'createdb -U {target.pg_user} -O {target.pg_user} {target.pg_dbname}')
-
-        logging.info('[恢复-本地] 导入数据库 ...')
-        update_restore_progress(task, 'import_database', '正在导入备份数据库', 76, target.pg_dbname)
-        ts = io.BytesIO()
-        with tarfile.open(fileobj=ts, mode='w') as tar:
-            tar.add(sql_file, arcname='restore.sql')
-        ts.seek(0)
-        pg_container.put_archive('/tmp', ts)
-        exit_code, out = pg_container.exec_run(
-            f'psql -U {target.pg_user} -d {target.pg_dbname} -f /tmp/restore.sql'
-        )
-        if exit_code != 0:
-            raise Exception(f'Database import failed (exit={exit_code})\n{out.decode("utf-8", errors="replace")[:500]}')
-        pg_container.exec_run('rm -f /tmp/restore.sql')
-
-    logging.info('[恢复-本地] 启动目标 Gitea ...')
-    update_restore_progress(task, 'start_gitea', '正在启动目标 Gitea 服务', 86, target.name)
-    container.start()
-
-    logging.info('[恢复-本地] 重新生成 hooks 和 keys ...')
-    update_restore_progress(task, 'regenerate_hooks', '正在重新生成 hooks 和 keys', 90, target.name)
-    container.exec_run('/usr/local/bin/gitea admin regenerate hooks', user='git')
-    container.exec_run('/usr/local/bin/gitea admin regenerate keys', user='git')
-
-    shutil.rmtree(local_work, ignore_errors=True)
-    logging.info('[恢复-本地] 恢复命令完成')
+    from services.local_restore import restore
+    return restore(target, backup, task, update_restore_progress)
 
 
 REMOTE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9_.-]+$')
@@ -1057,6 +940,7 @@ def _sync_restored_api_token(target, backup):
         logging.info('[restore] synced target %s API token from backup snapshot', target.name)
 
 
+@tracked_operation("恢复", RestoreTask)
 def do_restore(task_id):
     task = RestoreTask.query.get(task_id)
     if not task:
@@ -1084,25 +968,15 @@ def do_restore(task_id):
     logging.info('[恢复] 开始 - 目标: %s (%s) is_local=%s, 备份: %s', target.name, target.host, target.is_local, backup.filename)
     update_restore_progress(task, 'prepare', '正在准备恢复任务', 5, backup.filename)
     remote_root = None
-    try:
-        if target.is_local:
-            def run_local_restore():
-                return _restore_local(target, backup, task)
+    local_finalize = None
+    original_api_token = target.api_token
+    from access.scopes import invalidate_server
+    invalidate_server(target)
 
-            try:
-                _run_simple_restore_step(
-                    task,
-                    'local_restore',
-                    '正在执行本地恢复',
-                    10,
-                    target.name,
-                    run_local_restore,
-                )
-            except Exception as e:
-                logging.warning('[恢复] 本地失败 (%s)，回退到远程模式', e)
-                remote_root = _restore_remote(target, backup, task)
-        else:
-            remote_root = _restore_remote(target, backup, task)
+    try:
+        restore_step = start_restore_step(task.id, 'restore_data', '正在恢复并保存回退点', detail=target.name)
+        local_finalize = _restore_local(target, backup, task)
+        finish_restore_step(restore_step, status='success', detail='数据恢复完成，回退点保留至验证结束', exit_code=0)
 
         def sync_token():
             _sync_restored_api_token(target, backup)
@@ -1131,9 +1005,17 @@ def do_restore(task_id):
             target.name,
         )
         from services.commit_service import verify_restore
-        verify_restore(task_id)
+        verified = verify_restore(task_id, defer_completion=True)
 
         task = RestoreTask.query.get(task_id)
+        if local_finalize:
+            finalize = local_finalize; local_finalize = None
+            finalize(verified)
+            if not verified: target.api_token = original_api_token
+        task.status = 'success' if verified else 'failed'
+        task.completed_at = datetime.utcnow()
+        if verified: update_restore_progress(task, 'completed', '恢复完成，验证及事务清理通过', 100, '')
+        else: update_restore_progress(task, 'failed', '恢复验证失败，回退已完成', task.progress_percent or 0, task.error_msg)
         if task and task.status == 'success':
             finish_restore_step(
                 verify_step.id,
@@ -1177,12 +1059,19 @@ def do_restore(task_id):
             if task and task.status == 'success':
                 update_restore_progress(task, 'completed', '恢复完成，健康检查和 Commit ID 验证通过', 100, '')
     except Exception as e:
+        if CURRENT.get(): CURRENT.get().fail(e)
         db.session.rollback()
         task = RestoreTask.query.get(task_id)
         if not task:
             logging.exception('[恢复] 失败且任务记录不存在 - task_id=%s', task_id)
             return
-        failed_stage = task.progress_stage or 'unknown'
+        if local_finalize:
+            try:
+                local_finalize(False); target.api_token = original_api_token
+            except Exception as rollback:
+                e = RuntimeError(str(e)+'；验证失败后的回退未完成：'+str(rollback))
+            local_finalize = None
+        failed_stage = getattr(e, 'operation_stage', None) or task.progress_stage or 'unknown'
         error_text = _limit_error_msg(f'阶段 {failed_stage}: {_exception_message(e)}')
         task.status = 'failed'
         task.error_msg = error_text
@@ -1198,6 +1087,7 @@ def get_server_detail(server):
     bs = Backup.query.filter_by(source_server_id=server.id).order_by(Backup.started_at.desc()).limit(10).all()
     result['backups'] = [{
         'id': b.id, 'filename': b.filename, 'file_size': b.file_size,
+        **progress_for_response(b),
         'status': b.status, 'started_at': b.started_at.isoformat() if b.started_at else None,
         'completed_at': b.completed_at.isoformat() if b.completed_at else None,
     } for b in bs]
@@ -1206,6 +1096,7 @@ def get_server_detail(server):
     rs = RestoreTask.query.filter_by(target_server_id=server.id).order_by(RestoreTask.started_at.desc()).limit(10).all()
     result['restores'] = [{
         'id': r.id, 'backup_filename': r.backup.filename if r.backup else '',
+        **progress_for_response(r),
         'status': r.status, 'error_msg': r.error_msg,
         'started_at': r.started_at.isoformat() if r.started_at else None,
         'completed_at': r.completed_at.isoformat() if r.completed_at else None,

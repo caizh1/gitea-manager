@@ -65,11 +65,18 @@ def initialize(values):
             handle.write('GITEA_TOKEN=' + token + '\n')
         values['GITEA_TOKEN'] = token
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    access_csrf = ''
     def api(method, path, data=None):
+        nonlocal access_csrf
         request = urllib.request.Request('http://127.0.0.1:5480/api' + path, method=method,
-            data=json.dumps(data).encode() if data is not None else None, headers={'Content-Type': 'application/json'})
+            data=json.dumps(data).encode() if data is not None else None,
+            headers={'Content-Type': 'application/json', 'X-CSRF-Token': access_csrf})
         with opener.open(request, timeout=60) as response:
-            return json.load(response)
+            value = json.load(response)
+            if isinstance(value, dict) and value.get('csrf_token'):
+                access_csrf = value['csrf_token']
+            return value
+    api('GET', '/session')
     api('POST', '/login', {'password': values['MANAGER_PASSWORD']})
     api('POST', '/settings', {'host_ip': '127.0.0.1'})
     if not any(s['name'] == '本地策略验收' for s in api('GET', '/servers')):

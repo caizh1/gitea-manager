@@ -36,7 +36,9 @@ def migrate(c):
 
 
 def finding_id(job, finding):
-    return 'AR-' + digest([job['id'], finding.get('candidate_id') or finding['fingerprint']])[:24]
+    identity = [job['id'], finding.get('candidate_id') or finding['fingerprint']]
+    if finding.get('unit_id'): identity.append(finding['unit_id'])
+    return 'AR-' + digest(identity)[:24]
 
 
 def observe_origin(store, repository, origin):
@@ -56,7 +58,10 @@ def archive(store, job, snapshot, result):
         for f in result.get('findings', []):
             if f.get('quality_version', 0) < 3:
                 continue
-            source = next((e['input'] for e in result.get('evidence', []) if e.get('scope', {}).get('name') == f.get('scope') and e.get('path') == f['path']), {})
+            matches = [e['input'] for e in result.get('evidence', []) if
+                       (e.get('unit_id') == f['unit_id'] if f.get('unit_id') else
+                        e.get('scope', {}).get('name') == f.get('scope') and e.get('path') == f['path'])]
+            source = matches[0] if len(matches) == 1 else {}
             # 持久化必要上下文；不归档模型密钥或管理端配置。
             value = dict(id=finding_id(job, f), repository=repo['repo_name'], server_id=repo['server_id'],
                          pr=job['number'], job=job['id'], head=snapshot['head'], base=snapshot['base'],
@@ -191,7 +196,8 @@ def scope_symbols(finding):
 def retrieve(store, repository, item, records=None):
     if records is None:records=active_rows(store,repository)
     if not records:return []
-    sources=[item['before'],item['after'],*item.get('context',[])]
+    references=[s for symbol in item.get('changed_symbols',[]) for s in symbol.get('references',[])]
+    sources=[item['before'],item['after'],*item.get('context',[]),*references]
     code='\n'.join(s.get('code','') for s in sources)
     paths={item['path'],*(s.get('path') for s in sources)}
     symbols=set(re.findall(r'\b[A-Za-z_]\w{2,}\b',code))

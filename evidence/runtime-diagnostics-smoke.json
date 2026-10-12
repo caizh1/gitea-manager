@@ -1,0 +1,77 @@
+{
+  "说明": "原生执行器安全诊断专项证据；使用本机协议替身，不代表真实模型质量或内网根因复现。",
+  "源码目录": "/Users/archer/Work/gitea-manager/work/ai-review-diagnostics-20260916/source",
+  "执行器镜像": {
+    "标签": "gitea-review-executor:diagnostics-20260916-r2",
+    "平台": "linux/amd64",
+    "镜像摘要": "sha256:84a4ff1bb114e825e41a31c9e19f1c28f5a6ccec65eef7479f116d549d09016b",
+    "运行时模块导入": "通过"
+  },
+  "专项测试": {
+    "结果": "通过",
+    "数量": 41,
+    "范围": [
+      "原生会话诊断",
+      "原生模型网关限制与传输诊断",
+      "执行器进程与旧CLI诊断"
+    ],
+    "首次失败": "旧测试仍断言 steps=2，冻结基线运行代码实际已无该字段；仅修正过时断言为确认字段不存在，未改变步数行为。"
+  },
+  "真实原生协议冒烟": {
+    "结果": "通过",
+    "OpenCode版本": "1.18.7",
+    "上游类型": "隔离协议替身",
+    "模型调用次数": 1,
+    "自动重放次数": 0,
+    "会话状态": "failed",
+    "错误代码": "invalid_json",
+    "最终事件序号": 10,
+    "已确认序号": 10,
+    "日志流关闭": true,
+    "诊断": {
+      "call_id": "iZBDHxTfICT-qZZqp7hF8hK9",
+      "diagnostic_version": 1,
+      "extraction_path": "message.parts[type=text].text",
+      "finish_reason": "stop",
+      "job": "job_diag_r2",
+      "job_id": "job_diag_r2",
+      "json_column": 14,
+      "json_line": 1,
+      "json_offset": 13,
+      "model_context_tokens": 32768,
+      "native_error_type": null,
+      "native_session_id": "ses_f564cf29cffeFIS0lohrkw4GCe",
+      "parser_message": "缺少 JSON 值",
+      "parser_reason": "expecting_value",
+      "phase": "result_decode",
+      "reason": "unexpected_eof",
+      "received_bytes": 13,
+      "response_chars": 13,
+      "response_limit_bytes": 1048576,
+      "session_id": "session_diag_r2",
+      "source": "native_result",
+      "text_part_count": 1,
+      "time_utc": "2026-09-16T10:11:19.551200+00:00",
+      "upstream_output_tokens": 0
+    },
+    "持久性": "原生临时运行目录清理后，终态文件及同一安全诊断仍可读取。",
+    "日志安全": "容器日志包含同一结构化诊断，未包含模型正文、源码或令牌。"
+  },
+  "环境事实": [
+    "首次尝试创建独立 Docker 网络时因地址池耗尽而失败，未启动会话或模型调用。",
+    "随后使用默认桥接网络与宿主回环映射完成同一冒烟；测试容器已停止，未触碰其他项目。"
+  ],
+  "源码SHA256": {
+    "review-runtime/runtime_diagnostics.py": "7bc128ffc4bc685351c417ff67f0162c642969cf8bf886ec0626a841cd5f013e",
+    "review-runtime/native_session.py": "262b409ff128b92ce47d8fe85f1bc901a6715e76e58fa5210977fb157c249f97",
+    "review-runtime/native_gateway.py": "f3a7ca186c60efcef4bc56b158d6dbc64c4e020317ea85f7e222991572562014",
+    "review-runtime/executor.py": "79cb93fd87c9721aa5446f7d86cc97d79d5fa7408faa2599fd3c1e5bafb2835c",
+    "review-runtime/Dockerfile": "4ac036157915c40c0075c7c14739aa144f22eb824b97495d961515eba2ff86be",
+    ".dockerignore": "5f843648eb760b9dcc5e3061759c3a5336d771b8a375c0e18535dfe1eccee052"
+  },
+  "验证边界": [
+    "未使用真实模型Key",
+    "未发起付费模型调用",
+    "不能据此声称已复现用户内网 invalid_json 根因"
+  ]
+}

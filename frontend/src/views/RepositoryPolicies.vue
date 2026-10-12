@@ -4,15 +4,15 @@
     <template v-else>
     <div class="section-header policy-toolbar">
       <div><h3 class="section-title">仓库策略中心</h3><p class="policy-muted">选择实例和组织 · 创建模板 · 预览后批量下发</p></div>
-      <div class="policy-actions"><el-select v-model="serverId" placeholder="选择 Gitea 实例" aria-label="选择 Gitea 实例" class="policy-select" @change="changeServer">
+      <div class="policy-actions"><el-select v-model="serverId" :disabled="!isPlatformAdmin" placeholder="选择 Gitea 实例" aria-label="选择 Gitea 实例" class="policy-select" @change="changeServer">
         <el-option v-for="server in servers" :key="server.id" :value="server.id" :label="server.name" />
-      </el-select><PolicyOrganizationSelect v-model="organization" :server-id="serverId" class="policy-select" @update:model-value="changeOrganization" /></div>
+      </el-select><PolicyOrganizationSelect v-model="organization" :server-id="serverId" :disabled="!isPlatformAdmin" class="policy-select" @update:model-value="changeOrganization" /></div>
     </div>
     <el-alert v-if="error" :title="error" type="error" show-icon closable @close="error = ''" />
     <el-tabs v-model="tab">
       <el-tab-pane label="策略模板" name="templates">
         <div class="glass-card policy-panel">
-          <div class="policy-toolbar"><div><span>{{ organization ? organization.name + ' 的策略模板' : '尚未归属组织的旧模板' }}</span><el-checkbox v-if="organization" v-model="showLegacy" @change="loadTemplates">查看尚未归属组织的模板</el-checkbox></div><el-button type="primary" :disabled="!organization" :icon="Plus" @click="newTemplate">创建模板</el-button></div>
+          <div class="policy-toolbar"><div><span>{{ organization ? organization.name + ' 的策略模板' : '尚未归属组织的旧模板' }}</span><el-checkbox v-if="isPlatformAdmin && organization" v-model="showLegacy" @change="loadTemplates">查看尚未归属组织的模板</el-checkbox></div><el-button type="primary" :disabled="!organization" :icon="Plus" @click="newTemplate">创建模板</el-button></div>
           <el-table :data="templates" stripe max-height="var(--table-max-height)">
             <el-table-column prop="name" label="模板名称" min-width="180" />
             <el-table-column label="归属组织" min-width="160"><template #default="{ row }">{{ row.organization?.name || '尚未归属组织' }}</template></el-table-column>
@@ -22,7 +22,7 @@
             <el-table-column label="操作" min-width="270"><template #default="{ row }"><div class="policy-actions">
               <el-button link type="primary" :disabled="!row.organization" @click="chooseTemplate(row)">选择仓库</el-button>
               <el-button link @click="editTemplate(row)">编辑</el-button>
-              <el-button link :disabled="!row.organization" @click="editTemplate(row, true)">另存为</el-button><el-button link :disabled="!row.organization" @click="editTemplate(row, false, true)">复制到其他组织</el-button>
+              <el-button link :disabled="!row.organization" @click="editTemplate(row, true)">另存为</el-button><el-button v-if="isPlatformAdmin" link :disabled="!row.organization" @click="editTemplate(row, false, true)">复制到其他组织</el-button>
               <el-button link type="danger" @click="deleteTemplate(row)">删除</el-button>
             </div></template></el-table-column>
             <template #empty>选择组织后创建模板，或整理尚未归属组织的旧模板。</template>
@@ -57,7 +57,7 @@
       </el-tab-pane>
       <el-tab-pane label="执行记录" name="history">
         <div class="glass-card policy-panel">
-          <div class="policy-toolbar"><span>记录包含预览、共享管理员身份、模板快照与执行结果。</span><el-button :icon="Refresh" @click="loadHistory">刷新</el-button></div>
+          <div class="policy-toolbar"><span>记录包含预览、操作人、模板快照与执行结果；旧共享管理员记录保留原身份。</span><el-button :icon="Refresh" @click="loadHistory">刷新</el-button></div>
           <el-table :data="history" stripe @row-click="openBatch" max-height="var(--table-max-height)">
             <el-table-column prop="id" label="任务" width="80" />
             <el-table-column prop="template_name" label="模板" min-width="180" />
@@ -73,7 +73,7 @@
     </el-tabs>
     </template>
 
-    <el-dialog v-model="batchVisible" :title="batch ? `任务 #${batch.id} · ${batch.template_name}` : '任务详情'" width="min(1200px, 97vw)" top="4vh" :close-on-click-modal="false" @closed="stopPolling">
+    <el-dialog append-to-body v-model="batchVisible" :title="batch ? `任务 #${batch.id} · ${batch.template_name}` : '任务详情'" width="min(1200px, 97vw)" top="4vh" :close-on-click-modal="false" @closed="stopPolling">
       <template v-if="batch">
         <div class="policy-toolbar"><div class="policy-actions"><el-tag :type="statusType(batch.status)">{{ statusLabel(batch.status) }}</el-tag><span>{{ batch.actor }} · {{ batch.total }} 个仓库</span></div>
           <el-button @click="showSnapshot = !showSnapshot">{{ showSnapshot ? '收起模板快照' : '查看当时的模板' }}</el-button></div>
@@ -116,6 +116,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api } from '../api'
+import { currentOrganization, isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 import PolicyTemplateEditor from '../components/PolicyTemplateEditor.vue'
 import PolicyOrganizationSelect from '../components/PolicyOrganizationSelect.vue'
 
@@ -214,7 +215,7 @@ async function refreshBatch() {
 }
 function filterResults() { resultPage.value = 1; refreshBatch() }
 async function apply() { busy.value = true; try { batch.value = await send('post', `/batches/${batch.value.id}/apply`, {}); await refreshBatch() } catch (e) { fail(e) } finally { busy.value = false } }
-onMounted(async () => { try { const [s, token, schemaResult] = await Promise.all([api.get(prefix + '/servers'), api.get(prefix + '/csrf'), api.get(prefix + '/schema')]); if (disposed) return; servers.value = s.data; csrfToken = token.data.token; schema.value = schemaResult.data; if (servers.value.length) { serverId.value = servers.value[0].id; await changeServer() } } catch (e) { fail(e) } })
+onMounted(async () => { try { const [s, token, schemaResult] = await Promise.all([api.get(prefix + '/servers'), api.get(prefix + '/csrf'), api.get(prefix + '/schema')]); if (disposed) return; servers.value = scopedServers(s.data); csrfToken = token.data.token; schema.value = schemaResult.data; if (servers.value.length) { serverId.value = servers.value[0].id; if (!isPlatformAdmin.value && currentOrganization.value) { organization.value = { id: currentOrganization.value.organization_id, name: currentOrganization.value.organization_name }; await changeOrganization(); await loadHistory() } else await changeServer() } } catch (e) { fail(e) } })
 onUnmounted(() => { disposed = true; stopPolling(); ++repoRequest; ++templateRequest; ++selectionRequest })
 </script>
 

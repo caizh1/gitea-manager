@@ -61,8 +61,8 @@ class Installer:
             raise ValueError('CustomPath 必须位于可写持久卷中；本脚本不会修改容器挂载或重建容器')
         self.exec(['test', '-r', self.config])
         version = self.exec(['gitea', '--version'])
-        if not re.search(r'\b1\.26\.4(?:\+review\.1)?\b', version):
-            raise ValueError('当前组件仅验收 Gitea 1.26.4；其他版本需先完成页面兼容测试')
+        if not re.search(r'(?<![\w.+-])(?:1\.26\.4(?:\+review\.1)?|1\.27\.3(?:\+[0-9A-Za-z.-]+)?)(?![\w.+-])', version):
+            raise ValueError('当前组件允许 Gitea 1.26.4（含 review.1）及增强版 1.27.3（待内网验收）；其他版本需先完成页面兼容测试')
         self.reload_args = ['gitea', '--config', self.config, '--custom-path', self.custom, 'manager', 'reload-templates']
         help_reload = self.exec(self.reload_args + ['--help'])
         if 'reload-templates' not in help_reload:

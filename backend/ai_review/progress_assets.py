@@ -36,7 +36,7 @@ def build_assets(repositories):
     files['install.py'] = (root / 'install.py').read_bytes()
     files['安装说明.md'] = '''# 已有 Gitea 容器接入 PR 进度
 
-适配 Gitea 1.26.4（包含 review.1 兼容版本）。服务器需已有 Python 3 与 Docker CLI；全程无需联网安装依赖。
+适配 Gitea 1.26.4（包含 review.1 兼容版本）；增强版 1.27.3（含构建后缀）已放开准入，待内网实际验收。服务器需已有 Python 3 与 Docker CLI；全程无需联网安装依赖。
 资源由现有 Gitea 服务提供，浏览器使用自己的登录会话，不包含模型密钥或机器人令牌。
 
 1. 将本包复制至 Gitea 所在服务器，解压至独立目录。

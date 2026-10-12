@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from models import db, RestoreTask, ScheduledTask
+from models import db, Backup, RestoreTask, ScheduledTask
 
 
 _UNSET = object()
@@ -78,6 +78,14 @@ def schedule_progress_for_response(task):
         'current_restore_total': task.current_restore_total or 0,
     }
 
+    if task.last_status == 'running' and task.current_backup_id and not task.current_restore_task_id:
+        backup = Backup.query.get(task.current_backup_id)
+        if backup:
+            from services.operation_progress import progress_for_response
+            progress.update(progress_for_response(backup))
+            progress['progress_percent'] = min(30, 10 + int((backup.progress_percent or 0) * .2))
+            progress['progress_label'] = '备份：' + (backup.progress_label or '正在准备')
+        return progress
     if task.last_status != 'running' or not task.current_restore_task_id:
         return progress
 
@@ -91,6 +99,9 @@ def schedule_progress_for_response(task):
     slot = 65 / total
     overall_percent = int(round(30 + slot * (index - 1) + slot * restore_percent / 100))
 
+    from services.operation_progress import progress_for_response
+    child_progress = progress_for_response(restore_task)
+    progress.update({k: v for k, v in child_progress.items() if k not in ('progress_percent', 'progress_stage', 'progress_label', 'progress_detail')})
     target_name = restore_task.target_server_name or ''
     detail_parts = [p for p in [target_name, restore_task.progress_label, restore_task.progress_detail] if p]
     progress.update({

@@ -1,5 +1,6 @@
 """持久化的一次接入任务；共享管理员确认后自动准备受限机器人与事件链路。"""
 import contextlib
+from datetime import datetime, timezone
 import hashlib
 import json
 import logging
@@ -16,23 +17,16 @@ import zipfile
 
 import requests
 
-from .common import ReviewError, encode, endpoint
+from .common import ReviewError, encode, endpoint, MODEL_CONNECT_TIMEOUT
 from .gitea import Gitea
-from .host_policy import address, approve, ensure
+from .host_policy import address, approve, ensure, gitea_address
 from .store import Store
-from .setup_transport import ContainerAccess
+from .setup_transport import AccessError, ConnectionPool, ContainerAccess
 
 
 def initialize(store):
-    with store.tx() as c:
-        c.executescript('''
-        CREATE TABLE IF NOT EXISTS setup_jobs (
-            id TEXT PRIMARY KEY, status TEXT NOT NULL, value TEXT NOT NULL,
-            detail TEXT NOT NULL DEFAULT '{}', created REAL NOT NULL, updated REAL NOT NULL);
-        CREATE TABLE IF NOT EXISTS setup_resources (id TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS setup_probes (token TEXT PRIMARY KEY, expires REAL NOT NULL, seen INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE IF NOT EXISTS setup_hook_receipts (repository INTEGER PRIMARY KEY, received REAL NOT NULL);
-        ''')
+    # 表结构由 Store 在进程第一次连接时迁移；查询路径不重复申请写锁。
+    return None
 
 
 def resource(store, key, value=None):
@@ -43,13 +37,48 @@ def resource(store, key, value=None):
         return json.loads(row[0]) if row else None
 
 
-def public_job(store, ident=None):
-    initialize(store)
+def public_job(store, ident=None, server_id=None):
     with contextlib.closing(store.connect()) as c:
-        row = c.execute('SELECT id,status,detail,created,updated FROM setup_jobs ' + ('WHERE id=?' if ident else 'ORDER BY created DESC LIMIT 1'), (ident,) if ident else ()).fetchone()
-        if not row:
-            return None
-        return dict(id=row['id'], status=row['status'], detail=json.loads(row['detail']), created=row['created'], updated=row['updated'])
+        where, args = (' WHERE id=?', [ident]) if ident else ('', [])
+        if server_id is not None and not ident:
+            where, args = (" WHERE COALESCE(json_extract(value,'$.server_id'),json_extract(value,'$.repositories[0].server_id'))=?", [server_id])
+        row = c.execute('SELECT * FROM setup_jobs' + where + ' ORDER BY created DESC,id DESC LIMIT 1', args).fetchone()
+    if not row:
+        return None
+    value = json.loads(row['value'])
+    targets = value['repositories']
+    return dict(id=row['id'], status=row['status'], detail=json.loads(row['detail']), created=row['created'], updated=row['updated'],
+                server_id=value.get('server_id', targets[0]['server_id']), server_name=value.get('server_name', ''),
+                repositories=[{k: r[k] for k in ('server_id','repo_id','name')} for r in targets],
+                model=value['model'], config_revision=value['config_revision'])
+
+
+def resume(store, ident, data):
+    job = public_job(store, ident)
+    if not job:
+        raise ReviewError('接入任务不存在')
+    if data.get('server_id') != job['server_id']:
+        raise ReviewError('继续检查必须对应原任务的 Gitea 实例，请刷新并核对目标')
+    config = store.config()
+    if data.get('config_revision') != config['revision']:
+        raise ReviewError('模型配置已变化，请刷新后继续检查')
+    with store.tx() as c:
+        row = c.execute('SELECT * FROM setup_jobs WHERE id=?', (ident,)).fetchone()
+        if row['status'] not in ('failed', 'partial'):
+            raise ReviewError('该任务正在运行或已经完成，请刷新查看')
+        if c.execute("SELECT id FROM setup_jobs WHERE status IN ('pending','running') AND id!=?", (ident,)).fetchone():
+            raise ReviewError('已有接入任务正在执行')
+        value = json.loads(row['value']); previous = json.loads(row['detail'])
+        if {r['server_id'] for r in value['repositories']} != {job['server_id']}:
+            raise ReviewError('旧任务包含多个实例，请重新选择单个实例接入')
+        if all(config.get(k) for k in ('api_base_url','api_key','model')):
+            value.update({k: config[k] for k in ('api_base_url','api_key','model')})
+        value['config_revision'] = config['revision']
+        history = previous.pop('history', [])[-9:] + [previous]
+        detail = dict(attempt=previous.get('attempt', 1)+1, stage='等待继续检查', history=history, error='', results=[], steps=[])
+        c.execute("UPDATE setup_jobs SET status='pending',value=?,detail=?,updated=? WHERE id=?",
+                  (encode(value), encode(detail), time.time(), ident))
+    return public_job(store, ident)
 
 
 def update(store, ident, status='running', **detail):
@@ -62,9 +91,15 @@ def update(store, ident, status='running', **detail):
 def submit(store, data, fallback_url):
     from models import db, GiteaServer
     initialize(store)
-    if not isinstance(data, dict) or set(data) - {'api_base_url', 'api_key', 'model', 'repositories', 'manager_url'}:
+    if not isinstance(data, dict) or set(data) - {'api_base_url', 'api_key', 'model', 'repositories', 'manager_url', 'server_id', 'config_revision'}:
         raise ReviewError('初始化输入格式无效')
     old = store.config()
+    if data.get('config_revision') != old['revision']:
+        raise ReviewError('模型配置已变化，请刷新后提交')
+    if type(data.get('server_id')) is not int:
+        raise ReviewError('请刷新页面并明确选择一个 Gitea 实例')
+    if all(old.get(k) for k in ('api_base_url','api_key','model')):
+        data = dict(data, api_base_url=old['api_base_url'], model=old['model'], api_key='')
     api_url = address(data.get('api_base_url') or old['api_base_url'])[0]
     model = data.get('model') or old['model'] or 'deepseek-v4-flash'
     if not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}', model):
@@ -82,21 +117,24 @@ def submit(store, data, fallback_url):
             raise ReviewError('仓库选择格式无效')
         if not isinstance(row['name'], str) or len(row['name']) > 300 or len(row['name'].split('/')) != 2:
             raise ReviewError('仓库名称格式无效')
+        if row['server_id'] != data['server_id']:
+            raise ReviewError('仓库必须全部属于当前选择的 Gitea 实例，未执行接入')
         target = db.session.get(GiteaServer, row['server_id'])
         if not target:
             raise ReviewError('所选 Gitea 服务器已不存在')
         marker = (target.id, row['repo_id'])
         if marker in seen: continue
         seen.add(marker)
-        targets.append(dict(row, gitea_url=address(target.gitea_url)[0]))
-        hosts.append(target.gitea_url)
+        targets.append(dict(row, gitea_url=gitea_address(target.gitea_url)))
+        hosts.append(gitea_address(target.gitea_url))
     previous = [r.get('webhook_url', '').split('/api/ai-review/webhooks/')[0] for r in store.repos(public=True)
                 if r['server_id'] in {r['server_id'] for r in targets} and r.get('webhook_url')]
     callback = address(data.get('manager_url') or (previous[0] if previous and len(set(previous)) == 1 else fallback_url))[0]
     # 提交按钮即是管理员对这些明确地址的授权；不从 webhook 载荷追加名单。
     approve({'AI_REVIEW_GITEA_HOSTS': hosts, 'AI_REVIEW_MODEL_HOSTS': [api_url], 'AI_REVIEW_WEBHOOK_HOSTS': [callback]})
-    value = dict(api_base_url=api_url, api_key=sealed, model=model, manager_url=callback, repositories=targets,
-                 config_revision=old['revision'])
+    from access.scopes import actor_snapshot
+    value = dict(server_id=data['server_id'], server_name=target.name, api_base_url=api_url, api_key=sealed, model=model, manager_url=callback, repositories=targets,
+                 config_revision=old['revision'], access_actor=actor_snapshot())
     with store.tx() as c:
         active = c.execute("SELECT id FROM setup_jobs WHERE status IN ('pending','running') LIMIT 1").fetchone()
         if active:
@@ -107,28 +145,83 @@ def submit(store, data, fallback_url):
 
 
 def verify_model(store, value):
+    from .thinking import parameters, description
+    from services.diagnostics import redact
     base = endpoint(value['api_base_url'], 'AI_REVIEW_MODEL_HOSTS')
+    key = store.unseal(value['api_key'])
+    started = time.monotonic()
+    phase, path, timeout = '读取模型目录', '/models', 15
+    response = None
+
+    def fail(code, message, exc=None):
+        details = {
+            'diagnostic_id': secrets.token_hex(8),
+            'time_utc': datetime.now(timezone.utc).isoformat(),
+            'phase': phase, 'request_path': path, 'error_code': code,
+            'elapsed_seconds': round(time.monotonic() - started, 3),
+            'connect_timeout_seconds': MODEL_CONNECT_TIMEOUT, 'read_timeout_seconds': timeout,
+            'http_status': response.status_code if response is not None else None,
+            'exception_type': type(exc).__name__ if exc else '',
+            'response_bytes': len(response.content) if response is not None else 0,
+        }
+        # 先移除本次凭据再截断，避免截断后泄漏密钥前缀。
+        if response is not None:
+            text = response.text.replace(key, '[已脱敏]') if key else response.text
+            text = redact(text)
+            details['response_summary'] = text[:2000] + ('\n[摘要已截断]' if len(text) > 2000 else '')
+        else:
+            details['response_summary'] = '未收到完整 HTTP 响应'
+        logging.warning('AI 模型连接测试失败 %s', encode(details))
+        error = ReviewError(message)
+        error.connection_diagnostic = details
+        raise error from None
+
     with requests.Session() as session:
         session.trust_env = False
-        session.headers['Authorization'] = 'Bearer ' + store.unseal(value['api_key'])
+        session.headers['Authorization'] = 'Bearer ' + key
         try:
-            response = session.get(base + '/models', timeout=(5, 15), allow_redirects=False)
-            if response.status_code != 200 or len(response.content) > 1024 * 1024:
-                raise ReviewError('模型目录不可读取，请核对地址、Key 与访问权限')
-            models = [r.get('id') for r in response.json().get('data', []) if isinstance(r, dict)]
-            if value['model'] not in models:
-                raise ReviewError('内网模型目录中没有所选模型，请修正模型名称')
-            response = session.post(base + '/chat/completions', json={'model': value['model'], 'messages': [
+            response = session.get(base + path, timeout=(MODEL_CONNECT_TIMEOUT, timeout), allow_redirects=False)
+            if response.status_code != 200:
+                fail('MODEL_HTTP_ERROR', f'模型目录返回 HTTP {response.status_code}，请展开查看详情')
+            if len(response.content) > 1024 * 1024:
+                fail('MODEL_RESPONSE_TOO_LARGE', '模型目录响应超过 1 MiB')
+            payload = response.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get('data'), list):
+                fail('MODEL_SCHEMA_ERROR', '模型目录缺少 data 数组')
+            listed = value['model'] in [r.get('id') for r in payload['data'] if isinstance(r, dict)]
+            phase, path, timeout, response = '模型结构化调用', '/chat/completions', 90, None
+            response = session.post(base + path, json={'model': value['model'], 'messages': [
                 {'role': 'user', 'content': '连接验证：仅输出 JSON 对象 {"ok":true}。'}],
-                'max_tokens': 128, 'stream': False, 'response_format': {'type': 'json_object'}},
-                timeout=(5, 90), allow_redirects=False)
-            if response.status_code != 200 or len(response.content) > 65536:
-                raise ReviewError('模型实际调用未通过，请检查服务与模型权限')
+                'max_tokens': max(128, value.get('thinking_token_budget', 4096) + 512) if value.get('thinking_enabled') else 128,
+                'stream': False, 'response_format': {'type': 'json_object'}, **parameters(value)},
+                timeout=(MODEL_CONNECT_TIMEOUT, timeout), allow_redirects=False)
+            if response.status_code != 200:
+                fail('MODEL_HTTP_ERROR', f'模型实际调用返回 HTTP {response.status_code}，请展开查看详情')
+            if len(response.content) > 65536:
+                fail('MODEL_RESPONSE_TOO_LARGE', '模型实际调用响应超过 64 KiB')
             choice = response.json()['choices'][0]
-            if choice.get('finish_reason') != 'stop' or choice['message'].get('tool_calls') or json.loads(choice['message']['content']) != {'ok': True}:
-                raise ReviewError('模型实际调用未返回完整的结构化结果')
-        except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
-            raise ReviewError('模型调用超时或返回格式不符合要求') from None
+            if choice.get('finish_reason') != 'stop':
+                fail('MODEL_INCOMPLETE', '模型未正常结束输出，请检查 finish_reason 与输出额度')
+            if choice['message'].get('tool_calls'):
+                fail('MODEL_UNEXPECTED_TOOLS', '连接测试意外返回工具调用，期望直接输出 JSON')
+            phase = '解析模型输出 JSON'
+            if json.loads(choice['message']['content']) != {'ok': True}:
+                fail('MODEL_RESULT_MISMATCH', '模型输出与连接测试期望的 {"ok":true} 不符')
+            return {'listed': listed, 'message': ('模型实际结构化调用通过' if listed else '模型实际调用通过；目录未列出该模型') + '；' + description(value)}
+        except requests.exceptions.ConnectTimeout as exc:
+            fail('MODEL_CONNECT_TIMEOUT', '建立模型服务连接超时', exc)
+        except requests.exceptions.ReadTimeout as exc:
+            fail('MODEL_READ_TIMEOUT', f'{phase}等待响应超时（读取上限 {timeout} 秒）', exc)
+        except requests.exceptions.SSLError as exc:
+            fail('MODEL_TLS_ERROR', '模型服务 TLS 握手或证书校验失败', exc)
+        except requests.exceptions.JSONDecodeError as exc:
+            fail('MODEL_INVALID_JSON', f'{phase}返回的内容不是合法 JSON', exc)
+        except requests.RequestException as exc:
+            fail('MODEL_NETWORK_ERROR', f'{phase}网络通信失败', exc)
+        except ValueError as exc:
+            fail('MODEL_INVALID_JSON', f'{phase}返回的内容不是合法 JSON', exc)
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
+            fail('MODEL_SCHEMA_ERROR', f'{phase}响应字段缺失或类型错误', exc)
 
 
 def callback_probe(store, installer, callback):
@@ -144,6 +237,10 @@ def callback_probe(store, installer, callback):
         with contextlib.closing(store.connect()) as c:
             if not c.execute('SELECT seen FROM setup_probes WHERE token=?', (token,)).fetchone()[0]:
                 raise ReviewError('回调没有到达当前 Manager')
+    except AccessError as exc:
+        if exc.code != 'REMOTE_COMMAND_FAILED':
+            raise
+        raise ReviewError('callback_unreachable') from None
     except Exception:
         raise ReviewError('callback_unreachable') from None
     finally:
@@ -151,7 +248,7 @@ def callback_probe(store, installer, callback):
 
 
 def ensure_bot(store, target, installer, admin):
-    key = 'bot:' + hashlib.sha256(target.gitea_url.rstrip('/').encode()).hexdigest()
+    key = 'bot:' + hashlib.sha256(gitea_address(target.gitea_url).encode()).hexdigest()
     value = resource(store, key)
     if value is None:
         nonce = secrets.token_hex(10)
@@ -225,35 +322,52 @@ def verify_delivery(store, admin, path, repository, hook_id, ref):
 
 
 def execute(store, job):
+    with ConnectionPool() as pool:
+        _execute(store, job, pool)
+
+
+def _execute(store, job, pool):
     from models import db, GiteaServer
     from .assets.install import Installer
     from .progress_assets import build_assets
     from routes.ai_review_routes import repository_values, ensure_webhook
     ident = job['id']; value = json.loads(job['value'])
-    update(store, ident, stage='检查内网模型实际调用', needs_callback=False, error='')
+    update(store, ident, stage='检查内网模型实际调用', needs_callback=False, error='', results=[], steps=[])
+    if store.config()['revision'] != value['config_revision']:
+        raise ReviewError('模型配置已变化，请继续检查以使用当前保存配置')
     verify_model(store, value)
     old = store.config()
+    if old['revision'] != value['config_revision']:
+        raise ReviewError('模型配置在检查期间发生变化，请继续检查以验证当前保存配置')
+    expected_revision = old['revision']
     wanted = {k: value[k] for k in ('api_base_url', 'model')}
     same = all(old[k] == wanted[k] for k in wanted) and old['api_key'] and store.unseal(old['api_key']) == store.unseal(value['api_key'])
     if not same:
         if old['revision'] != value['config_revision']:
             raise ReviewError('模型配置已被其他操作修改，请重新检查并提交')
         store.save_config(dict(wanted, api_key=value['api_key'], revision=old['revision']))
+        expected_revision += 1
     results = []
     steps = []
     def stage(name, action):
+        nonlocal current_step
+        if store.config()['revision'] != expected_revision:
+            raise ReviewError('模型配置在接入期间发生变化，已停止后续操作，请继续检查')
+        current_step = action
         update(store, ident, stage=name + '：' + action, steps=steps, results=results)
     def done(name, action):
         steps.append({'name': name, 'step': action, 'ok': True})
         update(store, ident, steps=steps)
-    for selection in value['repositories']:
+    current_step = '准备容器连接'
+    for index, selection in enumerate(value['repositories']):
         target = db.session.get(GiteaServer, selection['server_id'])
-        if not target or target.gitea_url.rstrip('/') != selection['gitea_url']:
+        if not target or gitea_address(target.gitea_url) != selection['gitea_url']:
             raise ReviewError('Gitea 连接在初始化期间发生变化，请重新选择')
-        update(store, ident, stage='准备 ' + selection['name'], results=results)
-        transport = ContainerAccess(target)
-        admin = Gitea(target.gitea_url, target.api_token)
+        stage(selection['name'], '准备容器连接')
+        transport = admin = None
         try:
+            transport = ContainerAccess(target, pool)
+            admin = Gitea(target.gitea_url, target.api_token)
             installer = Installer(SimpleNamespace(container=target.gitea_container, user=None, custom_path=None, config=None, action='install'), runner=transport.run)
             admin.version()
             actual = admin.request('GET', '/repos/' + quote(selection['name'], safe='/'))
@@ -263,10 +377,10 @@ def execute(store, job):
             callback_probe(store, installer, value['manager_url'])
             done(selection['name'], '回调地址')
             path = '/repos/' + quote(selection['name'], safe='/')
-            aliases = [r for r in store.repos() if r['repo_id'] == actual['id'] and r.get('gitea_url', '').rstrip('/') == target.gitea_url.rstrip('/') and r['server_id'] != target.id]
+            aliases = [r for r in store.repos() if not r.get('access_archived') and r['repo_id'] == actual['id'] and r.get('gitea_url', '').rstrip('/') == gitea_address(target.gitea_url) and r['server_id'] != target.id]
             if aliases:
                 raise ReviewError('该仓库已通过另一个服务器记录接入，请复用已有记录，未创建重复 Webhook')
-            existing = next((r for r in store.repos() if r['server_id'] == target.id and r['repo_id'] == actual['id']), None)
+            existing = next((r for r in store.repos() if not r.get('access_archived') and r['server_id'] == target.id and r['repo_id'] == actual['id']), None)
             if not existing:
                 stage(selection['name'], '准备专用机器人及只读权限')
                 bot = ensure_bot(store, target, installer, admin)
@@ -277,7 +391,9 @@ def execute(store, job):
                     'enabled': existing['enabled'] if existing else False, 'revision': existing['revision'] if existing else None}
             sid, rid, checked = repository_values(store, data, existing)
             done(selection['name'], '机器人与仓库权限')
-            repo = store.repo(existing['id'], public=True) if existing else store.save_repo(sid, rid, checked)
+            repo = store.repo(existing['id'], public=True) if existing else store.save_repo(sid, rid, checked, required_config_revision=expected_revision)
+            from access.scopes import bind_review_repository
+            bind_review_repository(store, repo['id'], actual, actor=value.get('access_actor', {}))
             installed = ensure_webhook(store, repo['id'], value['manager_url'])
             stage(selection['name'], '验证 Webhook 实际投递')
             if not actual.get('empty'):
@@ -286,17 +402,34 @@ def execute(store, job):
                 raise ReviewError('空仓库尚无提交，无法验证 Webhook，请有首个提交后继续接入')
             done(selection['name'], 'Webhook 安装及投递')
             stage(selection['name'], '安装并热重载 PR 进度组件')
-            rows = [r for r in store.repos(public=True) if r.get('gitea_url', '').rstrip('/') == target.gitea_url.rstrip('/')]
+            rows = [r for r in store.repos(public=True) if not r.get('access_archived') and r.get('gitea_url', '').rstrip('/') == gitea_address(target.gitea_url)]
             with tempfile.TemporaryDirectory(prefix='审查组件-') as folder:
                 with zipfile.ZipFile(build_assets(rows)) as archive: archive.extractall(folder)
                 installer.asset_root = folder
                 installer.execute()
             done(selection['name'], 'PR 进度组件')
             current = store.repo(repo['id'])
+            if current['revision'] != repo['revision']:
+                raise ReviewError('仓库配置在接入期间发生变化，未覆盖管理员的新设置')
             if not current['enabled']:
                 checked = dict(enabled=True, revision=current['revision'])
-                store.save_repo(target.id, actual['id'], checked, current['id'])
+                store.save_repo(target.id, actual['id'], checked, current['id'], required_config_revision=expected_revision)
             results.append({'name': selection['name'], 'ok': True, 'repository': repo['id']})
+            update(store, ident, results=results, steps=steps)
+        except AccessError as exc:
+            moment = datetime.now(timezone.utc).isoformat()
+            results.append({'name': selection['name'], 'ok': False, 'error': str(exc),
+                            'error_code': exc.code, 'step': current_step, 'phase': exc.phase,
+                            'time_utc': moment, 'outcome_unknown': exc.unknown})
+            # 严禁直接记录异常正文、命令参数、容器输出或凭据。
+            logging.error('AI 接入通道失败 %s', encode({'time_utc': moment, 'job': ident, 'server': target.id,
+                'repository': selection['name'], 'host': target.host, 'port': target.ssh_port,
+                'step': current_step, 'phase': exc.phase, 'error_code': exc.code,
+                'exception_type': exc.exception_type, 'errno': exc.errno, 'outcome_unknown': exc.unknown}))
+            for remaining in value['repositories'][index + 1:]:
+                results.append({'name': remaining['name'], 'ok': False, 'error': '前序容器操作中断，本次未执行',
+                                'error_code': 'SETUP_STOPPED', 'step': '未执行'})
+            break
         except ReviewError as exc:
             if str(exc) == 'callback_unreachable':
                 results.append({'name': selection['name'], 'ok': False, 'error': 'Gitea 无法回连当前 Manager，请修正回调地址'})
@@ -307,10 +440,13 @@ def execute(store, job):
             # 安装器只提供受控中文诊断，不包含容器输出或令牌。
             results.append({'name': selection['name'], 'ok': False, 'error': str(exc)[:500]})
         finally:
-            admin.close(); transport.close()
+            if admin is not None: admin.close()
+            if transport is not None: transport.close()
     if any(row['ok'] for row in results):
         current = store.config()
-        if not current['enabled']: store.save_config({'revision': current['revision'], 'enabled': True})
+        if current['revision'] != expected_revision:
+            raise ReviewError('模型配置在接入期间发生变化，保留已完成步骤，请继续检查')
+        if not current['enabled']: store.save_config({'revision': expected_revision, 'enabled': True})
     success = all(row['ok'] for row in results)
     update(store, ident, status='succeeded' if success else 'partial' if any(r['ok'] for r in results) else 'failed',
            stage='接入完成' if success else '部分检查未完成，请查看具体原因', results=results)

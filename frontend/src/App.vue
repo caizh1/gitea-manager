@@ -1,7 +1,14 @@
 <template>
-  <div v-if="!authenticated">
-    <LoginView @login="onLogin" />
+  <div v-if="!accessState.ready" class="session-loading"><el-skeleton :rows="5" animated /></div>
+  <div v-else-if="!authenticated">
+    <LoginView :sources="accessState.sources" @login="onLogin" />
   </div>
+  <div v-else-if="accessState.user?.must_change_password" class="session-gate">
+    <div class="glass-card password-card"><h2>设置安全的管理员密码</h2><p>初始密码需要修改后才能继续管理平台。</p>
+      <el-form label-position="top" @submit.prevent="changePassword"><el-form-item label="当前密码"><el-input v-model="passwordForm.current_password" type="password" autocomplete="current-password" show-password /></el-form-item><el-form-item label="新密码"><el-input v-model="passwordForm.new_password" type="password" autocomplete="new-password" show-password /></el-form-item><el-form-item label="确认新密码"><el-input v-model="passwordForm.confirm" type="password" autocomplete="new-password" show-password /></el-form-item><el-alert v-if="passwordError" :title="passwordError" type="error" :closable="false" /><div class="session-actions"><el-button type="primary" native-type="submit" :loading="changingPassword">保存密码</el-button><el-button @click="logout">退出登录</el-button></div></el-form>
+    </div>
+  </div>
+  <div v-else-if="!accessReady" class="session-gate"><el-result icon="info" title="尚未分配管理权限" :sub-title="`${accessState.user?.display_name || accessState.user?.username || ''}，请联系平台管理员分配组织。`"><template #extra><el-button @click="refreshSession">刷新授权</el-button><el-button @click="logout">退出登录</el-button></template></el-result></div>
   <div v-else class="layout">
     <el-container>
       <el-aside :width="collapsed ? '64px' : '240px'" class="app-aside" :class="{ 'is-collapsed': collapsed }">
@@ -22,61 +29,62 @@
           active-text-color="#1765be"
           class="app-menu"
         >
-          <el-menu-item index="/dashboard" aria-label="仪表盘">
+          <el-menu-item v-if="hasCapability('dashboard')" index="/dashboard" aria-label="仪表盘">
             <el-icon><Monitor /></el-icon>
             <template #title>仪表盘</template>
           </el-menu-item>
-          <el-menu-item index="/servers" aria-label="服务器管理">
+          <el-menu-item v-if="hasCapability('servers')" index="/servers" aria-label="服务器管理">
             <el-icon><Setting /></el-icon>
             <template #title>服务器管理</template>
           </el-menu-item>
-          <el-menu-item index="/backups" aria-label="备份管理">
+          <el-menu-item v-if="hasCapability('backups')" index="/backups" aria-label="备份管理">
             <el-icon><FolderOpened /></el-icon>
             <template #title>备份管理</template>
           </el-menu-item>
-          <el-menu-item index="/restore" aria-label="恢复操作">
+          <el-menu-item v-if="hasCapability('restore')" index="/restore" aria-label="恢复操作">
             <el-icon><RefreshRight /></el-icon>
             <template #title>恢复操作</template>
           </el-menu-item>
-          <el-menu-item index="/settings" aria-label="系统设置">
+          <el-menu-item v-if="hasCapability('settings')" index="/settings" aria-label="系统设置">
             <el-icon><Tools /></el-icon>
             <template #title>系统设置</template>
           </el-menu-item>
-          <el-menu-item index="/schedules" aria-label="定时任务">
+          <el-menu-item v-if="hasCapability('schedules')" index="/schedules" aria-label="定时任务">
             <el-icon><Clock /></el-icon>
             <template #title>定时任务</template>
           </el-menu-item>
-          <el-menu-item index="/mirrors" aria-label="镜像管理">
+          <el-menu-item v-if="hasCapability('mirrors')" index="/mirrors" aria-label="镜像管理">
             <el-icon><Connection /></el-icon>
             <template #title>镜像管理</template>
           </el-menu-item>
-          <el-menu-item index="/commit-gates" aria-label="提交门禁">
+          <el-menu-item v-if="hasCapability('commit_gates')" index="/commit-gates" aria-label="提交门禁">
             <el-icon><Key /></el-icon>
             <template #title>提交门禁</template>
           </el-menu-item>
-          <el-menu-item index="/repository-policies" aria-label="仓库策略中心">
+          <el-menu-item v-if="hasCapability('repository_policies')" index="/repository-policies" aria-label="仓库策略中心">
             <el-icon><Key /></el-icon>
             <template #title>仓库策略中心</template>
           </el-menu-item>
-          <el-menu-item index="/approval-rules" aria-label="审批规则">
+          <el-menu-item v-if="hasCapability('approval_rules')" index="/approval-rules" aria-label="审批规则">
             <el-icon><CircleCheck /></el-icon>
             <template #title>审批规则</template>
           </el-menu-item>
-          <el-menu-item index="/ai-reviews" aria-label="AI Code Review">
+          <el-menu-item v-if="hasCapability('ai_reviews')" index="/ai-reviews" aria-label="AI Code Review">
             <el-icon><DataAnalysis /></el-icon>
             <template #title>AI Code Review</template>
           </el-menu-item>
-          <el-menu-item index="/statistics" aria-label="统计分析">
+          <el-menu-item v-if="hasCapability('statistics')" index="/statistics" aria-label="统计分析">
             <el-icon><DataAnalysis /></el-icon>
             <template #title>统计分析</template>
           </el-menu-item>
+        <el-menu-item v-if="hasCapability('access')" index="/access" aria-label="账号与权限"><el-icon><User /></el-icon><template #title>账号与权限</template></el-menu-item>
         </el-menu>
         <div class="sidebar-footer">
           <div class="sidebar-user">
-            <div class="user-avatar">A</div>
+            <div class="user-avatar">{{ (accessState.user?.display_name || accessState.user?.username || '').slice(0, 1) }}</div>
             <div v-if="!collapsed" class="user-info">
-              <div class="user-name">Admin</div>
-              <div class="user-role">超级管理员</div>
+              <div class="user-name">{{ accessState.user?.display_name || accessState.user?.username }}</div>
+              <div class="user-role">{{ isPlatformAdmin ? '平台管理员' : '组织管理员' }}</div>
             </div>
           </div>
         </div>
@@ -102,25 +110,27 @@
             </div>
           </div>
           <div class="header-right">
-            <AlertBell />
+            <el-select v-if="!isPlatformAdmin" :model-value="accessState.organizationId" aria-label="当前管理组织" class="scope-select" @change="switchOrganization"><el-option v-for="org in accessState.organizations" :key="org.binding_id" :value="org.binding_id" :label="`${org.server_name} / ${org.organization_name}`" /></el-select>
+            <AlertBell v-if="hasCapability('alerts')" :key="`alerts-${accessState.generation}`" />
             <el-button size="small" @click="logout" class="logout-btn">
               <el-icon><SwitchButton /></el-icon>
               <span>退出登录</span>
             </el-button>
           </div>
         </el-header>
-        <ReviewAttentionBanner />
+        <ReviewAttentionBanner v-if="hasCapability('ai_reviews')" :key="`review-${accessState.generation}`" />
         <el-main class="app-main">
           <div v-if="needsConfig && !isSettingsPage" class="blocking-card">
-            <el-result icon="warning" title="请先配置本机 IP" sub-title="使用平台前需在系统设置中配置本机 IP，用于区分本地和远程服务器。">
+            <el-result icon="warning" title="请先配置本机 IP" :sub-title="isPlatformAdmin ? '使用平台前需在系统设置中配置本机 IP，用于区分本地和远程服务器。' : '请联系平台管理员完成系统设置。'">
               <template #extra>
-                <el-button type="primary" @click="$router.push('/settings')">前往系统设置</el-button>
+                <el-button v-if="isPlatformAdmin" type="primary" @click="$router.push('/settings')">前往系统设置</el-button>
               </template>
             </el-result>
           </div>
-          <router-view v-else v-slot="{ Component }">
+          <el-result v-else-if="!routeAllowed" icon="warning" title="无权访问此功能" sub-title="请从导航中选择已授权的功能。" />
+          <router-view v-else :key="accessState.generation" v-slot="{ Component }">
             <transition name="page" mode="out-in">
-              <component :is="Component" />
+              <component :is="Component" :key="`${accessState.generation}-${$route.path}`" />
             </transition>
           </router-view>
         </el-main>
@@ -130,15 +140,18 @@
 </template>
 
 <script>
-import { ref, computed, provide, watch, onUnmounted } from 'vue'
+import { ref, reactive, computed, provide, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import LoginView from './views/Login.vue'
 import AlertBell from './components/AlertBell.vue'
 import ReviewAttentionBanner from './components/ReviewAttentionBanner.vue'
-import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key } from '@element-plus/icons-vue'
-import { api } from './api'
+import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key, User } from '@element-plus/icons-vue'
+import { api, cancelScopeRequests } from './api'
+import { accessState, accessReady, isPlatformAdmin, hasCapability, applySession, setOrganization } from './composables/accessState.js'
 
 const breadcrumbMap = {
+  '/access': '账号与权限',
   '/dashboard': '仪表盘',
   '/servers': '服务器管理',
   '/backups': '备份管理',
@@ -164,12 +177,37 @@ function decodeRouteParam(value) {
 }
 
 export default {
-  components: { LoginView, AlertBell, ReviewAttentionBanner, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key },
+  components: { LoginView, AlertBell, ReviewAttentionBanner, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key, User },
   setup() {
     const router = useRouter()
     const route = useRoute()
-    const authenticated = ref(false)
-    const needsConfig = ref(false)
+    const authenticated = computed(() => accessState.authenticated)
+    const needsConfig = computed(() => accessState.needsConfig)
+    const routeAllowed = computed(() => Boolean(route.meta.capability && hasCapability(route.meta.capability)))
+    const passwordForm = reactive({ current_password: '', new_password: '', confirm: '' }), passwordError = ref(''), changingPassword = ref(false)
+    let sessionTimer, refreshingSession = false
+    async function refreshSession() {
+      if (refreshingSession) return
+      refreshingSession = true
+      try { const { data } = await api.get('/session'); const generation = accessState.generation; applySession(data); if (generation !== accessState.generation) clearScope() }
+      catch (error) { if (error.code !== 'ERR_CANCELED') expireSession() }
+      finally { refreshingSession = false }
+    }
+    function clearScope() { cancelScopeRequests(); ElMessageBox.close(); ElMessage.closeAll() }
+    function expireSession() { clearScope(); applySession({ sources: accessState.sources }); refreshSession() }
+    function switchOrganization(id) { if (!setOrganization(id)) return; clearScope(); router.replace({ path: route.path.startsWith('/statistics/') ? '/statistics' : route.path, query: {} }) }
+    async function changePassword() {
+      if (changingPassword.value) return
+      passwordError.value = ''
+      if (!passwordForm.new_password || passwordForm.new_password !== passwordForm.confirm) { passwordError.value = '两次新密码不一致'; return }
+      changingPassword.value = true
+      try { await api.post('/access/password', { current_password: passwordForm.current_password, new_password: passwordForm.new_password }); Object.assign(passwordForm, { current_password: '', new_password: '', confirm: '' }); await refreshSession() }
+      catch (error) { passwordError.value = error.response?.data?.error || '密码修改失败' }
+      finally { changingPassword.value = false }
+    }
+    window.addEventListener('manager-session-expired', expireSession)
+    window.addEventListener('manager-access-changed', refreshSession)
+    onUnmounted(() => { clearInterval(sessionTimer); window.removeEventListener('manager-session-expired', expireSession); window.removeEventListener('manager-access-changed', refreshSession) })
     const compactViewport = window.matchMedia('(max-width: 1024px)')
     const collapsed = ref(compactViewport.matches)
     const syncSidebar = event => { collapsed.value = event.matches }
@@ -220,40 +258,16 @@ export default {
 
     const isSettingsPage = computed(() => route.path === '/settings')
 
-    function checkSettings() {
-      return api.get('/settings').then(res => {
-        needsConfig.value = !res.data.host_ip
-        return !needsConfig.value
-      }).catch(() => { needsConfig.value = false })
-    }
-
+    async function checkSettings() { await refreshSession(); return !accessState.needsConfig }
     provide('refreshSettingsState', checkSettings)
-
-    api.get('/session').then(res => {
-      authenticated.value = res.data.authenticated
-      if (res.data.authenticated) checkSettings()
-    }).catch(() => {
-      authenticated.value = false
-    })
-
-    function onLogin() {
-      authenticated.value = true
-      checkSettings()
-      // 待办深链接在重新登录后继续定位到原 PR。
+    refreshSession()
+    sessionTimer = setInterval(() => { if (accessState.authenticated && !document.hidden) refreshSession() }, 60000)
+    async function onLogin() {
+      await refreshSession()
       if (route.path !== '/ai-reviews' || route.query.attention !== '1') router.push('/dashboard')
     }
-
-    watch(() => route.path, (path) => {
-      if (authenticated.value && path !== '/settings') {
-        checkSettings()
-      }
-    })
-
-    function logout() {
-      api.post('/logout').then(() => {
-        authenticated.value = false
-        router.push('/')
-      })
+    async function logout() {
+      try { await api.post('/logout'); clearScope(); applySession({ sources: accessState.sources }); await refreshSession(); router.push('/') } catch (error) { ElMessage.error(error.response?.data?.error || '退出未完成，请检查连接后再试') }
     }
 
     function goBreadcrumb(item) {
@@ -261,12 +275,20 @@ export default {
       router.push(item.to)
     }
 
-    return { authenticated, needsConfig, collapsed, activeMenu, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
+    return { accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, passwordForm, passwordError, changingPassword, changePassword, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, activeMenu, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
   },
 }
 </script>
 
 <style>
+.session-loading, .session-gate { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
+.password-card { width: 420px; max-width: 100%; padding: 28px; }
+.password-card p { color: var(--text-secondary); margin-bottom: 20px; }
+.session-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.scope-select { width: 280px; max-width: 42vw; }
+.user-name { overflow-wrap: anywhere; }
+@media (max-width: 760px) { .app-header { height: auto; min-height: 70px; padding: 10px !important; flex-wrap: wrap; gap: 8px; } .header-right { flex-wrap: wrap; } .scope-select { max-width: 100%; width: 220px; } }
+
 .layout { height: 100vh; height: 100dvh; }
 .layout > .el-container { height: 100%; }
 .layout .el-container { min-width: 0; min-height: 0; }

@@ -95,6 +95,32 @@ class ProgressTests(unittest.TestCase):
         self.assertNotIn('bot_token', payload)
         self.assertEqual(self.client.writes, ['POST'])
 
+    def test_native_progress_and_restart_refresh_do_not_repeat_review(self):
+        job = self.store.claim()
+        with self.store.tx() as c:
+            c.execute('UPDATE jobs SET session_id=? WHERE id=?', ('session_progress_test', self.id))
+        self.assertTrue(self.send())
+        payload = decode_body(self.client.rows[0])
+        self.assertEqual(payload['units_completed'], 0)
+        self.assertIsNone(payload['units_total'])
+        self.assertIsNone(self.store.job(self.id)['progress']['units_completed'])
+        self.assertNotIn('完成分析单元', self.client.rows[0]['body'])
+        self.store.finish(job['id'], job['owner'], 'succeeded')
+        self.assertTrue(self.send())
+        before = self.store.job(self.id)
+        self.ready()
+        self.assertEqual(self.sync.pending(), [])
+        self.sync.refresh_native()
+        self.assertEqual(len(self.sync.pending()), 1)
+        self.assertTrue(self.send())
+        self.assertEqual(decode_body(self.client.rows[0])['status'], 'succeeded')
+        self.assertEqual(self.client.writes.count('POST'), 1)
+        after = self.store.job(self.id)
+        for key in ('id', 'status', 'generation', 'model_calls', 'result'):
+            self.assertEqual(before[key], after[key])
+        with self.store.connect() as c:
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM jobs').fetchone()[0], 1)
+
     def test_lifecycle_and_read_only_progress(self):
         self.send(); job = self.store.claim()
         self.store.update(job['id'], job['owner'], progress_stage='refutation', stage='反证检查', units_total=3, units_completed=1)
@@ -228,15 +254,16 @@ class ProgressTests(unittest.TestCase):
         self.store.heartbeat(self.id, job['owner'])
         self.assertEqual(state_for(self.store, self.repo, 1)[0]['progress_seq'], seq)
 
-    def test_budget_skips_are_not_counted_as_completed(self):
+    def test_batch_budget_continues_all_units(self):
         job = self.store.claim()
         config = dict(self.store.config(), max_calls=2, max_findings=5)
         snapshot = {'coverage': {'skipped': []}}
         item = {'path': 'code.c', 'scope': {'name': 'f'}, 'side': 'new', 'anchors': []}
         result = review(self.store, job, config, snapshot, [item, item, item], caller=lambda *args: {'findings': []})
-        self.assertEqual(self.store.job(self.id)['progress']['units_completed'], 1)
+        self.assertEqual(self.store.job(self.id)['progress']['units_completed'], 3)
         self.assertEqual(self.store.job(self.id)['progress']['units_total'], 3)
-        self.assertFalse(result['coverage']['complete'])
+        self.assertEqual(self.store.job(self.id)['batch_index'], 2)
+        self.assertTrue(result['coverage']['complete'])
 
     def test_schema_restart_preserves_pending_signal(self):
         before = state_for(self.store, self.repo, 1)[0]

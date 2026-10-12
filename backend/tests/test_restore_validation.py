@@ -262,6 +262,15 @@ class RestoreValidationTestCase(unittest.TestCase):
         self.assertEqual(details[0]['missing_samples'], ['b'])
         self.assertEqual(details[0]['extra_samples'], ['c'])
 
+    def test_validation_does_not_publish_success_before_restore_finalizer(self):
+        self.add_backup_commits()
+        with patch('services.commit_service.requests.get', side_effect=self.fake_get()):
+            self.assertTrue(verify_restore(self.task.id, defer_completion=True))
+        task, verification, _ = self.refresh_results()
+        self.assertEqual(task.status, 'running')
+        self.assertEqual(task.progress_stage, 'finalizing')
+        self.assertEqual(verification.status, 'success')
+
     def test_matching_commits_mark_restore_success(self):
         self.add_backup_commits(repo='org/repo', commits=['a', 'b'])
         self.run_verify(self.fake_get(commits=['b', 'a']))

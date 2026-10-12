@@ -79,8 +79,13 @@ class BackupCommitSnapshotTestCase(unittest.TestCase):
         self.ctx.pop()
 
     def fake_dump(self, server, backup):
-        backup.file_path = '/tmp/dump.zip'
-        backup.file_size = 123
+        import tempfile
+        from pathlib import Path
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        backup.file_path = str(Path(directory.name) / 'dump.zip')
+        Path(backup.file_path).write_bytes(b'backup' * 100)
+        backup.file_size = 600
 
     def test_do_backup_marks_success_only_after_commit_snapshot(self):
         with patch('services.gitea_service._backup_remote', side_effect=self.fake_dump), \

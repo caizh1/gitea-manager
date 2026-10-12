@@ -16,6 +16,7 @@ from models import db, GiteaServer, PolicyBatch, PolicyRepoResult
 from services.policy_gitea import PolicyGitea, connection_hash
 from services.policy_rules import PolicyError, canonical_current, encode, plan_changes
 from services.policy_scope import validate_repo_scope
+from access.errors import AccessError
 
 QUEUED = ('preview_queued', 'apply_queued')
 RUNNING = ('previewing', 'applying')
@@ -63,6 +64,9 @@ def preview_repo(batch_id, result_id):
         client = client_for(batch)
         repo = client.repo(result.repo_id)
         scope = json.loads(batch.scope_json or '{}')
+        if scope.get('access_actor'):
+            from access.scopes import check_task_actor
+            check_task_actor(scope['access_actor'], batch.server_id, result.repo_id)
         validate_repo_scope(client, repo, scope)
         save_result(result, repo_name=repo['full_name'], repo_identity_json=encode(client.identity(repo)))
         rules = json.loads(batch.template_json)
@@ -76,8 +80,8 @@ def preview_repo(batch_id, result_id):
     except Exception as exc:
         db.session.rollback()
         result = db.session.get(PolicyRepoResult, result_id)
-        save_result(result, status='blocked', error=str(exc) if isinstance(exc, PolicyError) else '预览失败，请查看服务端诊断')
-        if not isinstance(exc, PolicyError):
+        save_result(result, status='blocked', error=str(exc) if isinstance(exc, (PolicyError, AccessError)) else '预览失败，请查看服务端诊断')
+        if not isinstance(exc, (PolicyError, AccessError)):
             logging.exception('策略预览内部错误，记录 %s', result_id)
 
 
@@ -90,6 +94,9 @@ def apply_repo(batch_id, result_id):
         client = client_for(batch)
         repo = client.repo(result.repo_id)
         scope = json.loads(batch.scope_json or '{}')
+        if scope.get('access_actor'):
+            from access.scopes import check_task_actor
+            check_task_actor(scope['access_actor'], batch.server_id, result.repo_id)
         validate_repo_scope(client, repo, scope)
         if client.identity(repo) != json.loads(result.repo_identity_json):
             raise PolicyError('仓库名称、所属组织或默认分支已变化，请重新预览')
@@ -114,6 +121,8 @@ def apply_repo(batch_id, result_id):
             if canonical_current(client.protections(repo)) != expected:
                 raise PolicyError('执行期间规则发生外部修改，已停止后续写入')
             client_for(batch)
+            if scope.get('access_actor'):
+                check_task_actor(scope['access_actor'], batch.server_id, result.repo_id)
             name = change['rule_name']
             wanted = next(r for r in desired if r['rule_name'] == name)
             action = change['action']
@@ -140,6 +149,8 @@ def apply_repo(batch_id, result_id):
                         if client.identity(client.repo(result.repo_id)) != json.loads(result.repo_identity_json):
                             raise PolicyError('补全强推前仓库发生转移或改名，已停止写入')
                         client_for(batch)
+                        if scope.get('access_actor'):
+                            check_task_actor(scope['access_actor'], batch.server_id, result.repo_id)
                         client.request('PATCH', path + '/' + quote(name, safe=''), json={k: v for k, v in wanted.items() if k != 'rule_name'})
                 else:
                     client.request('PATCH', path + '/' + quote(name, safe=''), json={k: v for k, v in wanted.items() if k != 'rule_name'})
@@ -169,7 +180,7 @@ def apply_repo(batch_id, result_id):
     except Exception as exc:
         db.session.rollback()
         result = db.session.get(PolicyRepoResult, result_id)
-        message = str(exc) if isinstance(exc, PolicyError) else '执行失败，请查看服务端诊断'
+        message = str(exc) if isinstance(exc, (PolicyError, AccessError)) else '执行失败，请查看服务端诊断'
         if attempted and client and repo:
             try:
                 actual = canonical_current(client.protections(repo))
@@ -190,7 +201,7 @@ def apply_repo(batch_id, result_id):
         else:
             status = 'blocked'
         save_result(result, status=status, error=message)
-        if not isinstance(exc, PolicyError):
+        if not isinstance(exc, (PolicyError, AccessError)):
             logging.exception('策略执行内部错误，记录 %s', result_id)
 
 
@@ -243,12 +254,12 @@ def run_batch(app, batch_id):
         db.session.rollback()
         batch = db.session.get(PolicyBatch, batch_id)
         batch.status = 'interrupted'
-        batch.error = str(exc) if isinstance(exc, PolicyError) else '批量任务内部异常，请重新预览'
+        batch.error = str(exc) if isinstance(exc, (PolicyError, AccessError)) else '批量任务内部异常，请重新预览'
         batch.completed_at = datetime.utcnow()
         PolicyRepoResult.query.filter(PolicyRepoResult.batch_id == batch_id,
             PolicyRepoResult.status.in_(('pending', 'running'))).update({'status': 'interrupted', 'error': batch.error})
         db.session.commit()
-        if not isinstance(exc, PolicyError):
+        if not isinstance(exc, (PolicyError, AccessError)):
             logging.exception('策略批量任务异常 %s', batch_id)
 
 

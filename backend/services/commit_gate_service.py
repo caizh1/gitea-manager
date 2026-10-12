@@ -115,7 +115,7 @@ def _put_content_local(container_name, content, dest_path):
     container.put_archive(os.path.dirname(dest_path), tar_stream)
 
 
-def _put_content_remote(server, content, dest_path):
+def _put_content_remote(server, content, dest_path, authorize=None):
     ssh = SSHService(server.host, server.ssh_port, server.ssh_user)
     remote_tmp = f'/tmp/{HOOK_NAME}-{server.id}-{int(datetime.utcnow().timestamp())}'
     fd, local_tmp = tempfile.mkstemp(prefix='gitea-manager-hook-', text=True)
@@ -127,6 +127,8 @@ def _put_content_remote(server, content, dest_path):
             f'docker cp {shlex.quote(remote_tmp)} '
             f'{shlex.quote(server.gitea_container)}:{shlex.quote(dest_path)}'
         )
+        if authorize:
+            authorize()
         exit_code, out, err = ssh.exec(cmd)
         if exit_code != 0:
             raise RuntimeError(f'docker cp failed: {err or out}')
@@ -177,32 +179,40 @@ exit $STATUS
 """
 
 
-def _install_hook(server, repo_name, rule, repo_id=0):
+def _install_hook(server, repo_name, rule, repo_id=0, authorize=None):
     repo_dir = _resolve_repo_dir(server, repo_name, repo_id)
     hook_dir = f'{repo_dir}/hooks/pre-receive.d'
     hook_path = f'{hook_dir}/{HOOK_NAME}'
+    if authorize:
+        authorize()
     exit_code, out, err = _run_in_gitea(server, f'mkdir -p {shlex.quote(hook_dir)}')
     if exit_code != 0:
         raise RuntimeError(err or out or 'mkdir failed')
 
     content = _build_hook(rule)
+    if authorize:
+        authorize()
     if server.is_local:
         _put_content_local(server.gitea_container, content, hook_path)
     else:
-        _put_content_remote(server, content, hook_path)
+        _put_content_remote(server, content, hook_path, authorize=authorize)
 
     chmod_cmd = (
         f'chmod +x {shlex.quote(hook_path)} && '
         f'(chown git:git {shlex.quote(hook_path)} 2>/dev/null || true)'
     )
+    if authorize:
+        authorize()
     exit_code, out, err = _run_in_gitea(server, chmod_cmd)
     if exit_code != 0:
         raise RuntimeError(err or out or 'chmod failed')
 
 
-def _remove_hook(server, repo_name, repo_id=0):
+def _remove_hook(server, repo_name, repo_id=0, authorize=None):
     repo_dir = _resolve_repo_dir(server, repo_name, repo_id)
     hook_path = f'{repo_dir}/hooks/pre-receive.d/{HOOK_NAME}'
+    if authorize:
+        authorize()
     exit_code, out, err = _run_in_gitea(server, f'rm -f {shlex.quote(hook_path)}')
     if exit_code != 0:
         raise RuntimeError(err or out or 'remove hook failed')
@@ -231,11 +241,16 @@ def fetch_repos(server):
     return repos
 
 
-def list_repos_with_assignments(server_id):
+def list_repos_with_assignments(server_id, binding=None):
     server = GiteaServer.query.get(server_id)
     if not server:
         raise ValueError('Server not found')
-    repos = fetch_repos(server)
+    if binding:
+        from access.scopes import repositories_for, visible_keys
+        repos = list(repositories_for(binding).values())
+        rules = {int(value) for value in visible_keys('commit_rule')}
+    else:
+        repos = fetch_repos(server)
     assignments = {
         a.repo_name: a
         for a in CommitGateAssignment.query.filter_by(server_id=server_id).all()
@@ -244,8 +259,11 @@ def list_repos_with_assignments(server_id):
     for repo in repos:
         repo_name = repo.get('full_name', '')
         assignment = assignments.get(repo_name)
+        if binding and assignment and (assignment.repo_id != repo['id'] or assignment.rule_id not in rules):
+            assignment = None
         rule = assignment.rule if assignment else None
         result.append({
+            'repo_id': repo['id'],
             'repo_name': repo_name,
             'private': repo.get('private', False),
             'default_branch': repo.get('default_branch', ''),
@@ -253,13 +271,24 @@ def list_repos_with_assignments(server_id):
             'rule_id': assignment.rule_id if assignment else None,
             'rule_name': rule.name if rule else '',
             'install_status': assignment.install_status if assignment else '',
-            'install_log': assignment.install_log if assignment else '',
+            'install_log': assignment.install_log if assignment and not binding else '',
             'applied_at': assignment.applied_at.isoformat() if assignment and assignment.applied_at else None,
         })
     return result
 
 
-def apply_rule(server_id, rule_id, repo_names=None, apply_all=False):
+def record_gate_audit(action, actor, server_id, repo_id=None, rule_id=None, status='', snapshot=None):
+    """与业务状态一并提交操作者、授权版本和有限快照，不保存安装原始输出。"""
+    if not actor:
+        return
+    from access.models import AccessAudit
+    db.session.add(AccessAudit(actor_id=actor.get('account_id'), actor_name=actor.get('name', '系统任务'),
+        action=action, target=f'{server_id}:{repo_id or ""}:{rule_id or ""}',
+        detail_json=json.dumps({'actor': actor, 'server_id': server_id, 'repo_id': repo_id,
+            'rule_id': rule_id, 'status': status, 'rule_snapshot': snapshot}, ensure_ascii=False)))
+
+
+def apply_rule(server_id, rule_id, repo_names=None, apply_all=False, access_actor=None):
     server = GiteaServer.query.get(server_id)
     rule = CommitMessageRule.query.get(rule_id)
     if not server or not rule or rule.server_id != server_id:
@@ -268,6 +297,10 @@ def apply_rule(server_id, rule_id, repo_names=None, apply_all=False):
         raise ValueError('Rule is disabled')
 
     repositories = fetch_repos(server)
+    from access.scopes import check_task_actor
+    binding = check_task_actor(access_actor) if access_actor else None
+    if binding:
+        repositories = [r for r in repositories if r.get('owner', {}).get('id') == binding.organization_id]
     by_name = {r.get('full_name', ''): r for r in repositories}
     if apply_all:
         repo_names = list(by_name)
@@ -275,6 +308,8 @@ def apply_rule(server_id, rule_id, repo_names=None, apply_all=False):
     if not repo_names:
         raise ValueError('No repositories selected')
 
+    if binding and any(name not in by_name for name in repo_names):
+        raise ValueError('请求包含无权操作的仓库，整批未执行')
     results = []
     for repo_name in repo_names:
         repository = by_name.get(repo_name)
@@ -299,40 +334,62 @@ def apply_rule(server_id, rule_id, repo_names=None, apply_all=False):
         assignment.install_status = 'pending'
         assignment.install_log = ''
         assignment.applied_at = datetime.utcnow()
+        record_gate_audit('提交门禁下发', access_actor, server_id, repository['id'], rule.id, 'pending',
+                          {'pattern': rule.pattern, 'reject_message': rule.reject_message})
         db.session.commit()
 
         try:
-            _install_hook(server, repo_name, rule, assignment.repo_id)
+            if access_actor:
+                check_task_actor(access_actor, server_id, assignment.repo_id)
+            _install_hook(server, repo_name, rule, assignment.repo_id,
+                          authorize=(lambda: check_task_actor(access_actor, server_id, assignment.repo_id)) if access_actor else None)
             assignment.install_status = 'success'
             assignment.install_log = 'Hook installed'
         except Exception as e:
             assignment.install_status = 'failed'
             assignment.install_log = str(e)[:500]
         assignment.applied_at = datetime.utcnow()
+        record_gate_audit('提交门禁下发结果', access_actor, server_id, repository['id'], rule.id, assignment.install_status)
         db.session.commit()
         results.append(assignment_to_dict(assignment))
     return results
 
 
-def remove_gate(server_id, repo_names=None, remove_all=False):
+def remove_gate(server_id, repo_names=None, remove_all=False, access_actor=None):
     server = GiteaServer.query.get(server_id)
     if not server:
         raise ValueError('Server not found')
+    from access.scopes import check_task_actor, repositories_for
+    binding = check_task_actor(access_actor) if access_actor else None
+    permitted = repositories_for(binding) if binding else None
     if remove_all:
         assignments = CommitGateAssignment.query.filter_by(server_id=server_id).all()
+        if permitted is not None:
+            assignments = [a for a in assignments if a.repo_id in permitted]
         repo_names = [a.repo_name for a in assignments]
     repo_names = [_normalize_repo_name(r) for r in (repo_names or []) if r]
     if not repo_names:
         raise ValueError('No repositories selected')
 
+    if permitted is not None and any(n not in {r['full_name'] for r in permitted.values()} for n in repo_names):
+        raise ValueError('请求包含无权操作的仓库，整批未执行')
     results = []
     for repo_name in repo_names:
         assignment = CommitGateAssignment.query.filter_by(
             server_id=server_id,
             repo_name=repo_name,
         ).first()
+        repo_id = assignment.repo_id if assignment else None
+        rule_id = assignment.rule_id if assignment else None
+        record_gate_audit('提交门禁移除', access_actor, server_id, repo_id, rule_id, 'pending')
+        db.session.commit()
         try:
-            _remove_hook(server, repo_name, assignment.repo_id if assignment else 0)
+            if access_actor:
+                if not assignment or not assignment.repo_id:
+                    raise ValueError('缺少仓库稳定身份，未移除门禁')
+                check_task_actor(access_actor, server_id, assignment.repo_id)
+            _remove_hook(server, repo_name, assignment.repo_id if assignment else 0,
+                         authorize=(lambda: check_task_actor(access_actor, server_id, repo_id)) if access_actor else None)
             if assignment:
                 db.session.delete(assignment)
                 db.session.commit()
@@ -348,6 +405,8 @@ def remove_gate(server_id, repo_names=None, remove_all=False):
                 assignment.install_log = str(e)[:500]
                 db.session.commit()
             results.append({'repo_name': repo_name, 'status': 'failed', 'log': str(e)[:500]})
+        record_gate_audit('提交门禁移除结果', access_actor, server_id, repo_id, rule_id, results[-1]['status'])
+        db.session.commit()
     return results
 
 

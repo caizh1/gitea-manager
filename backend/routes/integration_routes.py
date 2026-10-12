@@ -2,7 +2,7 @@ import hmac
 import json
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from models import (Backup, IntegrationOutbox, IntegrationServiceToken, MirrorConfig,
                     RestoreTask, ScheduledTask, db)
@@ -31,6 +31,8 @@ def _authenticate():
 
 @integration_bp.before_request
 def require_service_token():
+    if not current_app.config.get('INTEGRATION_ENABLED', False):
+        return jsonify({'error': '外部集成未启用'}), 404
     token = _authenticate()
     if not token:
         return jsonify({'error': 'Unauthorized'}), 401

@@ -299,10 +299,13 @@ class PublicationTests(unittest.TestCase):
             chunks=[{'choices':[{'index':0,'delta':{'content':'{"findings":[]}'},'finish_reason':None}]},
                     {'choices':[{'index':0,'delta':{},'finish_reason':reason}]}]
             raw=(''.join('data: '+json.dumps(c)+'\n\n' for c in chunks)+'data: [DONE]\n\n').encode()
-            with self.assertRaises(core.ReviewError):validate_completion(raw,True)
+            _, diagnostic=validate_completion(raw,True)
+            self.assertFalse(diagnostic['completion_complete'])
         raw=raw.replace(b'"finish_reason": null}]}\n\ndata: [DONE]',b'"finish_reason": "stop"}]}\n\ndata: [DONE]')
         validate_completion(raw,True)
-        with self.assertRaises(core.ReviewError):validate_completion(raw.replace(b'data: [DONE]\n\n',b''),True)
+        _, diagnostic=validate_completion(raw.replace(b'data: [DONE]\n\n',b''),True)
+        self.assertTrue(diagnostic['completion_complete'])
+        self.assertFalse(diagnostic['done_seen'])
 
 
 if __name__=='__main__':unittest.main()

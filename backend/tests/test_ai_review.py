@@ -13,7 +13,7 @@ from unittest.mock import patch as mock_patch
 
 from cryptography.fernet import Fernet
 from flask import Flask
-from auth import init_auth
+from tests.access_helpers import init_test_auth as init_auth, login_platform
 from ai_review.common import ReviewError, Stale, encode
 from ai_review.diff import parse_diff, validate_patch, locate
 from ai_review.publish import verify_hunk
@@ -185,11 +185,58 @@ class StoreTests(unittest.TestCase):
         self.store.save_config({'revision': 2, 'enabled': False})
         with self.assertRaises(Stale): self.store.active(job['id'], job['owner'])
 
+    def test_expired_owner_finish_preserves_new_owners_model_authorization(self):
+        self.enqueue(); old = self.store.claim()
+        capability(self.store, old, '测试模型')
+        with self.store.tx() as c:
+            c.execute('UPDATE jobs SET lease=0 WHERE id=?', (old['id'],))
+        current = self.store.claim()
+        token = capability(self.store, current, '测试模型')
+        self.store.finish(old['id'], old['owner'], 'superseded')
+        self.store.active(current['id'], current['owner'])
+        with self.store.connect() as c:
+            rows = [dict(r) for r in c.execute('SELECT owner,token_hash FROM capabilities WHERE job=?', (old['id'],))]
+        self.assertEqual(rows, [{'owner': current['owner'], 'token_hash': hashlib.sha256(token.encode()).hexdigest()}])
+
     def test_manual_rerun_is_distinct(self):
         first = self.enqueue()
         self.assertIsNone(self.enqueue())
         second = self.store.enqueue(self.repo, 1, {'head': 'a', 'base': 'b'}, manual=True)
         self.assertNotEqual(first, second)
+
+    def test_failed_manual_review_is_not_replayed_by_reconciliation(self):
+        ident = self.store.enqueue(self.repo, 1, {'manual':'人工触发占位'}, manual=True)
+        job = self.store.claim()
+        self.store.update(ident, job['owner'], snapshot={'id':'固定快照','head':'a','base':'b'})
+        self.store.finish(ident, job['owner'], 'failed', '模型结果不确定')
+        for _ in range(3):
+            self.assertIsNone(self.store.enqueue(self.repo, 1, {'head':'a','base':'b'}))
+        self.assertEqual(self.store.jobs()['total'], 1)
+        changed = self.store.enqueue(self.repo, 1, {'head':'c','base':'b'})
+        self.assertIsNotNone(changed)
+        # 真正的代码更新与明确人工重审仍然可创建独立执行。
+        rerun = self.store.enqueue(self.repo, 1, {'manual':'再次明确触发'}, manual=True)
+        self.assertNotEqual(rerun, changed)
+
+    def test_legacy_finished_manual_snapshot_is_not_replayed_after_upgrade(self):
+        for number, status in enumerate(('failed', 'publish_unknown', 'succeeded'), 10):
+            ident = self.store.enqueue(self.repo, number, {'manual':'旧版人工触发占位'}, manual=True)
+            # 精确构造旧版落盘状态；不调用新版 update，避免测试提前修好了数据。
+            with self.store.tx() as c:
+                c.execute('UPDATE jobs SET status=?,snapshot=? WHERE id=?',
+                          (status, json.dumps({'id':'旧固定快照','head':'a','base':'b'}), ident))
+            before = self.store.job(ident)
+            for _ in range(3):
+                self.assertIsNone(self.store.enqueue(self.repo, number, {'head':'a','base':'b'}))
+            self.assertEqual(self.store.job(ident), before)
+            self.assertIsNotNone(self.store.enqueue(self.repo, number, {'head':'c','base':'b'}))
+
+    def test_legacy_manual_snapshot_does_not_hide_config_revision_change(self):
+        ident = self.store.enqueue(self.repo, 1, {'manual':'旧版占位'}, manual=True)
+        with self.store.tx() as c:
+            c.execute('UPDATE jobs SET status=?,snapshot=?,config_revision=0 WHERE id=?',
+                      ('failed', json.dumps({'head':'a','base':'b'}), ident))
+        self.assertIsNotNone(self.store.enqueue(self.repo, 1, {'head':'a','base':'b'}))
 
     def test_uncertain_publication_blocks_same_pr_not_other_pr(self):
         self.enqueue(); job = self.store.claim()
@@ -210,6 +257,30 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(response.status_code, 403)
         with self.store.tx() as c: c.execute('UPDATE capabilities SET expires=0')
         self.assertEqual(client.post('/v1/chat/completions', json=base, headers={'Authorization':'Bearer '+token}).status_code, 403)
+
+    def test_broker_preserves_first_connection_failure_without_replaying(self):
+        import requests
+        from unittest.mock import Mock
+        self.enqueue(); job = self.store.claim()
+        token = capability(self.store, job, '测试模型')
+        client = create_broker(self.store).test_client()
+        payload = {'model':'测试模型','messages':[{'role':'user','content':'合成源码，不得写日志'}]}
+        transport = Mock(side_effect=requests.ConnectionError('私密上游细节'))
+        with mock_patch('ai_review.broker.endpoint', return_value='http://model.invalid/v1'), \
+             mock_patch.object(self.store, 'unseal', return_value='私密 Key'), \
+             mock_patch('ai_review.broker.fetch_model', transport), \
+             self.assertLogs(level='INFO') as logs:
+            first = client.post('/v1/chat/completions', json=payload, headers={'Authorization':'Bearer '+token})
+            second = client.post('/v1/chat/completions', json=payload, headers={'Authorization':'Bearer '+token})
+        self.assertEqual(first.status_code, 502); self.assertEqual(second.status_code, 403)
+        transport.assert_called_once()
+        current = self.store.job(job['id'])
+        self.assertEqual(current['model_calls'], 1)
+        self.assertIn('ConnectionError', current['error'])
+        self.assertIn('未自动重放', current['error'])
+        output = str(logs.output)+current['error']
+        for secret in (token, '私密上游细节', '私密 Key', '合成源码'):
+            self.assertNotIn(secret, output)
 
     def test_published_review_recovery_must_verify_formal_result(self):
         from unittest.mock import Mock
@@ -245,8 +316,7 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(response.status_code, 202); self.assertTrue(response.json['job'])
             self.assertIsNone(client.post(url,data=raw,headers=headers).json['job'])
             self.assertEqual(client.post(url,data=raw+b' ',headers=headers).status_code, 403)
-        with client.session_transaction() as session:
-            session['_user_id'] = '1'; session['_fresh'] = True
+        login_platform(client)
         token = client.get('/api/ai-review/csrf').json['token']
         self.assertEqual(client.put('/api/ai-review/config',json={}).status_code,403)
         self.assertEqual(client.get('/api/ai-review/config',headers={'Origin':'https://untrusted.invalid'}).status_code,403)

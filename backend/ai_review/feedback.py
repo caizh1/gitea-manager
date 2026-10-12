@@ -254,11 +254,16 @@ def run_one(store, factory=manager_client):
         row=c.execute("SELECT * FROM review_feedback_events WHERE status='pending' AND due<=? ORDER BY due LIMIT 1",(time.time(),)).fetchone()
     if not row:return False
     repo=store.repo(row['repository']);admin=bot=None
+    from .authorization import authorize
     try:
+        authorize(repo)
         if not repo['enabled'] or not store.config()['enabled']:
             raise ReviewError('仓库已关闭，反馈等待重新启用后核对')
-        admin=factory(repo);admin.repository()
+        admin=factory(repo)
+        admin.access_authorize = lambda action: authorize(repo, action=action)
+        admin.repository()
         bot=Gitea(repo['gitea_url'],store.unseal(repo['bot_token']),repo['repo_name'],repo['repo_id'])
+        bot.access_authorize = lambda action: authorize(repo, action=action)
         process_event(store,repo,json.loads(row['value']),admin,bot)
         with store.tx() as c:c.execute("UPDATE review_feedback_events SET status='done',error='' WHERE repository=? AND delivery=?",(repo['id'],row['delivery']))
     except Exception as exc:
@@ -280,7 +285,9 @@ def audit_one(store, factory=manager_client):
             AND (v.checked IS NULL OR v.checked<?) ORDER BY v.checked LIMIT 1""",(time.time()-30,)).fetchone()
     if not row:return
     value=json.loads(row['value']);repo=store.repo(row['repository']);client=None
+    from .authorization import authorize
     try:
+        authorize(repo)
         client=factory(repo);client.repository()
         permission=can_write(client,{'id':value['confirmed_by'],'login':value['confirmed_login']})
         confirmation,_=comment_at(client,row['number'],row['origin_comment'])

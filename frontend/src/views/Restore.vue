@@ -4,6 +4,7 @@
       <h3 class="section-title">恢复操作</h3>
     </div>
 
+    <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" />
     <el-alert
       v-if="criticalAlert"
       type="error"
@@ -43,14 +44,6 @@
         </el-form-item>
       </el-form>
 
-      <div v-if="restoring || progressStage" class="restore-progress">
-        <div class="progress-header">
-          <span class="progress-label">{{ progressLabel }}</span>
-          <span class="progress-pct">{{ progressPct }}%</span>
-        </div>
-        <el-progress :percentage="progressPct" :status="progressStatus" :stroke-width="8" />
-        <div v-if="progressDetail" class="progress-detail">{{ progressDetail }}</div>
-      </div>
     </div>
 
     <div class="glass-card" style="padding:24px;">
@@ -62,16 +55,14 @@
       </div>
       <el-table :data="tasks" stripe style="width:100%" max-height="var(--table-max-height)">
         <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column label="状态与进度" min-width="300">
+          <template #default="{ row }"><OperationProgress :task="row" kind="restore" /></template>
+        </el-table-column>
         <el-table-column prop="backup_filename" label="备份文件" min-width="250" />
         <el-table-column label="目标服务器" width="180">
           <template #default="{ row }">
             {{ row.target_server_name }}
             <el-tag v-if="row.target_server_deleted" type="danger" size="small" effect="plain" style="margin-left:4px;font-size:10px">服务器已删除</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="验证" width="100">
@@ -84,12 +75,8 @@
             <span v-else>—</span>
           </template>
         </el-table-column>
+        <el-table-column label="诊断"><template #default="{ row }"><a v-if="row.diagnostic_id" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`">下载诊断包</a></template></el-table-column>
         <el-table-column prop="error_msg" label="错误信息" min-width="200" show-overflow-tooltip />
-        <el-table-column label="执行详情" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="showSteps(row)">查看</el-button>
-          </template>
-        </el-table-column>
         <el-table-column prop="started_at" label="开始时间" width="170">
           <template #default="{ row }">{{ fmt(row.started_at) }}</template>
         </el-table-column>
@@ -99,7 +86,7 @@
       </el-table>
     </div>
 
-    <el-dialog v-model="verifyDialogVisible" title="恢复验证结果" width="600px">
+    <el-dialog append-to-body v-model="verifyDialogVisible" title="恢复验证结果" width="600px">
       <div v-if="verifyData">
         <div class="verify-summary">
           <div class="verify-stat">
@@ -143,263 +130,53 @@
       <div v-else>暂无验证数据</div>
     </el-dialog>
 
-    <el-dialog v-model="stepDialogVisible" title="恢复执行详情" width="min(920px, 92vw)">
-      <div class="step-dialog-header">
-        <div>
-          <div class="step-dialog-title">任务 #{{ stepTask?.id }} · {{ stepTask?.target_server_name }}</div>
-          <div class="step-dialog-subtitle">只展示有限长度日志尾部，不包含 Token、SQL 正文或 app.ini 内容。</div>
-        </div>
-        <el-button :loading="stepLoading" @click="loadSteps">刷新</el-button>
-      </div>
-
-      <el-empty v-if="!stepLoading && stepLogs.length === 0" description="暂无步骤记录" />
-      <div v-else class="step-list" v-loading="stepLoading">
-        <section v-for="step in stepLogs" :key="step.id" class="step-card">
-          <div class="step-card-header">
-            <div class="step-title-group">
-              <el-tag :type="stepStatusType(step.status)" size="small">{{ step.status }}</el-tag>
-              <span class="step-label">{{ step.label }}</span>
-              <span class="step-key">{{ step.step_key }}</span>
-            </div>
-            <span class="step-elapsed">{{ formatElapsed(step.elapsed_ms) }}</span>
-          </div>
-          <div v-if="step.detail" class="step-detail">{{ step.detail }}</div>
-          <div class="step-meta">
-            <span>开始：{{ fmt(step.started_at) }}</span>
-            <span>完成：{{ fmt(step.completed_at) }}</span>
-            <span>退出码：{{ step.exit_code ?? '—' }}</span>
-          </div>
-          <div v-if="step.remote_job_dir" class="step-path">远端日志：{{ step.remote_job_dir }}</div>
-          <div v-if="Object.keys(step.metrics || {}).length" class="metric-grid">
-            <div v-for="(value, key) in step.metrics" :key="key" class="metric-item">
-              <span class="metric-key">{{ key }}</span>
-              <span class="metric-value">{{ metricValue(value) }}</span>
-            </div>
-          </div>
-          <details v-if="step.stdout_tail || step.stderr_tail" class="step-logs">
-            <summary>查看有限长度日志尾部</summary>
-            <div v-if="step.stdout_tail" class="log-block">
-              <div class="log-title">stdout</div>
-              <pre>{{ step.stdout_tail }}</pre>
-            </div>
-            <div v-if="step.stderr_tail" class="log-block log-error">
-              <div class="log-title">stderr</div>
-              <pre>{{ step.stderr_tail }}</pre>
-            </div>
-          </details>
-        </section>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { api } from '../api'
-
+import { ElMessage } from 'element-plus'
+import OperationProgress from '../components/OperationProgress.vue'
+import { useOperationPolling } from '../composables/useOperationPolling'
+import { operationActive, utcTime } from '../components/operationDisplay'
 export default {
+  components: { OperationProgress },
   setup() {
-    const backups = ref([])
-    const servers = ref([])
-    const tasks = ref([])
-    const restoring = ref(false)
-    const selectedBackupId = ref(null)
-    const selectedTargetId = ref(null)
-    let pollTimer = null
-    const progressStage = ref(0)
-    const progressInfo = ref({ label: '', percent: 0, detail: '', stage: '' })
-    const currentTaskId = ref(null)
-    const verifyDialogVisible = ref(false)
-    const verifyData = ref(null)
-    const stepDialogVisible = ref(false)
-    const stepLogs = ref([])
-    const stepTask = ref(null)
-    const stepLoading = ref(false)
-
-    const successBackups = computed(() => backups.value.filter(
-      b => b.status === 'success' && b.commit_snapshot_status === 'success'
-    ))
+    const backups = ref([]), servers = ref([]), tasks = ref([]), restoring = ref(false)
+    const selectedBackupId = ref(null), selectedTargetId = ref(null)
+    const verifyDialogVisible = ref(false), verifyData = ref(null)
+    const successBackups = computed(() => backups.value.filter(b => b.status === 'success' && b.commit_snapshot_status === 'success'))
     const backupServers = computed(() => servers.value.filter(s => s.role === 'backup'))
-
-    const criticalAlert = computed(() => {
-      const failed = tasks.value.filter(t => t.status === 'failed' && t.error_msg && t.error_msg.includes('PostgreSQL'))
-      if (!failed.length) return ''
-      return '⚠️ 检测到 PostgreSQL 相关恢复失败！目标服务器可能数据损坏，请立即登录检查！'
-    })
-
-    const progressPct = computed(() => progressInfo.value.percent || 0)
-    const progressLabel = computed(() => progressInfo.value.label || '')
-    const progressDetail = computed(() => progressInfo.value.detail || '')
-    const progressStatus = computed(() => {
-      if ((progressInfo.value.stage || '').includes('failed')) return 'exception'
-      if (progressPct.value >= 100) return 'success'
-      return ''
-    })
-
-    function updateProgressFromTask(task) {
-      if (!task) return
-      progressInfo.value = {
-        label: task.progress_label || (task.status === 'running' ? '正在恢复' : ''),
-        percent: task.progress_percent || (task.status === 'success' ? 100 : 0),
-        detail: task.progress_detail || '',
-        stage: task.progress_stage || '',
-      }
-      progressStage.value = progressInfo.value.label ? 1 : 0
-    }
-
-    function resetProgressLater(delay = 2000) {
-      setTimeout(() => {
-        restoring.value = false
-        progressStage.value = 0
-        progressInfo.value = { label: '', percent: 0, detail: '', stage: '' }
-        currentTaskId.value = null
-        load()
-      }, delay)
-    }
-
-    function load() {
-      Promise.all([api.get('/backups'), api.get('/servers'), api.get('/restore-tasks')])
-        .then(([bRes, sRes, tRes]) => {
-          backups.value = bRes.data
-          servers.value = sRes.data
-          tasks.value = tRes.data
-        })
-    }
-
-    function doRestore() {
+    const criticalAlert = computed(() => tasks.value.some(t => t.status === 'failed' && t.error_msg?.includes('PostgreSQL')) ? '检测到 PostgreSQL 相关恢复失败，请查看执行详情核对目标状态。' : '')
+    const { refresh: load, error: pollError } = useOperationPolling(
+      config => Promise.all([api.get('/backups', config), api.get('/servers', config), api.get('/restore-tasks', config)]),
+      ([b, s, t]) => { backups.value = b.data; servers.value = s.data; tasks.value = t.data },
+      () => tasks.value.some(operationActive),
+    )
+    async function doRestore() {
+      if (restoring.value) return
       restoring.value = true
-      progressStage.value = 1
-      progressInfo.value = { label: '正在创建恢复任务', percent: 3, detail: '', stage: 'create_task' }
-
-      api.post('/restore', {
-        backup_id: selectedBackupId.value,
-        target_server_id: selectedTargetId.value,
-      }).then((res) => {
-        currentTaskId.value = res.data.id
-        selectedBackupId.value = null
-        selectedTargetId.value = null
-        load()
-        pollTimer = setInterval(() => {
-          api.get('/restore-tasks').then(res => {
-            tasks.value = res.data
-            const current = tasks.value.find(t => t.id === currentTaskId.value)
-            updateProgressFromTask(current)
-            if (!current || current.status === 'failed') {
-              clearInterval(pollTimer)
-              pollTimer = null
-              if (current && current.status === 'failed') {
-                progressInfo.value = {
-                  label: current.progress_label || '恢复失败',
-                  percent: current.progress_percent || 100,
-                  detail: current.error_msg || current.progress_detail || '',
-                  stage: 'failed',
-                }
-              }
-              resetProgressLater(4000)
-              return
-            }
-            if (current.status === 'success' && ['success', 'failed'].includes(current.verification_status)) {
-              clearInterval(pollTimer)
-              pollTimer = null
-              updateProgressFromTask(current)
-              resetProgressLater(2500)
-            }
-          })
-        }, 2000)
-      }).catch(() => {
-        restoring.value = false
-        progressStage.value = 0
-        progressInfo.value = { label: '', percent: 0, detail: '', stage: '' }
-      })
+      try {
+        await api.post('/restore', { backup_id: selectedBackupId.value, target_server_id: selectedTargetId.value })
+        selectedBackupId.value = null; selectedTargetId.value = null
+        await load()
+      } catch (e) { ElMessage.error(e.response?.data?.error || '创建恢复任务失败，请刷新确认任务状态') }
+      finally { restoring.value = false }
     }
-
-    function triggerVerify(taskId) {
-      api.post(`/restore-tasks/${taskId}/verify`).then(() => {
-        const verifyPoll = setInterval(() => {
-          api.get(`/restore-tasks/${taskId}/verification`).then(vRes => {
-            if (vRes.data.status === 'success' || vRes.data.status === 'failed') {
-              clearInterval(verifyPoll)
-              load()
-            }
-          })
-        }, 3000)
-      })
+    async function triggerVerify(id) {
+      try { await api.post(`/restore-tasks/${id}/verify`); await load() }
+      catch (e) { ElMessage.error(e.response?.data?.error || '验证请求失败，请刷新确认任务状态') }
     }
-
-    function showVerify(task) {
-      api.get(`/restore-tasks/${task.id}/verification`).then(res => {
-        verifyData.value = res.data
-        verifyDialogVisible.value = true
-      })
+    async function showVerify(task) {
+      try { verifyData.value = (await api.get(`/restore-tasks/${task.id}/verification`)).data; verifyDialogVisible.value = true }
+      catch (e) { ElMessage.error('验证结果读取失败') }
     }
-
-    function loadSteps() {
-      if (!stepTask.value) return
-      stepLoading.value = true
-      api.get(`/restore-tasks/${stepTask.value.id}/steps`).then(res => {
-        stepLogs.value = res.data
-      }).finally(() => {
-        stepLoading.value = false
-      })
-    }
-
-    function showSteps(task) {
-      stepTask.value = task
-      stepLogs.value = []
-      stepDialogVisible.value = true
-      loadSteps()
-    }
-
-    function stepStatusType(status) {
-      if (status === 'success') return 'success'
-      if (status === 'running') return 'warning'
-      return 'danger'
-    }
-
-    function formatElapsed(milliseconds) {
-      const seconds = Math.max(0, Math.round((milliseconds || 0) / 1000))
-      if (seconds < 60) return `${seconds} 秒`
-      const minutes = Math.floor(seconds / 60)
-      const remainder = seconds % 60
-      return `${minutes} 分 ${remainder} 秒`
-    }
-
-    function metricValue(value) {
-      if (value === null || value === undefined || value === '') return '—'
-      if (typeof value === 'object') return JSON.stringify(value)
-      return String(value)
-    }
-
-    function displayCount(value) {
-      return value === null || value === undefined ? '-' : value
-    }
-
-    function formatSize(bytes) {
-      if (!bytes) return '-'
-      if (bytes < 1024) return bytes + ' B'
-      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-      return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-    }
-
-    function statusType(s) {
-      if (s === 'success') return 'success'
-      if (s === 'running') return 'warning'
-      return 'danger'
-    }
-
-    function fmt(d) { return d ? new Date(d).toLocaleString() : '-' }
-
-    onMounted(load)
-    onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
-
-    return { backups, servers, tasks, restoring,
-             selectedBackupId, selectedTargetId,
-             successBackups, backupServers, criticalAlert,
-             doRestore, load, formatSize, statusType, fmt,
-             progressStage, progressPct, progressLabel, progressDetail, progressStatus,
-             verifyDialogVisible, verifyData, triggerVerify, showVerify, displayCount,
-             stepDialogVisible, stepLogs, stepTask, stepLoading, showSteps, loadSteps,
-             stepStatusType, formatElapsed, metricValue }
+    function formatSize(bytes) { return bytes ? `${(bytes / 1048576).toFixed(1)} MB` : '—' }
+    const fmt = d => d ? new Date(utcTime(d)).toLocaleString() : '—'
+    const displayCount = n => n ?? '—'
+    return { backups, servers, tasks, restoring, selectedBackupId, selectedTargetId, successBackups, backupServers, criticalAlert,
+      load, pollError, doRestore, triggerVerify, showVerify, verifyDialogVisible, verifyData, formatSize, fmt, displayCount }
   },
 }
 </script>

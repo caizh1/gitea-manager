@@ -42,7 +42,15 @@ def values():
     master = secret_dir/'master.key'; executor = secret_dir/'executor.token'
     if not master.exists(): master.write_text(base64.urlsafe_b64encode(os.urandom(32)).decode()); master.chmod(0o600)
     if not executor.exists(): executor.write_text(secrets.token_urlsafe(32)); executor.chmod(0o444)
-    return dict(line.split('=',1) for line in path.read_text().splitlines() if '=' in line and not line.startswith('#'))
+    data = dict(line.split('=',1) for line in path.read_text().splitlines() if '=' in line and not line.startswith('#'))
+    authorization = secret_dir/'access-authorization.token'
+    if not authorization.exists():
+        if data.get('ACCESS_AUTHORIZATION_CREATED'):
+            raise RuntimeError('原组织授权令牌丢失，请恢复原文件，未自动重建')
+        authorization.write_text(secrets.token_urlsafe(48)); authorization.chmod(0o600)
+        data['ACCESS_AUTHORIZATION_CREATED'] = '1'
+        save(data)
+    return data
 
 
 def save(values):
@@ -65,6 +73,7 @@ class Harness:
         self.manager_url = 'http://127.0.0.1:'+self.values.get('REVIEW_MANAGER_PORT','15480')
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.csrf = ''
+        self.access_csrf = ''
 
     def request(self, method, url, data=None, headers=None, opener=None, raw=False):
         req = urllib.request.Request(url, method=method, data=json.dumps(data,ensure_ascii=False).encode() if data is not None else None,
@@ -90,10 +99,13 @@ class Harness:
 
     def manager(self, method, path, data=None):
         headers = {'X-Review-CSRF': self.csrf} if self.csrf else {}
+        if self.access_csrf: headers['X-CSRF-Token'] = self.access_csrf
         return self.request(method,self.manager_url+'/api'+path,data,headers,self.opener)
 
     def login(self):
-        self.manager('POST','/login',{'password':self.values['MANAGER_PASSWORD']})
+        self.access_csrf = self.manager('GET','/session')['csrf_token']
+        authenticated = self.manager('POST','/login',{'password':self.values['MANAGER_PASSWORD']})
+        self.access_csrf = authenticated['csrf_token']
         self.csrf = self.manager('GET','/ai-review/csrf')['token']
 
     def wait(self, url):

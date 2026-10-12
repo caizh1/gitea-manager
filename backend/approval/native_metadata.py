@@ -23,16 +23,9 @@ class Transport:
 
     def command(self, args):
         self.remaining()
-        import paramiko
-        from config import SSH_KEY_PATH, SSH_KEY_PASSPHRASE
+        from services.ssh_service import SSHService
         if self.ssh is None:
-            client=paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.ssh=client
-            key=paramiko.RSAKey.from_private_key_file(SSH_KEY_PATH,password=SSH_KEY_PASSPHRASE)
-            limit=self.remaining()
-            client.connect(self.server.host,port=self.server.ssh_port,username=self.server.ssh_user,pkey=key,
-                           timeout=limit,banner_timeout=limit,auth_timeout=limit,allow_agent=False,look_for_keys=False)
+            self.ssh = SSHService(self.server.host, self.server.ssh_port, self.server.ssh_user)._get_client(timeout=self.remaining())
         channel=self.ssh.get_transport().open_session(timeout=self.remaining())
         channel.settimeout(self.remaining())
         output=bytearray()

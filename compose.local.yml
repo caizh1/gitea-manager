@@ -57,7 +57,8 @@ services:
       BACKUP_DIR: /app/data/backups
       SECRET_KEY: ${MANAGER_SECRET}
       INIT_PASSWORD: ${MANAGER_PASSWORD}
-      INTEGRATION_SERVICE_TOKEN: ${INTEGRATION_TOKEN}
+      INTEGRATION_ENABLED: ${INTEGRATION_ENABLED:-false}
+      INTEGRATION_SERVICE_TOKEN: ${INTEGRATION_TOKEN:-}
     volumes:
       # Docker Desktop 宿主机共享目录的 flock 不可靠；SQLite 和任务锁必须使用 Linux 原生卷。
       - manager-data:/app/data

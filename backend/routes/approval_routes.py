@@ -15,6 +15,7 @@ from flask_login import current_user
 from sqlalchemy.exc import IntegrityError
 
 from models import db, GiteaServer, ApprovalPolicy, ApprovalNonce, ApprovalAudit
+from access.scopes import visible_keys, bind_resource
 from approval.rules import ApprovalError, normalize, positive, encode, digest
 from approval.gitea import Reader
 from approval.native_uninstall import build_native_uninstall_bundle
@@ -59,7 +60,8 @@ def protect():
         return jsonify(error='禁止跨站访问'), 403
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
         expected = session.get('approval_csrf', '')
-        if not expected or not hmac.compare_digest(expected, request.headers.get('X-Approval-CSRF', '')):
+        from access.control import csrf_valid
+        if not csrf_valid() and (not expected or not hmac.compare_digest(expected, request.headers.get('X-Approval-CSRF', ''))):
             return jsonify(error='安全令牌失效，请刷新'), 403
 
 
@@ -71,7 +73,11 @@ def csrf():
 
 @approval_bp.get('/policies')
 def policies():
-    return jsonify(items=[serialize(p) for p in ApprovalPolicy.query.order_by(ApprovalPolicy.id.desc()).limit(500)],
+    query = ApprovalPolicy.query
+    allowed = visible_keys('approval_policy')
+    if allowed is not None:
+        query = query.filter(ApprovalPolicy.id.in_([int(i) for i in allowed]))
+    return jsonify(items=[serialize(p) for p in query.order_by(ApprovalPolicy.id.desc()).limit(500)],
                    release_allowed=False, blockers=RELEASE_BLOCKERS)
 
 
@@ -131,6 +137,7 @@ def create_policy():
     try:
         db.session.add(policy)
         db.session.flush()
+        bind_resource('approval_policy', policy.id, policy.server_id, policy.owner_id, [policy.repo_id])
         audit(policy, 'policy.create', {'rule': rule})
         db.session.commit()
     except IntegrityError:

@@ -40,8 +40,10 @@ def summary(job, snapshot, result):
             + f"审查版本：`{snapshot['head']}`；比较基点：`{snapshot['merge_base']}`。\n\n"
             + f"已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。")
     if not coverage['complete']:
-        text += '\n\n**本次为部分覆盖，不能据此判断整个 PR 没有问题。**\n'
+        text += '\n\n**本次部分完成，存在未完成或未覆盖内容，不能据此判断整个 PR 没有问题。**\n'
         text += '\n'.join('- ' + prose(s['path']) + '：' + prose(s['reason']) for s in coverage['skipped'][:40])
+    if result.get('retained_findings'):
+        text += f"\n\n其余 {result['retained_findings']} 项意见保存在 Manager 任务详情中；全部计划单元仍已处理。"
     findings = result['findings']
     if not findings:
         text += '\n\n在已覆盖的修改中未发现证据充分、值得提出的明显问题。'
@@ -119,7 +121,11 @@ def verify_hunk(comment, anchor, snapshot):
 class Publisher:
     def __init__(self, store, client, job, repo, snapshot, result):
         self.store, self.client, self.job, self.repo = store, client, job, repo
-        self.snapshot, self.result = snapshot, result
+        self.snapshot = snapshot
+        self.full_result = result
+        limit = result.get('publication_limit', len(result.get('findings', [])))
+        self.result = result.get('publication') or result
+        self.page_size = max(1,limit)
         self.path = client.prefix + f"/pulls/{job['number']}/reviews"
         self.mark = marker(job)
         self.cancelled = False
@@ -196,17 +202,23 @@ class Publisher:
         with contextlib.closing(self.store.connect()) as c:
             rows = c.execute("SELECT review_id,result FROM jobs WHERE repository=? AND number=? AND status='succeeded' AND result IS NOT NULL ORDER BY created DESC LIMIT 10",
                              (self.job['repository'], self.job['number'])).fetchall()
+        def history_key(item):
+            from .engine import re_title
+            return (item['path'], item['scope'], re_title(item['title']), item['anchor']['quote'])
         known = {}
         for record in rows:
-            for item in json.loads(record['result'])['findings']:
+            result = json.loads(record['result'])
+            for item in result.get('publication', result).get('findings', []):
                 if item.get('anchor'):
-                    known.setdefault((item['fingerprint'], item['anchor']['quote']), item.get('existing_review_id') or record['review_id'])
+                    known.setdefault(history_key(item), item.get('existing_review_id') or record['review_id'])
         for item in self.result['findings']:
             anchor = item.get('anchor')
-            if anchor and (item['fingerprint'], anchor['quote']) in known:
-                item['existing_review_id'] = known[(item['fingerprint'], anchor['quote'])]
+            if anchor and history_key(item) in known:
+                item['existing_review_id'] = known[history_key(item)]
 
     def publish(self, recovery=False):
+        if self.full_result.get('publication_pages') or len(self.result['findings'])>self.page_size or len(summary(self.job,self.snapshot,self.result))>12000 or any(len(c['body'])>12000 for c in expected_comments(self.job,self.result)):
+            return self.publish_pages(recovery)
         with self.store.lock(f"发布-{self.job['repository']}-{self.job['number']}"):
             self.store.active(self.job['id'], self.job['owner'])
             reviews = self.client.pages(self.path)
@@ -229,7 +241,7 @@ class Publisher:
                 self.validate_local()
                 self.prior_findings()
                 # 冻结实际提交内容，恢复只能核对这份结果，不重新计算历史去重。
-                self.store.update(self.job['id'], self.job['owner'], result=self.result)
+                self.store.update(self.job['id'], self.job['owner'], result=dict(self.full_result, publication=self.result) if 'publication_limit' in self.full_result else self.result)
                 assert_version(self.client, self.job['number'], self.snapshot)
                 self.store.update(self.job['id'], self.job['owner'], status='publishing', stage='发布正式 Review 和行内评论')
                 self.store.active(self.job['id'], self.job['owner'])
@@ -244,6 +256,75 @@ class Publisher:
             except Stale:
                 self.cancelled = not sent
                 raise
+
+    def publish_pages(self, recovery=False):
+        """分页内容先冻结；已发送的页面只核对，不重放不确定写入。"""
+        with self.store.lock(f"发布-{self.job['repository']}-{self.job['number']}"):
+            self.store.active(self.job['id'],self.job['owner'])
+            pages=self.full_result.get('publication_pages')
+            if not pages:
+                self.validate_local();self.prior_findings()
+                pages=[]
+                findings=self.result['findings']
+                groups=[findings[i:i+self.page_size] for i in range(0,len(findings),self.page_size)] or [[]]
+                for group in groups:
+                    text=summary(self.job,self.snapshot,dict(self.result,findings=group))
+                    bodies=[text[i:i+12000] for i in range(0,len(text),12000)]
+                    comments=[]
+                    for item in group:
+                        if not item.get('anchor') or item.get('existing_review_id'):continue
+                        body=finding_body(item,self.job)
+                        for offset in range(0,len(body),12000):
+                            comments.append({'path':item['anchor']['path'],'body':body[offset:offset+12000],
+                                'old_position':item['anchor']['line'] if item['anchor']['side']=='old' else 0,
+                                'new_position':item['anchor']['line'] if item['anchor']['side']=='new' else 0,
+                                'anchor':item['anchor']})
+                    count=max(len(bodies),(len(comments)+self.page_size-1)//self.page_size,1)
+                    for index in range(count):
+                        mark='<!-- ai-review:v1:job:'+self.job['id']+':page:'+str(len(pages)+1)+' -->'
+                        body=mark+'\n审查结果分页 '+str(len(pages)+1)+'\n\n'+(bodies[index] if index<len(bodies) else '本页包含后续行内意见。')
+                        rows=[]
+                        for part,comment in enumerate(comments[index*self.page_size:(index+1)*self.page_size]):
+                            rows.append(dict(comment,body=mark+'\n意见片段 '+str(part+1)+'\n'+comment['body']))
+                        pages.append({'marker':mark,'body':body,'comments':rows,'state':'pending'})
+                self.full_result=dict(self.full_result,publication=self.result,publication_pages=pages)
+                self.store.update(self.job['id'],self.job['owner'],result=self.full_result)
+            reviews=self.client.pages(self.path)
+            if any(r['state']=='PENDING' and r.get('user',{}).get('id')==self.repo['bot_id'] for r in reviews):
+                raise PublishUnknown('机器人存在未完成草稿，未开始分页发布')
+            first=None
+            for page in pages:
+                self.store.active(self.job['id'],self.job['owner'])
+                assert_version(self.client,self.job['number'],self.snapshot)
+                matching=[r for r in reviews if page['marker'] in r.get('body','') and r.get('user',{}).get('id')==self.repo['bot_id']]
+                if len(matching)>1:raise PublishUnknown('分页标记重复，停止核对')
+                if matching:
+                    published=self.client.request('GET',self.path+'/'+str(matching[0]['id']))
+                else:
+                    if page['state']!='pending':
+                        raise PublishUnknown('分页请求结果不确定，未重放；已保留先前发布页')
+                    self.client.version()
+                    page['state']='sending'
+                    self.store.update(self.job['id'],self.job['owner'],status='publishing',result=self.full_result,
+                                      stage='正在发布审查结果分页',progress_stage='publishing',batch_started=__import__('time').time())
+                    published=self.client.request('POST',self.path,{'event':'COMMENT','commit_id':self.snapshot['head'],
+                              'body':page['body'],'comments':[{k:v for k,v in c.items() if k!='anchor'} for c in page['comments']]})
+                    published=self.client.request('GET',self.path+'/'+str(published['id']))
+                if published.get('state')!='COMMENT' or published.get('commit_id')!=self.snapshot['head'] or published.get('body')!=page['body'] or published.get('user',{}).get('id')!=self.repo['bot_id']:
+                    raise PublishUnknown('分页内容或归属未通过回读核对')
+                actual=self.comments(published)
+                if len(actual)!=len(page['comments']):raise PublishUnknown('分页行内评论数量不一致')
+                by_body={c['body']:c for c in actual}
+                if len(by_body)!=len(actual):raise PublishUnknown('分页评论存在重复内容')
+                for expected in page['comments']:
+                    comment=by_body.get(expected['body'])
+                    if not comment or comment.get('user',{}).get('id')!=self.repo['bot_id']:raise PublishUnknown('分页评论内容或归属不一致')
+                    verify_hunk(comment,expected['anchor'],self.snapshot)
+                page.update(state='confirmed',review_id=published['id'])
+                first=first or published
+                self.store.update(self.job['id'],self.job['owner'],result=self.full_result)
+            self.store.update(self.job['id'],self.job['owner'],**self.reference(first))
+            return first['id']
 
     def save_reference(self, review):
         """核对公开结果；不删除正式 Review，也不把不一致的结果标记成功。"""

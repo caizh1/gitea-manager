@@ -7,11 +7,17 @@
       <h2 class="login-title">Gitea Manager</h2>
       <p class="login-subtitle">安全登录到管理控制台</p>
       <el-form @submit.prevent="doLogin" class="login-form">
-        <el-form-item>
-          <el-input v-model="password" type="password" show-password placeholder="请输入管理员密码" aria-label="管理员密码" size="large" prefix-icon="Lock" />
+        <el-form-item label="登录方式">
+          <el-select v-model="source" aria-label="登录方式" class="login-source"><el-option label="本地应急管理员" value="local" /><el-option v-for="item in sources.filter(s => s.source === 'ldap' || s.type === 'ldap' || s.id === 'ldap')" :key="item.id || item.source" :label="item.name || '公司 LDAP / AD'" value="ldap" /></el-select>
+        </el-form-item>
+        <el-form-item label="账号">
+          <el-input v-model="username" autocomplete="username" :placeholder="source === 'local' ? '本地管理员账号' : '公司目录账号'" aria-label="登录账号" size="large" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" aria-label="登录密码" size="large" prefix-icon="Lock" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="doLogin" :loading="loading" class="login-btn">登 录</el-button>
+          <el-button type="primary" native-type="submit" :loading="loading" class="login-btn">登 录</el-button>
         </el-form-item>
       </el-form>
       <p v-if="error" class="login-error">{{ error }}</p>
@@ -21,29 +27,33 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { api } from '../api'
 
 export default {
+  props: { sources: { type: Array, default: () => [] } },
   emits: ['login'],
   setup(props, { emit }) {
+    const source = ref('local'), username = ref('admin')
+    watch(source, value => { username.value = value === 'local' ? 'admin' : ''; password.value = ''; error.value = '' })
     const password = ref('')
     const loading = ref(false)
     const error = ref('')
 
     function doLogin() {
+      if (loading.value) return
       error.value = ''
       loading.value = true
-      api.post('/login', { password: password.value }).then(() => {
+      api.post('/login', { source: source.value, username: username.value, password: password.value }).then(() => {
         emit('login')
-      }).catch(() => {
-        error.value = '密码错误'
+      }).catch(e => {
+        error.value = e.response?.data?.error || '登录失败，请检查连接和账号密码'
       }).finally(() => {
         loading.value = false
       })
     }
 
-    return { password, loading, error, doLogin }
+    return { source, username, password, loading, error, doLogin }
   },
 }
 </script>
@@ -74,8 +84,9 @@ export default {
 @keyframes float2 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(20px); } }
 @keyframes float3 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
 
+.login-source { width: 100%; }
 .login-card {
-  width: 420px; padding: 48px 40px; border-radius: 28px;
+  box-sizing: border-box; max-width: calc(100vw - 32px); width: 460px; padding: 48px 40px; border-radius: 28px;
   background: var(--glass-dialog); backdrop-filter: var(--blur-dialog); -webkit-backdrop-filter: var(--blur-dialog);
   border: 1px solid rgba(255,255,255,0.68); box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), var(--shadow-lg);
   animation: fadeInUp 0.24s ease; position: relative; z-index: 1;

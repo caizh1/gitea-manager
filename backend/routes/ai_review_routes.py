@@ -8,12 +8,13 @@ import sqlite3
 import time
 from urllib.parse import urlsplit, unquote
 
-from flask import Blueprint, current_app, jsonify, request, session, send_file, g
+from flask import Blueprint, current_app, jsonify, request, session, send_file, g, Response, stream_with_context, make_response
 from flask_login import current_user
 import requests
 
 from models import db, GiteaServer
 from ai_review.common import ReviewError, endpoint, valid_sha
+from ai_review.host_policy import gitea_address
 from ai_review.gitea import Gitea
 from ai_review.store import Store
 
@@ -37,12 +38,10 @@ def protect():
         return jsonify(error='请求内容超过 1 MB'), 413
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
         expected = session.get('ai_review_csrf', '')
-        if not expected or not hmac.compare_digest(expected, request.headers.get('X-Review-CSRF', '')):
+        from access.control import csrf_valid
+        if not csrf_valid() and (not expected or not hmac.compare_digest(expected.encode('utf-8'), request.headers.get('X-Review-CSRF', '').encode('utf-8'))):
             return jsonify(error='安全令牌无效，请刷新页面'), 403
-        # 请求只读核对只修改任务队列，可彼此并发；仍与配置变更/自动接入互斥。
-        payload = request.get_json(silent=True) if request.endpoint == 'ai_review.reconcile' else None
-        shared = isinstance(payload, dict) and payload.get('confirm_unpublished') is not True
-        lock = store().lock('自动接入执行', blocking=False, shared=shared)
+        lock = store().lock('自动接入执行', blocking=False)
         try: lock.__enter__()
         except ReviewError:
             return jsonify(error='自动接入正在核验配置，请待其完成后再修改'), 409
@@ -63,12 +62,15 @@ def no_cache(response):
 
 @ai_review_bp.errorhandler(ReviewError)
 def review_error(exc):
-    return jsonify(error=str(exc)), 400
+    return jsonify(error=str(exc), **({'diagnostic': exc.connection_diagnostic}
+                   if hasattr(exc, 'connection_diagnostic') else {})), 400
 
 
 @ai_review_bp.errorhandler(sqlite3.Error)
-def db_error(_):
-    return jsonify(error='Review 存储暂时不可用，请稍后重试'), 503
+def db_error(exc):
+    from ai_review.diagnostics import describe
+    value = describe(exc, phase='管理接口存储')
+    return jsonify(error=value['message'], error_code=value['error_code']), 503
 
 
 def body():
@@ -86,8 +88,8 @@ def positive(value):
 
 def server(value):
     target = db.get_or_404(GiteaServer, positive(value))
-    from ai_review.host_policy import path, approve
-    if path(): approve({'AI_REVIEW_GITEA_HOSTS': [target.gitea_url]})
+    from ai_review.host_policy import path, approve, gitea_address
+    if path(): approve({'AI_REVIEW_GITEA_HOSTS': [gitea_address(target.gitea_url)]})
     return target
 
 
@@ -100,24 +102,31 @@ def csrf():
 @ai_review_bp.get('/config')
 def config():
     state = store()
-    return jsonify(config=state.config(public=True), health=state.health_status(), supported_version='1.26.4')
+    return jsonify(config=state.config(public=True), health=state.health_status(), supported_version='1.26.4', trial_versions=['1.27.3'])
 
 
 @ai_review_bp.put('/config')
 def save_config():
     state, data = store(), body()
     allowed = {'revision', 'enabled', 'engine', 'api_base_url', 'model', 'api_key',
-               'debounce_seconds', 'max_files', 'max_calls', 'task_timeout_seconds', 'max_findings'}
+               'debounce_seconds', 'max_files', 'max_calls', 'task_timeout_seconds', 'review_timeout_seconds',
+               'model_request_timeout_seconds', 'model_max_output_tokens', 'model_response_max_mib', 'max_findings', 'thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'context_retrieval_budget', 'model_context_tokens', 'compaction_threshold_tokens'}
     if set(data)-allowed:
         raise ReviewError('配置包含不支持的字段')
     old = state.config()
     value = dict(old, **data)
-    if not isinstance(value['enabled'], bool) or value['engine'] not in ('opencode_cli', 'new_api_http'):
+    if not isinstance(value['enabled'], bool) or value['engine'] != 'opencode_native':
         raise ReviewError('开关或执行引擎无效')
     for key, low, high in [('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
-                           ('task_timeout_seconds', 60, 3600), ('max_findings', 1, 30)]:
+                           ('task_timeout_seconds', 60, 3600), ('review_timeout_seconds', 60, 3600),
+                           ('model_request_timeout_seconds', 60, 3600), ('max_findings', 1, 30),
+                           ('model_max_output_tokens', 0, 1048576), ('model_response_max_mib', 1, 64)]:
         if type(value[key]) is not int or not low <= value[key] <= high:
             raise ReviewError(f'{key} 超出允许范围 {low} 至 {high}')
+    from ai_review.thinking import validate as validate_thinking
+    validate_thinking(value)
+    from ai_review.budgets import validate_context
+    validate_context(value)
     if value['api_base_url']:
         from ai_review.host_policy import path, approve
         if path() and 'api_base_url' in data: approve({'AI_REVIEW_MODEL_HOSTS': [value['api_base_url']]})
@@ -133,21 +142,13 @@ def save_config():
 
 @ai_review_bp.post('/connection-test')
 def connection_test():
+    from ai_review.setup_service import verify_model
     state = store(); config = state.config()
-    base = endpoint(config['api_base_url'], 'AI_REVIEW_MODEL_HOSTS')
-    session_http = requests.Session(); session_http.trust_env = False
-    try:
-        response = session_http.get(base+'/models', headers={'Authorization': 'Bearer '+state.unseal(config['api_key'])},
-                                    timeout=(5, 10), allow_redirects=False)
-        if response.status_code != 200 or len(response.content) > 1024*1024:
-            raise ReviewError(f'模型目录请求失败：HTTP {response.status_code}')
-        models = [m['id'] for m in response.json().get('data', []) if isinstance(m, dict) and isinstance(m.get('id'), str)]
-        return jsonify(ok=config['model'] in models, model_available=config['model'] in models,
-                       message='所选模型可用' if config['model'] in models else '服务可达，但模型目录中没有所选模型', models=models[:200])
-    except (requests.RequestException, ValueError):
-        raise ReviewError('模型目录连接失败或响应格式错误') from None
-    finally:
-        session_http.close()
+    if not config['api_key']:
+        raise ReviewError('请先保存模型地址、名称和 Key')
+    checked = verify_model(state, config)
+    return jsonify(ok=True, model_available=checked['listed'], revision=config['revision'],
+                   model=config['model'], message=checked['message'])
 
 
 @ai_review_bp.get('/servers')
@@ -178,7 +179,9 @@ def progress_assets(server_id):
 
 @ai_review_bp.get('/repositories')
 def repositories():
-    return jsonify(store().repos(public=True))
+    from access.organization_api import review_repository_ids
+    allowed = review_repository_ids()
+    return jsonify([row for row in store().repos(public=True) if allowed is None or row['id'] in allowed])
 
 
 def repository_values(state, data, old=None):
@@ -211,8 +214,9 @@ def repository_values(state, data, old=None):
             raise ReviewError('机器人 Token 还需 issue 权限；请配置 read:user、write:repository 和 write:issue，账号仍保持仓库只读') from None
         if repository.get('full_name') != name or old and repository['id'] != old['repo_id']:
             raise ReviewError('仓库身份不一致')
+        client.verify_review_scopes()
         return target.id, repository['id'], {
-            'repo_name': name, 'server_name': target.name, 'gitea_url': target.gitea_url,'gitea_version':gitea_version,
+            'repo_name': name, 'server_name': target.name, 'gitea_url': gitea_address(target.gitea_url),'gitea_version':gitea_version,
             'bot_token': state.seal(token), 'bot_id': user['id'], 'bot_name': user['login'],
             'webhook_secret': old['webhook_secret'] if old else state.seal(secrets.token_urlsafe(32)),
             'enabled': data.get('enabled', False), 'hook_status': old.get('hook_status', '未安装') if old else '未安装',
@@ -224,13 +228,27 @@ def repository_values(state, data, old=None):
 @ai_review_bp.post('/repositories')
 def create_repository():
     state = store(); target, repo_id, data = repository_values(state, body())
-    return jsonify(state.save_repo(target, repo_id, data)), 201
+    # Review 与 Manager 分库，先禁用落盘；归属核验失败不得留下可执行的无范围服务。
+    wanted_enabled = data.get('enabled', False)
+    saved = state.save_repo(target, repo_id, dict(data, enabled=False))
+    from access.scopes import bind_review_repository, require_repo
+    actual = require_repo(target, repo_id)
+    bind_review_repository(state, saved['id'], actual)
+    if wanted_enabled:
+        state.save_repo(target, repo_id, {'enabled': True, 'revision': saved['revision']}, saved['id'])
+    return jsonify(state.repo(saved['id'], public=True)), 201
 
 
 @ai_review_bp.put('/repositories/<int:repository>')
 def update_repository(repository):
     state = store(); old = state.repo(repository)
+    from access.scopes import is_platform, actor_snapshot, current_binding, check_task_actor
+    if not is_platform():
+        check_task_actor(actor_snapshot(current_binding()), old['server_id'], old['repo_id'])
+        return jsonify(state.save_repo(old['server_id'], old['repo_id'], body(), repository))
     target, repo_id, data = repository_values(state, body(), old)
+    from access.scopes import bind_review_repository, require_repo
+    bind_review_repository(state, repository, require_repo(target, repo_id))
     return jsonify(state.save_repo(target, repo_id, data, repository))
 
 
@@ -248,7 +266,7 @@ def ensure_webhook(state, repository, manager_url):
     manager = endpoint(manager_url, 'AI_REVIEW_WEBHOOK_HOSTS')
     callback = manager + f'/api/ai-review/webhooks/{repository}'
     target = server(repo['server_id'])
-    if target.gitea_url.rstrip('/') != repo['gitea_url'].rstrip('/'):
+    if gitea_address(target.gitea_url) != gitea_address(repo['gitea_url']):
         raise ReviewError('服务器连接已变化，请先更新 Review 仓库配置')
     client = Gitea(target.gitea_url, target.api_token, repo['repo_name'], repo['repo_id'])
     path = client.prefix+'/hooks'
@@ -281,7 +299,7 @@ def ensure_webhook(state, repository, manager_url):
 def setup_status():
     from ai_review.setup_service import public_job
     state = store()
-    return jsonify(job=public_job(state), automatic_available=bool(__import__('os').environ.get('AI_REVIEW_HOST_POLICY_FILE')))
+    return jsonify(job=public_job(state, server_id=positive(request.args['server_id']) if request.args.get('server_id') else None), automatic_available=bool(__import__('os').environ.get('AI_REVIEW_HOST_POLICY_FILE')))
 
 
 @ai_review_bp.post('/setup')
@@ -302,16 +320,10 @@ def setup_detail(ident):
 
 @ai_review_bp.post('/setup/<ident>/resume')
 def setup_resume(ident):
-    from ai_review.setup_service import public_job, start
-    state = store()
-    job = public_job(state, ident)
-    if not job: return jsonify(error='接入任务不存在'), 404
-    with state.tx() as c:
-        if c.execute("SELECT id FROM setup_jobs WHERE status IN ('pending','running') AND id!=?", (ident,)).fetchone():
-            raise ReviewError('已有接入任务正在执行')
-        c.execute("UPDATE setup_jobs SET status='pending',updated=? WHERE id=? AND status IN ('failed','partial')", (time.time(), ident))
+    from ai_review.setup_service import resume, start
+    job = resume(store(), ident, body())
     start(current_app._get_current_object())
-    return jsonify(job=public_job(state, ident)), 202
+    return jsonify(job=job), 202
 
 
 @ai_review_bp.get('/setup-probe/<token>')
@@ -329,17 +341,13 @@ def setup_probe(token):
 
 @ai_review_bp.get('/tasks')
 def tasks():
-    return jsonify(store().jobs(positive(request.args.get('page', '1')),
+    from access.organization_api import review_job_ids
+    state = store()
+    return jsonify(state.jobs(positive(request.args.get('page', '1')),
         positive(request.args['repository']) if request.args.get('repository') else None,
-        positive(request.args['number']) if request.args.get('number') else None, request.args.get('status')))
+        positive(request.args['number']) if request.args.get('number') else None, request.args.get('status'),
+        allowed_jobs=review_job_ids(state)))
 
-
-@ai_review_bp.get('/attention')
-def attention():
-    from ai_review.attention import listing
-    return jsonify(listing(store(), positive(request.args.get('page', '1')),
-        positive(request.args['repository']) if request.args.get('repository') else None,
-        positive(request.args['number']) if request.args.get('number') else None))
 
 
 @ai_review_bp.get('/repositories/<int:repository>/dataset')
@@ -375,15 +383,124 @@ def dataset_history(repository,ident):
 
 @ai_review_bp.get('/tasks/<job>')
 def task(job):
-    return jsonify(store().job(job, public=True))
+    return jsonify(store().job(job, public=True, evidence=request.args.get('evidence', '1') != '0'))
+
+
+@ai_review_bp.route('/tasks/<job>/raw-diagnostics', methods=['GET', 'HEAD'])
+def raw_diagnostics_download(job):
+    state=store();task = state.job(job, public=True, evidence=False)
+    value = task.get('raw_diagnostics')
+    if not isinstance(value, dict):
+        return jsonify(error='该历史任务未记录原始诊断'), 404
+    if (value.get('status') == 'expired' or
+            isinstance(value.get('retention_expires_at'),(int,float))
+            and value['retention_expires_at'] <= time.time()):
+        return jsonify(error='原始诊断已超过保留期限'), 410
+    if not value.get('available'):
+        code = 409 if value.get('status') in ('capturing','ready','archiving') else 404
+        return jsonify(error='原始诊断尚未可用' if code == 409 else '该任务没有可下载的原始诊断'), code
+    lock=state.lock('原始诊断下载',blocking=False)
+    try:
+        lock.__enter__()
+    except ReviewError:
+        return jsonify(error='已有原始诊断正在下载，请稍后重试'),429
+    try:
+        if request.method == 'HEAD':
+            from ai_review.raw_diagnostics import worker_head
+            response=make_response(worker_head(task))
+        else:
+            from ai_review.raw_diagnostics import worker_download
+            response=make_response(worker_download(task))
+        response.call_on_close(lambda: lock.__exit__(None,None,None))
+        return response
+    except BaseException:
+        lock.__exit__(None,None,None)
+        raise
+
+
+def event_cursor(name):
+    value = request.args.get(name)
+    if value is None:
+        return None
+    if not value.isdigit() or int(value) > 2**63-1:
+        raise ReviewError(f'{name} 需要非负整数')
+    return int(value)
+
+
+def event_filters():
+    raw = request.args.get('type', '')
+    kinds = [value for value in raw.split(',') if value]
+    if len(kinds) > 20 or any(not re.fullmatch(r'[A-Za-z0-9_.:-]{1,180}', value) for value in kinds):
+        raise ReviewError('事件类型过滤无效')
+    query = request.args.get('q', '')
+    if len(query) > 200:
+        raise ReviewError('日志搜索文本超过 200 字符')
+    return kinds, query
+
+
+@ai_review_bp.get('/tasks/<job>/events')
+def task_events(job):
+    from ai_review.session_events import query
+    raw_limit = request.args.get('limit', '200')
+    if not raw_limit.isdigit() or not 1 <= int(raw_limit) <= 500:
+        raise ReviewError('limit 需要 1 至 500')
+    kinds, text = event_filters()
+    return jsonify(query(store(), job, event_cursor('after'), event_cursor('before'), kinds, text, int(raw_limit)))
+
+
+@ai_review_bp.get('/tasks/<job>/events/export')
+def task_events_export(job):
+    from ai_review.session_events import iter_export
+    kinds, text = event_filters()
+    response = Response(stream_with_context(iter_export(store(), job, kinds, text)), mimetype='application/x-ndjson')
+    response.headers['Content-Disposition'] = f'attachment; filename="ai-review-events-{job}.jsonl"'
+    return response
+
+
+@ai_review_bp.get('/tasks/<job>/units')
+def task_units(job):
+    from ai_review.review_state import units
+    state = store(); task = state.job(job, public=True, evidence=False)
+    rows = units(state, job, positive(request.args.get('page', '1')))
+    return jsonify(items=[{'id': r['id'], 'position': r['position'], 'state': r['state'],
+                           'path': r['input']['path'], 'scope': r['input']['scope'],
+                           'context_gaps': r['input'].get('context_gaps', []), 'error': r['error']} for r in rows],
+                   total=task['plan_units'])
+
+
+@ai_review_bp.get('/tasks/<job>/context-reads')
+def task_context_reads(job):
+    import contextlib
+    import json
+    state=store();state.job(job,public=True,evidence=False)
+    page=positive(request.args.get('page','1'))
+    offset=positive(request.args['start'])-1 if 'start' in request.args else (page-1)*20
+    with contextlib.closing(state.connect()) as c:
+        total=c.execute('SELECT count(*) FROM review_reads WHERE job=?',(job,)).fetchone()[0]
+        rows=c.execute('''SELECT r.unit,r.value FROM review_reads r JOIN review_units u ON u.job=r.job AND u.id=r.unit
+                          WHERE r.job=? ORDER BY u.position,r.seq,r.position LIMIT 20 OFFSET ?''',(job,offset)).fetchall()
+    return jsonify(items=[dict(json.loads(row['value']),unit=row['unit']) for row in rows],total=total)
 
 
 @ai_review_bp.post('/repositories/<int:repository>/rerun')
 def rerun(repository):
     state = store(); number = positive(body().get('number'))
-    if not state.config()['enabled'] or not state.repo(repository)['enabled']:
+    repo = state.repo(repository)
+    if not state.config()['enabled'] or not repo['enabled']:
         raise ReviewError('请先启用全局和该仓库的 AI Review')
-    job = state.enqueue(repository, number, {'manual': secrets.token_hex(8)}, manual=True)
+    # 人工重审也先固定真实 head/base。若仅写 manual 占位，后台
+    # reconcile 读到稳定 PR 版本后会把刚入队的人工任务误判为旧代。
+    target = server(repo['server_id'])
+    client = Gitea(target.gitea_url, state.unseal(repo['bot_token']), repo['repo_name'], repo['repo_id'])
+    try:
+        from ai_review.gitea import version_of
+        version = version_of(client.pr(number))
+        from access.scopes import actor_snapshot, current_binding, check_task_actor
+        actor = actor_snapshot(current_binding())
+        check_task_actor(actor, repo['server_id'], repo['repo_id'])
+        job = state.enqueue(repository, number, {'head': version['head'], 'base': version['base']}, manual=True, access_actor=actor)
+    finally:
+        client.close()
     return jsonify(job=job), 202
 
 
@@ -393,13 +510,16 @@ def reconcile(job):
     data = body()
     if data.get('confirm_unpublished') is True:
         from ai_review.worker import confirm_unpublished
-        confirm_unpublished(state, job)
+        from access.scopes import actor_name
+        confirm_unpublished(state, job, actor_name())
         return jsonify(ok=True, task=state.job(job, public=True))
     if data.get('confirm_unpublished') is not None and data['confirm_unpublished'] is not False:
         raise ReviewError('确认字段需要布尔值')
     from ai_review.attention import request_reconciliation
-    requested = request_reconciliation(state, job)
+    from access.scopes import actor_name
+    requested = request_reconciliation(state, job, actor_name())
     return jsonify(ok=True, requested=requested, task=state.job(job, public=True)), 202
+
 
 
 @ai_review_bp.post('/webhooks/<int:repository>')
@@ -461,3 +581,14 @@ def webhook(repository):
         return jsonify(accepted=True, job=job), 202
     except (ValueError, TypeError, KeyError):
         raise ReviewError('事件内容格式错误') from None
+
+
+@ai_review_bp.get('/attention')
+def attention():
+    from ai_review.attention import listing
+    from access.organization_api import review_job_ids
+    state = store()
+    return jsonify(listing(state, positive(request.args.get('page', '1')),
+        positive(request.args['repository']) if request.args.get('repository') else None,
+        positive(request.args['number']) if request.args.get('number') else None,
+        allowed_jobs=review_job_ids(state)))

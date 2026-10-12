@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask, g
-from auth import init_auth
+from tests.access_helpers import init_test_auth as init_auth, login_platform
 from models import db, GiteaServer, ApprovalPolicy, ApprovalNonce
 from approval.rules import ApprovalError, normalize, evaluate, native_rule, safe_native, encode
 from approval.gitea import Reader, reset_event_id, review_revision
@@ -226,8 +226,7 @@ class ApiTests(unittest.TestCase):
 
     def login(self):
         g.pop('_login_user', None)
-        with self.client.session_transaction() as s:
-            s['_user_id'] = '1'; s['_fresh'] = True
+        login_platform(self.client)
         token = self.client.get('/api/approval-rules/csrf').json['token']
         return {'X-Approval-CSRF': token}
 

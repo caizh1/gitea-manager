@@ -1,6 +1,7 @@
 """有界源码供给：版本方向固定，函数配对唯一，保留缺失证据而不推测。"""
 import posixpath
 import re
+from bisect import bisect_left, bisect_right
 from .common import ReviewError, Stale, digest, encode
 from .snapshot import functions, comment_only_lines, parse_source
 
@@ -15,27 +16,34 @@ def source(snapshot, path, version, role, code, start=1):
     return value
 
 
-def operations(snapshot, file, anchors):
+def operations(snapshot, file, anchors, parsed=None):
     """提供真实语法操作及其变更成员；模型选择邻行或声明别名时不自动补救。"""
     result = []
+    kinds = OPERATIONS | ({'init_declarator','preproc_def','preproc_function_def','type_definition'}
+                          if snapshot.get('analysis_version',0)>=4 else set())
     for side in ('old', 'new'):
-        raw, tree = parse_source(file[side], file['path'])
-        own = [a for a in anchors if a['side'] == side]
-        def visit(node):
-            matched = [a['id'] for a in own if node.start_point.row+1 <= a['line'] <= node.end_point.row+1]
+        raw, tree = parsed[side] if parsed else parse_source(file[side], file['path'], file.get('parser_language'))
+        own = sorted((a for a in anchors if a['side'] == side),key=lambda a:a['line'])
+        lines = [a['line'] for a in own]
+        pending = [tree.root_node]
+        while pending:
+            node = pending.pop()
+            end_line=node.end_point.row+1
+            if snapshot.get('analysis_version',0)>=4 and node.end_point.column==0 and node.end_point.row>node.start_point.row:
+                end_line-=1
+            lo=bisect_left(lines,node.start_point.row+1);hi=bisect_right(lines,end_line)
+            matched = [a['id'] for a in own[lo:hi]]
             if not matched:
-                return
-            if node.type in OPERATIONS and not node.has_error:
+                continue
+            if node.type in kinds and not node.has_error:
                 quote = raw[node.start_byte:node.end_byte].decode()
                 if len(quote) <= 2000:
                     value = {'side': side, 'kind': node.type, 'start': node.start_point.row+1,
-                             'end': node.end_point.row+1, 'quote': quote, 'anchor_ids': matched,
+                             'end': end_line, 'quote': quote, 'anchor_ids': matched,
                              'start_byte': node.start_byte, 'end_byte': node.end_byte}
                     value['id'] = digest([snapshot['id'], file['path'], value])[:24]
                     result.append(value)
-            for child in node.named_children:
-                visit(child)
-        visit(tree.root_node)
+            pending.extend(reversed(node.named_children))
     return result
 
 
@@ -49,6 +57,8 @@ def _name(f):
 
 
 def build_items(snapshot, client=None):
+    from .context_parts import Headers, header_parts, split_large
+    header_cache = Headers(client) if client else None
     items, skipped = [], []
     for file in snapshot['files']:
         scopes, errors = {}, {}
@@ -82,18 +92,16 @@ def build_items(snapshot, client=None):
                 path = posixpath.normpath(posixpath.join(posixpath.dirname(source_path), header))
                 if header not in include_keys:
                     include_keys.append(header)
-                if not client or include_keys.index(header) >= 4 or path.startswith(('../', '/')):
+                if not client or path.startswith(('../', '/')):
                     header_gaps.append(version+' 未读取本地头文件：'+path)
                     continue
                 try:
-                    code = client.file(path, sha).decode()
-                    if not code or len(code) > 12000:
-                        raise ReviewError('头文件缺失或超过上下文预算')
-                    headers.append(source(snapshot, path, version, '头文件', code))
+                    actual, code = header_cache.read(path, header, sha)
+                    headers.append(source(snapshot, actual, version, '头文件', code))
                 except Stale:
                     raise
-                except (ReviewError, UnicodeError):
-                    header_gaps.append(version+' 头文件不可用或超过预算：'+path)
+                except (ReviewError, UnicodeError) as exc:
+                    header_gaps.append(version+' '+str(exc)+'：'+path)
         for name, anchors in groups.items():
             own = {s: next(iter(by_name[s].get(name, [])), None) for s in scopes}
             if any(f and f['parse_error'] for f in own.values()) or name == '文件级修改' and any(errors.values()):
@@ -110,7 +118,13 @@ def build_items(snapshot, client=None):
             for a in anchors:
                 a['ambiguous'] = sum(line.removesuffix('\r') == a['quote'] for line in primary[a['side']].split('\n')) > 1
             if len(encode(item)) > MAX_INPUT:
-                skipped.append({'path': file['path'], 'reason': '修改函数与定位证据超过单元预算，需人工审查'})
+                parts = split_large(item, file, snapshot, MAX_INPUT)
+                covered = {a['id'] for part in parts for a in part['anchors']}
+                for part in parts:
+                    items.append(part)
+                    skipped.append({'path': file['path'], 'scope': name, 'reason': '大函数分段上下文不足：'+'；'.join(part['context_gaps'])})
+                if covered != {a['id'] for a in anchors}:
+                    skipped.append({'path': file['path'], 'scope': name, 'reason': '部分超大语法块无法安全拆分，需人工核对'})
                 continue
             choices = []
             for side, version in (('old', 'before'), ('new', 'after')):
@@ -126,8 +140,12 @@ def build_items(snapshot, client=None):
                     if f == own[side]:
                         continue
                     rank = 80 if f in direct else 60 if linked & _symbols(f['code']) else 10
-                    choices.append((rank, source(snapshot, file['path'], version, f['name'], f['code'], f['start'])))
-            choices.extend((90, h) for h in headers)
+                    if rank > 10:
+                        choices.append((rank, source(snapshot, file['path'], version, f['name'], f['code'], f['start'])))
+            for header in headers:
+                pieces, gaps = header_parts(header, primary['old']+'\n'+primary['new'])
+                choices.extend((90, piece) for piece in pieces)
+                item['context_gaps'].extend(gaps)
             for _, candidate in sorted(choices, key=lambda p: -p[0]):
                 item['context'].append(candidate)
                 if len(encode(item)) > MAX_INPUT - 3000:
@@ -140,7 +158,7 @@ def build_items(snapshot, client=None):
                 skipped.append({'path': file['path'], 'reason': '上下文及缺口记录超过单元预算'})
                 continue
             if item['context_gaps']:
-                skipped.append({'path': file['path'], 'reason': '函数上下文覆盖不足：'+'；'.join(item['context_gaps'])})
+                skipped.append({'path': file['path'], 'scope': name, 'reason': '函数上下文覆盖不足：'+'；'.join(item['context_gaps'])})
             items.append(item)
     snapshot['coverage']['skipped'].extend(skipped)
     snapshot['coverage']['complete'] = not snapshot['coverage']['skipped']

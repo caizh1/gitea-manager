@@ -1,6 +1,6 @@
 {
   "说明": "文件级固定交付清单，排除本清单自身。",
-  "生成时间UTC": "2026-09-15T02:05:24Z",
+  "生成时间UTC": "2026-10-11T02:03:58Z",
   "文件": [
     {
       "文件": ".dockerignore",
@@ -9,8 +9,8 @@
     },
     {
       "文件": ".gitignore",
-      "字节": 351,
-      "SHA256": "d99c3f1073348e334313a72a41b8122c9909c5bacd114c7a5a9b8b8c25d8e7f6"
+      "字节": 415,
+      "SHA256": "992403d91a11bc5f10302eb6b8498ac29e6655f3efda27e017ced336fa6d7608"
     },
     {
       "文件": "AGENTS.md",
@@ -19,8 +19,8 @@
     },
     {
       "文件": "README.md",
-      "字节": 8981,
-      "SHA256": "b70cc31f7e74179a7f7dd9c4af482c7717c72b19903cfa4896e7701a83dfc006"
+      "字节": 9924,
+      "SHA256": "39db3df39c64a55b2ed6435b1576a9281f4689d2786a4f03704f54ebaaf45928"
     },
     {
       "文件": "backend/.dockerignore",
@@ -33,19 +33,94 @@
       "SHA256": "d675944b80690863915b2e51a749da6a66f7dbf68b368c97dfef83e0b63b7c83"
     },
     {
+      "文件": "backend/access/__init__.py",
+      "字节": 52,
+      "SHA256": "265c987ba44a1ba1531990ea0f4bc95ad061ca348d1ff62239781f4a45713bb6"
+    },
+    {
+      "文件": "backend/access/admin.py",
+      "字节": 15840,
+      "SHA256": "276dfeef5720472f40a377e2f7a8631b201c2f8dc365821e5649be7023b18af8"
+    },
+    {
+      "文件": "backend/access/authentication.py",
+      "字节": 11035,
+      "SHA256": "380e49800030781e33dd8df561fb4e461f7fd8d8651a06a8adc249ea149df426"
+    },
+    {
+      "文件": "backend/access/control.py",
+      "字节": 5788,
+      "SHA256": "c197d8afc72b885ac9efb421b715106cbe473014aba6b66f8a0287491d65ca52"
+    },
+    {
+      "文件": "backend/access/errors.py",
+      "字节": 222,
+      "SHA256": "4f70e66c80260892fe73efa5d39a46dcf3cea3d4e95819e602133e8a7667f320"
+    },
+    {
+      "文件": "backend/access/identity.py",
+      "字节": 5039,
+      "SHA256": "d3a0533868497dff59623ca31d2ee77ab8ff114544e8fb37d823a963d626717a"
+    },
+    {
+      "文件": "backend/access/internal.py",
+      "字节": 3479,
+      "SHA256": "221ff4be0cc23a8263b691b7a72ab22caa8e2ef52fd461b0b70344694c5691f3"
+    },
+    {
+      "文件": "backend/access/ldap_directory.py",
+      "字节": 16418,
+      "SHA256": "0dbf2de54bd2b2da63fb097a66cbeaeb048882f1b099e30c9b633ef6f3bee215"
+    },
+    {
+      "文件": "backend/access/migration.py",
+      "字节": 4963,
+      "SHA256": "962968408f0e21fa53d036e967b5d1c95f9a39ff4a7b47e1c78f837710a1b7d5"
+    },
+    {
+      "文件": "backend/access/models.py",
+      "字节": 4382,
+      "SHA256": "4994696773c6f1c9e896ae61825869d11831792efc9973689dc1e5faf5fcbdfb"
+    },
+    {
+      "文件": "backend/access/organization_api.py",
+      "字节": 7762,
+      "SHA256": "643fd511bbaf77212fdfa408194d60d5844281d72341cc7c42fa0ad4620a6fab"
+    },
+    {
+      "文件": "backend/access/runtime.py",
+      "字节": 3480,
+      "SHA256": "b586edcc7b3aec3dd9b69da446b4f09070373c5208e3b3c1c65e71282c56850e"
+    },
+    {
+      "文件": "backend/access/scopes.py",
+      "字节": 15809,
+      "SHA256": "aff93c4a3218f490745a5f27ebd1d87ce5ccbecf69da6795800355ea545853b5"
+    },
+    {
+      "文件": "backend/access/secrets.py",
+      "字节": 1841,
+      "SHA256": "5d27c1f1a6fd9f17ce6e93fa026439e6e1cd9705bfbb309e1f48b7f9ef74820f"
+    },
+    {
+      "文件": "backend/access/statistics.py",
+      "字节": 8541,
+      "SHA256": "e163f981551de1289109c2d678af912d1c67f248a06613aa0400854f3ac3826d"
+    },
+    {
       "文件": "backend/ai_review/__init__.py",
       "字节": 71,
       "SHA256": "2e33dc8dce2341af6c4024ae19a62dfcb73b6c94b391e4bfdf8ea5811cd426e0"
     },
     {
       "文件": "backend/ai_review/advisory.py",
-      "字节": 3771,
-      "SHA256": "b930f7b1170a8e650eff58d7fce02d2f2459ff0f2a78fdc594bec59576dbc4f7"
+      "字节": 3621,
+      "SHA256": "3d1b16104cb2c0ce85c517381acd6b24b64caba2ff17d77252e305771436968e"
     },
     {
       "文件": "backend/ai_review/assets/install.py",
-      "字节": 8100,
-      "SHA256": "98065c67eef2f6d8aadaa294b784b080b1e300d84bf0c084f0f1af9fe5379885"
+      "字节": 8208,
+      "SHA256": "2fd99672c0c2991d723f246935045e9f79bd87297d609592e2467d2f5b603e46"
     },
     {
       "文件": "backend/ai_review/assets/progress.css",
@@ -54,113 +129,198 @@
     },
     {
       "文件": "backend/ai_review/assets/progress.js",
-      "字节": 11474,
-      "SHA256": "3961bb08bc989cd366981c6c361243960a3bafe90b81b0f37f825725a7da224d"
+      "字节": 11926,
+      "SHA256": "2b59c864bfd1875d01c2fa36811e75a8d2c2993b7f51a82ee52d175d28942db6"
     },
     {
       "文件": "backend/ai_review/attention.py",
-      "字节": 6100,
-      "SHA256": "2c76cf1800763c79b72bd5ae5e482dd9a3c8222f7e9e6f620f657fbbdba5f901"
+      "字节": 6432,
+      "SHA256": "0b95f145f99367c3855d226f5b85dce89b56cf5e512b2a6d4d909f2f5129880e"
+    },
+    {
+      "文件": "backend/ai_review/authorization.py",
+      "字节": 1943,
+      "SHA256": "18a1dfb2d0beb50bdf082ae9a06ceb735060413501e10f2c19969a07c7d3207d"
     },
     {
       "文件": "backend/ai_review/broker.py",
-      "字节": 6272,
-      "SHA256": "4f5d176972e511c662e48af4bb67c3e8f7bea1a80f4fe9a426c9e5e415484db8"
+      "字节": 41868,
+      "SHA256": "e78d97b5a74a4a763c364130fedcd8e14d232f17b345d3043895b5616fa040f4"
+    },
+    {
+      "文件": "backend/ai_review/budgets.py",
+      "字节": 2425,
+      "SHA256": "104b7b9a700dfca4a5a78b2e51df0c6fb588b12623df071d515069bc38c57ebe"
     },
     {
       "文件": "backend/ai_review/common.py",
-      "字节": 2314,
-      "SHA256": "fe3d6bef1fccf9119904e5d5d5782c42151a35a2dee9fce8819393125d90909f"
+      "字节": 2489,
+      "SHA256": "4ec69b87691a6bcb9914045c637e4de4072d471e4829a905ba5a551922098a87"
+    },
+    {
+      "文件": "backend/ai_review/completion.py",
+      "字节": 10811,
+      "SHA256": "4ca6f606e3d3ec6c58b792d0f0bbb61bfb8be3fb21960ee4fb7e759ebe494187"
     },
     {
       "文件": "backend/ai_review/context.py",
-      "字节": 8811,
-      "SHA256": "155aebabc869639b249de7aae569f1872492d69671d254c0d219cfade41c2b61"
+      "字节": 10044,
+      "SHA256": "15eb9a2bab28db6cd0c16a2e061b7ad853b480936d82b8f62569d169a3cf30e3"
+    },
+    {
+      "文件": "backend/ai_review/context_parts.py",
+      "字节": 6503,
+      "SHA256": "6abda15165fbfdf47c2859dc233ceffe79520329008119d11d768f5d597b4fdc"
     },
     {
       "文件": "backend/ai_review/dataset.py",
-      "字节": 15064,
-      "SHA256": "93a5463d927dbc5aeaf14b125727781345c484b33bfdefc018e8462720da092e"
+      "字节": 15427,
+      "SHA256": "979cb5a59a37ac2e6c0714e9cc1ab449075d9bd4ffb027c97cb3a7df1b7cf8ad"
+    },
+    {
+      "文件": "backend/ai_review/diagnostics.py",
+      "字节": 10264,
+      "SHA256": "166757f568d5c4d69e2457c9ed09407591bff2f2d63855fe634aa4f8a8f2b67e"
     },
     {
       "文件": "backend/ai_review/diff.py",
-      "字节": 7850,
-      "SHA256": "e4be98231b95d904d0c6072ec82244d5efa0ee7341132cdad56be2107c276c4c"
+      "字节": 7740,
+      "SHA256": "5d1c8a72b307ca2e917cc349314d25f1389728b45dc4300035416d86a945803e"
     },
     {
       "文件": "backend/ai_review/engine.py",
-      "字节": 14615,
-      "SHA256": "f28a75c493cb5ca3ab0580f84a2c9dd433471e25c023fb60774db5f8a4d3115b"
+      "字节": 25199,
+      "SHA256": "c1dca6b41a2d5b0ec8bdbb2ddf8fe9cca17ab5740762524c9dc7e7e1a95a16d2"
     },
     {
       "文件": "backend/ai_review/evidence.py",
-      "字节": 4487,
-      "SHA256": "624866af88120ebd233e040dff2b52719d02529e6cdc2262b3baab499265f932"
+      "字节": 5310,
+      "SHA256": "b4c27fb9b75b802713105c6a37a0a438cd851632d6fcfce3ea6a9fe6610fd478"
     },
     {
       "文件": "backend/ai_review/feedback.py",
-      "字节": 20894,
-      "SHA256": "bfc998efee183ae661876be1d9c98951737edb68b204676894fa78a43ad3ebdf"
+      "字节": 21188,
+      "SHA256": "c03f126140477b856b85929ef07da174abaf6b98ea78cdcdd80580c375dd0dcd"
     },
     {
       "文件": "backend/ai_review/gitea.py",
-      "字节": 7255,
-      "SHA256": "bb592e3e9785a357020c0307762d0f598aa4b40590d1f19f71abfb1b6efdeeaa"
+      "字节": 14985,
+      "SHA256": "b3cd74c8b272719e4f332365691d1e1763cb7937428a0c47820206beab7a5d52"
     },
     {
       "文件": "backend/ai_review/host_policy.py",
-      "字节": 3528,
-      "SHA256": "3624ae0c47f001dc1c4e0cbf932a5d31d56d8235e57f0ede7c271468756e66c2"
+      "字节": 3762,
+      "SHA256": "e48d74d5d96463d649749cf0a8715f8897a0ee012a1939ab341a9f7a4f763bbb"
+    },
+    {
+      "文件": "backend/ai_review/model_transport.py",
+      "字节": 20537,
+      "SHA256": "5bde61577de3ad598140148164b54860dd4d5d1a743f3e9c8b0cf0896a7c383c"
+    },
+    {
+      "文件": "backend/ai_review/native_review.py",
+      "字节": 30730,
+      "SHA256": "a6059d4d7afbbc8b07f0299dad07af640346aae990d372e77e0d0245a68179b7"
+    },
+    {
+      "文件": "backend/ai_review/native_workspace.py",
+      "字节": 20438,
+      "SHA256": "3700d63d51268613514e5bea2531aa00fb772d58703ebc2ebe5f75245f9640ee"
+    },
+    {
+      "文件": "backend/ai_review/performance.py",
+      "字节": 3400,
+      "SHA256": "549ec1937de15681a97801f8b1ecd969b1852b51d0ee1d3429c0665230d508a8"
     },
     {
       "文件": "backend/ai_review/progress.py",
-      "字节": 13345,
-      "SHA256": "65c0c0e47fea7d7976f9c787f0a4fda3dd4873cdf0dcf36bcd0983c55dd9054c"
+      "字节": 14223,
+      "SHA256": "8ab72b41d7eb563b3837abb062214ede85dbe6f85cbc543dcc77707180e3508e"
     },
     {
       "文件": "backend/ai_review/progress_assets.py",
-      "字节": 4889,
-      "SHA256": "c192c66d5ac2713bf7f2c6074056e9dfb69ee18566dab4c9ca460f11972c10ab"
+      "字节": 4968,
+      "SHA256": "a2ea95bdadb8eeb8f2cbac40133aef71250be47b05e2f4b27f9bb2cb63f1276d"
     },
     {
       "文件": "backend/ai_review/progress_state.py",
-      "字节": 5106,
-      "SHA256": "08febbfe7e2d080bb5cac3b3510966b491ecbaf6788a9d95eb98530176597236"
+      "字节": 7056,
+      "SHA256": "529079f3172b887ed2ceba9ad45770c8cbacdd63094683090645da8ff9c1cf60"
     },
     {
       "文件": "backend/ai_review/publish.py",
-      "字节": 14280,
-      "SHA256": "4b10cf99c7ef1a96853dc75cbead501ccd76e4ef414660011e382c1f274dd668"
+      "字节": 20642,
+      "SHA256": "b30494ede320baf59dffbc13f1e52c7194a2087d7d941e0b2c8953bb3ff6c998"
+    },
+    {
+      "文件": "backend/ai_review/raw_diagnostics.py",
+      "字节": 6265,
+      "SHA256": "0c5c8c92c30c1cb1d5b88d4aa61ac004d8a49e4d83a0e98a35d05e5badb97df7"
+    },
+    {
+      "文件": "backend/ai_review/repository_context.py",
+      "字节": 27387,
+      "SHA256": "b237bd189a459a627769a9817e278a40007f9b5496545fac6ae7bf3a83cadfe6"
+    },
+    {
+      "文件": "backend/ai_review/review_result_schema.json",
+      "字节": 2186,
+      "SHA256": "6051ac9f2828526c4b01ca4fb88bb963d29d693825c289e5b4a2b1509e63c5f6"
+    },
+    {
+      "文件": "backend/ai_review/review_state.py",
+      "字节": 10220,
+      "SHA256": "415805b7661684b04e7cc012a5d58f39fb4d39d62779d0b8313c929c05f293ae"
+    },
+    {
+      "文件": "backend/ai_review/runtime_status.py",
+      "字节": 3437,
+      "SHA256": "599e83307e9b651c42cdc12f9449c5abefb379bd209c7a979fcf1017e83d22fa"
+    },
+    {
+      "文件": "backend/ai_review/session_events.py",
+      "字节": 18114,
+      "SHA256": "296a9b1c23cd76b7ddc5e7fdd9a9226ec766cbaced9729d5da8fb664e3dd6bb1"
     },
     {
       "文件": "backend/ai_review/setup_service.py",
-      "字节": 20290,
-      "SHA256": "ced46b52b987bc85fa23ac8b78471bf255d669605b45fa321d0378244556a2fa"
+      "字节": 29265,
+      "SHA256": "e575ee37834141d99655c7af9a4051cdf7492fa4efb3598666e28b8ee0767b62"
     },
     {
       "文件": "backend/ai_review/setup_transport.py",
-      "字节": 3278,
-      "SHA256": "4594e8cfa526cc101821ba8215fdd6336434ec6efc263f2410e7d0b8f0e4155a"
+      "字节": 9401,
+      "SHA256": "1d5d0f1cf068a9542ca2db4ac25a1f939420aff7ebdb7f112c201187a589396c"
     },
     {
       "文件": "backend/ai_review/snapshot.py",
-      "字节": 5572,
-      "SHA256": "7620a2513b9c37527c9d9b8b4b912a00171f669df56dab838fd1812244213a94"
+      "字节": 8372,
+      "SHA256": "afbff20b193e27c51e175be7ed253ab99587979c53dc1c04a73b4c0fcdd7e389"
     },
     {
       "文件": "backend/ai_review/store.py",
-      "字节": 22705,
-      "SHA256": "aafd19c4c005cb595ffa09dc69194d80e31cf35aa75194364155908180e66655"
+      "字节": 35919,
+      "SHA256": "b532c8eaa28183a335795e025b453a8b588e94068b534e22063822e51a9c6580"
+    },
+    {
+      "文件": "backend/ai_review/syntax_context.py",
+      "字节": 19616,
+      "SHA256": "ef99a8de84592eb7f05d63c800887b0acc2baaa60d2da85c0cf6068c653b6160"
+    },
+    {
+      "文件": "backend/ai_review/thinking.py",
+      "字节": 2552,
+      "SHA256": "0bdc7733fbca67314a50e64893c8aab08766c0ab7ed71eaf92e74047b932210b"
     },
     {
       "文件": "backend/ai_review/worker.py",
-      "字节": 14575,
-      "SHA256": "2255e7d84ace58742fe342f2b37627937ebfb746cb5bb7f8f076f5f526103bfc"
+      "字节": 23279,
+      "SHA256": "6a60e16d28fb883cc2e9a590c11587e33057e8ecb1cbbddaf7740d39f847ab0f"
     },
     {
       "文件": "backend/app.py",
-      "字节": 18025,
-      "SHA256": "9c2ac5a7f8de503cedf25c6576bef5de165b75ea344639b36b56df9ff7155a87"
+      "字节": 21466,
+      "SHA256": "39f165604aea808cc73c642a23c2809d37389cb7488b770bc42c9eb26ec94ee8"
     },
     {
       "文件": "backend/approval/__init__.py",
@@ -199,8 +359,8 @@
     },
     {
       "文件": "backend/approval/gitea.py",
-      "字节": 13830,
-      "SHA256": "ae7d5b37913308ed7813d0db1c3421ad314123fe009cbc88cec6142d9db32e26"
+      "字节": 22074,
+      "SHA256": "fbc883f7b86dccfcb88f22138aa627601b31d779cb6390d0ea2464921396bfe2"
     },
     {
       "文件": "backend/approval/hook/go.mod",
@@ -219,8 +379,13 @@
     },
     {
       "文件": "backend/approval/native_metadata.py",
-      "字节": 13980,
-      "SHA256": "e5184f3f94d57ce3830d59aae55b24a639df8c281e31bf352d3aa1d7a343872a"
+      "字节": 13580,
+      "SHA256": "e6a6c8e38910948374236ad5d57b75da0f6f68b5e346930dfcde8ca07e680657"
+    },
+    {
+      "文件": "backend/approval/native_uninstall.py",
+      "字节": 7154,
+      "SHA256": "12bbb981ee591fca7e7f373775a49bc37af60a481a4ce4345ff735b1a10efff8"
     },
     {
       "文件": "backend/approval/rules.py",
@@ -229,8 +394,8 @@
     },
     {
       "文件": "backend/approval/service.py",
-      "字节": 9500,
-      "SHA256": "1c4a9f836f069e112a67802c675d9bb821ca8320552056ad3af64af8f862582f"
+      "字节": 9561,
+      "SHA256": "f11dd626323e7f9df325530f53c703c165115c17ce4e0c024e88b277f0a35c41"
     },
     {
       "文件": "backend/approval/timeline.py",
@@ -244,23 +409,23 @@
     },
     {
       "文件": "backend/auth.py",
-      "字节": 530,
-      "SHA256": "e64dcde7bca5172598f15728994039d5865b996289d1d880a9ca5a0394998504"
+      "字节": 489,
+      "SHA256": "5ab3643918fd1f26db47acded2879ea716a29ed616090cf9dc66afc3a1c83e02"
     },
     {
       "文件": "backend/config.py",
-      "字节": 1015,
-      "SHA256": "41c1c35cfea5f6d3e6935f427b5655258e5a3ea7696c8fe1f7ff25b86bbf102a"
+      "字节": 1102,
+      "SHA256": "f6e98d4ca308f8ae642b2974baec1ded04c3607c37489fe598a49c1c60c2129d"
     },
     {
       "文件": "backend/models.py",
-      "字节": 24558,
-      "SHA256": "13802d12cfb4c6bd2f614e4ff0f3e5d22e02ab7b604394fbf99f4ac8e6de825c"
+      "字节": 27002,
+      "SHA256": "1ff5d7885f1d77323a2c32fa7543a44ad170cd84d6f407fd894d81e36c5a0d97"
     },
     {
       "文件": "backend/requirements.txt",
-      "字节": 244,
-      "SHA256": "f4bec1f3b38c1df371e06f3648382c786a8cd48ef6b84ed115956d2b2c3ebd06"
+      "字节": 271,
+      "SHA256": "4026c8e48f2751b6a4d7f77715bf8caa09494a26fe6cafe0caf6772dd6eaf27a"
     },
     {
       "文件": "backend/routes/__init__.py",
@@ -268,44 +433,54 @@
       "SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
+      "文件": "backend/routes/access_routes.py",
+      "字节": 75,
+      "SHA256": "6c623db3c91cb553369f99ac8b80936372ef39cdf2a1c8cf8313f4bdc111646d"
+    },
+    {
       "文件": "backend/routes/ai_review_routes.py",
-      "字节": 21975,
-      "SHA256": "e326c6092c54b85f33b9d287334d7f13ab2cbce9f022d4637d0e0b340f1b05cd"
+      "字节": 28382,
+      "SHA256": "05ab85d3ad41ff1d7c5f37875d0cd0492984483558985f8ec83f6facde0f73cd"
     },
     {
       "文件": "backend/routes/alert_routes.py",
-      "字节": 1678,
-      "SHA256": "1f6af1453e91e6ba25e58193bf081696e57bd1afffb998fc292219423d4bc2a7"
+      "字节": 1951,
+      "SHA256": "513fe7c361082e269dc21c53eb2112964d263e19dcab304eb6f067e884623443"
     },
     {
       "文件": "backend/routes/approval_routes.py",
-      "字节": 17850,
-      "SHA256": "1291616d4ed89af73ab746711addec9ef16e020a7fac03cf7e0532997f85b267"
+      "字节": 29240,
+      "SHA256": "cef55804e5b35d74cf79b251a15fcd1a3d9e5194510f2b54d3bb7b2debe5492f"
     },
     {
       "文件": "backend/routes/auth_routes.py",
-      "字节": 814,
-      "SHA256": "20823cf41f7bbbfd2b3a73431262ba5f6472ddefa2b90cd70433050f5fc54f95"
+      "字节": 885,
+      "SHA256": "efd0b4949c8510fb366a02fb2813279f874944a71007fa18abbbd7e2f256eb81"
     },
     {
       "文件": "backend/routes/backup_routes.py",
-      "字节": 3244,
-      "SHA256": "a21e2e7c40671ed6f6c35b23be9636129fd36fc746c6b20af5545d82a4824379"
+      "字节": 3785,
+      "SHA256": "c740539285d06e3a8c9006616a22b750e0d480ecb90fea09c7593dfb23754bcb"
     },
     {
       "文件": "backend/routes/commit_gate_routes.py",
-      "字节": 5374,
-      "SHA256": "61b7572eac2ac969922bcce44208d96909b9efe1f48183672dc472c3acfe206a"
+      "字节": 7240,
+      "SHA256": "20d87674ea43104e954fcbf6363058bd337731c3842a16a197e35a50149669e1"
     },
     {
       "文件": "backend/routes/dashboard_routes.py",
-      "字节": 2361,
-      "SHA256": "9dd233cb55aa819ff7b3baa65cbbf2dd15d86ff8a1626c0adcb03f6b9ca5a57c"
+      "字节": 2503,
+      "SHA256": "de936359a2a88774e2cc95a802923c9e56459c85bff2ce20135fe9a420253456"
     },
     {
       "文件": "backend/routes/integration_routes.py",
-      "字节": 5536,
-      "SHA256": "7f599de6d836bfa83ec293add334a01944f7267c76b453a1b3ff9f0e66a15596"
+      "字节": 5678,
+      "SHA256": "799b29ed6b360e383636fda34c1ee9270d1d3a9bae8d1349515098d604bd1cab"
+    },
+    {
+      "文件": "backend/routes/management_routes.py",
+      "字节": 12547,
+      "SHA256": "00ff0c4850fd1bb8d146d1b10285bb2dfb1d359c3b06402bebc53e12b24df97d"
     },
     {
       "文件": "backend/routes/mirror_routes.py",
@@ -314,13 +489,13 @@
     },
     {
       "文件": "backend/routes/policy_routes.py",
-      "字节": 17955,
-      "SHA256": "4f39209e7d802d2dc5494fd945fec2cfa81cc81179b4ebf2f4540258737896e5"
+      "字节": 19000,
+      "SHA256": "41577df206a95ac6ede192c894e85870006833c9a1ee99e0827d33036f99632d"
     },
     {
       "文件": "backend/routes/restore_routes.py",
-      "字节": 5428,
-      "SHA256": "18c9710c3e699fa31456b8cc4554ff31d968eeadc18c945e071606a251069c4b"
+      "字节": 5280,
+      "SHA256": "db30a4cb47968157c25956eb9510c8cee2cb4d02d38cd3ad034829f3d25426f2"
     },
     {
       "文件": "backend/routes/schedule_routes.py",
@@ -329,8 +504,8 @@
     },
     {
       "文件": "backend/routes/server_routes.py",
-      "字节": 7002,
-      "SHA256": "7caa223714940b5c362f3ae1c66c04ad622fc45f8c01e87a7595ea9a2e00974a"
+      "字节": 7211,
+      "SHA256": "6be13e9db550138e3d51b9048b880c3d263e8f698cad162b41162c976b8511b0"
     },
     {
       "文件": "backend/routes/settings_routes.py",
@@ -354,18 +529,18 @@
     },
     {
       "文件": "backend/services/alert_service.py",
-      "字节": 1690,
-      "SHA256": "9df62b05ff723ba7251c3543258a35fe23133b4c73c2759aa48467dd561620fa"
+      "字节": 2105,
+      "SHA256": "3dd29c2171e0edb861667949d2b5c4e54ffa9fe6e719ab5215abda13441bf775"
     },
     {
       "文件": "backend/services/commit_gate_service.py",
-      "字节": 13385,
-      "SHA256": "9813ad9266d6712d197a3d10f3c73873a288444526acaf759344b5d561c41448"
+      "字节": 19100,
+      "SHA256": "0edbc59a38346fcef67599730f6f1dd08e9369d40ce097c9cb4e5e690f27189a"
     },
     {
       "文件": "backend/services/commit_service.py",
-      "字节": 18041,
-      "SHA256": "7586c52d7c50477959686aaddc852890a4fc4ba3cc1686b615ac7b38a83f83a7"
+      "字节": 20472,
+      "SHA256": "43f2c1dbc99943de69f01a8f064e83bb1777a01a6b18736ae2503adb80f2e701"
     },
     {
       "文件": "backend/services/database_startup.py",
@@ -373,19 +548,29 @@
       "SHA256": "c0a4d69b58b28e14cb465cda6c572dd91da9329b9e1b5ae0419261a49be54c56"
     },
     {
+      "文件": "backend/services/diagnostics.py",
+      "字节": 18367,
+      "SHA256": "0eaef02b11eb4329b08555c9d8b0610c59cc293a072452cefe1d6e1cd5aae2df"
+    },
+    {
       "文件": "backend/services/docker_service.py",
-      "字节": 1179,
-      "SHA256": "38c2b4abf005ffd6dba27ede485844fcb78facd92d8ef0a0667cd54c2490b3bf"
+      "字节": 4276,
+      "SHA256": "ad9be2ea238572502a70983bb7fb0f4f1bb46d66fe0e1b78c290a2e9046f0be2"
     },
     {
       "文件": "backend/services/gitea_service.py",
-      "字节": 50406,
-      "SHA256": "c12f96ebadade03e476d175118a4ac16a6f5b2368e61240c000b529d1b333c24"
+      "字节": 47353,
+      "SHA256": "a8cdb9a9b087ea0fc25d08540d376f726442c1a5b03a99e6bdadc9a7a2a68a48"
     },
     {
       "文件": "backend/services/integration_outbox_service.py",
       "字节": 4830,
       "SHA256": "77341dc2088bb288f43eea08079435e86d800e48a56abee27efdec82cc7d43fe"
+    },
+    {
+      "文件": "backend/services/local_restore.py",
+      "字节": 14140,
+      "SHA256": "5542306daa3f7d5ce25f8613a7e5635fae0356890aaf51430b2f1e382f3a7754"
     },
     {
       "文件": "backend/services/mirror_progress.py",
@@ -394,8 +579,13 @@
     },
     {
       "文件": "backend/services/mirror_service.py",
-      "字节": 36050,
-      "SHA256": "6b48c80ee3babcaeafc1bc44eee0394f781de4a8eab30141d5d7d4251f57049f"
+      "字节": 40734,
+      "SHA256": "5042926d08accf24cf5ddf4d19240880492c0a0202fbd1647f7cacad67b94863"
+    },
+    {
+      "文件": "backend/services/operation_progress.py",
+      "字节": 6565,
+      "SHA256": "c27fefc28519b23fd23cf191f76f02bc7e753ab2ab1e8cbce5bc17f82df4f617"
     },
     {
       "文件": "backend/services/policy_gitea.py",
@@ -414,8 +604,8 @@
     },
     {
       "文件": "backend/services/policy_tasks.py",
-      "字节": 15333,
-      "SHA256": "11a7d213d26bdce4f7c7918c822d2bdc88cd26be1f8211b3e8f92402423b2b0a"
+      "字节": 16103,
+      "SHA256": "258a5ab40a8229181186f5fc3e233a96cd60531129c2c75d72bf0744f4566a0c"
     },
     {
       "文件": "backend/services/remote_job_service.py",
@@ -424,18 +614,18 @@
     },
     {
       "文件": "backend/services/restore_progress.py",
-      "字节": 970,
-      "SHA256": "796218ec8f87ba957cf868d45612161c1611276b0ce4689de6e33cacdf3ab1b2"
+      "字节": 387,
+      "SHA256": "b47a404290a2d8c372e06ff17eadd5aab155a60644b2b9f444e6221924b87f3b"
     },
     {
       "文件": "backend/services/restore_step_service.py",
-      "字节": 3901,
-      "SHA256": "5f609c47c19fa87f2b59b0fa3be686fbe64d170850364187ad6a70c830c6384f"
+      "字节": 3974,
+      "SHA256": "8f3b3ad72dc6798c2f593320a4575861ffef0982873c90a0f4dbae559a043b2e"
     },
     {
       "文件": "backend/services/schedule_progress.py",
-      "字节": 3729,
-      "SHA256": "20397bab82ac6ecc8e5ede880d330cab861d83389e309269ec86dfee9e3b0308"
+      "字节": 4542,
+      "SHA256": "69b690232166d41bf0444924c1c01b493e3c7d255d224012d81bbe6d7a48dc4a"
     },
     {
       "文件": "backend/services/schedule_runner.py",
@@ -449,13 +639,13 @@
     },
     {
       "文件": "backend/services/ssh_service.py",
-      "字节": 4722,
-      "SHA256": "65f9cb5a866f63fe2e9e9c96530e3b1606d29b17b9e76478c8c8ac24bc1796b4"
+      "字节": 5953,
+      "SHA256": "80c3b317f8f0ee1a8fed4fea0a68704c4b729444a5298a0dbf353696fc51b4e4"
     },
     {
       "文件": "backend/services/statistics_service.py",
-      "字节": 19164,
-      "SHA256": "8b14959e99586e11abc9aa7cf11fde4387174c6622137c7d8af0f3aea1b0d218"
+      "字节": 20574,
+      "SHA256": "411aa226b64f293b56fd8d4355e06e9ea4efa84ba6770ee807f3d6869808b0e4"
     },
     {
       "文件": "backend/services/task_manager.py",
@@ -468,34 +658,119 @@
       "SHA256": "894a24f2f16af581d8c53a9e7c95b59e750c98bc45114bd66a086b8d9e340e63"
     },
     {
+      "文件": "backend/tests/access_helpers.py",
+      "字节": 1610,
+      "SHA256": "d8830c72132f0242a3a5a736f35d083570cedd2fb15b0843fea028a182263e8c"
+    },
+    {
       "文件": "backend/tests/live_review_driver.py",
       "字节": 7395,
       "SHA256": "78a58a9f0d14da2fb4e54062b90ee4d2c4471622b682aac201a72b238b4b43b1"
     },
     {
+      "文件": "backend/tests/test_access_auth.py",
+      "字节": 17498,
+      "SHA256": "5e7a7622e056c492742f092febde3bf425b7c1bd6c011beaa7c12ede0cef9ffe"
+    },
+    {
+      "文件": "backend/tests/test_access_background.py",
+      "字节": 13569,
+      "SHA256": "7c9b98b9efe63c29195c035f68b4609ec60e44e25bf5c0d702cfe5a6c7c1be79"
+    },
+    {
+      "文件": "backend/tests/test_access_gate.py",
+      "字节": 11631,
+      "SHA256": "7cbd537f4629ea6e91ee4ddcb5a621a11bab668af363adfe1ce2a710d1107cf7"
+    },
+    {
+      "文件": "backend/tests/test_access_route_matrix.py",
+      "字节": 6297,
+      "SHA256": "f05808de20c53e858129423b5eea7f435e2e69301a86b358e8bd1c863dbd9414"
+    },
+    {
+      "文件": "backend/tests/test_access_runtime.py",
+      "字节": 3543,
+      "SHA256": "d51496cb0ec434289b686ba3420ae2f329e2871e4753c1a603d414a457d5ef13"
+    },
+    {
       "文件": "backend/tests/test_ai_review.py",
-      "字节": 16107,
-      "SHA256": "1f23b5c235c9d7c80bf9fb5dda6f1e136eac4e2a50fb82a15c4b0dac1793aae0"
+      "字节": 20723,
+      "SHA256": "15799a0231e0c2a49bb4291822e066f82f46cd776c9d431271f275ad671d7ee8"
     },
     {
       "文件": "backend/tests/test_ai_review_attention.py",
-      "字节": 10449,
-      "SHA256": "19fca4b6689393fc31e82237ee0a8a91f4a884dd3a0776c04dde1af206443bc2"
+      "字节": 10424,
+      "SHA256": "86d74390831fa701b3ad32d2e44b66a9a6a407cf9d2e06c7dee16b068cfc4846"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_best_effort.py",
+      "字节": 8585,
+      "SHA256": "557784a58bb7202948d613f69821faea6e0f2b5b0e34a3109a274d2b6955fb7c"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_compaction.py",
+      "字节": 4346,
+      "SHA256": "20b3d875f5b737aaef793121ef5fea84c1214ac72993fa36b55615a716cb4352"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_context_access.py",
+      "字节": 6870,
+      "SHA256": "1ad4cecf2598384b1bd32aecc566b18a7d57f4d209b15adb36155ce83b06aa36"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_context_corpus.py",
+      "字节": 4432,
+      "SHA256": "2395322e4a5784aa4bf241a9a23de6342ab687b934459af44b4721798106cc35"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_context_gitea.py",
+      "字节": 3137,
+      "SHA256": "05d1d5e15c164899935609f7e268f26aba048b48f0ca565a3452a9f22b625427"
     },
     {
       "文件": "backend/tests/test_ai_review_feedback.py",
-      "字节": 18592,
-      "SHA256": "714f3b4e2b00ff586cdb106bd14a4e06cb72bbbaa2baf6c1559a57678844be81"
+      "字节": 18629,
+      "SHA256": "ab78a76fdcb8d0a9b91007fd3aa1cf971b2c8f8b0aad55a122064b449e1c5638"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_large_limits.py",
+      "字节": 3356,
+      "SHA256": "d908b4f109a7b5782d250cb73b257a96ff6e8d245caa37aadbcc1789ce319dc3"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_model_tls.py",
+      "字节": 4422,
+      "SHA256": "9ced7ad54b6e6ad6992512099611592e08e356d46eac5dd4196f8adb184cddd7"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_native_broker.py",
+      "字节": 25743,
+      "SHA256": "bcf71dd9f26cc0d689ce97b189d632d7cd03816eff17d030e304e89e1194367e"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_native_session.py",
+      "字节": 48762,
+      "SHA256": "ec1df2401ad891b0e5bc0da29a8fce03936b66032ea241d75e0d6983ce45e15f"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_native_transport.py",
+      "字节": 6282,
+      "SHA256": "cea9e367e1891dfe9c2a3f60d15605ae0daed0c8c0b5450dbc72f3b4c52e977f"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_performance.py",
+      "字节": 8399,
+      "SHA256": "d8761e9e0b80e9de7d9f03e5edc177da73e3a2d205f680704753d2fd0f628b45"
     },
     {
       "文件": "backend/tests/test_ai_review_progress.py",
-      "字节": 13334,
-      "SHA256": "4eb44b1ff9d9fe0a154067b25795fa55a07d9219f2e97fd69e8af114af562276"
+      "字节": 14770,
+      "SHA256": "508f2c67210ab52e64bd08e32cde1dc082253b78572d6cfbd504c34c18aae931"
     },
     {
       "文件": "backend/tests/test_ai_review_publication.py",
-      "字节": 17013,
-      "SHA256": "6ae8bb4bf01660308fbddd8aae8c7c178e49f75a43bff4e30e796f887794f47d"
+      "字节": 17132,
+      "SHA256": "04bef5aeeba855fdd09d4b4bb6bcf978a6b677340954ea92924b946c815c4d82"
     },
     {
       "文件": "backend/tests/test_ai_review_quality.py",
@@ -503,9 +778,59 @@
       "SHA256": "eac45e0fcb3039ecef134bea1fc51ab974df0323e5e3001d7fad51da6fa27df0"
     },
     {
+      "文件": "backend/tests/test_ai_review_raw_diagnostics.py",
+      "字节": 9372,
+      "SHA256": "b63f4a6414061fdd6cf22e141e886e9fae5c14beb43a8eb5d7b28dfe65930fe5"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_regressions.py",
+      "字节": 22923,
+      "SHA256": "497f77782459fb053a9f8a99ee2bb0d532d0f9ce85e899d4faddf111d3837b6b"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_repository_context.py",
+      "字节": 13593,
+      "SHA256": "a11f1fbbc74b005e7f9a07c29235bbe5a17fb55efe4ede5be72d02f5d7269622"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_resources.py",
+      "字节": 3120,
+      "SHA256": "640d2c4e64e643bbfd109588cf36f818da523e78dc8f93a7ca3152af3800bad7"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_retrieval_convergence.py",
+      "字节": 7394,
+      "SHA256": "66f1c58dde01acc4847556181a46d49c879a2950d6e68614018a4d3dc7ef8838"
+    },
+    {
       "文件": "backend/tests/test_ai_review_setup.py",
-      "字节": 11037,
-      "SHA256": "452a34495e0e6f716f8c41156bc04e60387c7a40250fc9fc4e60d52cfaa5f13a"
+      "字节": 13047,
+      "SHA256": "15be118c9554af94d9c4b94a3faa1f2b5c0d639dcd231d4210306b2a0cbfea2e"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_ssh.py",
+      "字节": 8401,
+      "SHA256": "b91161c8ee900bae6e3f3055dc1588f52f17b5518a10687be3500d31c3bc5421"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_thinking.py",
+      "字节": 2801,
+      "SHA256": "8841f83968b1d5af4883ee37348526b02bc132e775a86e0e41bbfd6de86a03bc"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_time_budgets.py",
+      "字节": 14328,
+      "SHA256": "3aadb7a14bd24fae15e01b7cb67621b768c22b5a63666a8dc77311c82d500d4e"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_transport_deadline.py",
+      "字节": 6536,
+      "SHA256": "d6025aa6bb167c9fb386ce6c392049157bba3fbeecb70a5106302fb63fa478c4"
+    },
+    {
+      "文件": "backend/tests/test_ai_review_versions.py",
+      "字节": 1841,
+      "SHA256": "eb7a0ed1581d6532108e8ce82b4b2d134e5496a195fb85bedc6539c94b609cf0"
     },
     {
       "文件": "backend/tests/test_approval_display_cache.py",
@@ -524,8 +849,8 @@
     },
     {
       "文件": "backend/tests/test_approval_rules.py",
-      "字节": 24561,
-      "SHA256": "59275c3e77b9864dc0e1bc0b1db4f0083327bd50cf91e81bbd55c5bb001a1142"
+      "字节": 31730,
+      "SHA256": "1bb622d68d7cc7188e171d037d4c1e40895e0edfa98e033dfb8e9d04fd7c29bb"
     },
     {
       "文件": "backend/tests/test_approval_timeline.py",
@@ -534,18 +859,48 @@
     },
     {
       "文件": "backend/tests/test_backup_commit_snapshot.py",
-      "字节": 6732,
-      "SHA256": "90ad2f621314c22996f99b8cea6b00f655dfbfe058b735cfc92b788fc086570b"
+      "字节": 6965,
+      "SHA256": "ee1634a027c3486b1d212694390c681d481ec3d6060f3a4c3477e17d0d16749e"
+    },
+    {
+      "文件": "backend/tests/test_commit_gate_storage.py",
+      "字节": 1869,
+      "SHA256": "f58070b5ecc4ca1c60ccba39d7ad0eb21522fe134fbd7b1d4242d18b44cab494"
     },
     {
       "文件": "backend/tests/test_integration_api.py",
-      "字节": 5084,
-      "SHA256": "b5095d18549bfe3d08816a8fd55f6176469c547348aa06ebea699401fc240aea"
+      "字节": 7524,
+      "SHA256": "1cba17cbc57f3d8cf8b94ccbba6e666706093cf68e74103d6a9df439aa542e77"
+    },
+    {
+      "文件": "backend/tests/test_ldap_integration.py",
+      "字节": 5071,
+      "SHA256": "d6dd3f292eabc83c1a5f9191e442578c0832ab49e3cd5f6681fff28066be31ae"
+    },
+    {
+      "文件": "backend/tests/test_management_setup.py",
+      "字节": 4040,
+      "SHA256": "99801c2cd66616ce050a2c77dba9174129971d51d7641c4c4876920b9487a15e"
+    },
+    {
+      "文件": "backend/tests/test_model_connection_diagnostics.py",
+      "字节": 3933,
+      "SHA256": "7732d9ef4b9244793fd91b37d10f8e65b8485e0804e9eddd981656714661dd8f"
+    },
+    {
+      "文件": "backend/tests/test_operation_progress.py",
+      "字节": 8687,
+      "SHA256": "7cd3e4af02a888096373e9e9c0200608c57f4ccbba4f1d25fde808544874ab77"
+    },
+    {
+      "文件": "backend/tests/test_organization_access.py",
+      "字节": 31143,
+      "SHA256": "c2a6d1119706347aaf12787a3c0082ca61f6e2860c755160cf6cb4178e5dce46"
     },
     {
       "文件": "backend/tests/test_policy_candidates.py",
-      "字节": 7736,
-      "SHA256": "d45dff317622b6d29ea3c842f7bc06728caac20e12db673ad10564df92506988"
+      "字节": 7711,
+      "SHA256": "f51efddc0096d983286be51ce8bfd6342c38a8e47b821c9cef8bb60281558bc6"
     },
     {
       "文件": "backend/tests/test_policy_organizations.py",
@@ -554,8 +909,8 @@
     },
     {
       "文件": "backend/tests/test_push_mirror.py",
-      "字节": 14911,
-      "SHA256": "aef7883e2b81937038ed19085fb6a1712e94acc3abf6cae3fc62031250f54f88"
+      "字节": 18504,
+      "SHA256": "0129a8c82a6080a0d4c5dc260d5901a594409f60de8bfa09b465a06191daa33a"
     },
     {
       "文件": "backend/tests/test_remote_restore_jobs.py",
@@ -564,13 +919,18 @@
     },
     {
       "文件": "backend/tests/test_repository_policies.py",
-      "字节": 22370,
-      "SHA256": "6be898c0686533e1cfe1ac7f962da6091240569f19bd3defff2f6641c3fe484d"
+      "字节": 22363,
+      "SHA256": "c1df915e264a2fe43a4f1b249e5113e60e5b8ae0f5ab9cc6ea659dad9ccdae51"
     },
     {
       "文件": "backend/tests/test_restore_validation.py",
-      "字节": 11176,
-      "SHA256": "e99ee9ffc25acb210de84bb557ae4ac89be31be26fd2871b183b87a3c4f48f4d"
+      "字节": 11683,
+      "SHA256": "3418e91d3e4872f73c3a347449f5b7a46c0da133a7a5bfda1a8e0ff7fb17418f"
+    },
+    {
+      "文件": "backend/tests/test_runtime_status.py",
+      "字节": 3206,
+      "SHA256": "39395390cdfa066d7bda03397a75608e5e1c8ecb9b3f19dc10c39614e55b9659"
     },
     {
       "文件": "backend/wheels/Flask_Cors-4.0.0-py2.py3-none-any.whl",
@@ -673,6 +1033,11 @@
       "SHA256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"
     },
     {
+      "文件": "backend/wheels/ldap3-2.9.1-py2.py3-none-any.whl",
+      "字节": 432192,
+      "SHA256": "5869596fc4948797020d3f03b7939da938778a0f9e2009f7a072ccf92b8e8d70"
+    },
+    {
       "文件": "backend/wheels/markupsafe-3.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
       "字节": 22940,
       "SHA256": "0bf2a864d67e76e5c9a34dc26ec616a66b9888e25e7b9460e1c76d3293bd9dbf"
@@ -686,6 +1051,11 @@
       "文件": "backend/wheels/paramiko-3.4.0-py3-none-any.whl",
       "字节": 225900,
       "SHA256": "43f0b51115a896f9c00f59618023484cb3a14b98bbceab43394a39c6739b7ee7"
+    },
+    {
+      "文件": "backend/wheels/pyasn1-0.6.1-py3-none-any.whl",
+      "字节": 83135,
+      "SHA256": "0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629"
     },
     {
       "文件": "backend/wheels/pycparser-3.0-py3-none-any.whl",
@@ -749,28 +1119,138 @@
     },
     {
       "文件": "compose.ai-review.yml",
-      "字节": 3721,
-      "SHA256": "32f2d81ba5b14f8490125f790c9a7ea1f8fa427ec1aebb6b85a1adf7c1be1a79"
+      "字节": 4573,
+      "SHA256": "a04aeb0650d3ecc3e90796ffd1128cdd4cff12c275eaeea09cfacf239c4313a0"
     },
     {
       "文件": "compose.local.yml",
-      "字节": 2938,
-      "SHA256": "4380c7d9da966432802b60c83a20fb84f8eff0b1a0261a2590308223a4acb98f"
+      "字节": 2997,
+      "SHA256": "244a240c4a9431579cc6de99a6731d59997418e999c996ddedf1df8645b55ab3"
     },
     {
       "文件": "compose.review-local.yml",
-      "字节": 7299,
-      "SHA256": "d2846a48025c1fdb9fd176364ba6f1910c4b779d128655f3f945b09d729c6dda"
+      "字节": 8214,
+      "SHA256": "cc55e9753ff4bb9148bd124c519a40d3064294e03c1d6ebc4ee2ef2836a75875"
+    },
+    {
+      "文件": "compose.tls.yml",
+      "字节": 644,
+      "SHA256": "672dda74aac61bfaa66675cea48cd777fbad912461ac337e481708fb75263f25"
     },
     {
       "文件": "deploy.sh",
-      "字节": 1332,
-      "SHA256": "422ed9b8f53c9e8f19a4e757c324db3b4b99cc552911c80df137b4a6d54ac5fb"
+      "字节": 2111,
+      "SHA256": "2c6da1d9775ba2949fb54d79675680bc47bcc80f011398f2f13ac8100dc51726"
+    },
+    {
+      "文件": "deployment/Dockerfile.executor",
+      "字节": 577,
+      "SHA256": "83c32bb401e2aa728899d11e92fb611f75e3ffcc7bd52f38d81a9c4de17e31b5"
+    },
+    {
+      "文件": "deployment/accept_compaction.py",
+      "字节": 5589,
+      "SHA256": "5082dbe731e3af4eda41ef673f2c02d8aa4ef6dacaafc4017d6861f73ef8a71d"
+    },
+    {
+      "文件": "deployment/accept_diagnostic_failures.py",
+      "字节": 3592,
+      "SHA256": "e9c28f3dfcfbb9c36673f6d2de8572f3ae960c97812009cf08b7f84e9b8e6334"
+    },
+    {
+      "文件": "deployment/accept_runtime_failures.py",
+      "字节": 4619,
+      "SHA256": "95f2a5debffaf074edde5a4c30bcff0f4c4f27577ba5fee1a120ad99971c3154"
+    },
+    {
+      "文件": "deployment/access-test/Dockerfile",
+      "字节": 723,
+      "SHA256": "ea059643b60a5d05293cf0a1ec30e1c16b4ebc310acef03d253f268a90067abd"
+    },
+    {
+      "文件": "deployment/access-test/README.md",
+      "字节": 4165,
+      "SHA256": "ac2a191213cb2c7850f188fe18901cc9bf2821ab30896483915c7386e91a4595"
+    },
+    {
+      "文件": "deployment/access-test/start-directory.py",
+      "字节": 3782,
+      "SHA256": "c5dcc7fb5e3ff655c47aee12427c67db0769c4c96a967abc0e5eff9a7ae6e636"
+    },
+    {
+      "文件": "deployment/build-executor.sh",
+      "字节": 765,
+      "SHA256": "d5c1befd4dd273c73ef23235509d1dc24adcba00ec9298cb2c5d35f094403e27"
+    },
+    {
+      "文件": "deployment/build-installers.py",
+      "字节": 6154,
+      "SHA256": "8e6289833641a230b7235b9b3304a706ecb0d632293bad818dc455cd5ce4282f"
+    },
+    {
+      "文件": "deployment/build-v2.py",
+      "字节": 4902,
+      "SHA256": "5f6bbd6b7e273bd6ec71dc4a3bd42c0faa38f26cc677811ecbf6fc243a90b2e6"
+    },
+    {
+      "文件": "deployment/create-delivery.py",
+      "字节": 2208,
+      "SHA256": "557c2c3b8ecb01b3eda507d6e2c15ab8e936c47dd0995de7298c40e7ac4b16f3"
+    },
+    {
+      "文件": "deployment/install.py",
+      "字节": 41804,
+      "SHA256": "a80c1018da89573cc65e85fd90b054661500c5db7c3465dc3f5fefdebdf0942a"
+    },
+    {
+      "文件": "deployment/prepare-ubuntu-deps.sh",
+      "字节": 813,
+      "SHA256": "ab2a97eaf7496eed653bd956898de339d90e18ff10cade58015ddd48a1405ca8"
+    },
+    {
+      "文件": "deployment/test_compaction_runtime.py",
+      "字节": 5180,
+      "SHA256": "1136bb6139231685be1cf6d987f572509263c16fd0e486b231238ad7bb1eb80d"
+    },
+    {
+      "文件": "deployment/test_diagnostics.py",
+      "字节": 3999,
+      "SHA256": "83f56d30d58539099dcbd70937609061b26355cc8fdd7e6840ffd4e367ee6774"
+    },
+    {
+      "文件": "deployment/test_install.py",
+      "字节": 10278,
+      "SHA256": "3ce51a1428a2c32260903c03a0802c267c03e8b384b2e9212b8c6676a1a1abd2"
+    },
+    {
+      "文件": "deployment/test_runtime_lifecycle.py",
+      "字节": 3006,
+      "SHA256": "e7d6018a63f3b9bea0e153305cc4ea53b71d2d62e54f2892472834c861d20b1d"
+    },
+    {
+      "文件": "deployment/test_runtime_probe.py",
+      "字节": 2634,
+      "SHA256": "d3fa67588a1badc0e2b1158a15f7c92096ce798c5249dad3ce60b95fbb14b8ff"
+    },
+    {
+      "文件": "deployment/test_runtime_protocol.py",
+      "字节": 5437,
+      "SHA256": "63a9d4789a5771fd069fe9c645bc195caba47f7d629a058a80fbed31e550d0c2"
+    },
+    {
+      "文件": "deployment/test_uninstall.py",
+      "字节": 7238,
+      "SHA256": "8a72335919133779d48de8efea9c4bc3f113ffd99425a7578c2d507c41edc0c3"
+    },
+    {
+      "文件": "deployment/uninstall.py",
+      "字节": 12748,
+      "SHA256": "5352883331c8980a65e2f468648b8fee64b03ab5a67804c865356fb7e2cfb618"
     },
     {
       "文件": "docker-compose.yml",
-      "字节": 1752,
-      "SHA256": "4c58750317b08b2786022d1be5b0272e7955b4fdc8179c425692d8fa89b01f41"
+      "字节": 1812,
+      "SHA256": "843dd9e0cac3814fdea2bb79ebc19dcf28589c207c556ae7bc06aabe6f68d3a5"
     },
     {
       "文件": "docs/20260913最新源码打包说明.md",
@@ -1088,6 +1568,11 @@
       "SHA256": "0a0012712f2c6dc428be005541d4069fef2aaf276fe1bbad60eaad6e88c5e53d"
     },
     {
+      "文件": "docs/Gitea三项企业功能需求清单.md",
+      "字节": 53536,
+      "SHA256": "c39b06569bf08ad3356d7cb560bba8f18aea5273d28db86c831a4cbca9f81ff7"
+    },
+    {
       "文件": "docs/Review紧急待办对抗审查.md",
       "字节": 3393,
       "SHA256": "e9b92b757c11e613d0284d48a7ddb17ff3ec6d0171bd4e7c9ec90fcb03c7791f"
@@ -1243,9 +1728,179 @@
       "SHA256": "5aba0574478b24e029587558b5834752a4b65cfb546f07478ef0c7638844942b"
     },
     {
+      "文件": "docs/access-acceptance.md",
+      "字节": 9147,
+      "SHA256": "19b518c051edbb8735e97c8d23488ee74f36833bb18e97c5c4dafb498eef0fd9"
+    },
+    {
+      "文件": "docs/access-ldap-compatibility.md",
+      "字节": 5775,
+      "SHA256": "c24503de448e0cc123ad567b7d5a9eaefe4e415b6bae2d2f4c776a1c2b1da333"
+    },
+    {
+      "文件": "docs/access-route-matrix.md",
+      "字节": 22352,
+      "SHA256": "b12a34ec57266ae19ac48b89c74909b838c29ea861a46674a4eff31c895d55b8"
+    },
+    {
+      "文件": "docs/backup-restore-progress-acceptance.md",
+      "字节": 5785,
+      "SHA256": "8c4546050f1ca5e490d1abdabb498d6ecd244d301ac71351e45c01562192f5bc"
+    },
+    {
+      "文件": "docs/compaction-configuration.md",
+      "字节": 3514,
+      "SHA256": "ebec2f9d9c9e15a91dc9ab98a71871c152c6e9cb47f467483d489ee71cdd65ea"
+    },
+    {
+      "文件": "docs/dialog-clipping-fix.md",
+      "字节": 1996,
+      "SHA256": "a333744c7585fed5a315611ecd408c4c9ba2fc39148c9ff71fdc34f1b26efaf8"
+    },
+    {
+      "文件": "docs/evidence/oneclick-installation-20260921/functional-results.json",
+      "字节": 681,
+      "SHA256": "a95ef461553ea30264b433e74acea21d808419feb0154ba229a2712e93a98a16"
+    },
+    {
+      "文件": "docs/evidence/oneclick-installation-20260921/reboot-results.json",
+      "字节": 240,
+      "SHA256": "65d6398d5364fcd5bc847dc93edd9a3f3e72d3b475595a907353acecd3b3eb2a"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-code-review.md",
+      "字节": 7591,
+      "SHA256": "c8caa3dedd02176a2c4fd3cc0263fe0d3460baa0371a7ae634e90a9b6e13bd1d"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-diagnostic-blind-review.md",
+      "字节": 6069,
+      "SHA256": "58df362b2629903f8fd7b8838f883ec2061b75ed3b88b7e1e190c8e1adc93ec3"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-image-continuity.json",
+      "字节": 675,
+      "SHA256": "0686d017138d518b608210a4108fa274a625279d13d876ec16eb2c66c3574574"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-installations.json",
+      "字节": 1856,
+      "SHA256": "b688cefbdaa9927672f54c94a7f93cda599f7ed75217e5084606a0bb1c0adef0"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-local-acceptance.json",
+      "字节": 2078,
+      "SHA256": "d63b50d3d33dedef0b7611d62bfa5a8fb097390a2ababd020e82ce3546803f06"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-manager-ui-results.json",
+      "字节": 244,
+      "SHA256": "11a35cf5ae95107ddc7ecac8c5c066797af22c41eb178535fb01ae9b35725c78"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-noavx-legacy.json",
+      "字节": 1228,
+      "SHA256": "fe5ce2851ec34369ed0322c9bfdebcf6290745c4c03de65d6d8ca448f2f2318f"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-persistence.json",
+      "字节": 175,
+      "SHA256": "d304859253d0f786edb81e269f23e939399f832d779dc308b8a1f510ef301b8c"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-reboot.json",
+      "字节": 368,
+      "SHA256": "2d6f51ab921f83a675a03269041ef232e27bb6d66d7a3f208877122c66f65053"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-remote-acceptance.json",
+      "字节": 303,
+      "SHA256": "7107247c38ce1bdf368781b30eb86e3759201da6e4d97ce11bbb67bad51f1fac"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-restore-acceptance.json",
+      "字节": 274,
+      "SHA256": "3fc5c1fe0b7219f144730455666fb0ea31813ea113665fd5761f924ff0b94447"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-rollback-results.json",
+      "字节": 219,
+      "SHA256": "c1b96322d38d7cadd6ca2a338702a61f59ff1e699da9f5b1551a3e1153a8dd8a"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-runtime-diagnostics.json",
+      "字节": 353,
+      "SHA256": "1be5f76760f791da344e3dd63b26be266f08b98f629a4a4e4e2e307110737a6c"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-final-totp.json",
+      "字节": 243,
+      "SHA256": "6767ec1df065b68a73ccf62c1ef2aa2540dccb1186b8110e3d5084d55392d416"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-management-desktop.png",
+      "字节": 400197,
+      "SHA256": "2e13914ee84e5d3bb0c795deb9d824bf117f3293cac02d5a058a0fb9aca0ad72"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-management-mobile.png",
+      "字节": 176619,
+      "SHA256": "6374a9e2863cbd77219aa73bec977ed1ca0f4b929589ffc3c8cd4af17fed7a2b"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-manual-effort.json",
+      "字节": 1169,
+      "SHA256": "f713f2b66cc456e5ca0bb4be558b440ebde0c544108c600141600e441af50e2d"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-package-verification.json",
+      "字节": 722,
+      "SHA256": "b73df6bf6ec7c495d730192c7b1b2fb9ba52b723e93535110de424e4ccd98c2b"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-reboot-contention.md",
+      "字节": 1375,
+      "SHA256": "714ac7fee53f8aa870db43afab2997dfe268704c12742131e3adad04c5cbc437"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-uninstall-auto.md",
+      "字节": 2213,
+      "SHA256": "5bb26c10f5c2b956861de7c49d907d0c76988599752ce73384b0163748317b0c"
+    },
+    {
+      "文件": "docs/evidence/oneclick-v2-uninstall.md",
+      "字节": 2123,
+      "SHA256": "e20ca877d8178c14be4cbf6e2fa6dd524ecce56d2a8148f0ad7967eb3399e9b7"
+    },
+    {
+      "文件": "docs/legacy-manager-upgrade.md",
+      "字节": 2980,
+      "SHA256": "2c56d988c358bfd30648df2d05d048a47b9c0be794371de9405ac88e64f3e925"
+    },
+    {
       "文件": "docs/licenses/Gitea-MIT.txt",
       "字节": 1097,
       "SHA256": "ed2f10a9d78b8c6c9ef33f1420d0eb266981891caf2f15d630553f02dc60d3ae"
+    },
+    {
+      "文件": "docs/oneclick-installation-acceptance.md",
+      "字节": 5558,
+      "SHA256": "308062bd7760e443964d4df482cce8b81ea4372ebea9c4f6f9b03d74f60ea564"
+    },
+    {
+      "文件": "docs/oneclick-installation.md",
+      "字节": 7755,
+      "SHA256": "b2f67caf646ce1e3bb695c4799158d4d33113b690c12b79794117399778c07ee"
+    },
+    {
+      "文件": "docs/oneclick-v2-acceptance.md",
+      "字节": 8743,
+      "SHA256": "87d26ccd7b2a4dbf458aea057f2cc154d60ed706d048e9e482ed06b302799392"
+    },
+    {
+      "文件": "docs/organization-access-ldap.md",
+      "字节": 8918,
+      "SHA256": "744a4117001b88a4da3d6e94470a8873f5f30a48a703f19e9fb0568ed1766523"
     },
     {
       "文件": "docs/一键升级与首次AI接入.md",
@@ -2539,178 +3194,208 @@
     },
     {
       "文件": "frontend/Dockerfile",
-      "字节": 197,
-      "SHA256": "3af7fefb37f92e60b5d0b94718c6f4abf62add973f00f0e99367afbe6de71b45"
+      "字节": 322,
+      "SHA256": "33a5bde05e634f09a45765fdcae706ee66bffcb0887df4fa173a52f8a46af698"
     },
     {
-      "文件": "frontend/dist/assets/AIReviews-BbCOzQHw.js",
-      "字节": 49874,
-      "SHA256": "63b5c3cb0128dc141eadda38c5b5457ee579aca77f45db069fb817d187e2e225"
+      "文件": "frontend/dist/assets/AIReviews-CkPZZ5UX.css",
+      "字节": 14476,
+      "SHA256": "13e5531abc53c6e3b126a895e768596c691a445b0cd8fd33f41dfa114adb034f"
     },
     {
-      "文件": "frontend/dist/assets/AIReviews-DlePliIy.css",
-      "字节": 6504,
-      "SHA256": "cae7db6142ae45a5886ac6a9072aebabacb846f0bc26c2b98874fc8448364524"
+      "文件": "frontend/dist/assets/AIReviews-DUVH0DHC.js",
+      "字节": 93123,
+      "SHA256": "e0d73b2ab411971d06ef3ad70573d64d330cfed09a94a061e166a0c91ad14d3e"
     },
     {
-      "文件": "frontend/dist/assets/ApprovalRules-Cj3_ahDj.js",
-      "字节": 16643,
-      "SHA256": "f2102c0acf9e94cf543a50c39650965389b54547253b339fa7f46ca0a2db1adb"
+      "文件": "frontend/dist/assets/AccessManagement-B60rzFxV.css",
+      "字节": 1299,
+      "SHA256": "5794791d601402755fa11498cd935eda8c359313f0f31d51e59d0476a4a4d81b"
     },
     {
-      "文件": "frontend/dist/assets/ApprovalRules-DlCR8HgZ.css",
+      "文件": "frontend/dist/assets/AccessManagement-Dtm3yUtG.js",
+      "字节": 19204,
+      "SHA256": "4bb13dfe9292701111c4db857f477931a4581f18252f80d79bdd81a692218163"
+    },
+    {
+      "文件": "frontend/dist/assets/ApprovalRules-DWs1JuSR.js",
+      "字节": 21526,
+      "SHA256": "fe007564dee26e241d9003299f65375c202ef5774a4ba99da6e26c89b07beb8e"
+    },
+    {
+      "文件": "frontend/dist/assets/ApprovalRules-D_Al8d7W.css",
       "字节": 1088,
-      "SHA256": "9353caa2de22e878bd33b090831c3653b6299344ee3b9b05fd36d4d1b1d93d13"
+      "SHA256": "585c5158c04aac11132ee5b13d75c425569b47ddd8869080a2a2a7fcbe3f76c0"
     },
     {
-      "文件": "frontend/dist/assets/AuthorDetail-Di5T2LaA.js",
-      "字节": 7487,
-      "SHA256": "ed1af1f79f54b8272ced14775b71da2477d9bc8e948fef0f1298c079177fbc3f"
+      "文件": "frontend/dist/assets/AuthorDetail-B6CDslHO.js",
+      "字节": 7548,
+      "SHA256": "e118fb3eac68e79ae6a41fe5ffa0dabbdf2f16d802484cc4010f34ed1f7b50c1"
     },
     {
-      "文件": "frontend/dist/assets/AuthorDetail-JRBXJMZs.css",
+      "文件": "frontend/dist/assets/AuthorDetail-BPpndcrB.css",
       "字节": 2667,
-      "SHA256": "0ba93ce520e00add985d31ef996506c5bb53a55f2bd1925189838717918cf393"
+      "SHA256": "28701e5a67b4a82fb628c076fe6f56b7fe66f7c979898028e0a86b8163988d7e"
     },
     {
-      "文件": "frontend/dist/assets/AuthorList-CfGgG0t2.css",
+      "文件": "frontend/dist/assets/AuthorList-28tSBs1R.css",
       "字节": 1376,
-      "SHA256": "36916c81b21f1b9be21f033ec9ae7ca727e0ab5accc79784caf107f448ecbf23"
+      "SHA256": "51ed53d628e73e2c9da77413932c4dc3e4c5c1053ee3538bf2bbe6b8031fa8e8"
     },
     {
-      "文件": "frontend/dist/assets/AuthorList-DS6DGvgr.js",
-      "字节": 3573,
-      "SHA256": "945d5a9e85584d91fae6696513e8824344bd0d6f4605da57f55448f9f4d9b81c"
+      "文件": "frontend/dist/assets/AuthorList-D_BW4bwz.js",
+      "字节": 3630,
+      "SHA256": "0650c02fdb47f28ecd3bd78caefb289683effd8c9449fb65952bb5444b92bb77"
     },
     {
-      "文件": "frontend/dist/assets/Backups-BeMCVF4Z.css",
+      "文件": "frontend/dist/assets/Backups-DIAJhgsH.js",
+      "字节": 6628,
+      "SHA256": "a7a561afaf9a9875fb3b16696b0f0c14b97d8eaae7f3805f607a36bf1b566da0"
+    },
+    {
+      "文件": "frontend/dist/assets/Backups-DSESiUdU.css",
       "字节": 1396,
-      "SHA256": "1b5fe82a617db65ef8191944125da90da3717016a754cb239ff1442dfbcb4cdf"
+      "SHA256": "2326d022484d12df25264bc7e4899b60f23d50aa4d0d1db96212acd873f6a4a7"
     },
     {
-      "文件": "frontend/dist/assets/Backups-DHbnVjNT.js",
-      "字节": 6257,
-      "SHA256": "38b66b853f4830be313cb525188e0c07735f08356650f3c47f3b8c5e958a0c4c"
-    },
-    {
-      "文件": "frontend/dist/assets/CommitGates-CdsmvljG.css",
+      "文件": "frontend/dist/assets/CommitGates-CcT6ZTcq.css",
       "字节": 1503,
-      "SHA256": "59a35284594784e3613c0b1bd1c2a0287af1c34b3d45bd1af3544eeb61ba7864"
+      "SHA256": "c52a2f62fcfcefc942d3722eda679542ebc3a08a4c176845e265cbd46e0e07c9"
     },
     {
-      "文件": "frontend/dist/assets/CommitGates-D3ts_Rh8.js",
-      "字节": 10476,
-      "SHA256": "73a6bca65640188dee4160d7d72206caad33be6d5e72aa08f6eeabbc25b27d9d"
+      "文件": "frontend/dist/assets/CommitGates-Lre0xPMD.js",
+      "字节": 10637,
+      "SHA256": "1e4f515a01325c79c8ae91da4913f6639d5d68e05bceb720ad8770e8e32622eb"
     },
     {
-      "文件": "frontend/dist/assets/Dashboard-CH5X7lzs.css",
-      "字节": 7786,
-      "SHA256": "749d83bae7704b0b780b5c132e1bf575e31d45c63a4e8f3a2ed331feddfba549"
+      "文件": "frontend/dist/assets/Dashboard-1GM3FeMW.css",
+      "字节": 8369,
+      "SHA256": "371e8a46c3789b711d2cc76de80b588100cf6268defc6bde31d84156950d07fd"
     },
     {
-      "文件": "frontend/dist/assets/Dashboard-DP4QWjtt.js",
-      "字节": 10067,
-      "SHA256": "5c0742241700a1cd0959bd09d84c6b995d7c49dfb05bd789f5253dba3ab13c21"
+      "文件": "frontend/dist/assets/Dashboard-CrzFj7_b.js",
+      "字节": 12099,
+      "SHA256": "23fad8942ee38d3c967dc210d500e304af55814ea1ddf712ea175b8c0335b3f7"
     },
     {
-      "文件": "frontend/dist/assets/Mirrors-D1VMLtiT.js",
-      "字节": 15164,
-      "SHA256": "f282e8db3e386ad284afd278e288081a69dd33c9e7bc638757b254b1cf2bed87"
+      "文件": "frontend/dist/assets/ManagementSetup-BMSowcpS.js",
+      "字节": 7458,
+      "SHA256": "d186f9b051a5264231d0526b118e1014e519478b43c49f280edfa34621727fbe"
     },
     {
-      "文件": "frontend/dist/assets/Mirrors-DLZV9Rph.css",
+      "文件": "frontend/dist/assets/ManagementSetup-DdGAVxTA.css",
+      "字节": 559,
+      "SHA256": "74a770a6c18d839cd332fcafffc00d712eda458d300d8c00f810f28c0ca08743"
+    },
+    {
+      "文件": "frontend/dist/assets/Mirrors-Bkt2rfmg.js",
+      "字节": 15211,
+      "SHA256": "ab621425ed84a9d7ec5e45ba8134308587fd09f5d178521b229b492534d4ebf1"
+    },
+    {
+      "文件": "frontend/dist/assets/Mirrors-CpB-4M-L.css",
       "字节": 3836,
-      "SHA256": "5a2bcf8751c523927cfc623032ba8ded5863da0d92fed5d3891318c6391d56ce"
+      "SHA256": "c6dd484829756613778281fe8c40362929b4b485a5f91e2c66fad74d8fe3e4ab"
     },
     {
-      "文件": "frontend/dist/assets/RepositoryPolicies--QY1RU63.js",
-      "字节": 56416,
-      "SHA256": "0d501b5b0bbcf9aaf8b24edbe6f8d770665ec09fab266d3fb7b4e7233fbab2b4"
+      "文件": "frontend/dist/assets/OperationProgress-BIHvMdM-.css",
+      "字节": 1611,
+      "SHA256": "22377faffcdc9ec09813d8f04f854f588ee68420ac47410a28ec0ab63fce7b3e"
     },
     {
-      "文件": "frontend/dist/assets/RepositoryPolicies-cMeAUva0.css",
+      "文件": "frontend/dist/assets/OperationProgress-DzUY_VPE.js",
+      "字节": 6270,
+      "SHA256": "cbaf1b2001dcf7f080dd7509a8ddc8a9d94505645206cb4b1fde5230fb73c592"
+    },
+    {
+      "文件": "frontend/dist/assets/RepositoryPolicies-AUhTmyao.js",
+      "字节": 56725,
+      "SHA256": "6335c4e6124df356054073aee6553b1b46bc91eaa5da7af7464175bc255614a2"
+    },
+    {
+      "文件": "frontend/dist/assets/RepositoryPolicies-BpnxQgyU.css",
       "字节": 7126,
-      "SHA256": "ea72405e761d0b6e5d1d0fd8a3b309665f50fa40be8fe98cf72d1fd42d75c747"
+      "SHA256": "ea43d5dfaf2002fe72117561a642a8ffca65232a887c04febedb7a0f09d60749"
     },
     {
-      "文件": "frontend/dist/assets/Restore-BeOFqpc7.js",
-      "字节": 13574,
-      "SHA256": "d81221e359fff4aea730650eff3dd1b9beb8aea6cb8cbc16e0df051673c19041"
+      "文件": "frontend/dist/assets/Restore-C2sy2TJg.js",
+      "字节": 8765,
+      "SHA256": "07bd3251b04c4acb07122ce13a1e8029601fca3abb63d185bd8dea3256de0c24"
     },
     {
-      "文件": "frontend/dist/assets/Restore-Eeypp2P_.css",
+      "文件": "frontend/dist/assets/Restore-C_2n09EG.css",
       "字节": 5232,
-      "SHA256": "174bdab94a6b76db90311fa2e65593f63d94a58a6e411f520619aeb755fd6d27"
+      "SHA256": "a700f2f1404e531568b078bff8cd2d0f758bf64d7c7980ecd8605ed6a2c6dae6"
     },
     {
-      "文件": "frontend/dist/assets/Schedule-B81lzybH.css",
+      "文件": "frontend/dist/assets/Schedule-B9Kz_RPV.css",
       "字节": 1703,
-      "SHA256": "985d914aeadd32162113d1f0dcb6680e5d88f2b25022a868a7deea6612f8b6f8"
+      "SHA256": "a7b38dcb2006d5d3c75a0dfcc919280c5ff7aa0ade87965d7a1db66ced91953f"
     },
     {
-      "文件": "frontend/dist/assets/Schedule-COqSJqe8.js",
-      "字节": 11570,
-      "SHA256": "1353c908b537bd64ec2c3cdb140449624cf99ae721564099ef35a3131e4dfcad"
+      "文件": "frontend/dist/assets/Schedule-Bj2pdZ5W.js",
+      "字节": 11054,
+      "SHA256": "bab2f1a8c7a76fd84cf2c05f6f5ef78a587ad52b4f5f922f07cccb7acf720d26"
     },
     {
-      "文件": "frontend/dist/assets/ServerDetail-gseZR9HB.js",
-      "字节": 6060,
-      "SHA256": "d660f7431e05a0fb0f1d1d622891fab42f937363b5b969f4692a4a7e7c528bf1"
+      "文件": "frontend/dist/assets/ServerDetail-Cch4uT7_.js",
+      "字节": 6478,
+      "SHA256": "04b66a78a47a0fddc1546a182c340a209c8412f8ac7668585168c2bda42ffa85"
     },
     {
-      "文件": "frontend/dist/assets/ServerDetail-orgZwp0d.css",
+      "文件": "frontend/dist/assets/ServerDetail-Ci_Z1Q4s.css",
       "字节": 2328,
-      "SHA256": "adf0cb7740857f2ca013c56605a8b581e1d40c55a2bc97f0bf29dffd08db43c8"
+      "SHA256": "b4dd30bd8ce6b78170e1d15bbda4c78cf48a123b842363c485cb7de4a3049bad"
     },
     {
-      "文件": "frontend/dist/assets/Servers-BhqcKl_r.js",
-      "字节": 8164,
-      "SHA256": "8b3bff79e632bf95262e7669ec60ceee78f9a28c0f6b6da40b22ae6608e9515f"
-    },
-    {
-      "文件": "frontend/dist/assets/Servers-CvWVnU9x.css",
+      "文件": "frontend/dist/assets/Servers-Dfy9aZpY.css",
       "字节": 1011,
-      "SHA256": "812cc8a5c576c023b7a614d5ec74140ad2f2b8d8cc4f7021e386d19939b32411"
+      "SHA256": "21e43c5454979f458803294f58c628aadb09829ea77bfa737739ce515215bcea"
     },
     {
-      "文件": "frontend/dist/assets/Settings-B3iGAYKJ.js",
-      "字节": 1676,
-      "SHA256": "85a2a5ab87430db5c5abcdbdb293b92958c5d80561261a0b0387fee937b13db1"
+      "文件": "frontend/dist/assets/Servers-JS6p350F.js",
+      "字节": 8213,
+      "SHA256": "c0831a3bcc7096911b89531335c048122f13ec1d5cad877144967ce03906a03e"
     },
     {
-      "文件": "frontend/dist/assets/Settings-BR4Pf3rP.css",
+      "文件": "frontend/dist/assets/Settings-BhPCPUg-.js",
+      "字节": 1837,
+      "SHA256": "788b86b85bd4de3daa0631cf8e7e3f4f34ad0813161b07efd8275035e1a2359f"
+    },
+    {
+      "文件": "frontend/dist/assets/Settings-o79fgQkK.css",
       "字节": 221,
-      "SHA256": "17549032a2f2fc2a943901bfe145783800ee1d35cf65524da02c6d7bf756d3a6"
+      "SHA256": "2af8d799c258d697ca98d804feaab8d9b363492721e579f7d07ead2974774746"
     },
     {
-      "文件": "frontend/dist/assets/Statistics-DDSgkpTv.js",
-      "字节": 9743,
-      "SHA256": "5cf667c27ac4926671c0a7ab4990289e947c81cc7a8e42b9dc3c3d6b2b6c7f26"
-    },
-    {
-      "文件": "frontend/dist/assets/Statistics-DUskC4a4.css",
+      "文件": "frontend/dist/assets/Statistics-C5k8BTho.css",
       "字节": 4574,
-      "SHA256": "68603daaf2e457190e8519810a31383dc92b468e435220fdeb9d03f71e817d2a"
+      "SHA256": "ed98b175df595e99292307279395c19327ec564b666364a1680985996eab268a"
     },
     {
-      "文件": "frontend/dist/assets/index-D1lEM2LD.js",
-      "字节": 1246737,
-      "SHA256": "635f3265f173b34ed3f3ce5fb4ae25ea5e1db405282c34f64a457a5763381b24"
+      "文件": "frontend/dist/assets/Statistics-vVrOIGkE.js",
+      "字节": 10171,
+      "SHA256": "c85074870a72e1c03d622622aa9e0bbdd673c3073e56ad6199473b34f00563ab"
     },
     {
-      "文件": "frontend/dist/assets/index-DzVLcBMO.css",
-      "字节": 384948,
-      "SHA256": "51f663d8eb439cae2c02639cf775cce39303161bcd8feca276a066fb009c9994"
+      "文件": "frontend/dist/assets/index-Cab68K1R.js",
+      "字节": 1256219,
+      "SHA256": "6d411a80d6f18e425cfd730a325a22580fbe5e491188a3ad9d1f18ce9314633d"
     },
     {
-      "文件": "frontend/dist/assets/useChartResize-CVPlXtjF.js",
-      "字节": 368,
-      "SHA256": "cf2f13525bb6c1e5cf89372ba1f768ba58c405ad634eb8386f19b16af448fe71"
+      "文件": "frontend/dist/assets/index-DCbRI0P9.css",
+      "字节": 385155,
+      "SHA256": "7760fc2d9fd5acca2e8b84e165b3d5b5917e4a21657dac3e0aebb458a994dde2"
+    },
+    {
+      "文件": "frontend/dist/assets/useChartResize-Sgokub-m.js",
+      "字节": 369,
+      "SHA256": "94ad036dbbe7984ded866145b7ffdffb9c8e1a98311fe3c23ee1c9ad89fc57ec"
     },
     {
       "文件": "frontend/dist/index.html",
       "字节": 405,
-      "SHA256": "777d5ca5c5dd607dc67812f12fd48dde81679336a7eb1ac7fec987bfb1891754"
+      "SHA256": "0e252fdf69cf818f29206a6437dca611c32f65655d959b64f2acdde2fed3ad68"
     },
     {
       "文件": "frontend/index.html",
@@ -2718,9 +3403,14 @@
       "SHA256": "d9fc722dab5442a7e1237dd509d45119fa0979d598649faed5df4c6c1babd7f2"
     },
     {
+      "文件": "frontend/nginx-https.conf",
+      "字节": 1538,
+      "SHA256": "4b3fd575e7692fa2620786dedc0b6f4ef1c5a519f45c31b1b226ead1775c556e"
+    },
+    {
       "文件": "frontend/nginx.conf",
-      "字节": 1241,
-      "SHA256": "eb0f9d233bed6b19009bf73b9582ccf53dfb79b1ee7ef3637f5549a9d46e8fd7"
+      "字节": 1345,
+      "SHA256": "744faa30cb31c35a1a2738c5a280309a8f79a6569fbbfd969b429804ae277b64"
     },
     {
       "文件": "frontend/package-lock.json",
@@ -2734,28 +3424,43 @@
     },
     {
       "文件": "frontend/src/App.vue",
-      "字节": 16285,
-      "SHA256": "b70d680bbbc043fd2f276d89a99d4f8c3903b74fffe6d3cf7dc0235741039d92"
+      "字节": 22550,
+      "SHA256": "f0baf3497fc8ca8e6cc046d58d7121d041ebf50991ccd1be60951bdf72db7070"
     },
     {
       "文件": "frontend/src/api/index.js",
-      "字节": 410,
-      "SHA256": "b5967d67afd71b55f0373af2f3dd1c52a0818c6e951d035bc69d18f4b47c4fd0"
+      "字节": 2115,
+      "SHA256": "1849f467127d7f4f1899bc406109fb0e5ce4aaf39bd9dae356f0987e6845e199"
     },
     {
       "文件": "frontend/src/components/AIReviewDataset.vue",
-      "字节": 7488,
-      "SHA256": "6a86aa83a847c13051a1ab551fe5ee21c79b5bc500796267f9c37c9ad07e3c27"
+      "字节": 7572,
+      "SHA256": "25efabbccb1f263460779d5a4f8cf60f68408aa4592450607bd11995077f7a40"
     },
     {
       "文件": "frontend/src/components/AIReviewSetup.vue",
-      "字节": 8059,
-      "SHA256": "b023b926876c6fd4378b44329a06c00be6f5ff55c8346f74a38d456cd2467c15"
+      "字节": 11401,
+      "SHA256": "e2836b1a3da9ac92d2f5edaafbbc1495a611936cbd716545484183885eb08c7b"
     },
     {
       "文件": "frontend/src/components/AlertBell.vue",
-      "字节": 8762,
-      "SHA256": "2036b69217017d9a6cb46ab33f7e45c7344461c41f8ec69d1178ee0002e1bc55"
+      "字节": 7011,
+      "SHA256": "4df170498cc0e92f95d25731d9bc74297286e1e4f9a1dd6971a8ce6cc6e8160f"
+    },
+    {
+      "文件": "frontend/src/components/OperationProgress.vue",
+      "字节": 3514,
+      "SHA256": "bb1de5724ab89542ba5fbd6f7220a06c62ac9b774982e8537f8e34fdca15b799"
+    },
+    {
+      "文件": "frontend/src/components/OperationSteps.vue",
+      "字节": 2426,
+      "SHA256": "a8eafcb85f9fc8935d2d4e5b4d8bd82211d24440f432b9eb07cfb613138a4267"
+    },
+    {
+      "文件": "frontend/src/components/OrganizationDashboard.vue",
+      "字节": 2102,
+      "SHA256": "7e5bf9a4b0d55c8e8f4caa56e694225c67970fd8101279a3370f156ba559d2e4"
     },
     {
       "文件": "frontend/src/components/PolicyAllowlist.vue",
@@ -2779,8 +3484,8 @@
     },
     {
       "文件": "frontend/src/components/PolicyTemplateEditor.vue",
-      "字节": 17800,
-      "SHA256": "bcc2d0242d4f18649b9a183e4f1f31d27ea318c15609ef083f3199ee1e9128af"
+      "字节": 17815,
+      "SHA256": "41c34e57e4e1858005884c535e56117f598fe92c1c432ba43bee4f51c59c8179"
     },
     {
       "文件": "frontend/src/components/ReviewAttentionBanner.vue",
@@ -2789,13 +3494,23 @@
     },
     {
       "文件": "frontend/src/components/ReviewAttentionDrawer.vue",
-      "字节": 12498,
-      "SHA256": "9fdd948cf6258017ee30d12ad1880363d91264a33545f544ae75527e8319a9d2"
+      "字节": 12513,
+      "SHA256": "ecf284fa28d47f284da841255218b4679bf616bd09422d7320ef097cf7f37759"
     },
     {
       "文件": "frontend/src/components/ReviewAttentionPanel.vue",
       "字节": 3155,
       "SHA256": "e03690b0006d8e3e50f1cbf6e571d791232e516655a759a997a501c4049df3ee"
+    },
+    {
+      "文件": "frontend/src/components/ReviewTaskDetail.vue",
+      "字节": 50536,
+      "SHA256": "38bb1d9f2393e17e2bb7f1c62b5914ec808f175e22ef1ed6fb837fecb08afe10"
+    },
+    {
+      "文件": "frontend/src/components/operationDisplay.js",
+      "字节": 1648,
+      "SHA256": "135a9f974e5824400f3ce774dec0e49fa0387125e40690a1e42da7a544a2673a"
     },
     {
       "文件": "frontend/src/components/policyForm.js",
@@ -2808,9 +3523,29 @@
       "SHA256": "484ce64068e039e44acd05e10c71d8911d702e1d1e2eaba6626ceff6b462def9"
     },
     {
+      "文件": "frontend/src/components/reviewDiagnostics.js",
+      "字节": 8503,
+      "SHA256": "44933d1b7e98444bfe82db9cfd9092ff3b585dc36dc764bdfaa539738a7577a9"
+    },
+    {
+      "文件": "frontend/src/components/reviewDisplay.js",
+      "字节": 1069,
+      "SHA256": "cf4feb5f19a590841f9be2bfced0cf4f5a10d219d9445b18ffc8b9532fb3d4ac"
+    },
+    {
+      "文件": "frontend/src/composables/accessState.js",
+      "字节": 2228,
+      "SHA256": "8ca7832d45077ec993d8a6a4758c1eb7b1c333bfc5b2717f660249087f33c2fc"
+    },
+    {
       "文件": "frontend/src/composables/useChartResize.js",
       "字节": 696,
       "SHA256": "5fafefecfc3e67eeb2c34a23ded7ce4d7f1365a4c7fefcbae9e755fb99ca34f4"
+    },
+    {
+      "文件": "frontend/src/composables/useOperationPolling.js",
+      "字节": 1315,
+      "SHA256": "1efce72b54c99a482c26f44a325229b43b732eadedd30d06993e1177f6c53540"
     },
     {
       "文件": "frontend/src/composables/useReviewAttention.js",
@@ -2824,8 +3559,8 @@
     },
     {
       "文件": "frontend/src/router/index.js",
-      "字节": 1424,
-      "SHA256": "1a862bbb04630028d667112118ae6a9baf0b8753860528b55a5b45b8816afcc9"
+      "字节": 2199,
+      "SHA256": "31061278ad32f87fe35ff0699bc4135edf4863dde582f862bcf241c120b990f1"
     },
     {
       "文件": "frontend/src/styles/global.css",
@@ -2839,83 +3574,113 @@
     },
     {
       "文件": "frontend/src/views/AIReviews.vue",
-      "字节": 24985,
-      "SHA256": "1993a83e98b108c46ecb1985bbfd2c7b8314efdffa9f3cb7303b0cb8c158fac7"
+      "字节": 31592,
+      "SHA256": "ec62f8ae6ccd796426525fdec9551db23bccd1e5d9cdd3dd8ae86eec84de1ec5"
+    },
+    {
+      "文件": "frontend/src/views/AccessManagement.vue",
+      "字节": 19456,
+      "SHA256": "7165afa69e7a1b3384b5ea6d5fd584559a55a2703902763cf0a096b7bd2c62b5"
     },
     {
       "文件": "frontend/src/views/ApprovalRules.vue",
-      "字节": 17906,
-      "SHA256": "9a215958329089d7be6f89526bbcf3e8e2b55371fcca8baeb234308f97c41146"
+      "字节": 23204,
+      "SHA256": "c5e34518fe47bcc1f48ef6b13e22d3da6a8a583500810e1ebf1d8cbc1682fa10"
     },
     {
       "文件": "frontend/src/views/AuthorDetail.vue",
-      "字节": 12077,
-      "SHA256": "5bbb555e7b988a55fcd7cf0f904c63cbd21d991678b16c9d65a6ed25a119fdbe"
+      "字节": 12185,
+      "SHA256": "8982a180bd52641b4c520993dbb9087478c393ece557b100cb6736d24b7b9bdc"
     },
     {
       "文件": "frontend/src/views/AuthorList.vue",
-      "字节": 5750,
-      "SHA256": "a17fae450efff358584596a80628d0ff80e6b89ffc9c510930933a2d124374bf"
+      "字节": 5858,
+      "SHA256": "38f9dee0aa2676da75397cfe777a8df5125629488b83651c59e1207e0a5bf1fd"
     },
     {
       "文件": "frontend/src/views/Backups.vue",
-      "字节": 8886,
-      "SHA256": "cc67374535bce82f78b2a9aa2eeaf5ed844988c8dc3e6a616cf4bd90fe9cc528"
+      "字节": 9350,
+      "SHA256": "5f3faa02ef1174067c486238070210e0bdf1354461039047f220d41e961bceea"
     },
     {
       "文件": "frontend/src/views/CommitGates.vue",
-      "字节": 14369,
-      "SHA256": "6fd4cab2cc09e45912aa7cab7d7df61634ca99ae639fbf02a03466df78512bc4"
+      "字节": 14610,
+      "SHA256": "74dac649fc8e7854c2944a19beb8fd4124c9cf7eec91fa7b37bf9257b545327d"
     },
     {
       "文件": "frontend/src/views/Dashboard.vue",
-      "字节": 19698,
-      "SHA256": "b07a6a2321625424ee706d92406b8b22158ad6767110f1367542cd95392ec181"
+      "字节": 20719,
+      "SHA256": "b841f25ad53721198d76223475fe9d48a24411c7527b142b6247f02e142ec362"
     },
     {
       "文件": "frontend/src/views/Login.vue",
-      "字节": 4035,
-      "SHA256": "ac7d75751eb1b0ef793d14f5c7ef2320b5430eb1e4fa2878581a61e8cdc87ef0"
+      "字节": 5227,
+      "SHA256": "d4c9e0b16d68c1fa4ca2608777812c1cdadc33c242005159800d7642b0d91583"
+    },
+    {
+      "文件": "frontend/src/views/ManagementSetup.vue",
+      "字节": 7778,
+      "SHA256": "57192c92cb81fb11d879063a2e94e5dddb65d49df287c69c34ec38f2b66664e6"
     },
     {
       "文件": "frontend/src/views/Mirrors.vue",
-      "字节": 22266,
-      "SHA256": "816675480d391eaaafc377541f3652e4883e823256925e0816349747b7e6511a"
+      "字节": 22296,
+      "SHA256": "d7e6d39a4171696564b9d474f8692a91fa503149ebafaeb5da9af67526f82f34"
     },
     {
       "文件": "frontend/src/views/RepositoryPolicies.vue",
-      "字节": 25502,
-      "SHA256": "b3971da4350633c7f0d3bccd27801e7a3d9825774612b620c61f57ce5bff56df"
+      "字节": 25999,
+      "SHA256": "60fb492f46fb136a943981a5079649f6ba8b99fcc3483d3536ff86d38f615b5c"
     },
     {
       "文件": "frontend/src/views/Restore.vue",
-      "字节": 22328,
-      "SHA256": "58a2a378bfbe09bab40e1cc8912728f484e1377d5c29bfa987e408de27656b17"
+      "字节": 14821,
+      "SHA256": "a938e19127f1612275fc14580cd5efea49d0b36f71219b7c7a96920f3f622b5e"
     },
     {
       "文件": "frontend/src/views/Schedule.vue",
-      "字节": 16582,
-      "SHA256": "479d1bc1ff87270417e9e657b8c49a0f8faf77df89fd280dc4344da87561f80e"
+      "字节": 15748,
+      "SHA256": "3e113b39be877e7202424d9abe3ddafa0c260caf3d9df3684730dd79953b2334"
     },
     {
       "文件": "frontend/src/views/ServerDetail.vue",
-      "字节": 8850,
-      "SHA256": "19850b7ae48af99dc122090b5020704a8730afafc0586b270f69f51fd5c68496"
+      "字节": 9441,
+      "SHA256": "c0112a27a6a8a57b0dfcd2fa98e4778d939fb01f702e3d445a87dc95de1aea37"
     },
     {
       "文件": "frontend/src/views/Servers.vue",
-      "字节": 9543,
-      "SHA256": "7663a935136664fd8e90427ff119eb487697af405a97cba931ebaf07274c9ff5"
+      "字节": 9579,
+      "SHA256": "68a06fd8aefd6370b0fa95f1ba7162cc3f46215a3f9c89bc7b46813ff995142b"
     },
     {
       "文件": "frontend/src/views/Settings.vue",
-      "字节": 2125,
-      "SHA256": "b43251f12a784c845652ed6b5055f425e409083822aab4485a9fda908f890f54"
+      "字节": 2224,
+      "SHA256": "780ab1ccbe8f76d8d9c624d8c58fd08f07200e20f8bacff0c90213f0373bb958"
     },
     {
       "文件": "frontend/src/views/Statistics.vue",
-      "字节": 17098,
-      "SHA256": "2c6222fbdf8c04dfe5004d4dbd9f7f28e84322f34f2f8a5208b8ff355d88cfe0"
+      "字节": 17593,
+      "SHA256": "98177cefa9d4d8b4f05e1a2073792a1630cd56e2c8836e2af62802216f9f9380"
+    },
+    {
+      "文件": "frontend/start-nginx.sh",
+      "字节": 457,
+      "SHA256": "933da881dbe362c206b43534e2a1df94287892c75860b7560c5452c417d416cd"
+    },
+    {
+      "文件": "frontend/tests/accessIsolation.test.cjs",
+      "字节": 4842,
+      "SHA256": "a7395d7647ba3719aea2d292014f78ea86b0f1494af1f6bd97b7060763b715f1"
+    },
+    {
+      "文件": "frontend/tests/operationPolling.test.cjs",
+      "字节": 1923,
+      "SHA256": "4522b25b1d8fec459b2bfa6b36e5c43174c1e72efaf2aa094c93516d53b4ba2b"
+    },
+    {
+      "文件": "frontend/tests/operationProgress.test.cjs",
+      "字节": 1518,
+      "SHA256": "f16ff7a7a53ec393db47212fd2a575a92b224454953bf70d71e0001453c9cf97"
     },
     {
       "文件": "frontend/tests/policyForm.test.mjs",
@@ -2938,14 +3703,19 @@
       "SHA256": "cd2dbe3300434303b81f0668855b7d77e60ce8cf987e6aebc7b1a7719a829a3f"
     },
     {
+      "文件": "install.sh",
+      "字节": 6149,
+      "SHA256": "210790202301160edeba5c500ac0ff8b813f2a4aa263146f392f73552b6d6a31"
+    },
+    {
       "文件": "offline/运行镜像.tar",
-      "字节": 501971456,
-      "SHA256": "6b314039378207ad846a99948e19ad75c088d26be43271175ebe33862371d961"
+      "字节": 560885248,
+      "SHA256": "8c97bd30b13ade5db24430e847a43c69649a82d31cc9adc1c44669bbd8c0c200"
     },
     {
       "文件": "offline/镜像清单.json",
-      "字节": 2092,
-      "SHA256": "0c8198b3bd8c72d7520e33bfb21025a3ffb3f2f59eade4b529475bbb40ce28b7"
+      "字节": 2390,
+      "SHA256": "e8bc7130ff43a458da3c289a50e2c4bcbf039b7a4ebbf9ce443a01c7af50cfc5"
     },
     {
       "文件": "review-runtime/Dockerfile",
@@ -2953,9 +3723,19 @@
       "SHA256": "4dd1e6a7703dcabcca3ac45754677f7f482a67e0e0de9102407f7c3378ac919d"
     },
     {
+      "文件": "review-runtime/StructuredOutput.js",
+      "字节": 926,
+      "SHA256": "7e402dc21588eaea14766b11c683837780693af5282d4d51bee7a5776f1483c1"
+    },
+    {
       "文件": "review-runtime/executor.py",
-      "字节": 8320,
-      "SHA256": "c06646b7943d5b073d84ea668af527512620764f67618471dac9832cc44e1ceb"
+      "字节": 26003,
+      "SHA256": "0bb18cf123b2e5d1a56b429d2b44e2c7a4ab46d81f823e3cdfd91af95b09634b"
+    },
+    {
+      "文件": "review-runtime/legacy_adapter.py",
+      "字节": 1674,
+      "SHA256": "d0099052a6fdf7699f360ab43dae47f0490d220eb7b2158ffbd200cc3ae5c4f3"
     },
     {
       "文件": "review-runtime/model_fixture.py",
@@ -2963,9 +3743,39 @@
       "SHA256": "5439900ceb87826847acd8940771b42d553769ff4a892ffc0181c75f33178102"
     },
     {
+      "文件": "review-runtime/native_gateway.py",
+      "字节": 48909,
+      "SHA256": "fc174b9a198a9841bea11674df54db24229152f2af67f87f6863bfc06ab59f31"
+    },
+    {
+      "文件": "review-runtime/native_session.py",
+      "字节": 81447,
+      "SHA256": "da2dbaeb09522b0a55135cacf9b6ee2a595e5b6b78cdbdd9374634a3d95465a1"
+    },
+    {
       "文件": "review-runtime/offline-ingress.conf",
       "字节": 690,
       "SHA256": "8a7a2d5e61171334f7321cd324dbc5cf80d38112d53f8fc8e387da437b2c52ea"
+    },
+    {
+      "文件": "review-runtime/raw_diagnostics.py",
+      "字节": 28578,
+      "SHA256": "ac0be521b55b07132c3fe4348fc8a3460bf073d61e2c4eeeadd53691573c27b1"
+    },
+    {
+      "文件": "review-runtime/review_result_schema.json",
+      "字节": 2186,
+      "SHA256": "6051ac9f2828526c4b01ca4fb88bb963d29d693825c289e5b4a2b1509e63c5f6"
+    },
+    {
+      "文件": "review-runtime/runtime_diagnostics.py",
+      "字节": 3881,
+      "SHA256": "7bc128ffc4bc685351c417ff67f0162c642969cf8bf886ec0626a841cd5f013e"
+    },
+    {
+      "文件": "review-runtime/runtime_probe.py",
+      "字节": 7108,
+      "SHA256": "373f7002fe6409c04f98e341d84acad032a4d4185538d746afe66cc23dc8d514"
     },
     {
       "文件": "review-runtime/vendor/opencode-linux-x64",
@@ -2981,6 +3791,61 @@
       "文件": "review-runtime/第三方许可.md",
       "字节": 1437,
       "SHA256": "6455100b0dda3939e43bf7a6de714ac0dfb7bc62e24dd9bd25ab39409acb35f6"
+    },
+    {
+      "文件": "scripts/access-env.py",
+      "字节": 12024,
+      "SHA256": "6d03515809a5eb6ba7a174f1c2c1a649110b5099ff5fc363726f9e3390cd8330"
+    },
+    {
+      "文件": "scripts/access-hook-acceptance.py",
+      "字节": 5990,
+      "SHA256": "01151bccffb14b18412b2272e0ad9b2e4b57af60460cf952244376115163a199"
+    },
+    {
+      "文件": "scripts/access-ldap-acceptance.py",
+      "字节": 13419,
+      "SHA256": "223fbe6265c124a6c94820492f908684a63392343feee60047cffbda7e6f2a3a"
+    },
+    {
+      "文件": "scripts/access-ldap-attributes.py",
+      "字节": 2453,
+      "SHA256": "c8dd49fbfa2c842762282a02837b2979781c4193aea01b7281576d3e7137ef45"
+    },
+    {
+      "文件": "scripts/access-ldap-probe.py",
+      "字节": 4493,
+      "SHA256": "e422509ebcb2c9debc557210ff82c276a0ce3828bd71bbec491d7018e68dd856"
+    },
+    {
+      "文件": "scripts/access-manager-acceptance.py",
+      "字节": 26487,
+      "SHA256": "1fdf4233ed2c8997304d5af848aa086f9fe5fcc7354c5877885b422d00122795"
+    },
+    {
+      "文件": "scripts/access-manager-env.py",
+      "字节": 7287,
+      "SHA256": "eaee7efca07c0d49a40060c055c7c4d77a9d86a245047d44813a417bedb0d048"
+    },
+    {
+      "文件": "scripts/access-package-acceptance.py",
+      "字节": 11303,
+      "SHA256": "7e579f3ab552a84edc8c1fed6b18c81f8b7fee21c2779b2dd6bea3d097aaccf8"
+    },
+    {
+      "文件": "scripts/access-package-upgrade.py",
+      "字节": 7788,
+      "SHA256": "1510ac2f4c296f6e3b8460c348213ab6030bc93fa1f5193249a296e71c6f226b"
+    },
+    {
+      "文件": "scripts/access-session-acceptance.py",
+      "字节": 7771,
+      "SHA256": "3be717aef6b4a006043fcf3fed896266553010dc31d0dde87ebe23a12b4e8a18"
+    },
+    {
+      "文件": "scripts/access-task-acceptance.py",
+      "字节": 4910,
+      "SHA256": "e88b79f317c8c0ad9bd358430ff07cc22459639375e821a1864dfddaa5e4446f"
     },
     {
       "文件": "scripts/approval-capacity-probe.py",
@@ -3019,8 +3884,8 @@
     },
     {
       "文件": "scripts/approval-integration.py",
-      "字节": 24703,
-      "SHA256": "18a88e988a5e5499fbe71889f66dfa425bcddff07ee8e7dcf0f1560fa7e6cb13"
+      "字节": 24947,
+      "SHA256": "847f6e7b3bc8b16dee9f52e39530dff2d3a8dd9eb9fc170049614fee4f2f3368"
     },
     {
       "文件": "scripts/approval-matrix.py",
@@ -3373,9 +4238,29 @@
       "SHA256": "f1b7af631fa56810f696056914d9deffce07bc50ee2f24ac598d6b1aa1118569"
     },
     {
+      "文件": "scripts/legacy-upgrade-acceptance.py",
+      "字节": 16342,
+      "SHA256": "9c542eb16d4103771771dfd230c809f1852001f11035e1f395144f9353bd13b0"
+    },
+    {
       "文件": "scripts/local-env.py",
-      "字节": 4990,
-      "SHA256": "fc0a383d77c9aad822e4af527d71f874c0d2bf88870476c2c761888c8727f645"
+      "字节": 5252,
+      "SHA256": "f67ba203a4eb7e35cad45d3ae6fa881b5c7937f5808b8b161967c9b98a28eca0"
+    },
+    {
+      "文件": "scripts/operation-progress-acceptance.py",
+      "字节": 10680,
+      "SHA256": "7696c9e7d38b9a17afa262ebf124aaf70a54db34ab9c1a61c58bea64eb74bad2"
+    },
+    {
+      "文件": "scripts/operation-progress-extended-acceptance.py",
+      "字节": 4953,
+      "SHA256": "bb8c297fcfffd8a38a52e424807b9173e3b7812dbddb87bf93aa9055661b3243"
+    },
+    {
+      "文件": "scripts/operation-progress-remote-acceptance.py",
+      "字节": 3158,
+      "SHA256": "29ff1806b93bfa529fd6ff6b83e40dda68ccb098e2a708525ee32358d7896739"
     },
     {
       "文件": "scripts/policy-organization-acceptance.py",
@@ -3384,8 +4269,8 @@
     },
     {
       "文件": "scripts/policy-real-acceptance.py",
-      "字节": 11173,
-      "SHA256": "3f9dad118bd8dbf99a22f84e8198d8efb72999553f52d87943cd6d2dc3fc5ed2"
+      "字节": 11522,
+      "SHA256": "21ab3e4d2050eb8171e67097ca158d8de402d51f9846c1071096eb0684916649"
     },
     {
       "文件": "scripts/policy-real-boundaries.py",
@@ -3406,6 +4291,11 @@
       "文件": "scripts/review-boundary-acceptance.py",
       "字节": 14466,
       "SHA256": "5fd157b5c2d5c1963254e6d7209ea70b3d9f8bd6d9ce08fc0e7e730b6bf2f82b"
+    },
+    {
+      "文件": "scripts/review-context-fixtures.py",
+      "字节": 12998,
+      "SHA256": "a974de918c3d2f65148acec37e77c79b92df8ec6e0db688a93474d55ad4def1c"
     },
     {
       "文件": "scripts/review-dataset-acceptance.py",
@@ -3439,8 +4329,8 @@
     },
     {
       "文件": "scripts/review-local.py",
-      "字节": 10912,
-      "SHA256": "ea13fb0bec732d8a7532acf8f763c979b76c359229bec6abd14b570a16413356"
+      "字节": 11580,
+      "SHA256": "ced2fe8dfe1c213d50de2fd5115ee3c0d85285449793579be3174289d2ff4d61"
     },
     {
       "文件": "scripts/review-offline-deploy-check.py",
@@ -3449,8 +4339,8 @@
     },
     {
       "文件": "scripts/review-package.py",
-      "字节": 6180,
-      "SHA256": "24fc00d7c7d089f7aa21bf56ccd74dc0dbc000a3eb634833720db315aa8a24f9"
+      "字节": 6933,
+      "SHA256": "90eb19f0ca758b5e020cc4b6310a11d037d55713aba09b3d9606c91f2d9feec4"
     },
     {
       "文件": "scripts/review-progress-acceptance.py",
@@ -3504,8 +4394,8 @@
     },
     {
       "文件": "scripts/test_upgrade_runtime.py",
-      "字节": 5084,
-      "SHA256": "7f9541e47016f3ff5adcc71a5047e64ac70b0f822bc161573ec52d2ff94902d2"
+      "字节": 6423,
+      "SHA256": "a05263ef37e098323b55af55450d2eaf7a2dc78498b82e607d53e646d3fe1ed7"
     },
     {
       "文件": "scripts/ui-fixture-server.py",
@@ -3514,8 +4404,8 @@
     },
     {
       "文件": "scripts/upgrade_runtime.py",
-      "字节": 34411,
-      "SHA256": "d81a787e9118c3dd40f7f149dbf3179df185ae2e700cfa094cae61bacdd4cde9"
+      "字节": 41834,
+      "SHA256": "964980a07b7e1084edb0846959cb5d23e886a2582b0bf693514f3a13438f1f57"
     },
     {
       "文件": "scripts/upgrade_volume.py",
@@ -3523,9 +4413,14 @@
       "SHA256": "0d9ddd00aa875f39c8dbe1848c0848034959e9afb3c19393b1fc88b4b740f6ea"
     },
     {
+      "文件": "uninstall.sh",
+      "字节": 842,
+      "SHA256": "edd3fb2dc688f2c077350904795e30581e3bf5cb8abc5dfc2b389fea038a903a"
+    },
+    {
       "文件": "upgrade.sh",
-      "字节": 6822,
-      "SHA256": "9d823e7851205a7b5c47c97d9262119519c3fe875574eba33d7d03af3ee3680a"
+      "字节": 7498,
+      "SHA256": "637336e6d411e7ba241bfeaf8894ba069fde2b29617219805040a2fe0c8162eb"
     }
   ]
 }

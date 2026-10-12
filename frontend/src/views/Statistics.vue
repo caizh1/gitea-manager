@@ -3,18 +3,19 @@
     <div class="section-header">
       <h3 class="section-title">统计分析</h3>
       <div class="header-actions">
-        <el-select v-model="selectedServerId" placeholder="选择服务器" size="small" style="width:200px">
+        <el-select v-model="selectedServerId" :disabled="!isPlatformAdmin" placeholder="选择服务器" size="small" style="width:200px">
           <el-option v-for="s in primaryServers" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
         <el-button size="small" type="primary" @click="refreshData" :loading="refreshing" :disabled="!selectedServerId">刷新数据</el-button>
       </div>
     </div>
 
+    <el-alert v-if="overview.pending || overview.pending_collection" title="组织统计待生成" description="当前组织的仓库明细尚未采集完成，请刷新数据后再查看。" type="info" :closable="false" show-icon />
     <div v-if="!selectedServerId" class="glass-card" style="padding:40px;text-align:center;">
       <el-empty description="请选择一个服务器查看统计" />
     </div>
 
-    <div v-else>
+    <div v-else-if="!overview.pending && !overview.pending_collection">
       <div class="stat-grid">
         <div class="stat-card stat-blue">
           <div class="stat-icon">📝</div>
@@ -117,6 +118,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
+import { isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 import { useChartResize } from '../composables/useChartResize'
 import { ElMessage } from 'element-plus'
 
@@ -142,7 +144,7 @@ export default {
       { label: '年', value: 'year' },
     ]
 
-    const primaryServers = computed(() => servers.value.filter(s => s.role === 'primary'))
+    const primaryServers = computed(() => isPlatformAdmin.value ? servers.value.filter(s => s.role === 'primary') : servers.value)
 
     const codePct = computed(() => {
       const total = overview.value.total_code_lines + overview.value.total_doc_lines + overview.value.total_other_lines
@@ -282,8 +284,8 @@ export default {
 
     onMounted(() => {
       api.get('/servers').then(res => {
-        servers.value = res.data
-        const primary = res.data.find(s => s.role === 'primary')
+        servers.value = scopedServers(res.data)
+        const primary = servers.value.find(s => s.role === 'primary') || servers.value[0]
         if (primary) {
           selectedServerId.value = primary.id
           loadData()
@@ -293,7 +295,7 @@ export default {
 
     watch(selectedServerId, () => { loadData() })
 
-    return { servers, selectedServerId, refreshing, overview, commitTrend, repoRanking, authorRanking,
+    return { isPlatformAdmin, servers, selectedServerId, refreshing, overview, commitTrend, repoRanking, authorRanking,
              selectedPeriod, periods, primaryServers, trendChartRef,
              codePct, docPct, otherPct,
              loadData, refreshData, changePeriod, formatNum, barWidth, langBarWidth, goAuthor, goAllAuthors }

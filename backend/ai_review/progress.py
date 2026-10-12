@@ -30,6 +30,10 @@ def state_for(store, repository, number):
 def payload_for(repo, state, job, enabled, pr, now=None):
     now = time.time() if now is None else now
     progress = job_progress(job, now)
+    # 已安装的 v1 页面要求完成数为整数；总数保持未知，因此不展示虚假的 0/N。
+    # 仅兼容评论传输格式，Manager 的原生任务计数仍保持 None。
+    if progress.get('native_session'):
+        progress['units_completed'] = 0
     stopped = not enabled or not repo['enabled'] or closed_state(state) or pr.get('state') != 'open' or pr.get('merged')
     current_head = pr['head']['sha']
     if stopped:
@@ -84,7 +88,15 @@ def comment_body(payload):
 class ProgressSync:
     def __init__(self, store, factory=None):
         self.store = store
-        self.factory = factory or (lambda repo: Gitea(repo['gitea_url'], store.unseal(repo['bot_token']), repo['repo_name'], repo['repo_id']))
+        from .authorization import guarded_client
+        self.factory = factory or (lambda repo: guarded_client(store, repo))
+
+    def refresh_native(self):
+        """进程启动后刷新原生状态评论；保留写入回执、不确定窗口及失败退避。"""
+        with self.store.tx() as c:
+            c.execute('''UPDATE pr_state SET progress_seq=progress_seq+1 WHERE EXISTS
+                (SELECT 1 FROM jobs j WHERE j.repository=pr_state.repository AND j.number=pr_state.number
+                 AND j.generation=pr_state.generation AND j.session_id IS NOT NULL AND j.session_id!='')''')
 
     def pending(self, now=None):
         now = time.time() if now is None else now
@@ -206,6 +218,7 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     sync = ProgressSync(store)
+    refresh_needed = True
     with store.lock('进度同步进程'):
         while not stop.is_set():
             try:
@@ -214,6 +227,9 @@ def main():
                 if active():
                     stop.wait(1)
                     continue
+                if refresh_needed:
+                    sync.refresh_native()
+                    refresh_needed = False
                 for item in sync.pending():
                     if stop.is_set():
                         break

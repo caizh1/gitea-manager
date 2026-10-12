@@ -80,5 +80,27 @@ class RuntimeChecks(unittest.TestCase):
         self.assertNotEqual(result.returncode,0);self.assertEqual(result.stdout,b'')
         path.unlink();result=check();self.assertNotEqual(result.returncode,0)
 
+    def test_directory_key_decryptability_and_fingerprints_are_verified(self):
+        import hashlib
+        key=Fernet.generate_key(); key_file=self.root/'access.key'; key_file.write_bytes(key)
+        session_file=self.root/'.session-key'; session_file.write_text('原持久会话密钥')
+        database=self.root/'manager.db'
+        with sqlite3.connect(database) as connection:
+            connection.execute('CREATE TABLE access_directory_sources(password_ciphertext TEXT)')
+            connection.execute('INSERT INTO access_directory_sources VALUES (?)',
+                (Fernet(key).encrypt('目录查询密码'.encode()).decode(),))
+        def check():
+            return subprocess.run([sys.executable,'-c',runtime.CHECK_ACCESS_KEYS,str(database),''],capture_output=True)
+        result=check();self.assertEqual(result.returncode,0,result.stderr)
+        actual=json.loads(result.stdout)
+        self.assertEqual(actual[str(key_file)],hashlib.sha256(key).hexdigest())
+        self.assertEqual(actual[str(session_file)],hashlib.sha256(session_file.read_bytes()).hexdigest())
+        self.assertNotIn('目录查询密码',result.stdout.decode())
+        key_file.write_bytes(Fernet.generate_key())
+        self.assertNotEqual(check().returncode,0)
+        key_file.unlink()
+        self.assertNotEqual(check().returncode,0)
+
+
 
 if __name__=='__main__':unittest.main()

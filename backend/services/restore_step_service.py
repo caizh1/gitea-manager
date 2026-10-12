@@ -115,7 +115,8 @@ def restore_step_to_dict(step):
         metrics = {'诊断信息': '历史指标格式异常'}
     return {
         'id': step.id,
-        'restore_task_id': step.restore_task_id,
+        'restore_task_id': getattr(step, 'restore_task_id', None),
+        'backup_id': getattr(step, 'backup_id', None),
         'step_key': step.step_key,
         'label': step.label,
         'status': step.status,

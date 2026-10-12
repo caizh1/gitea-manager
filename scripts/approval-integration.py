@@ -38,6 +38,7 @@ class Acceptance(module.Probe):
         self.manager_http = build_opener(ProxyHandler({}), HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.manager_base = None
         self.csrf = ''
+        self.access_csrf = ''
         self.pid = None
         self.secret_tokens = []
 
@@ -52,7 +53,8 @@ class Acceptance(module.Probe):
 
     def manager(self, method, path, data=None, raw=False, expected=(200, 201)):
         req = Request(self.manager_base+path, method=method,
-                      headers={'Content-Type': 'application/json', 'X-Approval-CSRF': self.csrf},
+                      headers={'Content-Type': 'application/json', 'X-Approval-CSRF': self.csrf,
+                               'X-CSRF-Token': self.access_csrf},
                       data=json.dumps(data).encode() if data is not None else None)
         try: response = self.manager_http.open(req, timeout=35)
         except HTTPError as exc: response = exc
@@ -62,7 +64,10 @@ class Acceptance(module.Probe):
                 try: value = json.loads(content) if content else {}
                 except ValueError: value = {'error': '服务端未返回 JSON，请检查本次独立容器日志'}
                 raise RuntimeError('Manager '+path+' 返回 '+str(response.code)+'：'+str(value.get('error', '接口未成功')))
-            return content if raw else json.loads(content)
+            value = content if raw else json.loads(content)
+            if isinstance(value, dict) and value.get('csrf_token'):
+                self.access_csrf = value['csrf_token']
+            return value
 
     def start_manager(self):
         _, token = self.api('POST', '/users/probe-admin/tokens', {'name': '审批隔离验收', 'scopes': ['all']})

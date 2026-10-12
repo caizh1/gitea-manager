@@ -1,3 +1,4 @@
+from services.operation_progress import progress_for_response
 import os
 import time
 from datetime import datetime
@@ -22,6 +23,8 @@ def backup_to_dict(b):
         'file_size': b.file_size,
         'status': b.status,
         'error_msg': b.error_msg,
+        'diagnostic_id': b.diagnostic_id,
+        **progress_for_response(b),
         'commit_snapshot_status': b.commit_snapshot_status or '',
         'commit_snapshot_repo_count': b.commit_snapshot_repo_count or 0,
         'commit_snapshot_error': b.commit_snapshot_error or '',
@@ -94,3 +97,13 @@ def download_backup(bid):
     if not b.file_path or not os.path.exists(b.file_path):
         return jsonify({'error': 'File not found'}), 404
     return send_file(b.file_path, as_attachment=True, download_name=b.filename)
+
+
+@backup_bp.route('/backups/<int:bid>/steps', methods=['GET'])
+@login_required
+def get_backup_steps(bid):
+    from models import BackupStepLog
+    from services.restore_step_service import restore_step_to_dict
+    Backup.query.get_or_404(bid)
+    steps = BackupStepLog.query.filter_by(backup_id=bid).order_by(BackupStepLog.id).all()
+    return jsonify([restore_step_to_dict(step) for step in steps])

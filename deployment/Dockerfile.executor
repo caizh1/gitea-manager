@@ -1,0 +1,12 @@
+# 在既有固定执行器上只调整版本健康检查的冷启动等待，不改变审查执行协议。
+FROM gitea-review-executor:integration-default-off-20260921
+USER 0:0
+RUN python - <<'PY'
+from pathlib import Path
+path = Path('/opt/review/executor.py')
+source = path.read_text()
+before = "timeout=5, env={'PATH': '/usr/local/bin:/usr/bin:/bin',"
+assert source.count(before) == 1, '固定执行器的健康检查实现不匹配，拒绝盲目替换'
+path.write_text(source.replace(before, "timeout=30, env={'PATH': '/usr/local/bin:/usr/bin:/bin',"))
+PY
+USER 10001:10001

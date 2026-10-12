@@ -8,7 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask
 import requests
-from auth import init_auth
+from tests.access_helpers import init_test_auth as init_auth, login_platform
 from models import db, GiteaServer
 from routes.policy_routes import policy_bp
 from services.policy_gitea import PolicyGitea, _organization_cache
@@ -26,7 +26,7 @@ class PolicyCandidateTests(unittest.TestCase):
         self.server = GiteaServer(name='名单测试实例', host='仅用于测试', ssh_user='git', gitea_port=3000, gitea_url='http://gitea', api_token='不应泄漏的凭据')
         db.session.add(self.server); db.session.commit()
         self.client = self.app.test_client()
-        with self.client.session_transaction() as session: session['_user_id'] = '1'; session['_fresh'] = True
+        login_platform(self.client)
 
     def tearDown(self):
         db.session.remove(); db.engine.dispose(); self.ctx.pop(); self.tmp.cleanup()

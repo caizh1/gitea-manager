@@ -2,6 +2,7 @@
 import json
 import re
 import time
+from .performance import TARGET_SECONDS
 
 RUNNING = ('running', 'publishing', 'recovering')
 TERMINAL = ('succeeded', 'failed', 'superseded', 'publish_unknown')
@@ -67,13 +68,41 @@ def job_progress(job, now=None):
     if not re.fullmatch(r'[0-9a-f]{40}', head):
         head = ''
     start, end = job.get('started_at'), job.get('finished_at')
-    blocked = status == 'queued' and (job.get('attention') or {}).get('required', False)
-    return {'status': status, 'label': '等待人工处理' if blocked else LABELS.get(status, status),
-            'stage': 'attention' if blocked else job.get('progress_stage', 'queued'),
-            'detail': job['attention']['reason'] if blocked else job['stage'], 'head': head, 'received_at': job['created'], 'started_at': start,
+    progress = {'status': status, 'label': LABELS.get(status, status), 'stage': job.get('progress_stage', 'queued'),
+            'detail': job['stage'], 'head': head, 'received_at': job['created'], 'started_at': start,
             'finished_at': end, 'elapsed_seconds': max(0, int((end or now)-start)) if start else None,
             'units_completed': job.get('units_completed', 0), 'units_total': job.get('units_total'),
             'lease_until': job['lease'] if job['status'] in RUNNING else None}
+    progress['target_seconds']=TARGET_SECONDS
+    progress['target_exceeded']=bool(progress['elapsed_seconds'] is not None and progress['elapsed_seconds']>TARGET_SECONDS)
+    progress['queue_seconds']=max(0,int((start or end or now)-job['created']))
+    result = job.get('result') or {}
+    progress['units_failed'] = result.get('units_failed',0)
+    progress['units_processed'] = result.get('units_processed',job.get('units_completed',0))
+    if job.get('session_id'):
+        # 原生会话没有旧的“函数单元”概念，不用0/N伪造部分完成。
+        coverage = result.get('coverage') or {}
+        progress['native_session'] = True
+        progress['units_completed'] = None
+        progress['units_total'] = None
+        progress['coverage'] = {key: coverage[key] for key in
+                                ('files_total', 'files_reviewed', 'files_available', 'files_claimed',
+                                 'files_observed', 'complete') if key in coverage}
+    if status == 'succeeded' and result.get('coverage',{}).get('complete') is False:
+        progress['label'] = '部分完成'
+        progress['detail'] = '已发布可用意见，未完成范围请查看覆盖详情'
+    diagnostic = job.get('diagnostic') or {}
+    if diagnostic.get('request_started_at') is not None and diagnostic.get('timeout_seconds') is not None:
+        waiting = diagnostic.get('status') == 'waiting' and status in RUNNING
+        elapsed = (now-diagnostic['request_started_at']) if waiting else diagnostic.get('elapsed_seconds')
+        if elapsed is None:
+            elapsed = (end or job.get('updated', now))-diagnostic['request_started_at']
+        progress['model_request'] = {'status':'waiting' if waiting else diagnostic.get('status'),
+                                     'elapsed_seconds':max(0, int(elapsed)),
+                                     'timeout_seconds':diagnostic['timeout_seconds']}
+    if status == 'queued' and (job.get('attention') or {}).get('required'):
+        progress.update(label='等待人工处理',stage='attention',detail=job['attention']['reason'])
+    return progress
 
 
 def closed_state(state):

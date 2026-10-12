@@ -14,6 +14,7 @@ from models import db, GiteaServer, PolicyTemplate, PolicyBatch, PolicyRepoResul
 from services.integration_outbox_service import write_audit
 from services.policy_gitea import PolicyGitea, connection_hash
 from services.policy_rules import PolicyError, normalize_rules, encode, fingerprint, API_FIELDS, BOOL_FIELDS, LIST_FIELDS, TEXT_FIELDS
+from access.scopes import current_binding, visible_keys, bind_resource, actor_name, actor_snapshot
 from services.policy_scope import organization, scoped_rules, verify_identities, template_scope, validate_repo_scope
 
 policy_bp = Blueprint('repository_policies', __name__)
@@ -31,7 +32,8 @@ def protect_policy_api():
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
         supplied = request.headers.get('X-Policy-CSRF', '')
         expected = session.get('policy_csrf', '')
-        if not expected or not hmac.compare_digest(supplied, expected):
+        from access.control import csrf_valid
+        if not csrf_valid() and (not expected or not hmac.compare_digest(supplied, expected)):
             return jsonify(error='安全令牌无效，请刷新页面后重新操作'), 403
 
 
@@ -172,6 +174,9 @@ def repository_rules(repo_id):
 def templates():
     server = server_by_id(request.args.get('server_id'))
     query = PolicyTemplate.query.filter_by(server_id=server.id)
+    allowed = visible_keys('policy_template')
+    if allowed is not None:
+        query = query.filter(PolicyTemplate.id.in_([int(i) for i in allowed]))
     if request.args.get('org_id'):
         query = query.filter_by(organization_id=positive(request.args['org_id'], '组织 ID'))
     elif request.args.get('legacy') == '1':
@@ -223,7 +228,8 @@ def create_template():
     assign_template(item, data)
     db.session.add(item)
     db.session.flush()
-    write_audit('共享管理员', 'policy.template.create', str(item.id), detail=item.name)
+    bind_resource('policy_template', item.id, item.server_id, item.organization_id)
+    write_audit(actor_name(), 'policy.template.create', str(item.id), detail=item.name)
     db.session.commit()
     return jsonify(template_dict(item)), 201
 
@@ -242,7 +248,7 @@ def update_template(template_id):
     if not changed:
         db.session.rollback()
         return jsonify(error='模板已被并发修改，请刷新后编辑'), 409
-    write_audit('共享管理员', 'policy.template.update', str(item.id), detail=edited.name)
+    write_audit(actor_name(), 'policy.template.update', str(item.id), detail=edited.name)
     db.session.commit()
     db.session.refresh(item)
     return jsonify(template_dict(item))
@@ -251,7 +257,7 @@ def update_template(template_id):
 @policy_bp.delete('/templates/<int:template_id>')
 def delete_template(template_id):
     item = db.get_or_404(PolicyTemplate, template_id)
-    write_audit('共享管理员', 'policy.template.delete', str(item.id), detail=item.name)
+    write_audit(actor_name(), 'policy.template.delete', str(item.id), detail=item.name)
     db.session.delete(item)
     db.session.commit()
     return jsonify(ok=True)
@@ -276,17 +282,19 @@ def preview_batch():
         return jsonify(error='模板已变化，请刷新模板'), 409
     server = server_by_id(template.server_id)
     scope = template_scope(template)
+    scope['access_actor'] = actor_snapshot(current_binding())
     ids = data.get('repo_ids')
     if not isinstance(ids, list) or not ids or len(ids) > 5000:
         raise PolicyError('请选择 1 至 5000 个仓库')
     ids = list(dict.fromkeys(positive(i, '仓库 ID') for i in ids))
     item = PolicyBatch(server_id=server.id, server_name=server.name, connection_hash=connection_hash(server),
                        template_id=template.id, template_name=template.name, template_hash=template.content_hash,
-                       template_json=template.rules_json, scope_json=encode(scope), total=len(ids), request_source=request.remote_addr or '')
+                       template_json=template.rules_json, scope_json=encode(scope), total=len(ids), actor=actor_name(), request_source=request.remote_addr or '')
     db.session.add(item)
     db.session.flush()
     db.session.add_all([PolicyRepoResult(batch_id=item.id, repo_id=i) for i in ids])
-    write_audit('共享管理员', 'policy.preview.create', str(item.id), detail=f'{len(ids)} 个仓库')
+    bind_resource('policy_batch', item.id, item.server_id, template.organization_id, ids)
+    write_audit(actor_name(), 'policy.preview.create', str(item.id), detail=f'{len(ids)} 个仓库')
     db.session.commit()
     return jsonify(batch_dict(item)), 202
 
@@ -307,10 +315,13 @@ def apply_batch(batch_id):
     applicable = PolicyRepoResult.query.filter(PolicyRepoResult.batch_id == item.id, PolicyRepoResult.status.in_(('changes', 'unchanged'))).count()
     if not applicable:
         return jsonify(error='没有可应用的仓库，请查看阻塞原因'), 409
-    claimed = PolicyBatch.query.filter_by(id=item.id, status='ready', submitted_at=None).update({'status': 'apply_queued', 'submitted_at': datetime.utcnow(), 'completed_at': None})
+    scope = json.loads(item.scope_json or '{}')
+    scope['access_actor'] = actor_snapshot(current_binding())
+    claimed = PolicyBatch.query.filter_by(id=item.id, status='ready', submitted_at=None).update({'status': 'apply_queued', 'submitted_at': datetime.utcnow(), 'completed_at': None,
+                                                                                            'scope_json': encode(scope), 'actor': actor_name()})
     if claimed:
         PolicyRepoResult.query.filter(PolicyRepoResult.batch_id == item.id, PolicyRepoResult.status.in_(('changes', 'unchanged'))).update({'status': 'pending'})
-        write_audit('共享管理员', 'policy.apply.submit', str(item.id), detail=f'{applicable} 个可应用仓库')
+        write_audit(actor_name(), 'policy.apply.submit', str(item.id), detail=f'{applicable} 个可应用仓库')
     db.session.commit()
     return jsonify(batch_dict(db.session.get(PolicyBatch, batch_id))), 202
 
@@ -319,6 +330,9 @@ def apply_batch(batch_id):
 def batches():
     page = positive(request.args.get('page', '1'), '页码')
     query = PolicyBatch.query
+    allowed = visible_keys('policy_batch')
+    if allowed is not None:
+        query = query.filter(PolicyBatch.id.in_([int(i) for i in allowed]))
     if request.args.get('server_id'):
         query = query.filter_by(server_id=positive(request.args['server_id'], '实例 ID'))
     result = query.order_by(PolicyBatch.id.desc()).paginate(page=page, per_page=20, error_out=False)

@@ -1,6 +1,7 @@
 """发布待核对的只读投影；待办与阻塞关系始终来自审查队列。"""
 import contextlib
 import time
+import json
 
 from .common import ReviewError
 
@@ -59,13 +60,18 @@ def reconciliation(job, worker):
             'requested_by': job.get('reconcile_requested_by', ''), 'worker': worker}
 
 
-def listing(store, page=1, repository=None, number=None):
+def listing(store, page=1, repository=None, number=None, allowed_jobs=None):
     # 先分别聚合待核对和排队任务，再关联；避免多个阻塞任务乘出重复排队数。
-    grouped = '''WITH pending AS (
+    prefix = 'WITH scoped_jobs AS (SELECT * FROM jobs'
+    scope_args = []
+    if allowed_jobs is not None:
+        prefix += ' WHERE id IN (SELECT value FROM json_each(?))'
+        scope_args.append(json.dumps(allowed_jobs))
+    grouped = prefix + '''), pending AS (
         SELECT repository,number,count(*) AS pending_count,min(COALESCE(finished_at,updated,created)) AS since
-        FROM jobs WHERE status='publish_unknown' GROUP BY repository,number
+        FROM scoped_jobs WHERE status='publish_unknown' GROUP BY repository,number
       ), waiting AS (
-        SELECT repository,number,count(*) AS blocked_count FROM jobs WHERE status='queued' GROUP BY repository,number
+        SELECT repository,number,count(*) AS blocked_count FROM scoped_jobs WHERE status='queued' GROUP BY repository,number
       ), groups AS (
         SELECT p.*,COALESCE(w.blocked_count,0) AS blocked_count FROM pending p LEFT JOIN waiting w
           ON w.repository=p.repository AND w.number=p.number
@@ -79,20 +85,20 @@ def listing(store, page=1, repository=None, number=None):
         c.execute('BEGIN')
         summary = dict(c.execute(grouped + '''SELECT count(*) AS pr_count,
             COALESCE(sum(blocked_count),0) AS blocked_task_count,
-            COALESCE(sum(pending_count),0) AS pending_task_count FROM groups''').fetchone())
-        total = c.execute(grouped + 'SELECT count(*) FROM groups g' + where, args).fetchone()[0]
+            COALESCE(sum(pending_count),0) AS pending_task_count FROM groups''', scope_args).fetchone())
+        total = c.execute(grouped + 'SELECT count(*) FROM groups g' + where, scope_args + args).fetchone()[0]
         rows = c.execute(grouped + '''SELECT g.*,r.server_id,
             COALESCE(json_extract(r.value,'$.server_name'),'') AS server_name,
             COALESCE(json_extract(r.value,'$.repo_name'),'') AS repo_name
             FROM groups g JOIN repositories r ON r.id=g.repository''' + where + '''
             ORDER BY (g.blocked_count>0) DESC,g.since,g.repository,g.number LIMIT ? OFFSET ?''',
-                         args + [PAGE_SIZE, (page-1)*PAGE_SIZE]).fetchall()
+                         scope_args + args + [PAGE_SIZE, (page-1)*PAGE_SIZE]).fetchall()
         worker = worker_state(c)
     return {'summary': summary, 'items': [dict(row, reason=REASON) for row in rows], 'total': total,
             'page': page, 'page_size': PAGE_SIZE, 'worker': worker}
 
 
-def request_reconciliation(store, job_id):
+def request_reconciliation(store, job_id, actor='共享管理员'):
     with store.tx() as c:
         row = c.execute('SELECT status,reconcile_state FROM jobs WHERE id=?', (job_id,)).fetchone()
         if not row:
@@ -104,7 +110,7 @@ def request_reconciliation(store, job_id):
         if row['reconcile_state'] in ('queued', 'checking'):
             return False
         c.execute("""UPDATE jobs SET available=0,reconcile_state='queued',reconcile_requested_at=?,
-            reconcile_started_at=NULL,reconcile_finished_at=NULL,reconcile_requested_by='共享管理员',
+            reconcile_started_at=NULL,reconcile_finished_at=NULL,reconcile_requested_by=?,
             reconcile_message='已请求核对，等待工作进程执行' WHERE id=? AND status='publish_unknown'""",
-                  (time.time(), job_id))
+                  (time.time(), actor, job_id))
     return True

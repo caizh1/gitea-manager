@@ -87,9 +87,15 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-echo '校验通过，正在导入离线运行镜像。'
-tar -xzf "$PACKAGE_DIR/gitea-manager.tar.gz" -C "$RELEASE" offline/运行镜像.tar scripts/upgrade_runtime.py
-docker load -i "$RELEASE/offline/运行镜像.tar" > "$STATE/镜像导入记录.txt" 2>&1
+tar -tzf "$PACKAGE_DIR/gitea-manager.tar.gz" > "$STATE/package-members.txt"
+if grep -Fxq 'offline/运行镜像.tar' "$STATE/package-members.txt"; then
+  echo '校验通过，正在导入离线运行镜像。'
+  tar -xzf "$PACKAGE_DIR/gitea-manager.tar.gz" -C "$RELEASE" offline/运行镜像.tar scripts/upgrade_runtime.py
+  docker load -i "$RELEASE/offline/运行镜像.tar" > "$STATE/镜像导入记录.txt" 2>&1
+else
+  echo '校验通过，复用已安装镜像；后续必须通过固定镜像身份核对。'
+  tar -xzf "$PACKAGE_DIR/gitea-manager.tar.gz" -C "$RELEASE" scripts/upgrade_runtime.py
+fi
 CONTROLLER_IMAGE="$(docker image inspect --format '{{.Id}}' gitea-review-backend:offline)"
 docker run --rm --platform linux/amd64 --network none \
   -v "$PACKAGE_DIR:/package:ro" -v "$RELEASE:/release" \
@@ -110,6 +116,7 @@ runtime backup
 runtime prepare
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" config --quiet > "$STATE/新配置检查记录.txt" 2>&1
 runtime stop
+docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" run --rm --no-deps -T --user 0:0 --cap-add CHOWN --cap-add FOWNER --entrypoint python review-executor -c "import os; os.chown('/app/review-native',10001,10001); os.chmod('/app/review-native',0o700)" > "$STATE/native-volume-init.log" 2>&1
 echo '正在启动新版本，业务写入将在校验通过后恢复。'
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" up -d --no-build --pull never --no-deps \
   backend frontend review-worker review-executor review-progress review-feedback approval-view > "$STATE/新服务启动记录.txt" 2>&1
