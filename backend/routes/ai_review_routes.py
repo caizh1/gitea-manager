@@ -386,6 +386,19 @@ def task(job):
     return jsonify(store().job(job, public=True, evidence=request.args.get('evidence', '1') != '0'))
 
 
+@ai_review_bp.post('/tasks/<job>/cancel')
+def cancel_task(job):
+    from ai_review.cancellation import request_cancel
+    from access.scopes import actor_name
+    state = store()
+    code = request_cancel(state, job, actor_name())
+    if code == 404:
+        return jsonify(error='任务不存在或无权访问'), 404
+    if code == 409:
+        return jsonify(error='任务已进入发布阶段或已经结束，不能取消', task=state.job(job, public=True, evidence=False)), 409
+    return jsonify(ok=True, task=state.job(job, public=True, evidence=False)), code
+
+
 @ai_review_bp.route('/tasks/<job>/raw-diagnostics', methods=['GET', 'HEAD'])
 def raw_diagnostics_download(job):
     state=store();task = state.job(job, public=True, evidence=False)

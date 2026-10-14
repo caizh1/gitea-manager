@@ -6,6 +6,8 @@ import itertools
 import tempfile
 import shutil
 import time
+import socket
+import threading
 from urllib.parse import quote
 
 import requests
@@ -13,11 +15,45 @@ import requests
 from .common import ReviewError, AccessRevoked, Stale, PublishUnknown, WriteRejected, endpoint, safe_path, valid_sha
 
 
+class ReadSession(requests.Session):
+    """取消下载时先关闭底层连接，避免 response.close 等待阻塞读取锁。"""
+    def __init__(self):
+        super().__init__()
+        self.cancelled = threading.Event()
+        self.connection_lock = threading.Lock()
+        self.connections = set()
+
+    def request(self, *args, **kwargs):
+        if self.cancelled.is_set():
+            raise Stale('任务已人工取消')
+        response = super().request(*args, **kwargs)
+        raw = getattr(getattr(getattr(response.raw, '_fp', None), 'fp', None), 'raw', None)
+        connection = getattr(raw, '_sock', None)
+        with self.connection_lock:
+            if connection is not None:
+                self.connections.add(connection)
+            cancelled = self.cancelled.is_set()
+        if cancelled:
+            response.close()
+            raise Stale('任务已人工取消')
+        return response
+
+    def interrupt(self):
+        self.cancelled.set()
+        with self.connection_lock:
+            connections = list(self.connections)
+        for connection in connections:
+            try:
+                connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
 class Gitea:
     def __init__(self, url, token, repo_name=None, repo_id=None, guard=None):
         from .host_policy import gitea_address
         self.url = endpoint(gitea_address(url), 'AI_REVIEW_GITEA_HOSTS')
-        self.session = requests.Session()
+        self.session = ReadSession()
         self.session.trust_env = False
         self.session.headers.update({'Authorization': 'token ' + token, 'Accept': 'application/json'})
         self.repo_name, self.repo_id, self.guard = repo_name, repo_id, guard
@@ -31,6 +67,9 @@ class Gitea:
 
     def close(self):
         self.session.close()
+
+    def interrupt(self):
+        self.session.interrupt()
 
     def check_active(self):
         if self.guard:

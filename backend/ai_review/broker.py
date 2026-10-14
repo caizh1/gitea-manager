@@ -218,6 +218,12 @@ def create_broker(store=None):
 
         def mark_failed(code, message, source='model_transport', **details):
             from .diagnostics import describe, safe_remote
+            actual = store.job(job_id, evidence=False)
+            if actual['status'] in ('cancelling', 'cancelled'):
+                with store.tx() as c:
+                    c.execute("UPDATE review_native_calls SET status='cancelled',updated=? WHERE call_id=?", (time.time(), call_id))
+                logging.info('模型请求因人工取消停止：任务 %s', job_id)
+                return
             metrics = dict(getattr(transport, 'metrics', {}) or {})
             metrics.update(details)
             primary = dict(metrics, status='failed', source=source, error_code=code,

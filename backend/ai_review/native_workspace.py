@@ -167,7 +167,7 @@ def _safe_name(name, prefix):
     return Path(*parts)
 
 
-def safe_extract(archive_path, destination, deadline_at=None):
+def safe_extract(archive_path, destination, deadline_at=None, check_active=None):
     destination.mkdir(mode=0o700, parents=True, exist_ok=False)
     entries, unresolved, total, seen = [], [], 0, set()
     try:
@@ -175,6 +175,8 @@ def safe_extract(archive_path, destination, deadline_at=None):
             members, declared_total = [], 0
             for member in archive:
                 _deadline(deadline_at)
+                if check_active:
+                    check_active()
                 if len(members) >= MAX_FILES:
                     raise ReviewError(f'归档文件数超过 {MAX_FILES}')
                 if member.isfile():
@@ -188,6 +190,8 @@ def safe_extract(archive_path, destination, deadline_at=None):
             prefix = next(iter(roots)) if len(roots) == 1 else None
             for member in members:
                 _deadline(deadline_at)
+                if check_active:
+                    check_active()
                 relative = _safe_name(member.name, prefix)
                 if relative is None:
                     continue
@@ -222,6 +226,8 @@ def safe_extract(archive_path, destination, deadline_at=None):
                     remaining = member.size
                     while remaining:
                         _deadline(deadline_at)
+                        if check_active:
+                            check_active()
                         chunk = source.read(min(1024 * 1024, remaining))
                         if not chunk:
                             raise ReviewError(f'归档文件提前结束：{key}')
@@ -290,7 +296,7 @@ def prepare(client, job, snapshot, deadline_at=None):
         manifests = {}
         for label, sha in (('before', snapshot['merge_base']), ('after', snapshot['head'])):
             with cached_archive(client, sha, deadline_at) as archive:
-                manifests[label] = safe_extract(archive, root / label, deadline_at)
+                manifests[label] = safe_extract(archive, root / label, deadline_at, client.check_active)
         diff = root / '变更.diff'
         _download(client, client.prefix + f'/pulls/{job["number"]}.diff', diff, 256 * 1024 * 1024, deadline_at)
         raw = diff.read_bytes()

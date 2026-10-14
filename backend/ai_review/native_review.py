@@ -295,6 +295,24 @@ def abort(session_id):
         session.close()
 
 
+def cancel_session(job_id, session_id):
+    """持久化取消防止迟到启动；必须拿到执行器的停止证据。"""
+    session = requests.Session(); session.trust_env = False
+    try:
+        response = _request(session, 'POST', '/sessions/' + session_id + '/abort',
+                            json={'job_id': job_id}, read_timeout=5)
+        if response.status_code != 200:
+            raise ReviewError('执行器未确认取消请求')
+        value = _response(response, 1024 * 1024)
+        if value.get('session_id') != session_id or value.get('job_id') != job_id:
+            raise ReviewError('取消回执与任务不一致')
+        return value
+    except requests.RequestException:
+        raise ReviewError('执行器停止回执尚未确认') from None
+    finally:
+        session.close()
+
+
 def _text(row, key, limit=3000, required=True):
     value = row.get(key)
     if not isinstance(value, str) or len(value) > limit or required and not value.strip():

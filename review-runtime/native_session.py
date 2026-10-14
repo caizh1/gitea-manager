@@ -423,6 +423,8 @@ class SessionRun:
         self.prompt_submitted = False
         self.lock = threading.Lock()
         self.done = threading.Event()
+        self.cancel_requested = threading.Event()
+        self.kill_lock = threading.Lock()
         self.model_failure = threading.Event()
         self.model_failure_lock = threading.Lock()
         self.model_failure_details = None
@@ -507,14 +509,15 @@ class SessionRun:
                 'capture_finalize_' + type(exc).__name__)
             return self.raw_diagnostics.status()
 
-    def public(self):
+    def public(self, include_result=True):
         with self.lock:
-            value = {'session_id': self.session_id, 'status': self.status}
+            value = {'session_id': self.session_id, 'job_id': self.job_id, 'status': self.status,
+                     'execution_stopped': self.done.is_set()}
             if self.native_session_id:
                 value['native_session_id'] = self.native_session_id
-            if self.result is not None:
+            if include_result and self.result is not None:
                 value['result'] = self.result
-            elif self.result_path.exists():
+            elif include_result and self.result_path.exists():
                 try:
                     value['result'] = json.loads(self.result_path.read_text())
                 except (OSError, ValueError):
@@ -561,6 +564,7 @@ class SessionRun:
             atomic_json(self.result_path, self.result)
         record = {'session_id': self.session_id, 'job_id': self.job_id, 'model': self.model,
                   'deadline_at': self.deadline, 'status': self.status,
+                  'execution_stopped': True,
                   'native_session_id': self.native_session_id, 'error_code': self.error_code,
                   'diagnostic': self.diagnostic, 'result_sha256': self.result_sha256,
                   'result_available': self.result_path.exists(),
@@ -598,6 +602,8 @@ class SessionRun:
         if self.remaining() <= 0:
             raise NativeError('deadline_exceeded')
         for path in self.source_workspace.rglob('*'):
+            if self.cancel_requested.is_set():
+                raise NativeError('authorization_revoked')
             if self.remaining() <= 0:
                 raise NativeError('deadline_exceeded')
             if path.is_symlink():
@@ -681,6 +687,8 @@ class SessionRun:
         return f'http://127.0.0.1:{self.server_port}{path}'
 
     def _request(self, method, path, **kwargs):
+        if self.cancel_requested.is_set():
+            raise NativeError('authorization_revoked')
         remaining = self.remaining()
         if remaining <= 0:
             raise NativeError('deadline_exceeded')
@@ -980,9 +988,11 @@ class SessionRun:
 
     def abort(self, code='aborted'):
         with self.lock:
-            if self.status in ('completed', 'failed', 'aborted', 'unknown'):
+            if self.done.is_set():
                 return
-            self.status, self.error_code = 'aborting', code
+            self.cancel_requested.set()
+            if self.status not in ('completed', 'failed', 'aborted', 'unknown'):
+                self.status, self.error_code = 'aborting', code
         try:
             if self.native_session_id and self.process and self.process.poll() is None:
                 self._request('POST', f'/session/{quote(self.native_session_id)}/abort', json={},
@@ -1071,6 +1081,10 @@ class SessionRun:
         raise NativeError('model_request_failed', details)
 
     def _kill(self):
+        with self.kill_lock:
+            self._kill_locked()
+
+    def _kill_locked(self):
         self.event_stop.set()
         if self.process and self.process.poll() is None:
             try:
@@ -1121,6 +1135,8 @@ class SessionRun:
         started = time.monotonic()
         try:
             with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
                 self.status = 'starting'
             self.emit('session.starting', summary='正在启动原生 OpenCode 会话')
             self._prepare_workspace()
@@ -1130,34 +1146,47 @@ class SessionRun:
                            'XDG_DATA_HOME': str(self.root / 'data'),
                            'XDG_CACHE_HOME': str(self.root / 'cache'),
                            'OPENCODE_DISABLE_AUTOUPDATE': 'true'}
-            version = subprocess.run([self.binary, '--version'], capture_output=True, text=True, timeout=30,
-                                     env=version_env).stdout.strip()
+            with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
+                self.process = subprocess.Popen([self.binary, '--version'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True, env=version_env, cwd=self.project, start_new_session=True)
+            version = self.process.communicate(timeout=30)[0].strip()
+            if self.cancel_requested.is_set():
+                raise NativeError('authorization_revoked')
             if version != VERSION:
                 raise NativeError('native_version_changed', {'version': version})
-            self.gateway = NativeGateway(self.broker, self.capability, self.job_id, self.session_id,
-                                         self.model, self.deadline, self.project, self.emit,
-                                         response_limit=self.response_limit,
-                                         failure=self._model_request_failed,
-                                         result_schema=REVIEW_RESULT_SCHEMA,
-                                         capture=self._capture_gateway, retrieval_budget=self.retrieval_budget)
-            self.gateway.start()
-            self.env = self._env()
-            self.server_port = self._port()
-            self.process = subprocess.Popen([self.binary, '--print-logs', '--log-level', 'ERROR',
-                                             'serve', '--hostname', '127.0.0.1',
-                                             '--port', str(self.server_port)], cwd=self.project,
-                                            env=self.env, stdin=subprocess.DEVNULL,
-                                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                            start_new_session=True)
+            with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
+                self.gateway = NativeGateway(self.broker, self.capability, self.job_id, self.session_id,
+                                             self.model, self.deadline, self.project, self.emit,
+                                             response_limit=self.response_limit,
+                                             failure=self._model_request_failed,
+                                             result_schema=REVIEW_RESULT_SCHEMA,
+                                             capture=self._capture_gateway, retrieval_budget=self.retrieval_budget)
+                self.gateway.start()
+                self.env = self._env()
+                self.server_port = self._port()
+                self.process = subprocess.Popen([self.binary, '--print-logs', '--log-level', 'ERROR',
+                                                 'serve', '--hostname', '127.0.0.1',
+                                                 '--port', str(self.server_port)], cwd=self.project,
+                                                env=self.env, stdin=subprocess.DEVNULL,
+                                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                                start_new_session=True)
             self.process_log_thread = threading.Thread(
                 target=self._drain_process_stderr, name='OpenCode错误日志采集', daemon=True)
             self.process_log_thread.start()
             self.watch_thread = threading.Thread(target=self._watch, name='原生会话期限', daemon=True)
             self.watch_thread.start()
             with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
                 self.status = 'health_wait'
             self._wait_health()
             with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
                 self.status = 'session_create'
             permissions = [
                 {'permission': '*', 'pattern': '*', 'action': 'deny'},
@@ -1182,6 +1211,8 @@ class SessionRun:
             self.events_thread = threading.Thread(target=self._events, name='原生事件采集', daemon=True)
             self.events_thread.start()
             with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
                 self.status = 'running'
             self.emit('session.running', summary='原生 OpenCode 会话已启动',
                       payload={'native_session_id': self.native_session_id})
@@ -1271,11 +1302,13 @@ class SessionRun:
                                         'finish_reason': completion['finish_reason'],
                                         'executor_seconds': round(time.monotonic() - started, 6)})
             with self.lock:
+                if self.cancel_requested.is_set():
+                    raise NativeError('authorization_revoked')
                 self.status = 'completed'
         except NativeError as exc:
             self._freeze_events()
             with self.lock:
-                if self.status == 'aborting' or exc.code == 'deadline_exceeded':
+                if self.cancel_requested.is_set() or exc.code == 'deadline_exceeded':
                     terminal_status = 'aborted'
                 else:
                     terminal_status = ('unknown' if self.prompt_submitted
@@ -1296,7 +1329,7 @@ class SessionRun:
         except (OSError, ValueError, requests.RequestException, subprocess.SubprocessError) as exc:
             self._freeze_events()
             with self.lock:
-                if self.status == 'aborting':
+                if self.cancel_requested.is_set():
                     terminal_status = 'aborted'
                 else:
                     terminal_status = 'unknown' if self.prompt_submitted else 'failed'
@@ -1348,13 +1381,13 @@ class TerminalSession:
         self.done = threading.Event()
         self.done.set()
 
-    def public(self):
+    def public(self, include_result=True):
         self.record = json.loads(self.path.read_text())
-        value = {key: self.record.get(key) for key in ('session_id', 'status', 'native_session_id',
+        value = {key: self.record.get(key) for key in ('session_id', 'job_id', 'status', 'execution_stopped', 'native_session_id',
                  'error_code', 'diagnostic', 'result_sha256', 'final_event_seq', 'acked_seq',
                  'log_stream_closed', 'raw_diagnostics') if self.record.get(key) is not None}
         result = self.path.parents[1] / 'results' / (self.session_id + '.json')
-        if self.record.get('result_available') and result.exists():
+        if include_result and self.record.get('result_available') and result.exists():
             value['result'] = json.loads(result.read_text())
         try:
             diagnostics = RawDiagnostics.load(self.path.parents[1], self.session_id)
@@ -1425,12 +1458,18 @@ class NativeSessions:
             raise NativeError('execute_deadline_invalid')
         if data.get('thinking_protocol', 'provider_default') not in ('provider_default', 'qwen_vllm', 'deepseek', 'reasoning_effort') or type(data.get('thinking_enabled', False)) is not bool:
             raise NativeError('execute_model_limit_invalid')
-        workspace = self._workspace(data)
+        workspace = Path(data['workspace']).resolve()
         runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))
         runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
         terminal_path = runtime / 'sessions' / (data['session_id'] + '.json')
         binding_path = runtime / 'bindings' / (data['job_id'] + '.json')
         with self.lock:
+            if binding_path.exists():
+                binding = json.loads(binding_path.read_text())
+                if binding.get('session_id') != data['session_id']:
+                    raise NativeError('job_session_conflict')
+                if binding.get('cancelled'):
+                    raise NativeError('authorization_revoked')
             existing = self.sessions.get(data['session_id'])
             if existing:
                 if existing.job_id != data['job_id'] or existing.model != data['model'] or existing.source_workspace != workspace:
@@ -1445,6 +1484,7 @@ class NativeSessions:
                 raise NativeError('session_state_unknown')
             if any(row.job_id == data['job_id'] for row in self.sessions.values()):
                 raise NativeError('job_session_conflict')
+            workspace = self._workspace(data)
             atomic_json(binding_path, {'job_id': data['job_id'], 'session_id': data['session_id'],
                                        'model': data['model'], 'deadline_at': data['deadline_at']})
             row = SessionRun(data, workspace, runtime,
@@ -1460,6 +1500,68 @@ class NativeSessions:
         thread = threading.Thread(target=run_and_release, name='原生审查-' + row.session_id[:12], daemon=True)
         thread.start()
         return row, True
+
+    def abort(self, session_id, job_id):
+        """先持久化取消，再终止；迟到 execute 和执行器重启不能丢失取消意图。"""
+        if not ID.fullmatch(str(session_id)) or not ID.fullmatch(str(job_id)):
+            raise NativeError('execute_identity_invalid')
+        runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))
+        binding_path = runtime / 'bindings' / (job_id + '.json')
+        with self.lock:
+            row = self.sessions.get(session_id)
+            if row is not None and row.job_id != job_id:
+                raise NativeError('session_identity_conflict')
+            existed = binding_path.exists()
+            binding = json.loads(binding_path.read_text()) if existed else {'job_id': job_id, 'session_id': session_id}
+            if binding.get('job_id') != job_id or binding.get('session_id') != session_id:
+                raise NativeError('session_identity_conflict')
+            binding['cancelled'] = True
+            if not existed:
+                binding['never_started'] = True
+            atomic_json(binding_path, binding)
+        if row is not None:
+            row.abort('user_cancelled')
+            return row.public(include_result=False)
+        terminal = self.get(session_id)
+        if terminal is not None and terminal.job_id != job_id:
+            raise NativeError('session_identity_conflict')
+        value = terminal.public(include_result=False) if terminal else {'session_id': session_id, 'job_id': job_id,
+                                                   'status': 'aborted', 'error_code': 'user_cancelled'}
+        # gunicorn 进程重启可能留下 OpenCode 子进程，只匹配本任务固定工作区与原生命令。
+        value['execution_stopped'] = (binding.get('never_started') is True or self._stop_orphans(job_id))
+        if not terminal:
+            value.update(log_stream_closed=True, acked_seq=0)
+        return value
+
+    def _stop_orphans(self, job_id):
+        proc = Path('/proc')
+        if not proc.is_dir():
+            return False
+        workspace = (Path(os.environ.get('AI_REVIEW_WORKSPACE_ROOT', '/app/review-workspaces')) / job_id).resolve()
+        binary = str(Path(os.environ.get('AI_REVIEW_OPENCODE', '/opt/review/opencode')))
+        found = False
+        for folder in proc.iterdir():
+            if not folder.name.isdigit():
+                continue
+            try:
+                command = (folder / 'cmdline').read_bytes().split(b'\0')
+                native_command = (command and (os.fsdecode(command[0]) == binary or
+                    command[0].endswith(b'/rosetta') and os.fsencode(binary) in command[1:3]))
+                if not native_command:
+                    continue
+                if (folder / 'cwd').resolve() != workspace or not (b'serve' in command or b'--version' in command):
+                    continue
+                pid = int(folder.name)
+                if os.getpgid(pid) != pid:
+                    return False
+                found = True
+                os.killpg(pid, signal.SIGKILL)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except (PermissionError, OSError):
+                return False
+        # 已找到并发送信号的进程须在下一轮再次确认消失。
+        return not found
 
     def get(self, session_id):
         with self.lock:

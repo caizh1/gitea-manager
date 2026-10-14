@@ -78,7 +78,7 @@ class RawDiagnosticsTests(unittest.TestCase):
             connection.execute('ALTER TABLE jobs DROP COLUMN raw_diagnostics')
         reopened=Store(self.store.path)
         with reopened.connect() as connection:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],13)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],14)
             self.assertIn('raw_diagnostics',{row[1] for row in connection.execute('PRAGMA table_info(jobs)')})
         self.assertEqual(reopened.job(self.ident,evidence=False)['status'],'failed')
 

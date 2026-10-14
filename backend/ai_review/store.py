@@ -27,10 +27,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 13:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 14:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 13:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 14:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -89,7 +89,9 @@ class Store:
                     c.execute('ALTER TABLE jobs ADD COLUMN ' + column + " TEXT NOT NULL DEFAULT '{}'")
             from .attention import migrate as migrate_attention
             migrate_attention(c)
-            c.execute('PRAGMA user_version=13')
+            from .cancellation import migrate as migrate_cancellation
+            migrate_cancellation(c)
+            c.execute('PRAGMA user_version=14')
             c.commit()
         os.chmod(self.path, 0o600)
 
@@ -334,6 +336,13 @@ class Store:
             if not config['enabled'] or not repo['enabled']:
                 return None
             state = c.execute('SELECT * FROM pr_state WHERE repository=? AND number=?', (repository, number)).fetchone()
+            if state and not manual and not closed:
+                current_version = json.loads(state['signature'])[0]
+                cancelled = c.execute("SELECT 1 FROM jobs WHERE repository=? AND number=? AND generation=? AND cancel_requested_at IS NOT NULL LIMIT 1",
+                                      (repository, number, state['generation'])).fetchone()
+                if cancelled and current_version == signature:
+                    # 人工取消绑定代码版本；模型/凭据/开关变化不能悄悄重启这个版本。
+                    return None
             target_head = signature.get('head', '') if isinstance(signature, dict) else ''
             signature = encode([signature, execution_revision(config), repo['revision'], bool(closed)])
             if state and state['signature'] == signature and not manual:
@@ -453,6 +462,8 @@ class Store:
             c.execute("UPDATE jobs SET status='queued',owner='',available=?,updated=?,stage='中断后重新领取' WHERE status='running' AND lease<?", (now, now, now))
             if not self.config(connection=c)['enabled']:
                 return None
+            if c.execute("SELECT 1 FROM jobs WHERE status='cancelling' LIMIT 1").fetchone():
+                return None
             if c.execute("SELECT 1 FROM jobs WHERE status IN ('running','publishing','recovering') AND lease>=? LIMIT 1", (now,)).fetchone():
                 return None
             row = c.execute("""SELECT j.id FROM jobs j WHERE j.status='queued' AND j.available<=?
@@ -541,7 +552,7 @@ class Store:
             c.execute('DELETE FROM capabilities WHERE expires<?', (time.time(),))
             # 保留发布歧义证据，普通已结束任务在 30 天后释放源码快照。
             for table in ('review_turns','review_reads','review_source_cache','review_model_inputs'):
-                c.execute(f"DELETE FROM {table} WHERE job IN (SELECT id FROM jobs WHERE updated<? AND (status IN ('failed','superseded') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs))))", (cutoff,))
-            c.execute("DELETE FROM review_units WHERE job IN (SELECT id FROM jobs WHERE updated<? AND (status IN ('failed','superseded') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs))))", (cutoff,))
-            c.execute("UPDATE jobs SET snapshot=NULL,result=NULL WHERE updated<? AND (status IN ('failed','superseded') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs)))", (cutoff,))
+                c.execute(f"DELETE FROM {table} WHERE job IN (SELECT id FROM jobs WHERE updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs))))", (cutoff,))
+            c.execute("DELETE FROM review_units WHERE job IN (SELECT id FROM jobs WHERE updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs))))", (cutoff,))
+            c.execute("UPDATE jobs SET snapshot=NULL,result=NULL WHERE updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs)))", (cutoff,))
             c.execute("DELETE FROM review_feedback_events WHERE status='done' AND due<?", (cutoff,))

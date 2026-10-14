@@ -5,10 +5,11 @@ import time
 from .performance import TARGET_SECONDS
 
 RUNNING = ('running', 'publishing', 'recovering')
-TERMINAL = ('succeeded', 'failed', 'superseded', 'publish_unknown')
+TERMINAL = ('succeeded', 'failed', 'superseded', 'publish_unknown', 'cancelled')
 LABELS = {'queued': '已排队', 'running': '正在审查', 'publishing': '正在发布',
           'recovering': '正在核对发布结果', 'succeeded': '审查完成', 'failed': '审查失败',
           'superseded': '版本已过期', 'publish_unknown': '发布结果待核对',
+          'cancelling': '取消中', 'cancelled': '已取消',
           'interrupted': '工作进程中断，等待恢复', 'stopped': '已停止审查',
           'outdated': '新提交等待审查'}
 
@@ -32,7 +33,7 @@ def migrate(c):
                 added = True
     # 不回填无法确认的历史开始时间；快照仍可提供可信 SHA。
     if added:
-        c.execute("UPDATE jobs SET target_head=COALESCE(json_extract(snapshot,'$.head'),''), finished_at=CASE WHEN status IN ('succeeded','failed','superseded','publish_unknown') THEN updated END")
+        c.execute("UPDATE jobs SET target_head=COALESCE(json_extract(snapshot,'$.head'),''), finished_at=CASE WHEN status IN ('succeeded','failed','superseded','publish_unknown','cancelled') THEN updated END")
     # 所有业务状态写入（包括恢复代码中的原始 SQL）自动进入同一事务的通知队列。
     # 不监听模型额度和普通租约更新，避免高频心跳导致刷屏。
     c.executescript('''
@@ -50,7 +51,7 @@ def migrate(c):
     CREATE TRIGGER IF NOT EXISTS progress_timestamps AFTER UPDATE OF status ON jobs WHEN OLD.status!=NEW.status BEGIN
       UPDATE jobs SET
         started_at=CASE WHEN NEW.status='running' THEN COALESCE(started_at,NEW.updated) ELSE started_at END,
-        finished_at=CASE WHEN NEW.status IN ('succeeded','failed','superseded','publish_unknown') THEN NEW.updated ELSE NULL END,
+        finished_at=CASE WHEN NEW.status IN ('succeeded','failed','superseded','publish_unknown','cancelled') THEN NEW.updated ELSE NULL END,
         progress_stage=CASE WHEN NEW.status='running' THEN 'snapshot' WHEN NEW.status='queued' THEN 'queued'
           WHEN NEW.status IN ('publishing','recovering') THEN 'publishing' ELSE NEW.status END
         WHERE id=NEW.id;

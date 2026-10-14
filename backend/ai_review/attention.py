@@ -6,7 +6,7 @@ import json
 from .common import ReviewError
 
 PAGE_SIZE = 20
-STATES = {'queued', 'running', 'publishing', 'recovering', 'publish_unknown', 'succeeded', 'failed', 'superseded'}
+STATES = {'queued', 'running', 'publishing', 'recovering', 'publish_unknown', 'succeeded', 'failed', 'superseded', 'cancelling', 'cancelled'}
 REASON = '等待管理员核对前次发布结果'
 
 

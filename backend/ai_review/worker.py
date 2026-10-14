@@ -124,6 +124,8 @@ def _failure_diagnostic(actual, exc, job):
 
 
 def _finish_failure(store, actual, exc, job, state):
+    if actual['status'] in ('cancelling', 'cancelled'):
+        return actual.get('diagnostic') or {}
     diagnostic, message = _failure_diagnostic(actual, exc, job)
     logging.error('AI 执行诊断 %s', encode(diagnostic))
     try:
@@ -152,6 +154,16 @@ def _persisted_native_result(job):
 
 
 def process(store, job, recovering=False):
+    # 执行锁覆盖准备、网络和回收；取消确认不能抢先删除工作区。
+    with store.lock('execution-' + job['id'], blocking=True):
+        try:
+            store.active(job['id'], job['owner'])
+        except Stale:
+            return
+        _process(store, job, recovering)
+
+
+def _process(store, job, recovering=False):
     repo, config = store.repo(job['repository']), store.job_config(job['id'])
     client = client_for(store, repo, job)
     stopped = threading.Event()
@@ -160,10 +172,17 @@ def process(store, job, recovering=False):
     record(store,job['id'],'started:preparation','',0)
     preparation_started=time.monotonic()
     def heartbeat():
-        while not stopped.wait(20):
+        renewed = time.monotonic()
+        while not stopped.wait(1):
             try:
                 with contextlib.closing(store.connect()) as c:
-                    current = dict(c.execute('SELECT deadline_at FROM jobs WHERE id=?', (job['id'],)).fetchone())
+                    current = dict(c.execute('SELECT deadline_at,status FROM jobs WHERE id=?', (job['id'],)).fetchone())
+                if current['status'] in ('cancelling', 'cancelled'):
+                    client.interrupt()
+                    return
+                if time.monotonic() - renewed < 20:
+                    continue
+                renewed = time.monotonic()
                 if current.get('deadline_at') and time.time() >= current['deadline_at']:
                     actual = store.job(job['id'])
                     status = 'publish_unknown' if actual['status'] in ('publishing','recovering') else 'failed'
@@ -236,6 +255,8 @@ def process(store, job, recovering=False):
         refresh_pr(store, repo, job)
     except Stale as exc:
         actual = store.job(job['id'])
+        if actual['status'] in ('cancelling', 'cancelled'):
+            return
         uncertain = actual['status'] in ('publishing','recovering') and not (publisher and publisher.cancelled)
         status = 'publish_unknown' if uncertain else 'superseded'
         store.finish(job['id'], job['owner'], status, str(exc))
@@ -408,6 +429,10 @@ def main():
             stop.wait(5)
     health_thread = threading.Thread(target=runtime_health, daemon=True, name='执行器健康缓存')
     health_thread.start()
+    from .cancellation import run as cancellation_loop
+    cancellation_thread = threading.Thread(target=cancellation_loop, args=(store, stop),
+                                           daemon=True, name='单任务取消核对')
+    cancellation_thread.start()
     last_prune = 0
     while not stop.is_set():
         try:

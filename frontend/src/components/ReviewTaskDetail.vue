@@ -14,8 +14,9 @@
     <template v-if="task">
       <div class="identity-row">
         <div class="identity-copy"><strong>{{ instance || '历史实例未记录' }} · {{ repository }} #{{ task.number }}</strong><span>{{ modelName }} · 任务 {{ task.id }}</span></div>
-        <div class="identity-actions"><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
+        <div class="identity-actions"><el-button v-if="canCancel && ['queued', 'running'].includes(task.status)" type="danger" plain :loading="cancelling" :disabled="cancelling" @click="$emit('cancel')">强制取消</el-button><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
       </div>
+      <el-alert v-if="task.cancel_requested_at" :title="task.status === 'cancelling' ? '正在强制取消；确认执行停止后显示已取消' : '本次审查已人工取消，当前版本不会自动重跑'" :description="[task.cancel_requested_by, task.cancel_error].filter(Boolean).join(' · ')" type="info" show-icon :closable="false" />
       <section v-if="isPlatformAdmin && task.error" class="failure-card" role="alert" aria-label="任务失败详情">
         <div class="failure-heading"><WarningFilled /><div><strong>{{ errorSummary }}</strong><details v-if="String(task.error).length > 100" class="full-error"><summary>查看完整错误信息</summary><pre>{{ task.error }}</pre></details><p>{{ diagnosticSummary }}</p></div></div>
         <dl v-if="primaryDiagnosticRows.length" class="failure-fields"><template v-for="row in primaryDiagnosticRows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl>
@@ -104,8 +105,8 @@ import { isPlatformAdmin } from '../composables/accessState.js'
 import { coverageGroups, statusType } from './reviewDisplay'
 import { diagnosticLocation, diagnosticRows as toDiagnosticRows, diagnosticText as toDiagnosticText, safeDiagnostic as toSafeDiagnostic } from './reviewDiagnostics'
 
-const props = defineProps({ open: Boolean, task: Object, loading: Boolean, error: String, repository: String, instance: String })
-defineEmits(['close'])
+const props = defineProps({ open: Boolean, task: Object, loading: Boolean, error: String, repository: String, instance: String, cancelling: Boolean, canCancel: Boolean })
+defineEmits(['close', 'cancel'])
 const panel = ref(), eventScroller = ref(), isFullscreen = ref(false), callLimit = ref(50)
 const activeTab = ref('process'), expanded = ref(['0']), textLimits = ref({})
 const events = ref([]), hasOlder = ref(false), loadingEvents = ref(false), loadingHistory = ref(false), requestingEvents = ref(false), eventError = ref(''), newestSeq = ref(0), oldestSeq = ref(0)
@@ -116,8 +117,8 @@ const diagnosticCopied = ref(false)
 const rawDownloading = ref(false), rawDownloadError = ref('')
 let generation = 0, eventTimer, eventController, readGeneration = 0
 
-const continuing = computed(() => ['queued','running','publishing','recovering','publish_unknown'].includes(props.task?.status))
-const shouldPollEvents = computed(() => hasNativeEvents.value && props.task?.log_sync?.complete !== true)
+const continuing = computed(() => ['queued','running','cancelling','publishing','recovering','publish_unknown'].includes(props.task?.status))
+const shouldPollEvents = computed(() => hasNativeEvents.value && props.task?.status !== 'cancelled' && props.task?.log_sync?.complete !== true)
 const findings = computed(() => Array.isArray(props.task?.result?.findings) ? props.task.result.findings : [])
 const coverage = computed(() => props.task?.result?.coverage || props.task?.snapshot?.coverage || {})
 const groups = computed(() => coverageGroups(coverage.value))
@@ -125,7 +126,7 @@ const retrieval = computed(() => props.task?.result?.context_retrieval || {})
 const counters = computed(() => props.task?.counters || {})
 const modelName = computed(() => props.task?.configuration?.model || '历史模型未记录')
 const compacting = computed(() => continuing.value && props.task?.counters?.compaction_active === true)
-const currentAction = computed(() => compacting.value ? '模型正在压缩上下文' : props.task?.current_action || props.task?.stage || statusLabel(props.task?.status))
+const currentAction = computed(() => ['cancelling', 'cancelled'].includes(props.task?.status) ? statusLabel(props.task.status) : compacting.value ? '模型正在压缩上下文' : props.task?.current_action || props.task?.stage || statusLabel(props.task?.status))
 const actionContext = computed(() => { const a = props.task?.progress?.action || props.task?.action || {}; const version = a.version === 'before' ? '修改前' : a.version === 'after' ? '修改后' : ''; return [version, a.path, a.start_line && a.end_line ? `${a.start_line}–${a.end_line} 行` : ''].filter(Boolean).join(' · ') || props.task?.progress?.detail || '等待下一条原生执行记录' })
 const elapsedSeconds = computed(() => props.task?.progress?.elapsed_seconds ?? (props.task?.progress?.started_at ? Math.max(0, Date.now()/1000-props.task.progress.started_at) : null))
 const reviewBudget = computed(() => props.task?.configuration?.review_timeout_seconds ?? props.task?.progress?.target_seconds ?? props.task?.configuration?.task_timeout_seconds ?? 600)
@@ -133,7 +134,7 @@ const remainingBudget = computed(() => elapsedSeconds.value == null ? '未开始
 const targetText = computed(() => props.task?.progress?.target_exceeded ? (continuing.value ? '已超过目标时间，继续完整审查' : '本次执行超过目标时间') : `整次审查上限 ${duration(reviewBudget.value)}`)
 const eventCount = computed(() => counters.value.events ?? props.task?.log_sync?.last_seq ?? events.value.length)
 const toolCount = computed(() => counters.value.tool_calls ?? counters.value.tools ?? counters.value.tool_events ?? events.value.filter(e => eventCategory(e) === 'tool').length)
-const modelWaitLabel = computed(() => { const m = props.task?.progress?.model_request; if (!m) return '当前未等待'; if (m.status === 'waiting' || m.status === 'running') return `等待 ${duration(m.elapsed_seconds || 0)} / 上限 ${duration(m.timeout_seconds || 0)}`; return m.status === 'failed' ? `${m.elapsed_seconds || 0} 秒 / 有效上限 ${m.timeout_seconds || 0} 秒 · 请求异常` : '最近请求已完成' })
+const modelWaitLabel = computed(() => { if (props.task?.status === 'cancelled') return '请求已终止'; if (props.task?.status === 'cancelling') return '正在确认请求停止'; const m = props.task?.progress?.model_request; if (!m) return '当前未等待'; if (m.status === 'waiting' || m.status === 'running') return `等待 ${duration(m.elapsed_seconds || 0)} / 上限 ${duration(m.timeout_seconds || 0)}`; return m.status === 'failed' ? `${m.elapsed_seconds || 0} 秒 / 有效上限 ${m.timeout_seconds || 0} 秒 · 请求异常` : '最近请求已完成' })
 const heartbeatLabel = computed(() => !props.task?.last_heartbeat ? '历史任务未记录' : Date.now()/1000-props.task.last_heartbeat < 90 ? '正常' : '已超过 90 秒')
 const connectionLabel = computed(() => eventError.value ? '日志连接异常' : connectionOk.value ? '日志已连接' : '正在连接日志')
 const connectionClass = computed(() => eventError.value ? 'dot error' : connectionOk.value ? 'dot online' : 'dot waiting')
@@ -174,6 +175,12 @@ const partial = computed(() => coverage.value.complete === false || (!hasNativeE
 const performanceStages = [['preparation','准备代码'],['analysis','分析与反证'],['publication','发布意见']]
 const stages = computed(() => {
   const status=props.task?.status, phase=`${props.task?.diagnostic?.phase||''} ${currentAction.value}`
+  if (['cancelling', 'cancelled'].includes(status)) {
+    const prepared = Boolean(props.task?.session_submitted_at)
+    return [{key:'prepare',label:'准备仓库',state:prepared?'done':'pending',detail:prepared?'已完成':statusLabel(status)},
+      {key:'review',label:'自主审查',state:status==='cancelling'?'active':'pending',detail:statusLabel(status)},
+      {key:'publish',label:'发布结果',state:'pending',detail:'未发布'}]
+  }
   let index=status==='queued'?0:status==='running'?1:2
   if(status==='failed') index=/准备|仓库|快照/.test(phase)?0:/发布|核对/.test(phase)?2:1
   const success=status==='succeeded'
@@ -193,7 +200,7 @@ const visibleEvents = computed(() => {
 const beforeSpace = computed(() => visibleEvents.value[0]?.top || 0)
 const afterSpace = computed(() => visibleEvents.value.length ? Math.max(0,virtualHeight.value-visibleEvents.value.at(-1).top-visibleEvents.value.at(-1).height) : virtualHeight.value)
 
-const statusLabel = s => ({queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
+const statusLabel = s => ({cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
 const seconds = value => Number.isFinite(value) ? `${value} 秒` : '未记录'
 const duration = value => Number.isFinite(Number(value)) ? `${String(Math.floor(Number(value)/60)).padStart(2,'0')}:${String(Math.floor(Number(value)%60)).padStart(2,'0')}` : '—'
 const fmt = value => value ? new Date(Number(value)>1e12?Number(value):Number(value)*1000).toLocaleString('zh-CN') : '尚无'

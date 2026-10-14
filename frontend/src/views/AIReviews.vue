@@ -21,7 +21,7 @@
             <el-table-column label="状态" min-width="135"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.progress?.label || statusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="当前阶段" min-width="230"><template #default="{ row }">{{ row.stage }}<div v-if="row.progress?.units_total != null" class="muted">完成单元 {{ row.progress.units_completed }}/{{ row.progress.units_total }}</div><div v-if="row.progress?.sync_error" class="failure">状态同步：{{ row.progress.sync_error }}</div></template></el-table-column>
             <el-table-column label="创建时间 ↓" min-width="195"><template #default="{ row }">{{ fmt(row.created) }}<div class="muted">更新：{{ fmt(row.updated) }}</div></template></el-table-column>
-            <el-table-column label="操作" min-width="170"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><template v-else-if="row.status === 'publish_unknown'"><el-button link type="warning" @click="reconcile(row)">核对发布</el-button><el-button link type="warning" @click="confirmUnpublished(row)">确认未发布</el-button></template><el-button v-else link :disabled="!config.enabled" @click="rerun(row.repository, row.number)">重新审查</el-button></div></template></el-table-column>
+            <el-table-column label="操作" min-width="250"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-button v-if="!repoArchived(row.repository) && ['queued', 'running'].includes(row.status)" link type="danger" :loading="cancellingId === row.id" :disabled="Boolean(cancellingId)" @click="cancelTask(row)">强制取消</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><template v-else-if="row.status === 'publish_unknown'"><el-button link type="warning" @click="reconcile(row)">核对发布</el-button><el-button link type="warning" @click="confirmUnpublished(row)">确认未发布</el-button></template><el-button v-else link :disabled="!config.enabled || row.status === 'cancelling'" @click="rerun(row.repository, row.number)">重新审查</el-button></div></template></el-table-column>
             <template #empty><el-empty description="启用仓库后，创建或更新 PR 即可自动审查。" /></template>
           </el-table>
           <el-pagination v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next, total" @current-change="loadTasks" />
@@ -97,7 +97,7 @@
     </el-dialog>
     <el-dialog append-to-body v-model="manualVisible" title="人工触发 PR 审查" width="min(460px, 95vw)"><el-alert v-if="manualError" :title="manualError" type="error" show-icon :closable="false" /><p>{{ manualRepo?.repo_name }}</p><el-form label-position="top"><el-form-item label="PR 编号"><el-input-number v-model="manualNumber" :min="1" /></el-form-item></el-form><template #footer><el-button @click="manualVisible = false">取消</el-button><el-button type="primary" :loading="rerunning" :disabled="rerunning" @click="rerun(manualRepo.id, manualNumber)">开始审查</el-button></template></el-dialog>
     </template>
-    <ReviewTaskDetail v-else :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail" />
+    <ReviewTaskDetail v-else :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :cancelling="cancellingId === detail?.id" :can-cancel="!repoArchived(detail?.repository)" @cancel="cancelTask(detail)" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail" />
   </div>
 </template>
 
@@ -121,7 +121,7 @@ const hookVisible = ref(false), hookRepo = ref(null), managerURL = ref(window.lo
 const manualVisible = ref(false), manualRepo = ref(null), manualNumber = ref(1)
 const connectionMessage = ref(''), connectionOk = ref(false), connectionDiagnostic = ref(null)
 const repoError = ref(''), hookError = ref(''), manualError = ref(''), configError = ref('')
-const detailError = ref(''), detailLoading = ref(false), rerunning = ref(false)
+const detailError = ref(''), detailLoading = ref(false), rerunning = ref(false), cancellingId = ref('')
 let taskGeneration = 0, detailGeneration = 0, repoGeneration = 0, listScrollTop = 0, detailController
 watch(repoVisible, visible => { if (!visible) { repoGeneration++; catalogGeneration++; repoForm.value.bot_token = ''; repoError.value = '' } })
 let hookGeneration = 0
@@ -135,7 +135,7 @@ const progressStale = computed(() => config.value.enabled && (!health.value.find
 const fmt = value => value ? new Date(value*1000).toLocaleString('zh-CN') : '尚无'
 const repoName = id => { const r = repositories.value.find(r => r.id === id); return r ? `${r.server_name} / ${r.repo_name}${r.access_archived ? '（已归档）' : ''}` : `仓库 ${id ?? ''}` }
 const repoArchived = id => Boolean(repositories.value.find(row => row.id === id)?.access_archived)
-const statusLabel = s => ({ queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '发布待核对', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
+const statusLabel = s => ({ cancelling: '取消中', cancelled: '已取消', queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '发布待核对', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
 
 const effectiveModelTimeout = computed(() => Math.max(0, Math.min(config.value.model_request_timeout_seconds ?? 600, (config.value.review_timeout_seconds ?? 600) - 40)))
 const showError = e => { error.value = errorMessage(e) }
@@ -158,6 +158,28 @@ async function saveRepo() {
 }
 async function installHook() { if (busy.value) return; busy.value = true; hookError.value = ''; const request = hookGeneration; const target = hookRepo.value.id; try { await write('post', `/repositories/${target}/webhook`, { manager_url: managerURL.value }); if (request !== hookGeneration) return; hookVisible.value = false; ElMessage.success('事件通知已安装并验证'); await reloadRepositories() } catch (e) { if (request === hookGeneration) hookError.value = errorMessage(e) } finally { busy.value = false } }
 async function rerun(repository, number) { if (rerunning.value) return; rerunning.value = true; manualError.value = ''; try { await write('post', `/repositories/${repository}/rerun`, { number }); manualVisible.value = false; tab.value = 'tasks'; page.value = 1; await loadTasks(); ElMessage.success('审查任务已排队') } catch (e) { if (manualVisible.value) manualError.value = errorMessage(e); else showError(e) } finally { rerunning.value = false } }
+
+async function cancelTask(row) {
+  if (!row || cancellingId.value) return
+  cancellingId.value = row.id
+  try {
+    await ElMessageBox.confirm(`取消 ${repoName(row.repository)} #${row.number} 的本次审查？当前版本不会自动重跑，已有日志和诊断将保留。`, '强制取消审查', { confirmButtonText: '强制取消', cancelButtonText: '继续审查', type: 'warning' })
+    const response = await write('post', `/tasks/${row.id}/cancel`, {})
+    taskGeneration++; detailGeneration++; detailController?.abort(); detailLoading.value = false
+    if (detail.value?.id === row.id) detail.value = response.data.task
+    tasks.value = tasks.value.map(item => item.id === row.id ? response.data.task : item)
+    ElMessage.success(response.data.task.status === 'cancelled' ? '任务已取消' : '已接受取消，正在确认执行停止')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      if (detailVisible.value) detailError.value = errorMessage(e)
+      else showError(e)
+      if (e.response?.data?.task) {
+        if (detail.value?.id === row.id) detail.value = e.response.data.task
+        tasks.value = tasks.value.map(item => item.id === row.id ? e.response.data.task : item)
+      }
+    }
+  } finally { cancellingId.value = '' }
+}
 
 async function reconcile(row) { try { await write('post', `/tasks/${row.id}/reconcile`, {}); ElMessage.success('已请求核对，不会盲目重发评论') } catch (e) { showError(e) } }
 async function closeDetail() {
@@ -189,8 +211,8 @@ async function openTask(id, polling = false) {
 async function poll() {
   if (disposed) return
   if (detailVisible.value && detail.value) {
-    const active = ['queued', 'running', 'publishing', 'recovering', 'publish_unknown'].includes(detail.value.status)
-    if (active || detail.value.log_sync?.complete === false) await openTask(detail.value.id, true)
+    const active = ['queued', 'running', 'cancelling', 'publishing', 'recovering', 'publish_unknown'].includes(detail.value.status)
+    if (active || (detail.value.status !== 'cancelled' && detail.value.log_sync?.complete === false)) await openTask(detail.value.id, true)
   } else if (tab.value === 'tasks') await loadTasks()
   if (isPlatformAdmin.value && Date.now() - lastHealthPoll >= 5000) { lastHealthPoll = Date.now(); try { health.value = (await api.get('/ai-review/config')).data.health } catch {} }
   if (!disposed) timer = setTimeout(poll, detailVisible.value ? (document.hidden ? 5000 : 1000) : 5000)

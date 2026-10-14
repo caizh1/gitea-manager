@@ -4,7 +4,7 @@
   const mark = '<!-- ai-review:summary:v1 -->';
   const labels = { queued: '已排队', running: '正在审查', publishing: '正在发布', recovering: '正在核对发布结果',
     succeeded: '审查完成', failed: '审查失败', superseded: '版本已过期', publish_unknown: '发布结果待核对',
-    interrupted: '工作进程中断，等待恢复', stopped: '已停止审查', outdated: '新提交等待审查' };
+    cancelling: '取消中', cancelled: '已取消', interrupted: '工作进程中断，等待恢复', stopped: '已停止审查', outdated: '新提交等待审查' };
   const sha = value => typeof value === 'string' && /^(?:[a-f0-9]{40})?$/.test(value);
   const integer = value => Number.isSafeInteger(value) && value >= 0;
   const timeValue = value => value === null || (Number.isFinite(value) && value >= 0);
