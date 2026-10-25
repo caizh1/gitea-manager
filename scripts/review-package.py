@@ -22,13 +22,13 @@ args=parser.parse_args()
 def run(command):subprocess.run(command,cwd=ROOT,check=True)
 if not args.upgrade_only: run(['python3','scripts/review-runtime-prepare.py'])
 offline=ROOT/'offline';offline.mkdir(exist_ok=True)
-images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline','gitea-review-svn:offline',
+images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline','gitea-review-svn:offline','gitea-review-git:offline',
         'python:3.11-slim','nginx:1.31.1','gitea/gitea:1.26.4','postgres:17.11-bookworm']
-if args.upgrade_only: images=images[:4]
+if args.upgrade_only: images=images[:5]
 if args.include_legacy_executor: images.append('gitea-review-executor-legacy:offline')
 expected_images={}
 if args.export_images:
-    for component in (('backend','frontend','executor','svn','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor','svn')):
+    for component in (('backend','frontend','executor','svn','git','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor','svn','git')):
         source=('gitea-review-executor:'+args.source_image_tag+'-legacy') if component=='executor-legacy' else 'gitea-review-'+component+':'+args.source_image_tag
         if component.startswith('executor'):
             run(['python3', 'scripts/executor-image-acceptance.py', source,

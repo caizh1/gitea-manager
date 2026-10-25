@@ -239,7 +239,7 @@ def session_payload():
         payload['organizations'] = visible_organizations(current_user)
         if current_user.is_platform_admin:
             payload['capabilities'] = ['platform', 'access', 'servers', 'backups', 'restore', 'schedules',
-                'mirrors', 'settings', 'repository_policies', 'commit_gates', 'ai_reviews', 'approval_rules', 'statistics', 'alerts', 'dashboard', 'management', 'svn_migrations']
+                'mirrors', 'settings', 'repository_policies', 'commit_gates', 'ai_reviews', 'approval_rules', 'statistics', 'alerts', 'dashboard', 'management', 'svn_migrations', 'git_migrations']
             setting = db.session.get(Setting, 'host_ip')
             payload['needs_config'] = not bool(setting and setting.value)
         elif payload['organizations']:

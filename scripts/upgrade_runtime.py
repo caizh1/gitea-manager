@@ -19,8 +19,8 @@ import time
 import docker
 from docker.types import Mount
 
-SERVICES = ('backend', 'frontend', 'review-worker', 'review-executor', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker')
-WRITERS = ('backend', 'review-worker', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker')
+SERVICES = ('backend', 'frontend', 'review-worker', 'review-executor', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker', 'git-migration-worker')
+WRITERS = ('backend', 'review-worker', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker', 'git-migration-worker')
 STATE = Path('/state')
 CHECK_KEY = '''
 from pathlib import Path
@@ -50,7 +50,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import hashlib, json, sqlite3, sys
 path=Path(sys.argv[1]); key=Path(sys.argv[2]) if sys.argv[2] else path.parent/'access.key'
-files=[key,path.parent/'.session-key',path.parent/'svn-migration.key']; encrypted=[]
+files=[key,path.parent/'.session-key',path.parent/'svn-migration.key',path.parent/'git-migration.key']; encrypted=[]
 if path.is_file():
     with sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True) as c:
         names={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -61,6 +61,11 @@ if path.is_file():
             if migration_values:
                 migration_cipher=Fernet((path.parent/'svn-migration.key').read_bytes().strip())
                 for value in migration_values: migration_cipher.decrypt(value.encode())
+        if 'git_migration_sources' in names:
+            values=[r[0] for r in c.execute("SELECT secret_ciphertext FROM git_migration_sources WHERE secret_ciphertext != ''")]
+            if values:
+                git_cipher=Fernet((path.parent/'git-migration.key').read_bytes().strip())
+                for value in values: git_cipher.decrypt(value.encode())
 if encrypted:
     cipher=Fernet(key.read_bytes().strip())
     for value in encrypted: cipher.decrypt(value.encode())
@@ -242,7 +247,7 @@ class Upgrade:
             raise RuntimeError('原服务处于暂停状态，未自动改变其状态')
         loaded_images = {}
         manifest = json.loads(Path('/release/offline/镜像清单.json').read_text())['镜像']
-        components = ['backend', 'frontend', 'executor', 'svn']
+        components = ['backend', 'frontend', 'executor', 'svn', 'git']
         if any(r['镜像'] == 'gitea-review-executor-legacy:offline' for r in manifest): components.append('executor-legacy')
         for image in components:
             actual = self.client.images.get('gitea-review-' + image + ':offline')
@@ -280,6 +285,16 @@ class Upgrade:
             probe.start()
             if probe.wait(timeout=60)['StatusCode']:
                 raise RuntimeError('SVN 迁移镜像的工具链不完整，原 Manager 未停止')
+        finally:
+            probe.remove(force=True)
+        probe = self.client.containers.create(loaded_images['git'], ['python', '-c',
+            "import subprocess,git_migration.worker; subprocess.run(['git','--version'],check=True); subprocess.run(['git','lfs','version'],check=True)"],
+            platform='linux/amd64', network_disabled=True, read_only=True,
+            environment={'PYTHONDONTWRITEBYTECODE': '1'}, tmpfs={'/tmp': 'size=32m,mode=1777'})
+        try:
+            probe.start()
+            if probe.wait(timeout=60)['StatusCode']:
+                raise RuntimeError('Git 迁移镜像的工具链不完整，原 Manager 未停止')
         finally:
             probe.remove(force=True)
         env = environment(self.backend.attrs)
@@ -558,6 +573,13 @@ class Upgrade:
         if 'svn-migration-worker' in self.info['original']:
             spec['container_name'] = self.info['original']['svn-migration-worker']['Name'].lstrip('/')
         current['services']['svn-migration-worker'] = spec
+        git_spec = copy.deepcopy(spec)
+        git_spec.update(image=images['git'], command=['python', '-m', 'git_migration.worker'],
+                        mem_limit='512m', cpus=1.0, pids_limit=128, stop_grace_period='45s')
+        git_spec.pop('container_name', None)
+        if 'git-migration-worker' in self.info['original']:
+            git_spec['container_name'] = self.info['original']['git-migration-worker']['Name'].lstrip('/')
+        current['services']['git-migration-worker'] = git_spec
         write(STATE / '新Compose.json', escaped(current))
         self.info['phase'] = 'prepared'; self.info['new_images'] = images; self.save()
 
@@ -587,7 +609,8 @@ class Upgrade:
                 view_health=rows['approval-view'].exec_run(['python','-c',"import requests; r=requests.get('http://127.0.0.1:5000/health',timeout=3); assert r.status_code==200 and r.json().get('role')=='approval-view'; blocked=requests.get('http://127.0.0.1:5000/api/session',timeout=3); assert blocked.status_code==503 and blocked.json().get('error')=='正在升级并核对数据，请稍后访问'; from approval.view_app import create_app; assert '/api/session' not in {r.rule for r in create_app().url_map.iter_rules()}"])
                 gate_health = rows['backend'].exec_run(['python', '-c', "from ai_review.runtime_status import available,status; assert available(), status().get('reason')"])
                 svn_health = rows['svn-migration-worker'].exec_run(['python', '-m', 'svn_migration.worker', '--check'])
-                if result.exit_code == 0 and health.exit_code == 0 and view_health.exit_code == 0 and gate_health.exit_code == 0 and svn_health.exit_code == 0: break
+                git_health = rows['git-migration-worker'].exec_run(['python', '-m', 'git_migration.worker', '--check'])
+                if git_health.exit_code == 0 and result.exit_code == 0 and health.exit_code == 0 and view_health.exit_code == 0 and gate_health.exit_code == 0 and svn_health.exit_code == 0: break
             time.sleep(2)
         else: raise RuntimeError('新服务未通过健康检查，将恢复旧版本')
         new_env = environment(rows['backend'].attrs)
@@ -646,7 +669,8 @@ class Upgrade:
             rows = self.containers()
             if all(name in rows and rows[name].attrs['State']['Running'] and not rows[name].attrs['State'].get('Paused') for name in self.info['running']):
                 result = rows['backend'].exec_run(['python', '-c', "import requests; assert requests.get('http://127.0.0.1:5000/api/session',timeout=3).status_code==200"])
-                if result.exit_code == 0:
+                git_health = rows['git-migration-worker'].exec_run(['python', '-m', 'git_migration.worker', '--check'])
+                if git_health.exit_code == 0 and result.exit_code == 0:
                     print('原服务恢复并通过健康检查'); return
             time.sleep(2)
         raise RuntimeError('原服务启动后未通过健康检查，请保留升级记录')

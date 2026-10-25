@@ -1,5 +1,8 @@
 # 离线导入镜像后与现有 Compose 及 AI Review 配置叠加，使用 --no-build --pull never。
 services:
+  git-migration-worker:
+    image: gitea-review-git:offline
+    pull_policy: never
   svn-migration-worker:
     image: gitea-review-svn:offline
     pull_policy: never

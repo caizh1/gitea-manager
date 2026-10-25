@@ -170,6 +170,11 @@ def configuration(state, manifest, root):
             command=['gunicorn', '--bind', '0.0.0.0:5000', '--workers', '2', '--threads', '8', '--timeout', '30', 'approval.view_app:create_app()'],
             environment={k: env[k] for k in ('DATABASE_URL','SSH_KEY_PATH','SSH_KNOWN_HOSTS')}, volumes=['manager-data:/app/data', mount, f'{root}/state/ssh:/run/manager-ssh:ro'], depends_on=['backend'])
         services['frontend'] = spec(images['frontend']['tag'], ports=[f'{binding}:{state["port"]}:80'], depends_on=['backend'])
+        services['git-migration-worker'] = spec(images['git']['tag'], command=['python', '-m', 'git_migration.worker'],
+            environment={'DATABASE_URL': env['DATABASE_URL'], 'PYTHONDONTWRITEBYTECODE': '1'},
+            volumes=['manager-data:/app/data'], read_only=True, tmpfs=['/tmp:size=128m,mode=1777'],
+            cap_drop=['ALL'], security_opt=['no-new-privileges:true'], pids_limit=128, mem_limit='512m', cpus=1.0,
+            stop_grace_period='45s')
         if 'svn' in images:
             services['svn-migration-worker'] = spec(images['svn']['tag'], command=['python', '-m', 'svn_migration.worker'],
                 environment={'DATABASE_URL': env['DATABASE_URL'], 'PYTHONDONTWRITEBYTECODE': '1'},
@@ -465,6 +470,9 @@ class Installer:
                 if REPORT: REPORT.event('检查','后台心跳',实际=values,预期='各进程小于 90 秒')
                 return all(0 <= value < 90 for value in values.values())
             wait_for(heartbeat, '审查后台心跳')
+            wait_for(lambda: bool(self.compose('exec', '-T', 'git-migration-worker', 'python', '-m',
+                                              'git_migration.worker', '--check')),
+                     'Git 来源独立发现执行器', seconds=60)
             if 'svn' in self.manifest['images']:
                 wait_for(lambda: bool(self.compose('exec', '-T', 'svn-migration-worker', 'python', '-m',
                                                   'svn_migration.worker', '--check')),

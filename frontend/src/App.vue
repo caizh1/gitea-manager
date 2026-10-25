@@ -55,11 +55,12 @@
             <el-icon><Clock /></el-icon>
             <template #title>定时任务</template>
           </el-menu-item>
-          <el-sub-menu v-if="hasCapability('svn_migrations')" index="svn-navigation" aria-label="SVN 迁移中心" @click="openSvnMenu" class="review-submenu" popper-class="review-submenu-popup">
-            <template #title><el-icon><Connection /></el-icon><span>SVN 迁移中心</span></template>
-            <el-menu-item index="/svn-migrations">迁移工作台</el-menu-item>
-            <el-menu-item index="/svn-migrations/sources">来源与仓库</el-menu-item>
-            <el-menu-item index="/svn-migrations/runs">执行记录</el-menu-item>
+          <el-sub-menu v-if="hasCapability('svn_migrations')" index="svn-navigation" aria-label="迁移中心" @click="openSvnMenu" class="review-submenu" popper-class="review-submenu-popup">
+            <template #title><el-icon><Connection /></el-icon><span>迁移中心</span></template>
+            <el-menu-item index="/svn-migrations">SVN 迁移工作台</el-menu-item>
+            <el-menu-item index="/svn-migrations/sources">SVN 来源与仓库</el-menu-item>
+            <el-menu-item index="/svn-migrations/runs">SVN 执行记录</el-menu-item>
+            <el-menu-item v-if="hasCapability('git_migrations')" index="/git-migrations">GitLab / Gitea 来源</el-menu-item>
           </el-sub-menu>
           <el-menu-item v-if="hasCapability('mirrors')" index="/mirrors" aria-label="镜像管理">
             <el-icon><Connection /></el-icon>
@@ -163,6 +164,7 @@ import { notifyApiError } from './api/errors.js'
 import { accessState, accessReady, isPlatformAdmin, hasCapability, applySession, setOrganization } from './composables/accessState.js'
 
 const breadcrumbMap = {
+  '/git-migrations': 'GitLab / Gitea 来源',
   '/svn-migrations': 'SVN 迁移',
   '/access': '账号与权限',
   '/dashboard': '仪表盘',

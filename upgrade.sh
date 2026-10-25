@@ -108,10 +108,10 @@ for file in "${ORIGINAL_FILES[@]}"; do COMPOSE+=(-f "$file"); done
 OLD_SERVICES=()
 OLD_ALL_SERVICES=()
 while IFS= read -r service; do
-  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view|svn-migration-worker) OLD_ALL_SERVICES+=("$service") ;; esac
+  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view|svn-migration-worker|git-migration-worker) OLD_ALL_SERVICES+=("$service") ;; esac
 done < <(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Label "com.docker.compose.service"}}')
 while IFS= read -r service; do
-  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view|svn-migration-worker) OLD_SERVICES+=("$service") ;; esac
+  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view|svn-migration-worker|git-migration-worker) OLD_SERVICES+=("$service") ;; esac
 done < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Label "com.docker.compose.service"}}')
 runtime preflight
 if [ "$CHECK_ONLY" -eq 1 ]; then echo '升级前置检查通过，原服务未停止。'; exit 0; fi
@@ -125,7 +125,7 @@ runtime activate
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" run --rm --no-deps -T --user 0:0 --cap-add CHOWN --cap-add FOWNER --entrypoint python review-executor -c "import os; os.chown('/app/review-native',10001,10001); os.chmod('/app/review-native',0o700)" > "$STATE/native-volume-init.log" 2>&1
 echo '正在启动新版本，业务写入将在校验通过后恢复。'
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" up -d --no-build --pull never --no-deps \
-  backend frontend review-worker review-executor review-progress review-feedback approval-view svn-migration-worker > "$STATE/新服务启动记录.txt" 2>&1
+  backend frontend review-worker review-executor review-progress review-feedback approval-view svn-migration-worker git-migration-worker > "$STATE/新服务启动记录.txt" 2>&1
 runtime verify
 runtime commit
 RECOVER=0

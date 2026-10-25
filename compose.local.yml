@@ -1,6 +1,26 @@
 # 独立本地验证环境；使用脚本生成的凭据，所有宿主机端口仅绑定回环地址。
 name: gitea-policy-local
 services:
+  git-migration-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.git
+    command: [python, -m, git_migration.worker]
+    platform: linux/amd64
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+      GM_UPGRADE_MAINTENANCE_FILE: /app/data/.svn-upgrade-maintenance
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [manager-data:/app/data]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    stop_grace_period: 45s
+    restart: unless-stopped
   svn-migration-worker:
     build:
       context: ./backend

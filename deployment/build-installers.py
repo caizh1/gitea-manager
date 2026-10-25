@@ -55,7 +55,7 @@ def main():
         shutil.copytree(deps, directory / 'runtime/debs', dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('partial', 'lock'))
         tags = ({'gitea': args.gitea_image, 'database': 'postgres:17.11-bookworm'} if product == 'gitea' else
-                {key: 'gitea-review-' + key + ':' + args.manager_tag for key in ('backend', 'frontend', 'executor', 'svn')})
+                {key: 'gitea-review-' + key + ':' + args.manager_tag for key in ('backend', 'frontend', 'executor', 'svn', 'git')})
         if product == 'manager':
             tags['executor'] = args.executor_image
             tags['executor_legacy'] = args.executor_legacy_image
@@ -86,6 +86,7 @@ def main():
         if product == 'manager':
             shutil.copy2(ROOT / 'docs/organization-access-ldap.md', directory / 'organization-access-ldap.md')
             shutil.copy2(ROOT / 'docs/svn-migration.md', directory / 'svn-migration.md')
+            shutil.copy2(ROOT / 'docs/git-migration-implementation.md', directory / 'git-migration-implementation.md')
             shutil.copy2(ROOT / 'docs/svn-layout-detection.md', directory / 'svn-layout-detection.md')
             shutil.copy2(ROOT / 'docs/svn-project-discovery.md', directory / 'svn-project-discovery.md')
             shutil.copy2(ROOT / 'docs/svn-target-groups.md', directory / 'svn-target-groups.md')

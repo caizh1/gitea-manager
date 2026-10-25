@@ -34,6 +34,7 @@ def create_app():
     from access import scopes as access_scopes
     from access import statistics as access_statistics
     from svn_migration import models as svn_migration_models
+    from git_migration import models as git_migration_models
     from services.database_startup import database_startup_lock
     with app.app_context(), database_startup_lock(app):
         import sqlalchemy.exc
@@ -41,6 +42,7 @@ def create_app():
 
         server_columns = {row[1] for row in db.session.execute(db.text('PRAGMA table_info(gitea_servers)'))} if DATABASE_URL.startswith('sqlite:') else set()
         for sql in [
+            'ALTER TABLE git_migration_inventories ADD COLUMN capture_code BOOLEAN NOT NULL DEFAULT 0',
             'ALTER TABLE backups ADD COLUMN progress_current BIGINT',
             'ALTER TABLE backups ADD COLUMN progress_total BIGINT',
             "ALTER TABLE backups ADD COLUMN progress_unit VARCHAR(20) DEFAULT ''",
@@ -224,6 +226,8 @@ def create_app():
     app.register_blueprint(management_bp, url_prefix='/api/management')
     from routes.svn_migration_routes import svn_migration_bp
     app.register_blueprint(svn_migration_bp, url_prefix='/api/svn-migrations')
+    from routes.git_migration_routes import git_migration_bp
+    app.register_blueprint(git_migration_bp, url_prefix='/api/git-migrations')
 
     if os.environ.get('AI_REVIEW_HOST_POLICY_FILE'):
         from ai_review.host_policy import ensure

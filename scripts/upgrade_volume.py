@@ -28,7 +28,8 @@ def database(path, reference=None):
             statuses = {'backups': ('running',), 'restore_tasks': ('running',), 'scheduled_tasks': ('running',),
                         'mirror_configs': ('running', 'syncing', 'initializing'), 'policy_batches': ('previewing', 'applying'),
                         'jobs': ('running', 'publishing', 'recovering'), 'setup_jobs': ('running',),
-                        'svn_migration_runs': ('running',), 'svn_migration_plans': ('preflight',)}
+                        'svn_migration_runs': ('running',), 'svn_migration_plans': ('preflight',),
+                        'git_migration_discoveries': ('running',), 'git_migration_inventories': ('running',)}
             for table, states in statuses.items():
                 if table in names:
                     field = 'last_status' if table == 'scheduled_tasks' else 'status'

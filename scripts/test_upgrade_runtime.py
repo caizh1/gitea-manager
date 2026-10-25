@@ -20,6 +20,23 @@ class RuntimeChecks(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup);self.root=Path(self.folder.name)
 
+    def test_git_migration_requires_original_decryptable_key(self):
+        database = self.root / 'manager.db'
+        key = Fernet.generate_key()
+        key_file = self.root / 'git-migration.key'
+        key_file.write_bytes(key)
+        with sqlite3.connect(database) as connection:
+            connection.execute('CREATE TABLE git_migration_sources(secret_ciphertext TEXT)')
+            connection.execute('INSERT INTO git_migration_sources VALUES (?)',
+                               (Fernet(key).encrypt('来源凭据'.encode()).decode(),))
+        def check():
+            return subprocess.run([sys.executable, '-c', runtime.CHECK_ACCESS_KEYS, str(database), ''], capture_output=True)
+        self.assertEqual(check().returncode, 0)
+        key_file.write_bytes(Fernet.generate_key())
+        self.assertNotEqual(check().returncode, 0)
+        key_file.unlink()
+        self.assertNotEqual(check().returncode, 0)
+
     def test_snapshot_includes_writes_committed_during_old_service_shutdown(self):
         path = self.root/'manager.db'
         with sqlite3.connect(path) as connection:
