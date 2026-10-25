@@ -18,6 +18,7 @@ from .git_snapshot import GitSnapshot
 from .discussions import historical_diff
 from .packages import package_assets, verification_plan
 from . import rules
+from .instance import connection_lock, unique_target
 
 ACTIVE = ('queued', 'running', 'interrupted', 'uncertain', 'quarantined')
 
@@ -65,7 +66,7 @@ def enqueue(data, actor_id):
         require(type(data[name]) is int and data[name] > 0, '执行请求编号无效')
     import re
     require(isinstance(data['request_key'], str) and re.fullmatch(r'[A-Za-z0-9_-]{16,80}', data['request_key']), '请求标识无效')
-    with file_lock(root() / 'enqueue.lock', blocking=True):
+    with file_lock(root() / 'enqueue.lock', blocking=True), connection_lock():
         existing = GitMigrationRun.query.filter_by(request_key=data['request_key']).first()
         if existing:
             require(json.loads(existing.plan_json)['request'] == data and existing.actor_id == actor_id,
@@ -77,6 +78,7 @@ def enqueue(data, actor_id):
                 '盘点结果已失效，请重新盘点', 'stale', 409)
         require(not busy(source.id), '来源已有执行任务', 'busy', 409)
         server = get(GiteaServer, data['server_id'])
+        unique_target(server)
         with target_guard(server.id):
             require(not GitMigrationRun.query.filter(GitMigrationRun.server_id == server.id,
                     GitMigrationRun.status.in_(ACTIVE)).first(), '目标已有尚未交接的迁移', 'busy', 409)
@@ -107,6 +109,7 @@ def resume(ident):
         require(row.status in ('interrupted', 'uncertain', 'quarantined'), '当前状态不能继续执行', 'conflict', 409)
         source = get(GitMigrationSource, row.source_id)
         require(source.version == row.source_version and not source.archived, '来源配置已经变化', 'stale', 409)
+        unique_target(get(GiteaServer, row.server_id))
         row.status, row.error, row.completed_at = 'queued', '', None
         db.session.commit()
         return row
@@ -118,6 +121,7 @@ def execute(row, provider, tick):
     frozen = json.loads(inventory.result_json)
     require(digest(frozen) == plan['inventory_digest'], '固定盘点内容已变化', 'stale')
     server = get(GiteaServer, row.server_id)
+    unique_target(server)
     require(target_identity(server) == plan['target'], '目标连接地址已变化', 'stale')
     folder = root() / 'runs' / str(row.id)
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)

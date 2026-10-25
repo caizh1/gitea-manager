@@ -52,6 +52,13 @@ class Inventory:
                 '来源项目身份或路径已变化，请重新发现', 'stale')
         require(bool(current.get('archived')) == bool(project.get('archived')),
                 '来源归档状态已变化，请重新发现', 'stale')
+        constraints = {name: current.get(name) for name in (
+            'only_allow_merge_if_pipeline_succeeds', 'only_allow_merge_if_build_succeeds',
+            'only_allow_merge_if_all_discussions_are_resolved', 'only_allow_merge_if_all_status_checks_passed',
+            'merge_method', 'squash_option') if name in current}
+        self.datasets.append({'category': '项目合并前置条件', 'path': base, 'rows': [constraints]})
+        self.objects += 1
+        self.bytes += len(encode(constraints).encode())
         if self.provider.kind == 'gitlab':
             self.collect('Wiki 页面', base + '/wikis', params={'with_content': '1'}, identity='slug')
         elif current.get('has_wiki'):
@@ -119,6 +126,13 @@ class Inventory:
                 '来源项目身份或路径已变化，请重新发现', 'stale')
         require(bool(current.get('archived')) == bool(project.get('archived')),
                 '来源归档状态已变化，请重新发现', 'stale')
+        constraints = {name: current.get(name) for name in (
+            'only_allow_merge_if_pipeline_succeeds', 'only_allow_merge_if_build_succeeds',
+            'only_allow_merge_if_all_discussions_are_resolved', 'only_allow_merge_if_all_status_checks_passed',
+            'merge_method', 'squash_option') if name in current}
+        self.datasets.append({'category': '项目合并前置条件', 'path': base, 'rows': [constraints]})
+        self.objects += 1
+        self.bytes += len(encode(constraints).encode())
         if self.provider.kind == 'gitlab':
             self.collect('Wiki 页面', base + '/wikis', params={'with_content': '1'}, identity='slug')
         elif current.get('has_wiki'):

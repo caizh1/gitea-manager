@@ -1,5 +1,5 @@
 """Git 来源管理与异步发现，所有接口仅向平台管理员开放。"""
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from flask_login import current_user
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
@@ -13,6 +13,29 @@ from git_migration.worker import health
 
 
 git_migration_bp = Blueprint('git_migration', __name__)
+
+
+@git_migration_bp.before_app_request
+def protect_connection_alias():
+    if request.endpoint not in ('servers.add_server', 'servers.update_server'):
+        return
+    from git_migration.instance import connection_lock, validate_connection_change
+    lock = connection_lock()
+    try:
+        lock.__enter__()
+        g.git_connection_lock = lock
+        data = request.get_json(silent=True)
+        if isinstance(data, dict):
+            validate_connection_change(data, (request.view_args or {}).get('sid'))
+    except MigrationError as error:
+        return jsonify(error=str(error), code=error.code), error.status
+
+
+@git_migration_bp.teardown_app_request
+def release_connection_alias(_error):
+    lock = g.pop('git_connection_lock', None)
+    if lock:
+        lock.__exit__(None, None, None)
 
 
 @git_migration_bp.before_request

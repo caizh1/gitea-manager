@@ -153,6 +153,17 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
                 'labels': selected, 'milestone': milestone_id, 'history': row, **author(row, kind)})
     for dataset in datasets:
         category = dataset['category']
+        if category == '项目合并前置条件':
+            for setting in dataset['rows']:
+                constrained = any(setting.get(field) is True for field in (
+                    'only_allow_merge_if_pipeline_succeeds', 'only_allow_merge_if_build_succeeds',
+                    'only_allow_merge_if_all_discussions_are_resolved', 'only_allow_merge_if_all_status_checks_passed'))
+                constrained = constrained or setting.get('merge_method', 'merge') not in ('merge', None)
+                constrained = constrained or setting.get('squash_option') in ('always', 'never')
+                if constrained:
+                    pending.append({'category': category, 'path': dataset['path'],
+                                    'reason': '来源要求额外的 CI、讨论或合并方式门禁，尚无经过确认的等价目标配置，禁止放宽后交接'})
+            continue
         if category in ('标签', '里程碑', '议题', '议题与合并请求', '合并请求详情') or category == '合并请求' and (kind == 'gitea' or pulls):
             continue
         if kind == 'gitlab' and category in ('合并请求差异版本', '历史审批'):

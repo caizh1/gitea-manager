@@ -1,6 +1,6 @@
 {
   "说明": "迁移构建输入的固定基线与模块摘要，不包含未提交的其他业务修改",
-  "基线": "d200d048d482556a040b24b65427d22ef802c0d2",
+  "基线": "931561a90c386dadedee0c96f26f57b6d8a28bc5",
   "迁移模块": [
     {
       "文件": "backend/git_migration/__init__.py",
@@ -43,8 +43,12 @@
       "SHA256": "03670e5c07f3748a2d24e6b51fad4adcea339319bb5ded062b0d3cfc9a256d32"
     },
     {
+      "文件": "backend/git_migration/instance.py",
+      "SHA256": "ecaae44b1c507df597b4dee0ff57ed2a73742fda74cd60ffb469014d981f5895"
+    },
+    {
       "文件": "backend/git_migration/inventory.py",
-      "SHA256": "627692e65b015e0af47a6ad2cd271430fe10b3ea3f35a42ffd45e42708d20b4f"
+      "SHA256": "fdc62f60ddde3a58290f2c15369c10f65c14379712639985b1bc73ba1b5d6120"
     },
     {
       "文件": "backend/git_migration/models.py",
@@ -52,7 +56,7 @@
     },
     {
       "文件": "backend/git_migration/normalize.py",
-      "SHA256": "de96019aa0224c4066cd703829e4641d6e900a95fe21710480bb74717eaa4dd7"
+      "SHA256": "db71ee7c1df9a137bf66ed5d9399d0b8c6c92f0f69e1f1a4260598341842d738"
     },
     {
       "文件": "backend/git_migration/packages.py",
@@ -68,7 +72,7 @@
     },
     {
       "文件": "backend/git_migration/runs.py",
-      "SHA256": "1ffc8b8e2720f825dec51d2b6a9cb32a9a63ebd85901e72542a0a95eea5f499f"
+      "SHA256": "6dbee2549a12716903eb951cc1979e6fd536e3ff0c407bfc2ae54c44e711af2d"
     },
     {
       "文件": "backend/git_migration/store.py",
@@ -85,6 +89,10 @@
     {
       "文件": "backend/git_migration/worker.py",
       "SHA256": "136ada7770a3015d183d5d71ce913db85ce1d87d0860ea52fe5b5cf39b9a4432"
+    },
+    {
+      "文件": "backend/routes/git_migration_routes.py",
+      "SHA256": "77a28733d620bec28867179942da90d2ff22366ad5f8f90f92f8241aad41899a"
     }
   ]
 }

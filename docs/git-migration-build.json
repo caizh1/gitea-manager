@@ -1,24 +1,24 @@
 {
-  "说明": "固定构建镜像与来源摘要，注册表扩展已纳入运行时代码",
+  "说明": "固定构建镜像与来源摘要，包含注册表元数据、合并前置条件和重复连接门禁",
   "组件": {
     "backend": {
-      "固定标签": "gitea-review-backend:git-migration-registry-20261025-r11",
-      "镜像身份": "sha256:5367e03febb42c9558ca095a94102247d9506ea96cd7fddcd548b3334c4f1c96"
+      "固定标签": "gitea-review-backend:git-migration-final-20261025-r13",
+      "镜像身份": "sha256:198000fe25ae889603e63f2f76f76fe9c6d7d426d975f18e5a3b373db4743a38"
     },
     "frontend": {
-      "固定标签": "gitea-review-frontend:git-migration-registry-20261025-r11",
-      "镜像身份": "sha256:053ed98971d3bc7109300eac8f6fa1d0cd5f1b2c4b8b6b7f0e5dfe172a03f332"
+      "固定标签": "gitea-review-frontend:git-migration-final-20261025-r13",
+      "镜像身份": "sha256:67b4b22527e50d83f256db82bc9308eff02ba3e9752d938ee9a7891d510bb1f7"
     },
     "git": {
-      "固定标签": "gitea-review-git:git-migration-registry-20261025-r11",
-      "镜像身份": "sha256:41d9f9b40e8e798a5a065718a721d313f5b5cb83b404f797adf3c3abaa85f0e7"
+      "固定标签": "gitea-review-git:git-migration-final-20261025-r13",
+      "镜像身份": "sha256:3e23217cefb22a2bfbbff2feb8cde3f9ac927d342bd07a2086fab0f9bdb8ae74"
     },
     "svn": {
-      "固定标签": "gitea-review-svn:git-migration-registry-20261025-r11",
-      "镜像身份": "sha256:5d70c06ebcf7693ccd1d53b6b536a41c4e8a28cdc84b2d175a091b5043452931"
+      "固定标签": "gitea-review-svn:git-migration-final-20261025-r13",
+      "镜像身份": "sha256:00049ce3c7b6369e0fd4f76830f01c697219172516eac68441ea00533e18315e"
     },
     "executor": {
-      "固定标签": "gitea-review-executor:git-migration-registry-20261025-r11",
+      "固定标签": "gitea-review-executor:git-migration-final-20261025-r13",
       "镜像身份": "sha256:9d135e7e9be7b268d0924d91c7ff8bc01b91b24c85926865be3900df1ed62f4a"
     },
     "接收端": {

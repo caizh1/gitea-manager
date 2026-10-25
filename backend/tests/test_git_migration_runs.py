@@ -20,6 +20,7 @@ class RunTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         app = Flask(__name__)
+        self.app = app
         app.config.update(SQLALCHEMY_DATABASE_URI='sqlite:///' + self.temp.name + '/test.db', TESTING=True)
         init_test_auth(app)
         ctx = app.app_context()
@@ -75,6 +76,39 @@ class RunTests(unittest.TestCase):
         db.session.commit()
         with self.assertRaises(MigrationError):
             enqueue(self.data, 1)
+
+    def test_existing_url_alias_blocks_migration_before_any_target_write(self):
+        duplicate = GiteaServer(name='重复连接', gitea_url='https://TARGET.test:443/', api_token='令牌',
+            host='other.test', ssh_user='root', gitea_port=3000)
+        db.session.add(duplicate); db.session.commit()
+        with self.assertRaisesRegex(MigrationError, '重复连接'):
+            enqueue(self.data, 1)
+        self.receiver.assert_not_called()
+        self.assertEqual(GitMigrationRun.query.count(), 0)
+
+    def test_ssh_container_alias_blocks_a_different_proxy_url(self):
+        duplicate = GiteaServer(name='代理连接', gitea_url='https://proxy.test', api_token='令牌',
+            host=self.server.host, ssh_port=22, gitea_container='gitea', ssh_user='root', gitea_port=3000)
+        db.session.add(duplicate); db.session.commit()
+        with self.assertRaisesRegex(MigrationError, '重复连接'):
+            enqueue(self.data, 1)
+
+    def test_connection_routes_reject_late_alias_and_allow_unrelated_instance(self):
+        from routes.git_migration_routes import git_migration_bp
+        from flask import jsonify
+        self.app.register_blueprint(git_migration_bp, url_prefix='/api/git-migrations')
+        self.app.add_url_rule('/api/servers', endpoint='servers.add_server', view_func=lambda: jsonify(ok=True), methods=['POST'])
+        self.app.add_url_rule('/api/servers/<int:sid>', endpoint='servers.update_server', view_func=lambda sid: jsonify(ok=True), methods=['PUT'])
+        enqueue(self.data, 1)
+        client = self.app.test_client()
+        reply = client.post('/api/servers', json={'gitea_url': 'https://target.test:443/'})
+        self.assertEqual(reply.status_code, 409)
+        self.assertEqual(reply.json['code'], 'instance_alias')
+        self.assertEqual(client.post('/api/servers', json={'gitea_url': 'https://unrelated.test', 'host': 'other.test'}).status_code, 200)
+        other = GiteaServer(name='其他实例', gitea_url='https://other.test', host='other.test', ssh_user='root', api_token='令牌', gitea_port=3000)
+        db.session.add(other); db.session.commit()
+        self.assertEqual(client.put('/api/servers/' + str(other.id), json={'gitea_url': 'https://target.test'}).status_code, 409)
+        self.assertEqual(client.put('/api/servers/' + str(other.id), json={'name': '更名'}).status_code, 200)
 
 
 class DerivedStateTests(unittest.TestCase):

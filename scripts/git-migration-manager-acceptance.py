@@ -129,13 +129,15 @@ def main():
                      {'discovery_id': discovery['id'], 'project_ids': [project['id']], 'request_key': secrets.token_hex(20), 'capture_code': True})
     inventory = wait(lambda: completed('inventories', inventory['id']), '真实元数据盘点')
     migration = None
+    alias_gate = False
     if args.target_state:
         target = json.loads(args.target_state.read_text())
         target_info = json.loads(docker('inspect', target['name']))[0]
         if target_info['Config']['Labels'].get('io.gitea-manager.test') != 'git-migration-receiver':
             raise RuntimeError('仅允许使用独立接收端验收')
         target_url = target['base'].replace('127.0.0.1', 'host.docker.internal')
-        server = call('POST', '/servers', {'name': '迁移接收验收 ' + secrets.token_hex(4),
+        server = next((row for row in call('GET', '/servers') if row['gitea_url'].rstrip('/') == target_url.rstrip('/')), None)
+        server = server or call('POST', '/servers', {'name': '迁移接收验收 ' + secrets.token_hex(4),
             'host': '127.0.0.1', 'ssh_user': 'root', 'gitea_port': 3000,
             'gitea_url': target_url, 'api_token': target['token']})
         reply = requests.post(target['base'] + '/api/v1/governance/groups',
@@ -145,8 +147,22 @@ def main():
             raise RuntimeError('创建隔离接收群组失败')
         group = reply.json()
         required = call('GET', '/git-migrations/inventories/' + str(inventory['id']) + '/principals')
-        migration = call('POST', '/git-migrations/runs', {'principal_map': {key: ['migration-admin'] for key in required}, 'inventory_id': inventory['id'],
-            'server_id': server['id'], 'group_id': group['id'], 'source_frozen': True, 'request_key': secrets.token_hex(20)})
+        run_request = {'principal_map': {key: ['migration-admin'] for key in required}, 'inventory_id': inventory['id'],
+            'server_id': server['id'], 'group_id': group['id'], 'source_frozen': True, 'request_key': secrets.token_hex(20)}
+        alias_data = {'name': '重复连接门禁验收', 'host': 'alias.invalid', 'ssh_user': 'root', 'gitea_port': 3000,
+                      'gitea_url': target_url + '/', 'api_token': target['token']}
+        alias = call('POST', '/servers', alias_data)
+        try:
+            blocked = session.post(base + '/api/git-migrations/runs', json=run_request, timeout=30)
+            if blocked.status_code != 409 or blocked.json().get('code') != 'instance_alias':
+                raise RuntimeError('重复连接记录没有在迁移写入前阻断')
+        finally:
+            call('DELETE', '/servers/' + str(alias['id']))
+        migration = call('POST', '/git-migrations/runs', run_request)
+        blocked = session.post(base + '/api/servers', json=alias_data, timeout=30)
+        if blocked.status_code != 409 or blocked.json().get('code') != 'instance_alias':
+            raise RuntimeError('迁移期间允许新增实例别名')
+        alias_gate = True
         if args.interrupt_once:
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
@@ -203,7 +219,7 @@ def main():
         docker('exec', name + '-worker', 'python', '-c', "from pathlib import Path; Path('" + marker + "').unlink(missing_ok=True)")
     wait(lambda: call('GET', '/git-migrations/status')['worker']['online'], '维护后恢复')
     evidence = {'说明': '固定镜像内代表性样本完整迁移验收；不代表全范围、生产或人工节省指标' if migration else '固定镜像内真实来源发现及元数据盘点，不代表完整迁移与生产验收', '结果': '通过',
-                '写入中断恢复': bool(args.interrupt_once and migration), '迁移执行': migration, '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
+                '写入中断恢复': bool(args.interrupt_once and migration), '重复实例连接双向阻断': alias_gate, '迁移执行': migration, '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
                 '代码快照': inventory['result']['projects'][0].get('code_snapshot'), '维护重启数据一致': True,
                 '管理端地址': base, '后端镜像': state['backend_image'], '前端镜像': state['frontend_image']}
     output = folder / ('acceptance-' + source['kind'] + '-' + str(inventory['id']) + '.json')

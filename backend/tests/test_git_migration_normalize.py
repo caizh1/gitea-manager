@@ -110,3 +110,14 @@ class CollaborationTests(unittest.TestCase):
         result = objects(data, 'gitlab')['objects']
         self.assertEqual([item['number'] for item in result], [1, 2])
         self.assertIn('来源合并请求 !1', result[1]['content'])
+
+class ProjectPrerequisiteTests(unittest.TestCase):
+    def test_source_merge_requirements_are_not_silently_relaxed(self):
+        from git_migration.normalize import objects
+        for constraint in ({'only_allow_merge_if_pipeline_succeeds':True},
+                           {'only_allow_merge_if_all_discussions_are_resolved':True},
+                           {'merge_method':'ff'},{'squash_option':'always'}):
+            item={'project':{'id':1},'datasets':[{'category':'项目合并前置条件','path':'/projects/1','rows':[constraint]}]}
+            result=objects(item,'gitlab');self.assertTrue(result['pending'])
+        item={'project':{'id':1},'datasets':[{'category':'项目合并前置条件','path':'/projects/1','rows':[{'merge_method':'merge','squash_option':'default_off','only_allow_merge_if_pipeline_succeeds':False}]}]}
+        self.assertFalse(objects(item,'gitlab')['pending'])
