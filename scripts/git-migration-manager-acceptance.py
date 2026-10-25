@@ -58,6 +58,9 @@ def main():
             info = json.loads(docker('inspect', name + suffix))[0]
             if info['Config']['Labels'].get('io.gitea-manager.test') != 'git-migration-manager':
                 raise RuntimeError('恢复对象不是本脚本的隔离资源')
+            expected = backend if suffix == '-backend' else frontend
+            if info['Image'] != json.loads(docker('image', 'inspect', expected))[0]['Id']:
+                raise RuntimeError('恢复环境镜像与请求的固定镜像不一致')
     port = docker('port', name + '-frontend', '80/tcp').rsplit(':', 1)[1]
     base = 'http://127.0.0.1:' + port
     state = {'说明': '隔离验收凭据，不得发布', 'name': name, 'base': base, 'password': password,
@@ -92,15 +95,23 @@ def main():
     login = call('POST', '/login', {'password': password})
     session.headers['X-CSRF-Token'] = login['csrf_token']
     call('POST', '/settings', {'host_ip': '127.0.0.1'})
-    docker('run', '-d', *common, '--name', name + '-worker', '--env-file', str(env),
-           '-v', name + ':/app/data', '--read-only', '--tmpfs', '/tmp:size=128m,mode=1777',
-           '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', git_image,
-           'python', '-m', 'git_migration.worker')
+    existing_worker = docker('ps', '-aq', '--filter', 'name=^/' + name + '-worker$') if previous else ''
+    if existing_worker:
+        info = json.loads(docker('inspect', name + '-worker'))[0]
+        if info['Config']['Labels'].get('io.gitea-manager.test') != 'git-migration-manager' or info['Image'] != json.loads(docker('image', 'inspect', git_image))[0]['Id']:
+            raise RuntimeError('既有执行器不属于本次固定镜像验收')
+    else:
+        docker('run', '-d', *common, '--name', name + '-worker', '--env-file', str(env),
+               '-v', name + ':/app/data', '--read-only', '--tmpfs', '/tmp:size=128m,mode=1777',
+               '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', git_image,
+               'python', '-m', 'git_migration.worker')
     wait(lambda: call('GET', '/git-migrations/status')['worker']['online'], '发现执行器')
     source_url = source['base'].replace('127.0.0.1', 'host.docker.internal')
-    registered = call('POST', '/git-migrations/sources', {'name': '真实隔离来源', 'kind': source['kind'],
-        'url': source_url, 'username': 'source-admin' if source['kind'] == 'gitea' else 'root',
-        'auth_method': 'password', 'secret': source['password']})
+    registered = next((s for s in call('GET', '/git-migrations/sources') if s['url'] == source_url and s['kind'] == source['kind']), None)
+    if registered is None:
+        registered = call('POST', '/git-migrations/sources', {'name': '真实隔离来源 ' + source['kind'], 'kind': source['kind'],
+            'url': source_url, 'username': 'source-admin' if source['kind'] == 'gitea' else 'root',
+            'auth_method': 'password', 'secret': source['password']})
     discovery = call('POST', '/git-migrations/sources/' + str(registered['id']) + '/discoveries',
                      {'source_version': registered['version'], 'request_key': secrets.token_hex(20)})
 
@@ -147,8 +158,9 @@ def main():
                 '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
                 '代码快照': inventory['result']['projects'][0].get('code_snapshot'), '维护重启数据一致': True,
                 '管理端地址': base, '后端镜像': state['backend_image'], '前端镜像': state['frontend_image']}
-    (folder / 'acceptance.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + '\n')
-    print('隔离 Manager 验收通过：' + str(folder / 'acceptance.json'), flush=True)
+    output = folder / ('acceptance-' + source['kind'] + '-' + str(inventory['id']) + '.json')
+    output.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + '\n')
+    print('隔离 Manager 验收通过：' + str(output), flush=True)
 
 
 if __name__ == '__main__':
