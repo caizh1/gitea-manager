@@ -29,17 +29,24 @@ def package_assets(inventory, kind, normalized, base):
                     '/packages/' + quote(owner, safe='') + '/' + package_type + '/' + '/'.join(quote(v, safe='') for v in (name, version)) + '/files')
             files = next((row for row in inventory['datasets'] if row['path'] == path), None)
             require(files is not None and files['rows'], '制品文件清单缺失或为空')
-            tags = []
+            tags, metadata = [], {}
             if package_type == 'npm':
                 index = next((d for d in inventory['datasets'] if d['category'] == '制品索引' and
                               d['rows'] and d['rows'][0].get('name') == name), None)
                 require(index is not None, 'npm 制品缺少固定索引和分发标签')
-                tags = sorted(tag for tag, target in index['rows'][0].get('dist-tags', {}).items() if target == version)
+                registry = index['rows'][0]
+                value = registry.get('versions', {}).get(version)
+                require(isinstance(value, dict) and value.get('name') == name and value.get('version') == version,
+                        'npm 注册表版本元数据缺失或身份不符')
+                metadata = dict(value)
+                if registry.get('dist-tags', {}).get('latest') == version and 'readme' not in metadata and registry.get('readme'):
+                    metadata['readme'] = registry['readme']
+                tags = sorted(tag for tag, target in registry.get('dist-tags', {}).items() if target == version)
                 handled.add(index['path'])
             normalized['objects'].append({'kind': 'package', 'source_id': ident,
                 'title': name, 'created': timestamp(package['created_at']),
                 'history': {'name': name.rsplit('/',1)[0].replace('/','.')+':'+name.rsplit('/',1)[1] if kind == 'gitlab' and package_type == 'maven' else re.sub(r'[-_.]+','-',name).lower() if package_type=='pypi' else name,
-                            'version': version, 'type': package_type, 'source': package, 'tags': tags}})
+                            'version': version, 'type': package_type, 'source': package, 'tags': tags, 'metadata': metadata}})
             for file in files['rows']:
                 filename = file['file_name' if kind == 'gitlab' else 'name']
                 require(isinstance(filename, str) and filename and '/' not in filename and '\\' not in filename,

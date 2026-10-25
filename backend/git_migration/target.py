@@ -14,7 +14,7 @@ class Receiver(Gitea):
     def check(self):
         super().check()
         capability = self.api('GET', '/governance/migration-capabilities', missing=True)
-        require(isinstance(capability, dict) and capability.get('protocol') == 2,
+        require(isinstance(capability, dict) and capability.get('protocol') == 2 and capability.get('npm_registry_metadata') is True,
                 '目标尚未安装兼容的迁移接收端，请先部署配套增强版；未创建目标仓库', 'capability')
         return capability
 

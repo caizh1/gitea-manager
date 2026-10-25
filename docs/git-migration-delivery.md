@@ -4,10 +4,10 @@
 
 ## 组成
 
-- Manager 后端、前端、Git Worker、SVN Worker 固定标签：`git-migration-advanced-20261025-r10`。
+- Manager 后端、前端、Git Worker、SVN Worker 固定标签：`git-migration-registry-20261025-r11`。
 - 原有 AI 执行镜像沿用已验收的 `git-migration-20261025-r5` 内容，没有增加迁移管理权限。
-- 配套增强版接收镜像：`gm-migration-receiver:20261025-r22`，包内导出名 `gitea-migration-receiver:offline`。
-- 独立接收端源码：`offline/git-migration-receiver.bundle`。分支 `codex/git-migration-receiver`，实现提交 `e83271a`，基线 `1c0dab7`。该基线包含用户指定的当前增强版源码快照，不能将提交直接应用到未知版本并宣称兼容。
+- 配套增强版接收镜像：`gm-migration-receiver:20261025-r24`，包内导出名 `gitea-migration-receiver:offline`。
+- 独立接收端源码：`offline/git-migration-receiver.bundle`。分支 `codex/git-migration-receiver`，实现提交 `e89eacf`，基线 `1c0dab7`。该基线包含用户指定的当前增强版源码快照，不能将提交直接应用到未知版本并宣称兼容。
 
 ## 使用顺序
 
@@ -36,3 +36,5 @@
 - `git-migration-recovery-acceptance.py` 保留旧 Worker，替换固定镜像后从原任务与仓库编号继续；不能用于生产实例。
 
 旧版 Gitea Actions 制品和部分 GitLab 文件需要来源专用迁移管理员的网页会话，令牌不能完成时会明确阻断。源码和任务凭据不能进入命令输出或发布包。OCI／容器镜像暂不包含；EE 付费能力保持未验证。
+
+配套接收端还需声明 npm 注册表元数据能力，缺少该能力会在创建目标仓库前拒绝执行。`git-migration-registry-fixture.py` 补充多版本、注册表说明和归档依赖不一致的固定基准。

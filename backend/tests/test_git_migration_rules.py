@@ -75,3 +75,16 @@ class TagRulesTests(unittest.TestCase):
         self.assertEqual(rule['whitelist_usernames'],['developer'])
         self.assertEqual(rule['delete_whitelist_usernames'],['maintainer'])
         self.assertTrue(rule['migration_gitlab']);self.assertFalse(normalized['pending'])
+
+class NPMRegistryTests(unittest.TestCase):
+    def test_registry_metadata_and_readme_are_kept_separately_from_archive(self):
+        registry={'name':'fixture','dist-tags':{'latest':'1.0.0'},'readme':'注册表保存的说明',
+                  'versions':{'1.0.0':{'name':'fixture','version':'1.0.0','dependencies':{'dep':'^2'}}}}
+        item={'project':{'id':1,'path':'org/repo'},'datasets':[
+            {'category':'所有者制品包','path':'/packages/org','rows':[{'id':7,'type':'npm','name':'fixture','version':'1.0.0','created_at':'2020-01-01T00:00:00Z'}]},
+            {'category':'制品文件','path':'/packages/org/npm/fixture/1.0.0/files','rows':[{'id':8,'name':'fixture.tgz','size':9,'sha256':'a'*64}]},
+            {'category':'制品索引','path':'/api/packages/org/npm/fixture','rows':[registry]}]}
+        normalized={'objects':[],'pending':[]};package_assets(item,'gitea',normalized,'https://source.test')
+        metadata=normalized['objects'][0]['history']['metadata']
+        self.assertEqual(metadata['dependencies'],{'dep':'^2'});self.assertEqual(metadata['readme'],'注册表保存的说明')
+        self.assertNotIn('readme',registry['versions']['1.0.0'])

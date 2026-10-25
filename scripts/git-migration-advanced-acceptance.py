@@ -62,10 +62,13 @@ def main():
         kind,name,version=package['type'],package['name'],package['version'];downloads={};details={}
         if kind=='npm':
             index=get(registry+'/npm/'+quote(name,safe=''));v=index['versions'][version]
-            source_package=next(item['package'] for item in root['package_files'] if item['package']['type']=='npm' and item['package']['name']==name)
-            expected_tags={tag:version for tag in source_package['tags']}
+            source_packages=[item['package'] for item in root['package_files'] if item['package']['type']=='npm' and item['package']['name']==name]
+            source_package=next(item for item in source_packages if item['version']==version)
+            expected_tags={tag:item['version'] for item in source_packages for tag in item['tags']}
             assert index['dist-tags']==expected_tags, 'npm 分发标签与固定来源索引不同'
-            assert v['dependencies']['fixture-dep']=='^2.0.0' and v['engines']['node']=='>=18'
+            assert v['dependencies']==source_package['metadata']['dependencies']
+            if source_package['metadata'].get('readme'):assert v['readme']==source_package['metadata']['readme']
+            if 'engines' in source_package['metadata']:assert v['engines']==source_package['metadata']['engines']
             downloads[next(iter(package['files']))]=get(v['dist']['tarball'],True);details={'分发标签':index['dist-tags'],'依赖与运行时约束':'保留'}
         elif kind=='maven':
             group,artifact=name.split(':');prefix=registry+'/maven/'+group.replace('.','/')+'/'+artifact+'/'+version+'/'
@@ -91,6 +94,11 @@ def main():
         assert set(downloads)==set(package['files']), '协议未能下载完整制品 '+kind
         assert all(hashlib.sha256(downloads[f]).hexdigest()==sha for f,sha in package['files'].items())
         report['制品协议'].append({'类型':kind,'名称':name,'文件数':len(downloads),'逐文件摘要':'全部一致',**details})
+    if fixture.get('npm_registry_cases'):
+        case=fixture['npm_registry_cases'];index=get(registry+'/npm/'+quote(case['name'],safe=''));actual=index['versions'][case['version']]
+        assert (actual.get('description') or '')==(case.get('description') or '') and actual['dependencies']==case['dependencies']
+        assert (actual.get('readme') or '')==(case.get('readme') or '') and (index.get('readme') or '')==(case.get('readme') or '')
+        report['注册表元数据差异']='原生索引保留注册表说明与实际依赖，多版本标签和全部文件均核对'
     assert report['C产物执行'], '没有从目标下载并执行真实 C 编译产物'
     report['对象覆盖']={'依赖闭包项目':'2/2','原生对象':sum(r['对象数'] for r in report['项目']),'全部文件':len(report['历史文件']),'协议':'5/5'}
     if a.merge:

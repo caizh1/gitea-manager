@@ -1,31 +1,31 @@
 {
-  "说明": "本轮独立构建的固定运行镜像与源码包，不包含运行凭据或并行业务改动",
+  "说明": "固定构建镜像与来源摘要，注册表扩展已纳入运行时代码",
   "组件": {
     "backend": {
-      "固定标签": "gitea-review-backend:git-migration-advanced-20261025-r10",
-      "镜像身份": "sha256:d29d5a5b80c7416b8799e6e05ba210ae242c977e80a11ba67fec995754a8e587"
+      "固定标签": "gitea-review-backend:git-migration-registry-20261025-r11",
+      "镜像身份": "sha256:5367e03febb42c9558ca095a94102247d9506ea96cd7fddcd548b3334c4f1c96"
     },
     "frontend": {
-      "固定标签": "gitea-review-frontend:git-migration-advanced-20261025-r10",
+      "固定标签": "gitea-review-frontend:git-migration-registry-20261025-r11",
       "镜像身份": "sha256:053ed98971d3bc7109300eac8f6fa1d0cd5f1b2c4b8b6b7f0e5dfe172a03f332"
     },
     "git": {
-      "固定标签": "gitea-review-git:git-migration-advanced-20261025-r10",
-      "镜像身份": "sha256:c816b977f4af2d46669381fa0ea745214d4d216ba9b29c170a76c91916ba75e3"
+      "固定标签": "gitea-review-git:git-migration-registry-20261025-r11",
+      "镜像身份": "sha256:41d9f9b40e8e798a5a065718a721d313f5b5cb83b404f797adf3c3abaa85f0e7"
     },
     "svn": {
-      "固定标签": "gitea-review-svn:git-migration-advanced-20261025-r10",
-      "镜像身份": "sha256:18cdafacce82f9f57284300108ceb18b70e538f0b2dd5bc3fa513b804c7818f0"
+      "固定标签": "gitea-review-svn:git-migration-registry-20261025-r11",
+      "镜像身份": "sha256:5d70c06ebcf7693ccd1d53b6b536a41c4e8a28cdc84b2d175a091b5043452931"
     },
     "executor": {
-      "固定标签": "gitea-review-executor:git-migration-advanced-20261025-r10",
+      "固定标签": "gitea-review-executor:git-migration-registry-20261025-r11",
       "镜像身份": "sha256:9d135e7e9be7b268d0924d91c7ff8bc01b91b24c85926865be3900df1ed62f4a"
     },
     "接收端": {
-      "固定标签": "gm-migration-receiver:20261025-r22",
-      "镜像身份": "sha256:5eb7d5b786e28d1d6c97d55cf2f67e07ab6fee1039dcf7aafd991cdc5cd16045",
-      "源码提交": "e83271a90982034b01ba53934103671115372011",
-      "源码包SHA256": "08138dc3f52eb64f73a95a41ff05b1f3d258002fde9716ba125d23e5dd2337b1"
+      "固定标签": "gm-migration-receiver:20261025-r24",
+      "镜像身份": "sha256:02cca5b0bffae62d2cebda573b79b1a376bb16acfc6198ec38cc637a6cbf9b30",
+      "源码提交": "e89eacf0e649bfe809bf8ab1b2c9e3fb84f5bf29",
+      "源码包SHA256": "e42a98778f7af7a58bd74582ce6ed9ca66f2eaf10c62b8471e4ecadcf64b72cd"
     }
   }
 }

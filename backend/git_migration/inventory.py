@@ -88,7 +88,9 @@ class Inventory:
             self.pin_package_hashes(project, package, files)
             self.datasets[-1]['sha256'] = hashlib.sha256(encode(files).encode()).hexdigest()
             if package.get('package_type') == 'npm':
-                self.object('制品索引', base + '/packages/npm/' + quote(package['name'], safe=''))
+                path = base + '/packages/npm/' + quote(package['name'], safe='')
+                if not any(d['path'] == path for d in self.datasets):
+                    self.object('制品索引', path)
         self.collect('容器镜像仓库', base + '/registry/repositories')
 
     def object(self, category, path):
@@ -160,6 +162,8 @@ class Inventory:
                 self.collect('制品文件', path)
                 if package.get('type') == 'npm':
                     protocol = '/api/packages/' + quote(parts[0], safe='') + '/npm/' + quote(package['name'], safe='')
+                    if any(d['path'] == protocol for d in self.datasets):
+                        continue
                     value, _ = self.provider.http.request('GET', protocol, **self.provider.credentials())
                     require(isinstance(value, dict), '来源制品索引格式无效')
                     self.bytes += len(encode(value).encode()); self.objects += 1
