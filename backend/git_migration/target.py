@@ -14,7 +14,7 @@ class Receiver(Gitea):
     def check(self):
         super().check()
         capability = self.api('GET', '/governance/migration-capabilities', missing=True)
-        require(isinstance(capability, dict) and capability.get('protocol') == 1,
+        require(isinstance(capability, dict) and capability.get('protocol') == 2,
                 '目标尚未安装兼容的迁移接收端，请先部署配套增强版；未创建目标仓库', 'capability')
         return capability
 
@@ -35,7 +35,7 @@ class Receiver(Gitea):
             env['GIT_CONFIG_VALUE_' + str(i)] = value
         return env
 
-    def stage(self, key, source_digest, checkpoint, save):
+    def stage(self, key, source_digest, checkpoint, save, batch_key=None):
         """新建回执丢失时仅凭本任务随机标记恢复，不按业务仓库同名接管。"""
         require(len(key) == 32 and all(c in '0123456789abcdef' for c in key), '迁移任务标识无效')
         name = 'gm-migrate-' + key
@@ -62,7 +62,7 @@ class Receiver(Gitea):
         repo = self.repository(owner, name)
         require(repo.get('has_actions') is False, '隔离仓库必须关闭 Actions，避免迁入工作流自动运行')
         reply = self.api('POST', '/governance/migration-sessions',
-                         {'key': key, 'repo_id': repo['id'], 'source_digest': source_digest})
+                         {'key': key, 'repo_id': repo['id'], 'source_digest': source_digest, 'batch_key': batch_key or key})
         require(reply.get('repo_id') == repo['id'] and reply.get('source_digest') == source_digest,
                 '接收端会话回执与固定快照不一致')
         checkpoint['session_id'] = reply['id']
@@ -93,12 +93,44 @@ class Receiver(Gitea):
         require(all(k in allowed and allowed[k] == value for k, value in current.items()),
                 '隔离仓库出现非本快照引用，拒绝覆盖')
         transport = {**normal, **temporary}
+        default = snapshot.get('default_ref', '')
+        if default and default not in current:
+            require(default.startswith('refs/heads/') and default in normal, '来源默认分支缺少对应提交')
+            # 首个推送只能包含来源默认分支，避免异步推送回调稍后把临时分支选为 HEAD。
+            self.process.run(['git', 'push', '--atomic', '--force-with-lease=' + default + ':',
+                              remote, normal[default] + ':' + default], cwd=local, env=env)
+            import time
+            deadline = time.monotonic() + 60
+            while self.repository(self.actor['login'], repo['name']).get('empty') is not False:
+                self.process.tick()
+                require(time.monotonic() < deadline, '目标尚未确认首个默认分支，保留现场等待继续')
+                time.sleep(0.2)
+            current[default] = normal[default]
         names = sorted(transport)
         for offset in range(0, len(names), 100):
             batch = names[offset:offset + 100]
             leases = ['--force-with-lease=' + name + ':' + current.get(name, '') for name in batch]
             specs = [transport[name] + ':' + name for name in batch]
             self.process.run(['git', 'push', '--atomic', *leases, remote, *specs], cwd=local, env=env)
+        default = snapshot.get('default_ref', '')
+        if default:
+            require(default.startswith('refs/heads/'), '来源默认分支无效')
+            path = '/repos/' + quote(self.actor['login'], safe='') + '/' + quote(repo['name'], safe='')
+            self.api('PATCH', path, {'default_branch': default[len('refs/heads/'):]})
+            def remote_head():
+                lines = self.process.run(['git', 'ls-remote', '--symref', remote, 'HEAD'], env=env).decode().splitlines()
+                return next((line[5:].split('\t', 1)[0] for line in lines if line.startswith('ref: ')), '')
+            actual_head = remote_head()
+            if actual_head != default:
+                # 原生 API 在数据库值相同时不会修复 Git HEAD。先同步到已核对的实际分支，
+                # 再切回来源默认分支；两步均走原生锁与治理检查，重启后可幂等重做。
+                require(actual_head in transport and actual_head.startswith('refs/heads/'),
+                        '目标 Git HEAD 不属于本次传输，拒绝切换')
+                checkpoint['default_ref_intent'] = default
+                save(checkpoint)
+                self.api('PATCH', path, {'default_branch': actual_head[len('refs/heads/'):]})
+                self.api('PATCH', path, {'default_branch': default[len('refs/heads/'):]})
+            require(remote_head() == default, '目标实际默认引用回读不一致')
         self.process.run(['git', 'lfs', 'push', '--all', remote], cwd=local, env=env)
         ref_objects = [{'kind': 'git_ref', 'source_id': hashlib.sha256(name.encode()).hexdigest(),
                         'ref': name, 'commit': value} for name, value in sorted(extra.items())]
@@ -112,11 +144,6 @@ class Receiver(Gitea):
                 remote, *[':' + name for name in batch]], cwd=local, env=env)
         actual = parse_refs(self.process.run(['git', 'ls-remote', '--refs', remote], env=env))
         require(actual == refs, '目标代码引用回读不一致')
-        default = snapshot.get('default_ref', '')
-        if default:
-            require(default.startswith('refs/heads/'), '来源默认分支无效')
-            self.api('PATCH', '/repos/' + quote(self.actor['login'], safe='') + '/' + quote(repo['name'], safe=''),
-                     {'default_branch': default[len('refs/heads/'):]})
         checkpoint['code_refs'] = actual
         checkpoint['code_transferred'] = True
         save(checkpoint)

@@ -42,6 +42,7 @@
             <el-alert v-if="inventoryRecord?.stale" title="来源配置已变化，以下盘点结果仅供查看历史。" type="warning" :closable="false" />
             <template v-for="project in inventoryRecord?.result?.projects || []" :key="project.project.id">
               <h4>{{ project.project.path }} · {{ project.object_count }} 个元数据对象</h4>
+              <el-alert v-if="project.dependency" title="此仓库是跨仓库合并请求的依赖，已自动纳入同批迁移和停写范围。" type="warning" :closable="false" />
               <p v-if="project.code_snapshot">代码引用核验完成，{{ project.code_snapshot.lfs_objects.length }} 个历史 LFS 对象；尚未写入目标。</p>
               <el-alert :title="project.code_snapshot ? 'Git 与 LFS 已完成来源侧核验；Wiki、附件、日志和制品内容尚未核验，也未证明源端停写与目标兼容。' : project.boundary" type="info" :closable="false" />
               <el-table :data="project.gaps" empty-text="本次调用没有发现读取缺口；仍不代表资料完整可迁移。"><el-table-column prop="category" label="待解决范围" min-width="130" /><el-table-column prop="reason" label="原因" min-width="240" /></el-table>

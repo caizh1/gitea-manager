@@ -40,7 +40,13 @@ def public(row, detail=True):
 def content_digest(value):
     # 下载计数会因验收读取自行变化，不属于需要停写的业务内容。
     if isinstance(value, dict):
-        return {key: content_digest(item) for key, item in value.items() if key not in ('download_count', 'last_downloaded_at') and not (key == 'sha256' and 'rows' in value and 'category' in value)}
+        derived = {'download_count', 'last_downloaded_at'}
+        if 'id' in value and ('login' in value or 'username' in value):
+            derived.add('last_login')  # 读取旧版网页制品会刷新登录时间，不能据此判为来源业务写入。
+        if 'source_project_id' in value and 'target_project_id' in value:
+            # GitLab 异步重新计算的可合并性不是业务写入；提交、正文和审批仍逐项比较。
+            derived.update(('merge_status', 'detailed_merge_status'))
+        return {key: content_digest(item) for key, item in value.items() if key not in derived and not (key == 'sha256' and 'rows' in value and 'category' in value)}
     if isinstance(value, list):
         return [content_digest(item) for item in value]
     return value
@@ -130,10 +136,35 @@ def execute(row, provider, tick):
             receiver.verify_selected_scope(plan['selection'])
             identity = provider.authenticate()
             require(identity['actor'] == frozen['actor'] and identity['version'] == frozen['version'], '来源身份或版本已变化', 'stale')
+            # 所有依赖仓库先固定并建立代码，再导入跨仓库关系；仓库编号跨转移保持不变。
+            for item in frozen['projects']:
+                project = item['project']
+                expected = {k: v for k, v in item.items() if k not in ('code_snapshot', 'dependency')}
+                require(digest(content_digest(Inventory(provider).inspect(project))) == digest(content_digest(expected)),
+                        '来源元数据已改变，不能沿用固定依赖图', 'source_changed')
+                progress = checkpoint.setdefault(str(project['id']), {'key': secrets.token_hex(16)})
+                if progress.get('sealed') or progress.get('handed_off'):
+                    continue
+                row.stage = '固定依赖仓库与代码：' + project['path']
+                save()
+                if 'snapshot' not in progress:
+                    code_dir = folder / (str(project['id']) + '-' + secrets.token_hex(8))
+                    progress['snapshot'] = GitSnapshot(provider, project, code_dir, tick=tick).capture()
+                    progress['directory'] = str(code_dir)
+                    save()
+                if item.get('code_snapshot'):
+                    require(progress['snapshot']['refs'] == item['code_snapshot']['refs'] and
+                            progress['snapshot']['lfs_objects'] == item['code_snapshot']['lfs_objects'],
+                            '依赖代码已偏离固定盘点', 'source_changed')
+                repo = receiver.stage(progress['key'], digest([progress['snapshot'], expected]), progress,
+                                      lambda _: save(), batch_key=checkpoint['key'])
+                if not progress.get('code_transferred'):
+                    receiver.transfer_code(progress['snapshot'], progress['directory'], repo, progress, lambda _: save())
+            repository_map = {item['project']['id']: checkpoint[str(item['project']['id'])] for item in frozen['projects']}
             for item in frozen['projects']:
                 project = item['project']
                 current = Inventory(provider).inspect(project)
-                expected = {k: v for k, v in item.items() if k != 'code_snapshot'}
+                expected = {k: v for k, v in item.items() if k not in ('code_snapshot', 'dependency')}
                 require(digest(content_digest(current)) == digest(content_digest(expected)), '来源元数据已经变化，请保持停写并重新盘点', 'source_changed')
                 progress = checkpoint.setdefault(str(project['id']), {'key': secrets.token_hex(16)})
                 if progress.get('sealed') or progress.get('handed_off'):
@@ -155,7 +186,7 @@ def execute(row, provider, tick):
                     require(snapshot['refs'] == item['code_snapshot']['refs'] and snapshot['lfs_objects'] == item['code_snapshot']['lfs_objects'], '来源代码已偏离盘点', 'source_changed')
                 def resolve_tag(tag):
                     return receiver.process.run(['git', 'rev-parse', '--verify', 'refs/tags/' + tag + '^{commit}'], cwd=folder / progress['directory'] / 'repository.git').decode().strip()
-                normalized = objects(item, provider.kind, resolve_tag=resolve_tag,
+                normalized = objects(item, provider.kind, resolve_tag=resolve_tag, repository_map=repository_map,
                     resolve_diff=lambda position: historical_diff(receiver.process,
                         folder / progress['directory'] / 'repository.git', position))
                 assets = plan_assets(item, provider.kind, normalized, progress['key'], provider.http.base, receiver.base)
@@ -167,7 +198,7 @@ def execute(row, provider, tick):
                 assets.extend(historical_files)
                 normalized['pending'].extend(historical_gaps)
                 stage('创建并核对隔离仓库')
-                repo = receiver.stage(progress['key'], digest([snapshot, expected]), progress, lambda _: save())
+                repo = receiver.stage(progress['key'], digest([snapshot, expected]), progress, lambda _: save(), batch_key=checkpoint['key'])
                 stage('传输代码、引用与 LFS')
                 receiver.transfer_code(snapshot, progress['directory'], repo, progress, lambda _: save(),
                                        [obj for obj in normalized['objects'] if obj['kind'] == 'pull'])

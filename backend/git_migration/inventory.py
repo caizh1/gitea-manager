@@ -43,7 +43,7 @@ class Inventory:
             self.gitea(project)
         return {'project': project, 'datasets': self.datasets, 'gaps': self.gaps,
                 'object_count': self.objects, 'migration_verified': False,
-                'boundary': '只包含接口元数据；尚未下载核对 Git、LFS、Wiki、附件、日志和制品内容，也未证明源端停写与目标兼容'}
+                'boundary': '固定接口元数据及旧版制品摘要；其余 Git、LFS、Wiki、附件和日志仍需执行核验，尚未证明来源停写及目标兼容'}
 
     def gitlab(self, project):
         base = '/projects/' + str(project['id'])
@@ -82,7 +82,13 @@ class Inventory:
         self.collect('作业', base + '/jobs', params={'include_retried': 'true'})
         packages = self.collect('制品包', base + '/packages', params={'order_by': 'created_at', 'sort': 'asc'})
         for package in packages:
-            self.collect('制品文件', base + '/packages/' + str(package['id']) + '/package_files')
+            if package.get('status','default') not in ('default','deprecated'):
+                self.gaps.append({'category':'制品处理状态','path':base+'/packages/'+str(package['id']),'reason':'来源制品仍在处理或不可安装，不能认定为正式版本'})
+            files = self.collect('制品文件', base + '/packages/' + str(package['id']) + '/package_files')
+            self.pin_package_hashes(project, package, files)
+            self.datasets[-1]['sha256'] = hashlib.sha256(encode(files).encode()).hexdigest()
+            if package.get('package_type') == 'npm':
+                self.object('制品索引', base + '/packages/npm/' + quote(package['name'], safe=''))
         self.collect('容器镜像仓库', base + '/registry/repositories')
 
     def object(self, category, path):
@@ -135,9 +141,11 @@ class Inventory:
             for review in reviews:
                 self.collect('行内评审', path + '/reviews/' + str(review['id']) + '/comments')
         self.collect('分支保护', base + '/branch_protections', identity='rule_name')
-        self.collect('Actions 流水线', base + '/actions/runs', key='workflow_runs')
+        self.collect('标签保护', base + '/tag_protections')
+        runs = self.collect('Actions 流水线', base + '/actions/runs', key='workflow_runs')
         self.collect('Actions 作业', base + '/actions/jobs', key='jobs')
-        self.collect('Actions 制品', base + '/actions/artifacts', key='artifacts')
+        artifacts = self.collect('Actions 制品', base + '/actions/artifacts', key='artifacts')
+        self.legacy_artifacts(project, runs, artifacts)
         packages = self.collect('所有者制品包', '/packages/' + quote(parts[0], safe=''))
         if packages:
             linked = [p for p in packages if (p.get('repository') or {}).get('id') == project['id']]
@@ -150,3 +158,61 @@ class Inventory:
             for package in linked:
                 path = '/packages/' + quote(parts[0], safe='') + '/' + '/'.join(quote(str(package[k]), safe='') for k in ('type', 'name', 'version')) + '/files'
                 self.collect('制品文件', path)
+                if package.get('type') == 'npm':
+                    protocol = '/api/packages/' + quote(parts[0], safe='') + '/npm/' + quote(package['name'], safe='')
+                    value, _ = self.provider.http.request('GET', protocol, **self.provider.credentials())
+                    require(isinstance(value, dict), '来源制品索引格式无效')
+                    self.bytes += len(encode(value).encode()); self.objects += 1
+                    require(self.bytes <= 32*1024*1024 and self.objects <= 100000, '制品索引超过盘点容量', 'capacity')
+                    self.datasets.append({'category': '制品索引', 'path': protocol, 'rows': [value]})
+
+    def pin_package_hashes(self, project, package, files):
+        """旧版 GitLab 多种协议没有 SHA256；固定正文，并核对已有弱摘要。"""
+        import tempfile
+        from pathlib import Path
+        from flask import has_app_context
+        from .store import root
+        from .files import SourceFiles
+        from .gitlab_web import authenticate_web
+        missing=[f for f in files if not f.get('file_sha256')]
+        if not missing:return
+        authenticate_web(self.provider)
+        folder=root() if has_app_context() else Path('work/git-migration/source-hashes')
+        folder.mkdir(parents=True,exist_ok=True,mode=0o700)
+        with tempfile.TemporaryDirectory(prefix='package-hash-',dir=folder) as directory:
+            downloader=SourceFiles(self.provider,directory,tick=self.provider.http.tick)
+            for file in missing:
+                url=self.provider.http.base+'/'+project['path']+'/-/package_files/'+str(file['id'])+'/download'
+                local=downloader.download(url,expected_size=file['size'],follow_same_origin=True)
+                hashes={name:hashlib.new(name) for name in ('sha1','md5') if file.get('file_'+name)}
+                with Path(local['file']).open('rb') as stream:
+                    for block in iter(lambda:stream.read(1024*1024),b''):
+                        for h in hashes.values():h.update(block)
+                require(all(h.hexdigest()==file['file_'+name] for name,h in hashes.items()),'来源制品正文与已有摘要不一致')
+                file['file_sha256']=local['sha256']
+
+    def legacy_artifacts(self,project,runs,artifacts):
+        """REST 只列出新版上传制品；逐流水线读取网页清单，补齐旧协议已确认的文件。"""
+        if not runs:return
+        from .gitea_web import authenticate_web, read_run
+        from .normalize import timestamp
+        authenticate_web(self.provider)
+        rows=[]
+        for run in runs:
+            self.provider.http.tick()
+            from .providers import version_tuple
+            index=run['id'] if version_tuple(self.provider.version)>=(1,27,0) else run.get('run_number') or run['id']
+            path='/'+project['path']+'/actions/runs/'+str(index)+'/jobs/0'
+            value=read_run(self.provider,project['path'],index)
+            require(isinstance(value,dict) and 'artifacts' in value and (value['artifacts'] is None or isinstance(value['artifacts'],list)), '旧版 Actions 文件清单缺失')
+            identity=value.get('state',{}).get('run',{})
+            require(identity.get('repoId')==project['id'] and identity.get('link')=='/'+project['path']+'/actions/runs/'+str(index), '旧版 Actions 返回了不同流水线')
+            for item in value['artifacts'] or []:
+                if any(a.get('name')==item['name'] and (a.get('workflow_run') or {}).get('id')==run['id'] for a in artifacts):continue
+                ident=int(hashlib.sha256((str(run['id'])+'/'+item['name']).encode()).hexdigest()[:15],16)
+                created=run.get('created_at') or run.get('started_at') or run.get('run_started_at');timestamp(created)
+                rows.append({**item,'id':ident,'created_at':created,'run_id':run['id'],'expired':item.get('status')=='expired',
+                             'legacy_path':'/'+project['path']+'/actions/runs/'+str(index)+'/artifacts/'+quote(item['name'],safe='')})
+        self.objects+=len(rows);self.bytes+=len(encode(rows).encode())
+        require(self.bytes<=32*1024*1024 and self.objects<=100000,'旧版 CI 制品清单容量超限','capacity')
+        self.datasets.append({'category':'Actions 历史制品','path':'/'+project['path']+'/actions/legacy-artifacts','rows':rows})

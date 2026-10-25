@@ -36,7 +36,7 @@ def author(row, kind):
     return {'author': name, 'author_id': ident}
 
 
-def objects(inventory, kind, resolve_tag=None, resolve_diff=None):
+def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map=None):
     """这里只转换已支持的对象；返回待处理目录供执行门禁核对，不能将其忽略。"""
     require(kind in ('gitlab', 'gitea'), '来源类型无效')
     result, pending = [], []
@@ -121,12 +121,18 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None):
             refs = row.get('diff_refs') or {}
             head, base = refs.get('head_sha'), refs.get('base_sha')
             head_branch, base_branch = row['source_branch'], row['target_branch']
-            require(row.get('source_project_id') == row.get('target_project_id'), '跨仓库合并请求需要来源仓库映射')
+            source_repo, base_repo = row.get('source_project_id'), row.get('target_project_id')
         else:
             head, base = row['head']['sha'], row['base']['sha']
             head_branch, base_branch = row['head']['ref'], row['base']['ref']
-            require(row['head'].get('repo', {}).get('id') == row['base'].get('repo', {}).get('id'), '跨仓库合并请求需要来源仓库映射')
+            source_repo, base_repo = (row['head'].get('repo') or {}).get('id'), (row['base'].get('repo') or {}).get('id')
         require(head and base, '合并请求缺少完整的历史提交标识')
+        head_target = 0
+        if source_repo != base_repo:
+            require(repository_map and source_repo in repository_map and base_repo in repository_map,
+                    '跨仓库合并请求需要同一批次的完整仓库映射')
+            head_target = repository_map[source_repo]['repo_id']
+            require(base_repo == inventory['project']['id'], '合并请求目标仓库与盘点对象不符')
         selected = []
         for label in row.get('labels', []):
             name = label if isinstance(label, str) else label['name']
@@ -143,7 +149,7 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None):
                 'created': timestamp(row['created_at']), 'updated': timestamp(row['updated_at']),
                 'closed': timestamp(row.get('closed_at') or row.get('merged_at'), True),
                 'merged': timestamp(row.get('merged_at'), True), 'merge_commit': row.get('merge_commit_sha') or '',
-                'head_commit': head, 'base_commit': base, 'head_branch': head_branch, 'base_branch': base_branch,
+                'head_commit': head, 'base_commit': base, 'head_repo_id': head_target, 'head_branch': head_branch, 'base_branch': base_branch,
                 'labels': selected, 'milestone': milestone_id, 'history': row, **author(row, kind)})
     for dataset in datasets:
         category = dataset['category']
@@ -194,6 +200,12 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None):
                         'commit': resolve_tag(tag), 'target': row.get('target_commitish') or '',
                         'draft': bool(row.get('draft')), 'prerelease': bool(row.get('prerelease')),
                         'created': timestamp(row.get('created_at')), 'updated': timestamp(row.get('created_at')), **author(row, 'gitlab')})
+            continue
+        if category in ('Actions 制品','Actions 历史制品'):
+            for row in dataset['rows']:
+                append({'kind': 'ci_artifact', 'source_id': identifier(row['id']), 'title': row['name'],
+                        'state': 'expired' if row.get('expired') else 'available',
+                        'created': timestamp(row['created_at']), 'history': row})
             continue
         if category in ('流水线', 'Actions 流水线', '作业', 'Actions 作业'):
             is_job = category in ('作业', 'Actions 作业')

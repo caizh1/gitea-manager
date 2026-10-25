@@ -75,3 +75,20 @@ class RunTests(unittest.TestCase):
         db.session.commit()
         with self.assertRaises(MigrationError):
             enqueue(self.data, 1)
+
+
+class DerivedStateTests(unittest.TestCase):
+    def test_gitlab_background_merge_checks_do_not_mask_real_changes(self):
+        from git_migration.runs import content_digest
+        row={'source_project_id':1,'target_project_id':2,'merge_status':'unchecked','detailed_merge_status':'checking','sha':'a'*40,'title':'原始正文'}
+        later={**row,'merge_status':'can_be_merged','detailed_merge_status':'mergeable'}
+        self.assertEqual(content_digest(row),content_digest(later))
+        self.assertNotEqual(content_digest(row),content_digest({**later,'sha':'b'*40}))
+        self.assertNotEqual(content_digest(row),content_digest({**later,'title':'改变正文'}))
+
+    def test_source_web_login_does_not_hide_account_identity_change(self):
+        from git_migration.runs import content_digest
+        user={'id':1,'login':'reader','last_login':'2020-01-01T00:00:00Z'}
+        later={**user,'last_login':'2020-01-02T00:00:00Z'}
+        self.assertEqual(content_digest(user),content_digest(later))
+        self.assertNotEqual(content_digest(user),content_digest({**later,'id':2}))

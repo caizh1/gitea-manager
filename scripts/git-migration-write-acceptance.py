@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import secrets
+import socket
 import sys
 import time
 from types import SimpleNamespace
@@ -53,15 +54,17 @@ def main():
         name = 'gm-git-receiver-' + time.strftime('%Y%m%d%H%M%S') + '-' + secrets.token_hex(2)
         folder = ROOT / 'work' / 'git-migration' / name
         folder.mkdir(parents=True, mode=0o700)
-        state = {'说明': '独立接收端验收资源与凭据，禁止发布', 'name': name, 'password': secrets.token_urlsafe(28)}
+        with socket.socket() as port_probe:
+            port_probe.bind(('127.0.0.1',0)); port=port_probe.getsockname()[1]
+        state = {'说明': '独立接收端验收资源与凭据，禁止发布', 'name': name, 'password': secrets.token_urlsafe(28),'base':'http://127.0.0.1:'+str(port)}
         save_secret(folder / 'resources.json', state)
         label = 'io.gitea-manager.test=git-migration-receiver'
         docker('volume', 'create', '--label', label, name)
         docker('run', '-d', '--platform', 'linux/amd64', '--name', name, '--label', label,
-               '--memory', '768m', '--cpus', '2', '-v', name + ':/data', '-p', '127.0.0.1::3000',
+               '--memory', '768m', '--cpus', '2', '-v', name + ':/data', '-p', '127.0.0.1:'+str(port)+':3000',
                '-e', 'GITEA__database__DB_TYPE=sqlite3', '-e', 'GITEA__security__INSTALL_LOCK=true',
                '-e', 'GITEA__service__DISABLE_REGISTRATION=true', '-e', 'GITEA__server__LFS_START_SERVER=true',
-               '-e', 'GITEA__server__ROOT_URL=http://127.0.0.1:3000/', args.image)
+               '-e', 'GITEA__server__ROOT_URL='+state['base']+'/', args.image)
         state['base'] = 'http://127.0.0.1:' + docker('port', name, '3000/tcp').rsplit(':', 1)[1]
         save_secret(folder / 'resources.json', state)
     for attempt in range(120):

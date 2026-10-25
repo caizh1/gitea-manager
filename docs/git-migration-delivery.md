@@ -1,13 +1,13 @@
 # Git 迁移隔离测试交付说明
 
-本包用于本文列出的代表性链路测试，不构成全部迁移需求或生产能力认证。已知未支持资料会阻断最终交接，详细范围见 `git-migration-implementation.md`。
+本包用于完整固定基准的隔离链路测试，不构成全部版本或生产能力认证。已知未支持资料会阻断最终交接，详细范围见 `git-migration-implementation.md`。
 
 ## 组成
 
-- Manager 后端、前端、Git Worker、SVN Worker 固定标签：`git-migration-write-20261025-r6`。
+- Manager 后端、前端、Git Worker、SVN Worker 固定标签：`git-migration-advanced-20261025-r10`。
 - 原有 AI 执行镜像沿用已验收的 `git-migration-20261025-r5` 内容，没有增加迁移管理权限。
-- 配套增强版接收镜像：`gm-migration-receiver:20261025-r15`，包内导出名 `gitea-migration-receiver:offline`。
-- 独立接收端源码：`offline/git-migration-receiver.bundle`。分支 `codex/git-migration-receiver`，实现提交 `f7824e4`，基线 `1c0dab7`。该基线包含用户指定的当前增强版源码快照，不能将提交直接应用到未知版本并宣称兼容。
+- 配套增强版接收镜像：`gm-migration-receiver:20261025-r22`，包内导出名 `gitea-migration-receiver:offline`。
+- 独立接收端源码：`offline/git-migration-receiver.bundle`。分支 `codex/git-migration-receiver`，实现提交 `e83271a`，基线 `1c0dab7`。该基线包含用户指定的当前增强版源码快照，不能将提交直接应用到未知版本并宣称兼容。
 
 ## 使用顺序
 
@@ -26,3 +26,13 @@
 - `scripts/git-migration-rich-fixture.py` 与 `scripts/gitlab-migration-rich-fixture.py`：仅向已标记的独立来源建立代表性测试资料。
 
 凭据和原始测试数据仅保存在本机 `work/`，不进入交付包。包内源码、文档、依赖和镜像清单用于复核，不能把本地 API 验收当作 EE 许可、完整版本矩阵或人工节省百分之八十的证明。
+
+## 高级功能验收入口
+
+- `git-migration-advanced-fixture.py` 建立真实依赖仓库、重叠规则和五种原生制品；`git-migration-ci-fixture.py` 建立真实 C 编译、成功与失败日志、归档及原始报告。
+- `git-migration-rule-fixture.py` 为 GitLab 增加现存保护分支，并核对来源有效身份下的 Nobody 合并拒绝。
+- `git-migration-advanced-acceptance.py` 下载全部盘点文件、核对五种协议、执行已知 C 基准二进制，并实际合并跨仓库请求。
+- `git-migration-rule-acceptance.py` 执行真实允许与拒绝行为，拒绝必须有明确保护或权限原因，网络错误不能计为拒绝通过。
+- `git-migration-recovery-acceptance.py` 保留旧 Worker，替换固定镜像后从原任务与仓库编号继续；不能用于生产实例。
+
+旧版 Gitea Actions 制品和部分 GitLab 文件需要来源专用迁移管理员的网页会话，令牌不能完成时会明确阻断。源码和任务凭据不能进入命令输出或发布包。OCI／容器镜像暂不包含；EE 付费能力保持未验证。

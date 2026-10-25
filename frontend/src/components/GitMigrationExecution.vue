@@ -25,7 +25,7 @@
           </el-form-item>
         </el-form>
       </div>
-      <el-checkbox v-model="frozen">已确认来源停止写入，并授权按当前盘点内容执行迁移</el-checkbox>
+      <el-checkbox v-model="frozen">已确认所列项目及依赖均已停止写入，并授权按当前盘点内容执行迁移</el-checkbox>
       <el-button type="primary" :disabled="!serverId || !groupId || !frozen || activeRun || principals.some(key => !principalInputs[key]?.trim())" :loading="busy" @click="start">执行迁移</el-button>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />

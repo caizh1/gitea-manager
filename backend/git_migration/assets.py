@@ -57,7 +57,10 @@ def plan_assets(inventory, kind, normalized, key, source_base, target_base):
 
 def transfer_assets(provider, receiver, key, assets, directory, checkpoint, save):
     if any(asset.get('web') for asset in assets):
-        from .gitlab_web import authenticate_web
+        if provider.kind == 'gitlab':
+            from .gitlab_web import authenticate_web
+        else:
+            from .gitea_web import authenticate_web
         authenticate_web(provider)
     files = SourceFiles(provider, directory, tick=receiver.process.tick)
     for asset in assets:

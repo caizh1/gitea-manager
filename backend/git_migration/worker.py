@@ -107,17 +107,16 @@ def step():
                 require(identity['actor'] == snapshot['actor'] and identity['version'] == snapshot['version'],
                         '来源身份或版本已变化，请重新发现', 'stale')
                 ids = set(json.loads(row.project_ids_json))
-                projects = [p for p in snapshot['projects'] if p['id'] in ids]
-                result = {**identity, 'projects': [], 'migration_verified': False}
-                size = 0
-                for project in projects:
-                    item = Inventory(provider).inspect(project)
+                from .dependencies import inspect_closure
+                result = {**identity, 'projects': inspect_closure(provider, snapshot['projects'], ids, tick),
+                          'requested_project_ids': sorted(ids), 'migration_verified': False}
+                total_size = 0
+                for item in result['projects']:
                     if row.capture_code:
-                        directory = root() / 'code-snapshots' / str(ident) / str(project['id'])
-                        item['code_snapshot'] = GitSnapshot(provider, project, directory, tick=tick).capture()
-                    size += len(encode(item).encode())
-                    require(size <= 64 * 1024 * 1024, '本次元数据容量超限，请减少所选项目', 'capacity')
-                    result['projects'].append(item)
+                        directory = root() / 'code-snapshots' / str(ident) / str(item['project']['id'])
+                        item['code_snapshot'] = GitSnapshot(provider, item['project'], directory, tick=tick).capture()
+                    total_size += len(encode(item).encode())
+                    require(total_size <= 64 * 1024 * 1024, '依赖与代码快照总容量超限，请缩小批次', 'capacity')
             tick()
         db.session.expire_all()
         row = db.session.get(model, ident)

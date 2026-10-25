@@ -23,10 +23,13 @@ def requirements(inventory):
     keys = set()
     for item in inventory.get('projects', []):
         for dataset in item['datasets']:
-            if dataset['category'] == '分支保护':
+            if dataset['category'] in ('分支保护', '标签保护'):
                 for rule in dataset['rows']:
-                    for field in ('push_access_levels', 'merge_access_levels'):
+                    if dataset['category']=='标签保护' and 'create_access_levels' in rule:keys.add('gitlab:access:40')
+                    for field in ('push_access_levels', 'merge_access_levels', 'create_access_levels'):
                         keys.update(principal_key(p) for p in rule.get(field, []) if p.get('access_level') != 0 or p.get('user_id') or p.get('group_id'))
+                    keys.update('gitea:user:' + name for name in rule.get('whitelist_usernames', []) or [])
+                    keys.update('gitea:team:' + name for name in rule.get('whitelist_teams', []) or [])
                     for user_field, team_field in PRINCIPAL_FIELDS.items():
                         keys.update('gitea:user:' + name for name in rule.get(user_field, []) or [])
                         keys.update('gitea:team:' + name for name in rule.get(team_field, []) or [])
@@ -71,7 +74,7 @@ def convert(inventory, kind, mapping, normalized):
                 rules.append(rule)
                 continue
             name = source['name']
-            if any(c in name for c in '*?[') or source.get('code_owner_approval_required'):
+            if source.get('code_owner_approval_required'):
                 complete = False
                 continue
             def users(field):
@@ -84,10 +87,6 @@ def convert(inventory, kind, mapping, normalized):
                     values.update(user['login'] for user in mapping[key])
                 return sorted(values)
             push, merge = users('push_access_levels'), users('merge_access_levels')
-            # 原生空合并白名单表示不限制，不能拿它表示“无人可合并”。
-            if not merge:
-                complete = False
-                continue
             raw = {'rule_name': name, 'enable_push': bool(push),
                    'enable_push_whitelist': bool(push), 'push_whitelist_usernames': push,
                    'enable_merge_whitelist': True, 'merge_whitelist_usernames': merge,
@@ -97,9 +96,11 @@ def convert(inventory, kind, mapping, normalized):
                    'block_admin_merge_override': True}
             rule = normalize_rule(raw)
             rule.pop('team_org', None)
+            rule['migration_gitlab'] = True
             rules.append(rule)
         if complete:
             normalized['pending'] = [p for p in normalized['pending'] if p.get('path') != dataset['path']]
+    rules.extend(convert_tags(inventory, kind, mapping, normalized))
     return rules
 
 
@@ -115,6 +116,9 @@ def apply(receiver, repo, rules, mapping, progress, save):
             require(permission.get('permission') in ('write', 'admin', 'owner'), '映射账号没有目标代码写入权限；请由管理员配置已有群组授权')
     state = progress.setdefault('rules', {})
     for rule in rules:
+        if rule.get('_tag'):
+            apply_tag(receiver, path, rule, progress, save)
+            continue
         name = rule['rule_name']
         current = receiver.api('GET', path + '/branch_protections')
         existing = next((r for r in current if r.get('rule_name') == name), None)
@@ -136,6 +140,50 @@ def apply(receiver, repo, rules, mapping, progress, save):
                 '目标规则出现未规划的增强约束或绕过名单')
         normalized = normalize_rule({k: v for k, v in actual.items() if k in API_FIELDS}, imported=True)
         normalized.pop('team_org', None)
+        if rule.get('migration_gitlab'):
+            require(actual.get('migration_gitlab') is True, '目标未保留 GitLab 规则叠加语义')
+            normalized['migration_gitlab'] = True
         require(normalized == rule, '目标规则或人员名单回读不一致')
         state[name]['verified'] = True
         save()
+
+
+def convert_tags(inventory, kind, mapping, normalized):
+    import re
+    result=[]
+    for dataset in inventory['datasets']:
+        if dataset['category']!='标签保护':continue
+        for source in dataset['rows']:
+            if kind=='gitlab':
+                name=source['name']
+                pattern='/^'+re.escape(name).replace(r'\*','.*')+'$/'
+                keys=[principal_key(p) for p in source.get('create_access_levels',[]) if p.get('access_level') or p.get('user_id') or p.get('group_id')]
+            else:
+                pattern=source['name_pattern']
+                keys=['gitea:user:'+n for n in source.get('whitelist_usernames',[]) or []]+['gitea:team:'+n for n in source.get('whitelist_teams',[]) or []]
+            require(all(key in mapping for key in keys),'标签保护缺少主体映射')
+            converted={'_tag':True,'name_pattern':pattern,'whitelist_usernames':sorted({u['login'] for key in keys for u in mapping[key]}),'whitelist_teams':[]}
+            if kind=='gitlab':
+                require('gitlab:access:40' in mapping,'标签删除维护者映射缺失')
+                converted.update(migration_gitlab=True,delete_whitelist_usernames=sorted(u['login'] for u in mapping['gitlab:access:40']))
+            result.append(converted)
+        normalized['pending']=[v for v in normalized['pending'] if v.get('path')!=dataset['path']]
+    return result
+
+
+def apply_tag(receiver, path, rule, progress, save):
+    wanted={k:v for k,v in rule.items() if k!='_tag'}
+    key='标签:'+rule['name_pattern'];state=progress.setdefault('rules',{})
+    rows=receiver.api('GET',path+'/tag_protections')
+    current=next((r for r in rows if r['name_pattern']==rule['name_pattern']),None)
+    if current is None:
+        require(not state.get(key,{}).get('verified'),'已写入的标签规则消失')
+        state[key]={'intent':wanted};save()
+        receiver.session.headers['X-Gitea-Migration-Key']=progress['key']
+        try:receiver.api('POST',path+'/tag_protections',wanted)
+        finally:receiver.session.headers.pop('X-Gitea-Migration-Key',None)
+    else:require(key in state,'目标已有同名标签规则，不能接管')
+    rows=receiver.api('GET',path+'/tag_protections')
+    current=next((r for r in rows if r['name_pattern']==rule['name_pattern']),None)
+    require(current and all(sorted(current.get(k) or [])==sorted(v) if isinstance(v,list) else current.get(k)==v for k,v in wanted.items()),'标签规则回读不一致')
+    state[key]['verified']=True;save()
