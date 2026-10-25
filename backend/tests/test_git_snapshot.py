@@ -51,6 +51,17 @@ class SnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(MigrationError, '源引用已变化'):
             self.snapshot.capture()
 
+    def test_final_source_check_rejects_changes_after_transfer(self):
+        self.snapshot.git = Mock(return_value=b'b' * 40 + b'\trefs/heads/main\n')
+        with self.assertRaisesRegex(MigrationError, '禁止交接') as result:
+            self.snapshot.verify_refs({'refs': {'refs/heads/main': 'a' * 40}, 'default_ref': ''})
+        self.assertEqual(result.exception.code, 'source_changed')
+
+    def test_final_source_check_rejects_default_branch_change(self):
+        self.snapshot.git = Mock(return_value=b'ref: refs/heads/other\tHEAD\n' + b'a' * 40 + b'\trefs/heads/main\n')
+        with self.assertRaisesRegex(MigrationError, '禁止交接'):
+            self.snapshot.verify_refs({'refs': {'refs/heads/main': 'a' * 40}, 'default_ref': 'refs/heads/main'})
+
     def test_annotated_tag_peel_does_not_replace_tag_object(self):
         raw = b'a' * 40 + b'\trefs/tags/v1\n' + b'b' * 40 + b'\trefs/tags/v1^{}\n'
         self.assertEqual(parse_refs(raw), {'refs/tags/v1': 'a' * 40})

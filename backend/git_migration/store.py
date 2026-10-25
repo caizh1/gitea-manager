@@ -7,7 +7,7 @@ import ssl
 from cryptography.fernet import Fernet, InvalidToken
 from models import db
 from svn_migration.common import MigrationError, data_root, file_lock, require, source_url, string
-from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationInventory
+from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun
 
 
 def root():
@@ -78,8 +78,8 @@ def public_discovery(row, detail=True):
 
 def busy(source_id):
     return any(model.query.filter_by(source_id=source_id).filter(
-        model.status.in_(('queued', 'running'))).first() is not None
-        for model in (GitMigrationDiscovery, GitMigrationInventory))
+        model.status.in_(('queued', 'running', 'interrupted', 'uncertain', 'quarantined')) if model is GitMigrationRun else model.status.in_(('queued', 'running'))).first() is not None
+        for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun))
 
 
 def save_source(data, ident=None):

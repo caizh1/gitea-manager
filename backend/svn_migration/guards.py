@@ -11,16 +11,27 @@ from .models import SvnMigrationRun
 
 
 @contextlib.contextmanager
-def target_guard(server_id, migration=False):
+def target_guard(server_id, migration=False, git_run_id=None):
     if not migration and db.engine.url.database == ':memory:':
         yield
         return
     with file_lock(data_root() / '.instance-operations' / (str(server_id) + '.lock')):
         if migration:
+            from git_migration.models import GitMigrationRun
+            conflicts = GitMigrationRun.query.filter(GitMigrationRun.server_id == server_id, GitMigrationRun.status.in_(('queued', 'running', 'interrupted', 'uncertain', 'quarantined')))
+            if git_run_id is not None:
+                conflicts = conflicts.filter(GitMigrationRun.id != git_run_id)
+                if SvnMigrationRun.query.filter(SvnMigrationRun.server_id == server_id, SvnMigrationRun.status.in_(('running', 'paused', 'uncertain'))).first():
+                    raise MigrationError('目标存在未完成 SVN 迁移', 'busy', 409)
+            if conflicts.first():
+                raise MigrationError('目标存在未完成 Git 迁移', 'busy', 409)
             busy = Backup.query.filter_by(source_server_id=server_id, status='running').first() or RestoreTask.query.filter_by(target_server_id=server_id, status='running').first()
             if busy:
                 raise MigrationError('目标正在备份或恢复，迁移暂缓执行', 'busy', 409)
         else:
+            from git_migration.models import GitMigrationRun
+            if GitMigrationRun.query.filter(GitMigrationRun.server_id == server_id, GitMigrationRun.status.in_(('queued', 'running', 'interrupted', 'uncertain', 'quarantined'))).first():
+                raise MigrationError('该实例有未完成交接的 Git 迁移，请先处理迁移任务', 'busy', 409)
             if SvnMigrationRun.query.filter(SvnMigrationRun.server_id == server_id, SvnMigrationRun.status.in_(('running', 'paused', 'uncertain'))).first():
                 raise MigrationError('该实例有执行中、暂停或待确认的 SVN 迁移，请先处理迁移任务', 'busy', 409)
         yield

@@ -59,3 +59,23 @@ class GitMigrationInventory(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     started_at = db.Column(db.DateTime)
     completed_at = db.Column(db.DateTime)
+
+
+class GitMigrationRun(db.Model):
+    __tablename__ = 'git_migration_runs'
+    id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(db.Integer, db.ForeignKey('git_migration_sources.id'), nullable=False, index=True)
+    inventory_id = db.Column(db.Integer, db.ForeignKey('git_migration_inventories.id'), nullable=False)
+    server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False, index=True)
+    request_key = db.Column(db.String(80), nullable=False, unique=True)
+    source_version = db.Column(db.Integer, nullable=False)
+    actor_id = db.Column(db.Integer, nullable=False)
+    plan_json = db.Column(db.Text, nullable=False)
+    checkpoint_json = db.Column(db.Text, nullable=False, default='{}')
+    status = db.Column(db.String(30), nullable=False, default='queued', index=True)
+    stage = db.Column(db.String(80), nullable=False, default='等待执行')
+    error = db.Column(db.Text, nullable=False, default='')
+    error_code = db.Column(db.String(50), nullable=False, default='')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime)
+    completed_at = db.Column(db.DateTime)

@@ -27,6 +27,7 @@ class Provider:
         self.actor = None
         self.version = ''
         self.schema = None
+        self.enterprise = None
 
     def authenticate(self):
         if self.kind == 'gitlab' and self.auth_method == 'password':
@@ -41,11 +42,20 @@ class Provider:
         require(isinstance(self.actor['username'], str) and self.actor['username'], '来源用户缺少登录名', 'source_format')
         info = self.get('/version')
         require(isinstance(info, dict), '来源版本接口格式无效', 'source_format')
+        if self.kind == 'gitlab':
+            try:
+                metadata = self.get('/metadata')
+                if isinstance(metadata, dict) and type(metadata.get('enterprise')) is bool:
+                    self.enterprise = metadata['enterprise']
+            except SourceHTTPError as error:
+                if error.http_status not in (403, 404):
+                    raise
         self.version = info.get('version', '')
         minimum = (16, 1, 0) if self.kind == 'gitlab' else (1, 10, 3)
         require(version_tuple(self.version) >= minimum, '来源版本低于本期规划下限', 'version')
         return {'kind': self.kind, 'version': self.version, 'actor': self.actor,
-                'edition': '企业版' if self.kind == 'gitlab' and info.get('enterprise') is True else
+                'edition': '企业版' if self.kind == 'gitlab' and self.enterprise is True else
+                           '社区版' if self.kind == 'gitlab' and self.enterprise is False else
                            '未确认许可等级' if self.kind == 'gitlab' else '开源 Gitea',
                 'compatibility': '仅已确认认证与版本下限，尚未证明资料完整可迁移'}
 
@@ -87,6 +97,9 @@ class Provider:
     def collection(self, path, **kwargs):
         prefix = '/api/v4' if self.kind == 'gitlab' else '/api/v1'
         pagination = {'size_key': 'per_page' if self.kind == 'gitlab' else 'limit'}
+        if self.kind == 'gitlab' and re.fullmatch(r'/projects/\d+/wikis', path) and self.version and version_tuple(self.version)[:2] == (16, 1):
+            # 已核对 16.1 原生 Wikis API：直接返回全部页面，不接受分页参数。
+            pagination['paginated'] = False
         if self.kind == 'gitea' and path not in ('/repos/search', '/admin/orgs'):
             pagination = self.gitea_pagination(path)
         return self.http.collection(prefix + path, credentials=self.credentials,

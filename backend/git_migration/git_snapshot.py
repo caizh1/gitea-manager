@@ -37,7 +37,7 @@ def remote_refs(raw):
 
 
 class GitSnapshot:
-    def __init__(self, provider, project, folder, tick=lambda: None):
+    def __init__(self, provider, project, folder, tick=lambda: None, wiki=False):
         self.provider, self.project = provider, project
         self.folder = Path(folder).resolve()
         require(not self.folder.exists(), '代码快照目录已存在，不能覆盖既有现场', 'conflict', 409)
@@ -50,7 +50,7 @@ class GitSnapshot:
         self.process = Process(self.folder / 'commands', tick=guarded_tick)
         parts = project['path'].split('/')
         require(len(parts) >= 2 and all(p and p not in ('.', '..') for p in parts), '来源路径无效')
-        self.url = provider.http.base + '/' + '/'.join(quote(p, safe='') for p in parts) + '.git'
+        self.url = provider.http.base + '/' + '/'.join(quote(p, safe='') for p in parts) + ('.wiki.git' if wiki else '.git')
 
     def environment(self):
         self.provider.credentials()
@@ -112,10 +112,16 @@ class GitSnapshot:
         return {'project_id': self.project['id'], 'path': self.project['path'], 'refs': before, 'default_ref': default_ref,
                 'lfs_objects': lfs, 'boundary': '已核对可见 Git 引用与下载对象；Wiki、协作资料和目标回读尚未核验'}
 
+    def verify_refs(self, snapshot):
+        self.check_identity()
+        refs, default = remote_refs(self.git('ls-remote', '--symref', self.url))
+        require(refs == snapshot['refs'] and default == snapshot['default_ref'],
+                '来源代码或 Wiki 在迁移期间变化，禁止交接', 'source_changed')
+
     def check_identity(self):
         path = ('/projects/' + str(self.project['id'])) if self.provider.kind == 'gitlab' else (
             '/repos/' + '/'.join(quote(p, safe='') for p in self.project['path'].split('/')))
         current = self.provider.get(path)
-        name = current.get('path_with_namespace') if self.provider.kind == 'gitlab' else current.get('full_name')
+        name = current.get('path_with_namespace') if self.provider.kind == 'gitlab' else (current.get('full_path') or current.get('full_name'))
         require(current.get('id') == self.project['id'] and name == self.project['path'],
                 '代码读取期间仓库身份或路径改变，不能使用此快照', 'source_changed')

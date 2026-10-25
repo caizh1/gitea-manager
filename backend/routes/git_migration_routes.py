@@ -51,8 +51,8 @@ def audit_change(response):
 
 @git_migration_bp.get('/status')
 def status():
-    return jsonify(worker=health(), migration_available=False,
-                   boundary='当前仅开放来源发现；完整盘点、无损迁移与规则交接尚未通过验收。')
+    return jsonify(worker=health(), migration_available=True, production_verified=False,
+                   boundary='支持持久化迁移执行；未完成范围会阻断交接，完整版本矩阵仍在隔离验收。')
 
 
 @git_migration_bp.route('/sources', methods=['GET', 'POST'])
@@ -102,3 +102,46 @@ def inventories(source_id):
 @git_migration_bp.get('/inventories/<int:inventory_id>')
 def inventory(inventory_id):
     return jsonify(store.public_discovery(store.get(GitMigrationInventory, inventory_id)))
+
+
+@git_migration_bp.route('/runs', methods=['GET', 'POST'])
+def runs():
+    from git_migration import runs as service
+    from git_migration.models import GitMigrationRun
+    if request.method == 'POST':
+        require(health()['online'], 'Git 迁移执行器未在线', 'worker', 503)
+        return jsonify(service.public(service.enqueue(body(), current_user.id))), 202
+    return jsonify([service.public(row, detail=False) for row in GitMigrationRun.query.order_by(GitMigrationRun.id.desc()).limit(100)])
+
+
+@git_migration_bp.get('/runs/<int:run_id>')
+def run_detail(run_id):
+    from git_migration import runs as service
+    from git_migration.models import GitMigrationRun
+    return jsonify(service.public(store.get(GitMigrationRun, run_id)))
+
+
+@git_migration_bp.post('/runs/<int:run_id>/resume')
+def resume_run(run_id):
+    from git_migration import runs as service
+    require(not body(), '继续执行无需覆盖固定计划')
+    require(health()['online'], 'Git 迁移执行器未在线', 'worker', 503)
+    return jsonify(service.public(service.resume(run_id))), 202
+
+
+@git_migration_bp.get('/targets/<int:server_id>/groups')
+def target_groups(server_id):
+    from models import GiteaServer
+    from svn_migration.targets import groups
+    return jsonify(groups(store.get(GiteaServer, server_id), {
+        'parent_id': request.args.get('parent_id', 0, type=int),
+        'after_id': request.args.get('after_id', 0, type=int)}))
+
+
+@git_migration_bp.get('/inventories/<int:inventory_id>/principals')
+def principals(inventory_id):
+    import json
+    from git_migration.rules import requirements
+    row = store.get(GitMigrationInventory, inventory_id)
+    require(row.status == 'succeeded', '盘点尚未完成')
+    return jsonify(requirements(json.loads(row.result_json)))

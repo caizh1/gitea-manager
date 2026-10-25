@@ -1,4 +1,4 @@
-"""只读发现执行器：全程持有独占锁，中断不冒充完整结果。"""
+"""迁移执行器：全程持有独占锁，中断保留检查点，不冒充完整结果。"""
 from datetime import datetime, timedelta
 import json
 import os
@@ -11,7 +11,7 @@ import time
 from models import db
 from services.upgrade_maintenance import active
 from svn_migration.common import MigrationError, encode, file_lock, require
-from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationWorkerHealth, GitMigrationInventory
+from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationWorkerHealth, GitMigrationInventory, GitMigrationRun
 from .providers import Provider
 from .store import root, decrypt
 from .transport import Transport
@@ -39,9 +39,9 @@ def health():
 def recover_interrupted():
     if active():
         return False
-    for model in (GitMigrationDiscovery, GitMigrationInventory):
+    for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun):
         model.query.filter_by(status='running').update({
-            'status': 'interrupted', 'error': '执行器已重启，结果未完成，请重新发起任务',
+            'status': 'interrupted', 'error': '执行器已重启，结果未完成；迁移执行可从检查点继续，发现或盘点需重新发起',
             'error_code': 'interrupted', 'completed_at': datetime.utcnow()}, synchronize_session=False)
     db.session.commit()
     return True
@@ -57,6 +57,9 @@ def step():
         model = GitMigrationInventory
         row = model.query.filter_by(status='queued').order_by(model.id).first()
     if row is None:
+        model = GitMigrationRun
+        row = model.query.filter_by(status='queued').order_by(model.id).first()
+    if row is None:
         return False
     ident = row.id
     changed = model.query.filter_by(id=ident, status='queued').update(
@@ -68,8 +71,8 @@ def step():
 
     def tick():
         nonlocal last_tick
-        require(not STOP, '执行器停止，发现任务未完成，请重新发起', 'interrupted')
-        require(not active(), '升级维护中，发现任务已中断，请维护完成后重新发起', 'maintenance')
+        require(not STOP, '执行器停止，任务尚未完成，已保留检查点', 'interrupted')
+        require(not active(), '升级维护中，任务已中断，维护完成后可继续核对', 'maintenance')
         if time.monotonic() - last_tick >= 15:
             heartbeat()
             last_tick = time.monotonic()
@@ -87,9 +90,14 @@ def step():
                 path.write_text(source.ca_pem)
                 path.chmod(0o600)
                 verify = str(path)
-            transport = Transport(source.url, verify=verify, tick=tick)
+            transport = Transport(source.url, verify=verify, tick=tick,
+                                  deadline_seconds=86400 if model is GitMigrationRun else 1800)
             provider = Provider(transport, source.kind, source.username,
                                 decrypt(source.secret_ciphertext), source.auth_method)
+            if model is GitMigrationRun:
+                from .runs import execute
+                execute(row, provider, tick)
+                return True
             if model is GitMigrationDiscovery:
                 result = provider.discover()
             else:
@@ -120,13 +128,14 @@ def step():
     except MigrationError as error:
         db.session.rollback()
         row = db.session.get(model, ident)
-        row.status = 'interrupted' if error.code in ('maintenance', 'interrupted') else 'failed'
+        row.status = ('interrupted' if error.code in ('maintenance', 'interrupted') else
+                      'uncertain' if model is GitMigrationRun else 'failed')
         row.error, row.error_code = str(error), error.code
     except Exception:
         db.session.rollback()
         row = db.session.get(model, ident)
-        row.status, row.error_code = 'failed', 'internal'
-        row.error = '发现执行遇到内部异常，未生成完整结果；请检查执行环境'
+        row.status, row.error_code = ('uncertain' if model is GitMigrationRun else 'failed'), 'internal'
+        row.error = '执行遇到内部异常，未生成完整结果；已保留现场和检查点，请检查执行环境'
     finally:
         if transport:
             transport.close()

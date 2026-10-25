@@ -18,6 +18,8 @@ docker = module.docker
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image-tag', required=True)
+    parser.add_argument('--interrupt-once', action='store_true', help='写入期间停止执行器并核对同一任务恢复')
+    parser.add_argument('--target-state', type=Path, help='可选的独立接收端凭据；提供后验证完整迁移执行')
     parser.add_argument('--source-state', type=Path, required=True)
     parser.add_argument('--subnet', required=True, help='经检查未占用的独立容器网段')
     parser.add_argument('--resume-state', type=Path, help='恢复本脚本已创建的隔离环境')
@@ -126,6 +128,52 @@ def main():
     inventory = call('POST', '/git-migrations/sources/' + str(registered['id']) + '/inventories',
                      {'discovery_id': discovery['id'], 'project_ids': [project['id']], 'request_key': secrets.token_hex(20), 'capture_code': True})
     inventory = wait(lambda: completed('inventories', inventory['id']), '真实元数据盘点')
+    migration = None
+    if args.target_state:
+        target = json.loads(args.target_state.read_text())
+        target_info = json.loads(docker('inspect', target['name']))[0]
+        if target_info['Config']['Labels'].get('io.gitea-manager.test') != 'git-migration-receiver':
+            raise RuntimeError('仅允许使用独立接收端验收')
+        target_url = target['base'].replace('127.0.0.1', 'host.docker.internal')
+        server = call('POST', '/servers', {'name': '迁移接收验收 ' + secrets.token_hex(4),
+            'host': '127.0.0.1', 'ssh_user': 'root', 'gitea_port': 3000,
+            'gitea_url': target_url, 'api_token': target['token']})
+        reply = requests.post(target['base'] + '/api/v1/governance/groups',
+            headers={'Authorization': 'token ' + target['token']}, timeout=30,
+            json={'parent_id': 0, 'path': 'worker-test-' + secrets.token_hex(5), 'name': '完整执行器验收', 'visibility': 2})
+        if reply.status_code not in (200, 201):
+            raise RuntimeError('创建隔离接收群组失败')
+        group = reply.json()
+        required = call('GET', '/git-migrations/inventories/' + str(inventory['id']) + '/principals')
+        migration = call('POST', '/git-migrations/runs', {'principal_map': {key: ['migration-admin'] for key in required}, 'inventory_id': inventory['id'],
+            'server_id': server['id'], 'group_id': group['id'], 'source_frozen': True, 'request_key': secrets.token_hex(20)})
+        if args.interrupt_once:
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                observed = call('GET', '/git-migrations/runs/' + str(migration['id']))
+                if any(value.get('repo_id') for value in observed.get('checkpoint', {}).values()):
+                    break
+                if observed['status'] != 'running' and observed['status'] != 'queued':
+                    raise RuntimeError('未能在写入阶段触发中断，不能计为恢复通过')
+                time.sleep(0.1)
+            else:
+                raise RuntimeError('等待写入中断点超时')
+            before_repos = {key: value['repo_id'] for key, value in observed['checkpoint'].items() if value.get('repo_id')}
+            docker('stop', '-t', '20', name + '-worker')
+            docker('start', name + '-worker')
+            wait(lambda: call('GET', '/git-migrations/runs/' + str(migration['id']))['status'] == 'interrupted', '执行器中断回收')
+            resumed = call('POST', '/git-migrations/runs/' + str(migration['id']) + '/resume', {})
+            if resumed['id'] != migration['id'] or any(resumed['checkpoint'][key]['repo_id'] != value for key, value in before_repos.items()):
+                raise RuntimeError('恢复时创建了替代任务或仓库')
+        def execution_done():
+            row = call('GET', '/git-migrations/runs/' + str(migration['id']))
+            if row['status'] in ('failed', 'interrupted', 'uncertain', 'quarantined'):
+                raise RuntimeError('完整执行未通过：' + row['stage'] + '；' + row['error'])
+            return row if row['status'] == 'succeeded' else None
+        migration = wait(execution_done, '完整迁移与交接', seconds=900)
+        duplicate = call('POST', '/git-migrations/runs', migration['plan']['request'])
+        if duplicate['id'] != migration['id']:
+            raise RuntimeError('同一执行请求重复创建任务')
     docker('exec', name + '-worker', 'python', '-m', 'git_migration.worker', '--check')
     marker = '/app/data/.git-maintenance'
     digest_code = ("import sqlite3,json,hashlib; c=sqlite3.connect('/app/data/gitea-manager.db'); "
@@ -154,8 +202,8 @@ def main():
     finally:
         docker('exec', name + '-worker', 'python', '-c', "from pathlib import Path; Path('" + marker + "').unlink(missing_ok=True)")
     wait(lambda: call('GET', '/git-migrations/status')['worker']['online'], '维护后恢复')
-    evidence = {'说明': '固定镜像内真实来源发现及元数据盘点，不代表完整迁移与生产验收', '结果': '通过',
-                '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
+    evidence = {'说明': '固定镜像内代表性样本完整迁移验收；不代表全范围、生产或人工节省指标' if migration else '固定镜像内真实来源发现及元数据盘点，不代表完整迁移与生产验收', '结果': '通过',
+                '写入中断恢复': bool(args.interrupt_once and migration), '迁移执行': migration, '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
                 '代码快照': inventory['result']['projects'][0].get('code_snapshot'), '维护重启数据一致': True,
                 '管理端地址': base, '后端镜像': state['backend_image'], '前端镜像': state['frontend_image']}
     output = folder / ('acceptance-' + source['kind'] + '-' + str(inventory['id']) + '.json')

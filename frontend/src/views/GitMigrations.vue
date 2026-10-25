@@ -4,7 +4,7 @@
       <div><h2>GitLab / Gitea 来源</h2><p>连接来源并自动发现项目，保留原有群组与仓库层级。</p></div>
       <el-button type="primary" @click="editSource()"><el-icon><Plus /></el-icon><span>添加来源</span></el-button>
     </header>
-    <el-alert title="当前开放来源发现；元数据盘点已开放，无损迁移及规则交接尚在开发，暂不能执行迁移。" type="info" :closable="false" show-icon />
+    <el-alert title="迁移功能正在隔离验收。执行时会保留未完成范围，只有通过完整性检查的仓库才会交接到目标群组。" type="info" :closable="false" show-icon />
     <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" show-icon />
     <div class="workspace">
       <section class="surface sources">
@@ -47,6 +47,7 @@
               <el-table :data="project.gaps" empty-text="本次调用没有发现读取缺口；仍不代表资料完整可迁移。"><el-table-column prop="category" label="待解决范围" min-width="130" /><el-table-column prop="reason" label="原因" min-width="240" /></el-table>
             </template>
           </section>
+          <GitMigrationExecution :inventory="inventoryRecord" :source-id="selectedId" />
           <el-empty v-if="!record" description="点击“连接并发现项目”，自动读取来源中的项目列表" :image-size="80" />
         </template>
         <el-empty v-else description="选择或添加一个来源" :image-size="80" />
@@ -69,6 +70,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import GitMigrationExecution from '../components/GitMigrationExecution.vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { api } from '../api'
