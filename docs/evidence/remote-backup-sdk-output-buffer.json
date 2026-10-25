@@ -1,0 +1,92 @@
+{
+  "说明": "真实原实例完整16条Actions正文的独立只读SDK校准；本进程时序夹具没有修改任何响应或产品，不是Manager恢复通过或历史失败原stdout。",
+  "问题编号": "RB-SSH-OUTPUT-004",
+  "级别": "P2",
+  "新增P0或P1": false,
+  "整体功能及审查结论": "FAIL，两个既有P1保持",
+  "实际依赖版本": {
+    "Docker": "7.1.0",
+    "Paramiko": "3.4.0",
+    "Requests": "2.31.0"
+  },
+  "对照": {
+    "normal": {
+      "完整条目数": 16,
+      "轮数": 2,
+      "样本数": 32,
+      "SDK空返回数": 0,
+      "缓冲中完整正确原始stdout数": 0,
+      "任务API全部记录及旧助手状态相同": true,
+      "两侧认证200": true
+    },
+    "coalesced": {
+      "完整条目数": 16,
+      "轮数": 2,
+      "样本数": 32,
+      "SDK空返回数": 32,
+      "缓冲中完整正确原始stdout数": 32,
+      "任务API全部记录及旧助手状态相同": true,
+      "两侧认证200": true
+    }
+  },
+  "夹具": "仅让自己的SDK进程在请求发出后等待250毫秒再读取响应头；三接口保持默认队列，无业务写入或备份恢复提交。",
+  "完整清单": {
+    "条目数": 16,
+    "正文总字节": 352,
+    "每种时序轮数": 2
+  },
+  "确定因果": "本校准的HTTP头解析已经把Docker完整stdout帧读进ChannelFile._rbuffer；Docker7.1.0的SSH分支随后直接取.channel，绕过该缓冲。通道之后已EOF，SDK原输出为空，实际exec退出仍为0。",
+  "当前产品调用路径": "managed_client使用该SSH适配器；backup_consistency.execute接收空字符串，backup_actions.verify_artifacts取前64字节后不等于预期SHA，copy_files拒绝并进入既有回退。",
+  "实际源码位置": {
+    "Docker获取原始通道": {
+      "文件": "/usr/local/lib/python3.11/site-packages/docker/api/client.py",
+      "行": 333,
+      "函数SHA256": "55d62723369b9b512db5f7e54c89841b5a23edf0d04829ef7bcec342ba33a337"
+    },
+    "Docker消费流": {
+      "文件": "/usr/local/lib/python3.11/site-packages/docker/api/client.py",
+      "行": 424,
+      "函数SHA256": "3a250b4fe131a15b56e24dbd6e12b0cc72b1974f65f672064bb9b154a5d6cd89"
+    },
+    "Paramiko读取一行": {
+      "文件": "/usr/local/lib/python3.11/site-packages/paramiko/file.py",
+      "行": 215,
+      "函数SHA256": "c2c3687013f197ad040ca1814bb961804922fc64f32daef156dc68022d599b91"
+    },
+    "HTTP读取头行": {
+      "文件": "/usr/local/lib/python3.11/http/client.py",
+      "行": 225,
+      "函数SHA256": "6c136b63737f7b7a588b029f6f1ef1169cfcd0541569673eaff2c90ffb74540d"
+    }
+  },
+  "产品接入位置": "backend/services/docker_service.py:94-100；backup_consistency.execute；backup_actions.verify_artifacts",
+  "反证": [
+    "默认自然时序32次完整原返回全部匹配、预读缓冲为空。",
+    "时序夹具32次退出码均零，SDK原返回均为空；独立严格解析每份原始Docker帧，完整正确stdout均已留在HTTP文件缓冲。",
+    "校准只记录缓冲属性并调用原SDK取得同一通道，没有消费缓冲、修复返回或把独立读数交给产品。",
+    "两种对照前后完整任务API记录和旧助手状态相同，两侧认证200；实际使用的两段库函数源码与冻结产品容器完全相同。"
+  ],
+  "历史边界": "没有18/20失败时HTTP文件缓冲或产品stdout，不能用本夹具补造历史观测。",
+  "历史恢复18和20同因已经证明": false,
+  "严重度依据": "本轮确认的是短命令输出遗漏导致安全拒绝；未证明本路径导致数据损坏、越权或失去自动回退，暂列P2，不新增P0/P1。",
+  "未执行": [
+    "修改产品或依赖",
+    "关闭哈希断言",
+    "Manager恢复验证",
+    "将历史18或20根因关闭"
+  ],
+  "原始证据SHA256": {
+    "network-sdk-buffer-normal-1.json": "91d4ed49a60cbcf176daeb5fa369c90a1a680afb95a0721a6c07ce05fdc621d1",
+    "network-sdk-buffer-normal-1-command.json": "a57c806dbbe68cf1485efa485f68ba1e2140bbc3f91cbe6f247a10e559e251b0",
+    "network-sdk-buffer-normal-1-sources.json": "5ba1f980ab9a6bfef644a69a1f8b817279d85bbe16dc38d9905c4247362e7f62",
+    "network-sdk-buffer-coalesced-1.json": "72097478e1e9a945167b1ca4aec54f5a714c0b93e93581ceb01ceeab46def655",
+    "network-sdk-buffer-coalesced-1-command.json": "75d90a32ddf24f1daa50ad5f5ae6636ff35889c1aa5f0dcf69905a5834ef730f",
+    "network-sdk-buffer-coalesced-1-sources.json": "5ba1f980ab9a6bfef644a69a1f8b817279d85bbe16dc38d9905c4247362e7f62",
+    "network-sdk-buffer-installed-source-1.json": "1342407b7d5a51773b94632480812a09991c7fda5cfc860ebc822231e1fb112d",
+    "network-actions-backup37-inventory-1.json": "10994f9b7b628acf4a1628e375afb4de19b6ea15ef0ba1dfeb4a54b3c97ae5c1",
+    "network-sdk-buffer-independent-verification-1.json": "9c9451ee6074a56dc2ac9456666f7033e1f1107e6a4332bade9652b06531d7fa",
+    "network-sdk-buffer-verification-1.py": "f125336954c3a38c6887c2db615a587dd19b17bde08ecbc2d8773deb542673ae",
+    "network-sdk-buffer-probe-1.py": "e934657a851aa0bfe2c07c3f9a9cb3cdff52a32cd94dafeb1152c9eb947830b9",
+    "network-sdk-buffer-probe-2.py": "d4ccf471e441725d396d8ee4804e466d79c7552b789b20fa54c8448e6ae7652f"
+  }
+}

@@ -1,11 +1,10 @@
 <template>
   <section ref="panel" class="review-detail" :class="{ 'is-fullscreen': isFullscreen }" aria-label="审查任务详情">
     <header class="detail-bar">
-      <h2>审查任务详情</h2>
+      <div class="detail-title"><el-button text :icon="ArrowLeft" @click="$emit('close')">返回完整列表</el-button><h2>审查任务详情</h2></div>
       <div class="detail-controls">
-        <span class="connection"><i :class="connectionClass" />{{ connectionLabel }}</span>
+        <span v-if="hasNativeEvents" class="connection"><i :class="connectionClass" />{{ connectionLabel }}</span>
         <el-button text :icon="FullScreen" @click="toggleFullscreen">{{ isFullscreen ? '退出全屏' : '全屏' }}</el-button>
-        <el-button text :icon="Close" @click="$emit('close')">关闭</el-button>
       </div>
     </header>
 
@@ -14,10 +13,10 @@
     <template v-if="task">
       <div class="identity-row">
         <div class="identity-copy"><strong>{{ instance || '历史实例未记录' }} · {{ repository }} #{{ task.number }}</strong><span>{{ modelName }} · 任务 {{ task.id }}</span></div>
-        <div class="identity-actions"><el-button v-if="canCancel && ['queued', 'running'].includes(task.status)" type="danger" plain :loading="cancelling" :disabled="cancelling" @click="$emit('cancel')">强制取消</el-button><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
+        <div class="identity-actions"><slot name="actions" /><el-button v-if="canCancel && ['queued', 'running', 'awaiting_cost', 'budget_paused', 'incomplete'].includes(task.status)" type="danger" plain :loading="cancelling" :disabled="cancelling" @click="$emit('cancel')">强制取消</el-button><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
       </div>
       <el-alert v-if="task.cancel_requested_at" :title="task.status === 'cancelling' ? '正在强制取消；确认执行停止后显示已取消' : '本次审查已人工取消，当前版本不会自动重跑'" :description="[task.cancel_requested_by, task.cancel_error].filter(Boolean).join(' · ')" type="info" show-icon :closable="false" />
-      <section v-if="isPlatformAdmin && task.error" class="failure-card" role="alert" aria-label="任务失败详情">
+      <details v-if="isPlatformAdmin && task.error" class="failure-card" aria-label="任务失败详情"><summary>失败原因：{{ errorSummary }} · 展开诊断</summary>
         <div class="failure-heading"><WarningFilled /><div><strong>{{ errorSummary }}</strong><details v-if="String(task.error).length > 100" class="full-error"><summary>查看完整错误信息</summary><pre>{{ task.error }}</pre></details><p>{{ diagnosticSummary }}</p></div></div>
         <dl v-if="primaryDiagnosticRows.length" class="failure-fields"><template v-for="row in primaryDiagnosticRows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl>
         <p v-else class="legacy-diagnostic">此历史任务未记录结构化诊断，无法补推失败层级、调用标识和响应位置。</p>
@@ -25,16 +24,18 @@
         <p v-if="safeDiagnostic?.secondary_exception_type" class="secondary-note">次级传输异常 {{ safeDiagnostic.secondary_exception_type }} 发生在上述首因之后，不替代首因。</p>
         <details v-if="secondaryDiagnostics.length" class="secondary-diagnostics"><summary>次级原生错误（{{ secondaryDiagnostics.length }} 项）</summary><p>以下错误发生在首因之后，仅用于补充定位，不替代上方首因。</p><pre v-for="(item, index) in secondaryDiagnostics" :key="index">{{ toDiagnosticText(item) }}</pre></details>
         <details v-if="safeDiagnostic"><summary>查看完整脱敏诊断</summary><pre data-testid="safe-diagnostic">{{ diagnosticText }}</pre><el-button type="primary" plain size="small" @click="copyDiagnostic">{{ diagnosticCopied ? '已复制' : '复制脱敏诊断' }}</el-button></details>
-      </section>
-      <section v-if="isPlatformAdmin && (rawDiagnostic || task.error)" class="raw-diagnostics" aria-label="原始诊断包">
+      </details>
+      <details v-if="isPlatformAdmin && (rawDiagnostic || task.error)" class="raw-diagnostics" aria-label="原始诊断包"><summary>原始诊断包 · 按需查看与下载</summary>
         <div><strong>原始诊断包</strong><p>{{ rawDiagnosticStatus }}</p></div>
         <dl v-if="rawDiagnostic" class="raw-meta"><dt>记录大小</dt><dd>{{ byteSize(rawDiagnostic.bytes) }}</dd><dt>保留期限</dt><dd>{{ rawRetention }}</dd><template v-if="Number.isInteger(rawDiagnostic.collected_files)"><dt>已收集文件</dt><dd>{{ rawDiagnostic.collected_files }} 个</dd></template><template v-if="Number.isInteger(rawDiagnostic.omitted_files)"><dt>省略文件</dt><dd>{{ rawDiagnostic.omitted_files }} 个</dd></template></dl>
         <el-alert v-if="rawDiagnostic?.truncated" :title="rawTruncationMessage" type="warning" :closable="false" />
         <p class="raw-warning">原始事件和响应可能包含业务源码，仅保存在部署机并供管理员下载定位。采集不包含模型 Key、认证头或运行时环境变量。</p>
         <el-alert v-if="rawDownloadError" :title="rawDownloadError" type="error" :closable="false" />
         <el-button v-if="rawDiagnostic?.available && !rawExpired" type="primary" plain :icon="Download" :loading="rawDownloading" @click="downloadRawDiagnostics">下载原始诊断包</el-button>
-      </section>
+      </details>
 
+      <ReviewBatchPlan v-if="task.batch_protocol" :task="task" @refresh="$emit('refresh')" />
+      <details class="execution-summary" :open="continuing"><summary>{{ continuing ? '执行进度与资源用量' : '执行摘要 · 查看耗时与资源用量' }}</summary>
       <section class="action-card">
         <div><span>当前动作</span><h3>{{ currentAction }}</h3><p>{{ actionContext }}</p></div>
         <div class="action-state"><el-icon v-if="continuing" class="is-loading"><Loading /></el-icon><el-icon v-else-if="task.status === 'succeeded'"><CircleCheckFilled /></el-icon><el-icon v-else><WarningFilled /></el-icon><strong>{{ continuing ? '执行中' : statusLabel(task.status) }}</strong></div>
@@ -42,7 +43,7 @@
       <el-alert v-if="compacting" title="模型正在压缩上下文" description="正在整理会话历史，压缩完成后继续审查；执行器心跳仅表示会话存活。" type="info" :closable="false" show-icon data-testid="compaction-status" />
       <div class="metrics">
         <div><span>已耗时</span><strong>{{ duration(elapsedSeconds) }}</strong><small>{{ targetText }}</small></div>
-        <div><span>剩余预算</span><strong>{{ remainingBudget }}</strong><small>含准备、审查与发布</small></div>
+        <div><span>剩余预算</span><strong>{{ remainingBudget }}</strong><small>{{ task.progress_stage === 'issue_checks' ? '逐问题使用独立请求超时' : '主审查会话预算' }}</small></div>
         <div><span>模型请求</span><strong>{{ counters.model_calls ?? task.model_calls ?? 0 }} 次</strong><small>{{ modelWaitLabel }}</small></div>
         <div><span>工具调用</span><strong>{{ toolCount }} 次</strong><small>{{ eventCount }} 条原生记录</small></div>
       </div>
@@ -52,10 +53,11 @@
       </ol>
 
       <el-alert v-if="task.progress?.sync_error" :title="'PR 进度同步：' + task.progress.sync_error" type="warning" :closable="false" />
+      </details>
       <el-tabs v-model="activeTab" class="detail-tabs">
         <el-tab-pane label="实时过程" name="process">
           <section class="process-pane">
-            <div class="process-heading"><div><h3>执行记录</h3><p>公开模型说明与工具状态按发生时间升序显示。</p></div><div class="process-actions"><el-segmented v-model="eventFilter" :options="filterOptions" /><el-input v-model="searchDraft" clearable :prefix-icon="Search" placeholder="搜索文件或记录" @keyup.enter="applySearch" @clear="applySearch" /><el-button :icon="Download" @click="downloadEvents">下载脱敏日志</el-button></div></div>
+            <div class="process-heading"><div><h3>执行记录</h3><p>公开模型说明与工具状态按发生时间升序显示。</p></div><div class="process-actions"><el-select v-if="task.batch_protocol" v-model="eventSession" placeholder="当前单元会话" clearable style="width: 240px"><el-option v-for="attempt in task.batch?.attempts || []" :key="attempt.session_id" :value="attempt.session_id" :label="attempt.unit + ' / 尝试 ' + attempt.attempt" /></el-select><el-segmented v-model="eventFilter" :options="filterOptions" /><el-input v-model="searchDraft" clearable :prefix-icon="Search" placeholder="搜索文件或记录" @keyup.enter="applySearch" @clear="applySearch" /><el-button :icon="Download" @click="downloadEvents">下载脱敏日志</el-button></div></div>
             <el-alert v-if="eventError" :title="eventError" type="error" :closable="false"><el-button link type="primary" @click="resetEvents">重新连接</el-button></el-alert>
             <el-empty v-if="legacyWithoutEvents" description="此旧任务没有记录原生执行日志；审查结果与历史检索仍可在其他页签查看。" />
             <div v-else ref="eventScroller" class="event-scroller" @scroll="onEventScroll">
@@ -74,13 +76,30 @@
           </section>
         </el-tab-pane>
 
-        <el-tab-pane :label="`审查结果（${findings.length}）`" name="result">
+        <el-tab-pane :label="diffOnly ? '审查报告' : `审查结果（${findings.length}）`" name="result">
+          <el-alert v-if="diffOnly" title="仅审查 PR diff" description="仅使用 PR 标题、描述和 diff 中的变更与相邻上下文；未读取完整文件或工程，未执行构建与测试。" type="info" :closable="false" />
           <el-alert v-if="partial" title="本次审查存在未覆盖或未完成内容，请结合覆盖范围查看。" type="warning" show-icon :closable="false" />
-          <el-empty v-if="!findings.length" :description="task.status === 'succeeded' && !partial ? '已分析范围内未发现证据充分的问题。' : '审查尚未完整完成，不能给出无问题结论。'" />
+          <ReviewIssueLedger :task="task" :open="open" />
+          <template v-if="reportText">
+            <div v-if="diffOnly && findings.length" data-testid="diff-inline-locations">
+              <p v-if="task.result?.lifecycle">本轮问题候选（{{ findings.length }} 项；实际新增、复用和待确认状态见问题台账）</p>
+              <p v-else>行内定位（{{ findings.length }} 项；{{ task.status === 'succeeded' ? '已完成发布核对' : '以最终发布结果为准' }}）</p>
+              <p v-for="(f, i) in findings" :key="i">
+                {{ f.anchor?.id || '未定位' }} · {{ f.title }} · {{ f.path }}
+                <template v-if="f.anchor"> · {{ f.anchor.side === 'new' ? '新' : '旧' }}侧第 {{ f.anchor.line }} 行</template>
+                <template v-if="f.existing_review_id"> · 已有历史意见，本次未重复发布</template>
+                <template v-if="task.result?.lifecycle"> · {{ f.issue_id ? `问题 ${f.issue_id}` : '关联待确认，未发布' }}</template>
+                <template v-if="!f.anchor"> · {{ f.fallback_reason || '仅保留在报告' }}</template>
+              </p>
+            </div>
+            <pre class="diff-report" data-testid="diff-review-report">{{ reportText }}</pre>
+          </template>
+          <el-empty v-else-if="!findings.length" :description="diffOnly ? '尚未返回审查报告。' : task.status === 'succeeded' && !partial ? '已分析范围内未发现证据充分的问题。' : '审查尚未完整完成，不能给出无问题结论。'" />
           <el-collapse v-else v-model="expanded"><el-collapse-item v-for="(f, i) in findings" :key="f.finding_id || f.candidate_id || i" :name="String(i)"><template #title><div class="finding-title"><el-tag :type="f.severity === 'P1' ? 'danger' : 'warning'" size="small">{{ f.severity }}</el-tag><strong>{{ f.title }}</strong><span v-if="f.assessment === 'uncertain'">待确认</span></div></template><article class="finding-content"><p class="path">{{ f.path }} · {{ f.scope }}</p><p v-if="f.anchor">{{ f.anchor.side === 'new' ? '新' : '旧' }}侧第 {{ f.anchor.line }} 行<span v-if="f.existing_review_id"> · 已有历史意见，本次未重复发布</span></p><p v-else>普通意见：{{ f.fallback_reason || '没有可靠的行内位置' }}</p><pre v-if="f.quote">{{ f.quote }}</pre><dl><template v-for="field in findingFields" :key="field.key"><dt v-if="f[field.key]">{{ field.label }}</dt><dd v-if="f[field.key]">{{ String(f[field.key]).slice(0, textLimits[i + field.key] || 1200) }}<template v-if="String(f[field.key]).length > 1200"><p class="secondary">共 {{ String(f[field.key]).length }} 字符，当前显示 {{ Math.min(textLimits[i + field.key] || 1200, String(f[field.key]).length) }} 字符</p><el-button v-if="(textLimits[i + field.key] || 1200) < String(f[field.key]).length" link type="primary" @click="textLimits[i + field.key] = (textLimits[i + field.key] || 1200) + 12000">展开下一段</el-button><el-button v-if="textLimits[i + field.key] > 1200" link @click="textLimits[i + field.key] = 1200">收起</el-button></template></dd></template></dl><details v-if="f.source_evidence?.length || f.trace?.length"><summary>查看推导及源码证据</summary><ol><li v-for="(step, n) in f.trace || []" :key="n">{{ step }}</li></ol><div v-for="(source, n) in f.source_evidence || []" :key="n"><p>{{ source.version === 'before' ? '修改前' : '修改后' }} · {{ source.path }}</p><pre>{{ source.quote }}</pre></div></details><p v-if="f.finding_id" class="secondary">意见编号 {{ f.finding_id }}</p></article></el-collapse-item></el-collapse>
         </el-tab-pane>
 
         <el-tab-pane :label="`变更与覆盖（${groups.length} 组缺口）`" name="coverage">
+          <el-alert v-if="diffOnly" :title="`已提供 ${coverage.diff_files_provided || 0} 个文件的 PR diff`" description="这里统计输入范围，不代表完整工程覆盖；二进制内容和 diff 外的依赖无法检查。" type="info" :closable="false" />
           <p class="secondary">文件读取数量与分析完成数量分别统计。重复缺口已合并，展开文件查看具体原因。</p><p v-if="coverage.change_evidence" class="evidence-count">已提供变更原文 {{ coverage.change_evidence.supplied }} / {{ coverage.change_evidence.expected }} 行。此项只统计原文供给，审查结论还需结合已完成单元和未决范围。</p><el-empty v-if="!groups.length" :description="task.status === 'succeeded' ? '本次没有记录覆盖缺口。' : '当前尚未记录缺口，任务完成前不能判断覆盖完整。'" /><el-collapse><el-collapse-item v-for="group in groups" :key="group.path" :name="group.path"><template #title><div class="coverage-title"><strong>{{ group.path }}</strong><el-tag type="warning" size="small">{{ group.reasons.length }} 类原因</el-tag></div></template><div v-for="(reason, i) in group.reasons" :key="i" class="coverage-reason"><p>{{ reason.reason }}</p><small>记录 {{ reason.count }} 次<span v-if="reason.scopes.length"> · 涉及 {{ reason.scopes.length }} 个函数</span></small><details v-if="reason.scopes.length"><summary>查看函数</summary><ul><li v-for="scope in reason.scopes" :key="scope">{{ scope }}</li></ul></details></div></el-collapse-item></el-collapse>
           <details v-if="coverage.diagnostics?.length"><summary>代码组织说明（{{ coverage.diagnostics.length }} 项）</summary><p class="secondary">语法树用于辅助组织。解析器未识别的原文仍可进入审查；实际未决内容在上方单独显示。</p><ul class="diagnostics"><li v-for="(note, i) in coverage.diagnostics" :key="i"><strong>{{ note.path }}</strong><span>{{ note.side === 'old' ? '修改前' : '修改后' }}<template v-if="note.start_line"> · 第 {{ note.start_line }} 行</template> · {{ note.reason }}</span></li></ul></details>
           <section v-if="!hasNativeEvents"><h4>历史检索记录（{{ retrieval.operations || 0 }} 条）</h4><p>读取记录包含整个任务的分页和复用记录，不代表模型分析次数，也不会作为完整对话历史逐轮累加。</p><p class="secondary">模型补查 {{ retrieval.model_rounds ?? retrieval.rounds ?? 0 }} 轮 · 程序补查 {{ retrieval.runtime_rounds || 0 }} 轮 · 独立请求 {{ retrieval.unique_requests ?? retrieval.operations ?? 0 }} 项 · 读取记录 {{ retrieval.operations || 0 }} 条 · {{ retrieval.failed || 0 }} 条读取失败</p><el-alert v-if="readError" :title="readError" type="error" :closable="false" /><el-empty v-if="!reads.length" description="本次尚无主动检索记录，模型可以直接使用已提供的上下文。" /><el-collapse><el-collapse-item v-for="(read, i) in reads" :key="`${read.unit}:${read.request_id}:${i}`" :name="`read-${i}`"><template #title><div class="coverage-title"><el-tag :type="read.status === 'error' || read.complete === false ? 'warning' : 'info'" size="small">{{ read.request?.version === 'before' ? '修改前' : '修改后' }}</el-tag><strong>{{ operations[read.request?.op] || '读取' }} · {{ read.request?.path || read.request?.pattern || '*' }}</strong><span v-if="read.source">第 {{ read.source.start }}–{{ read.source.end }} 行</span><span v-if="read.request?.query">{{ read.request.query }}</span></div></template><p v-if="read.status === 'error'" class="read-warning">{{ read.reason }}</p><template v-if="read.source"><p>固定提交 {{ read.source.commit }} · 第 {{ read.source.start }}–{{ read.source.end }} 行</p><pre>{{ read.source.code }}</pre></template></el-collapse-item></el-collapse><el-button v-if="reads.length < readTotal" :loading="reading" @click="loadReads">加载更多记录（{{ reads.length }} / {{ readTotal }}）</el-button></section>
@@ -99,17 +118,20 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, Check, CircleCheckFilled, Close, Download, Document, FullScreen, Loading, Search, Setting, TopRight, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, ArrowLeft, Check, CircleCheckFilled, Close, Download, Document, FullScreen, Loading, Search, Setting, TopRight, WarningFilled } from '@element-plus/icons-vue'
 import { api } from '../api'
+import ReviewIssueLedger from './ReviewIssueLedger.vue'
+import ReviewBatchPlan from './ReviewBatchPlan.vue'
 import { isPlatformAdmin } from '../composables/accessState.js'
 import { coverageGroups, statusType } from './reviewDisplay'
 import { diagnosticLocation, diagnosticRows as toDiagnosticRows, diagnosticText as toDiagnosticText, safeDiagnostic as toSafeDiagnostic } from './reviewDiagnostics'
 
 const props = defineProps({ open: Boolean, task: Object, loading: Boolean, error: String, repository: String, instance: String, cancelling: Boolean, canCancel: Boolean })
-defineEmits(['close', 'cancel'])
+defineEmits(['close', 'cancel', 'refresh'])
 const panel = ref(), eventScroller = ref(), isFullscreen = ref(false), callLimit = ref(50)
 const activeTab = ref('process'), expanded = ref(['0']), textLimits = ref({})
 const events = ref([]), hasOlder = ref(false), loadingEvents = ref(false), loadingHistory = ref(false), requestingEvents = ref(false), eventError = ref(''), newestSeq = ref(0), oldestSeq = ref(0)
+const eventSession = ref('')
 const eventFilter = ref('all'), searchDraft = ref(''), searchQuery = ref(''), following = ref(true), pendingCount = ref(0), scrollTop = ref(0), viewportHeight = ref(520)
 const expandedEvents = ref(new Set()), connectionOk = ref(false)
 const reads = ref([]), readTotal = ref(0), readPage = ref(1), reading = ref(false), readError = ref('')
@@ -121,6 +143,8 @@ const continuing = computed(() => ['queued','running','cancelling','publishing',
 const shouldPollEvents = computed(() => hasNativeEvents.value && props.task?.status !== 'cancelled' && props.task?.log_sync?.complete !== true)
 const findings = computed(() => Array.isArray(props.task?.result?.findings) ? props.task.result.findings : [])
 const coverage = computed(() => props.task?.result?.coverage || props.task?.snapshot?.coverage || {})
+const diffOnly = computed(() => coverage.value.scope === 'diff')
+const reportText = computed(() => props.task?.result?.report_markdown || '')
 const groups = computed(() => coverageGroups(coverage.value))
 const retrieval = computed(() => props.task?.result?.context_retrieval || {})
 const counters = computed(() => props.task?.counters || {})
@@ -128,10 +152,10 @@ const modelName = computed(() => props.task?.configuration?.model || '历史模�
 const compacting = computed(() => continuing.value && props.task?.counters?.compaction_active === true)
 const currentAction = computed(() => ['cancelling', 'cancelled'].includes(props.task?.status) ? statusLabel(props.task.status) : compacting.value ? '模型正在压缩上下文' : props.task?.current_action || props.task?.stage || statusLabel(props.task?.status))
 const actionContext = computed(() => { const a = props.task?.progress?.action || props.task?.action || {}; const version = a.version === 'before' ? '修改前' : a.version === 'after' ? '修改后' : ''; return [version, a.path, a.start_line && a.end_line ? `${a.start_line}–${a.end_line} 行` : ''].filter(Boolean).join(' · ') || props.task?.progress?.detail || '等待下一条原生执行记录' })
-const elapsedSeconds = computed(() => props.task?.progress?.elapsed_seconds ?? (props.task?.progress?.started_at ? Math.max(0, Date.now()/1000-props.task.progress.started_at) : null))
-const reviewBudget = computed(() => props.task?.configuration?.review_timeout_seconds ?? props.task?.progress?.target_seconds ?? props.task?.configuration?.task_timeout_seconds ?? 600)
-const remainingBudget = computed(() => elapsedSeconds.value == null ? '未开始' : duration(Math.max(0, reviewBudget.value - elapsedSeconds.value)))
-const targetText = computed(() => props.task?.progress?.target_exceeded ? (continuing.value ? '已超过目标时间，继续完整审查' : '本次执行超过目标时间') : `整次审查上限 ${duration(reviewBudget.value)}`)
+const elapsedSeconds = computed(() => props.task?.timing?.execution_seconds ?? props.task?.progress?.elapsed_seconds ?? (props.task?.progress?.started_at ? Math.max(0, Date.now()/1000-props.task.progress.started_at) : null))
+const reviewBudget = computed(() => props.task?.batch?.budget_seconds ?? props.task?.configuration?.review_timeout_seconds ?? props.task?.progress?.target_seconds ?? props.task?.configuration?.task_timeout_seconds ?? 600)
+const remainingBudget = computed(() => props.task?.progress_stage === 'issue_checks' ? '逐项复核' : elapsedSeconds.value == null ? '未开始' : duration(Math.max(0, reviewBudget.value - elapsedSeconds.value)))
+const targetText = computed(() => props.task?.progress_stage === 'issue_checks' ? '旧问题逐项复核，无总调用次数上限' : props.task?.progress?.target_exceeded ? (continuing.value ? '已超过目标时间，继续完整审查' : '本次执行超过目标时间') : `整次审查上限 ${duration(reviewBudget.value)}`)
 const eventCount = computed(() => counters.value.events ?? props.task?.log_sync?.last_seq ?? events.value.length)
 const toolCount = computed(() => counters.value.tool_calls ?? counters.value.tools ?? counters.value.tool_events ?? events.value.filter(e => eventCategory(e) === 'tool').length)
 const modelWaitLabel = computed(() => { if (props.task?.status === 'cancelled') return '请求已终止'; if (props.task?.status === 'cancelling') return '正在确认请求停止'; const m = props.task?.progress?.model_request; if (!m) return '当前未等待'; if (m.status === 'waiting' || m.status === 'running') return `等待 ${duration(m.elapsed_seconds || 0)} / 上限 ${duration(m.timeout_seconds || 0)}`; return m.status === 'failed' ? `${m.elapsed_seconds || 0} 秒 / 有效上限 ${m.timeout_seconds || 0} 秒 · 请求异常` : '最近请求已完成' })
@@ -218,7 +242,7 @@ const eventDetails = e => e.payload&&Object.keys(e.payload).length?JSON.stringif
 const findingFields = [{key:'trigger',label:'触发条件'},{key:'explanation',label:'原因'},{key:'impact',label:'影响'},{key:'recommendation',label:'修改建议'},{key:'verification',label:'反证结果'},{key:'before_behavior',label:'修改前'},{key:'after_behavior',label:'修改后'}]
 const operations = {find_files:'查找文件',search_code:'搜索代码',read_file:'读取源码'}
 
-function eventParams(extra={}){const types=eventFilter.value==='tool'?'tool.running,tool.completed,tool.error':eventFilter.value==='error'?'error,session.error,session.failed,session.event_error,tool.error,model.error':undefined;return{limit:200,type:types,q:searchQuery.value||undefined,...extra}}
+function eventParams(extra={}){const types=eventFilter.value==='tool'?'tool.running,tool.completed,tool.error':eventFilter.value==='error'?'error,session.error,session.failed,session.event_error,tool.error,model.error':undefined;return{limit:200,session_id:eventSession.value || undefined,type:types,q:searchQuery.value||undefined,...extra}}
 function mergeEvents(incoming,countAsNew=false){
   const oldRaw=new Set(events.value.map(rawEventKey)),rows=[...events.value],operations=new Map();let added=0
   rows.forEach((row,index)=>{const key=operationKey(row);if(key)operations.set(key,index)})
@@ -232,7 +256,7 @@ async function fetchEvents(mode='initial'){
   const current=generation,taskId=props.task.id,scroller=eventScroller.value,oldHeight=scroller?.scrollHeight||0
   requestingEvents.value=true;if(mode==='initial')loadingEvents.value=true;if(mode==='history')loadingHistory.value=true
   eventController?.abort();eventController=new AbortController()
-  try{const cursor=mode==='poll'&&newestSeq.value?{after:newestSeq.value}:mode==='history'&&oldestSeq.value?{before:oldestSeq.value}:{};const r=await api.get(`/ai-review/tasks/${taskId}/events`,{params:eventParams(cursor),signal:eventController.signal});if(current!==generation)return;mergeEvents(Array.isArray(r.data.items)?r.data.items:[],mode==='poll');if(mode!=='poll')hasOlder.value=!!r.data.has_more;connectionOk.value=true;eventError.value='';await nextTick();if(mode==='history'&&scroller)scroller.scrollTop+=scroller.scrollHeight-oldHeight;else if(following.value)scrollToLatest(false)}
+  try{const cursor=mode==='poll'&&newestSeq.value?{after:newestSeq.value}:mode==='history'&&oldestSeq.value?{before:oldestSeq.value}:{};const r=await api.get(`/ai-review/tasks/${taskId}/events`,{params:eventParams(cursor),signal:eventController.signal,notifyError:mode!=='poll'});if(current!==generation)return;mergeEvents(Array.isArray(r.data.items)?r.data.items:[],mode==='poll');if(mode!=='poll')hasOlder.value=!!r.data.has_more;connectionOk.value=true;eventError.value='';await nextTick();if(mode==='history'&&scroller)scroller.scrollTop+=scroller.scrollHeight-oldHeight;else if(following.value)scrollToLatest(false)}
   catch(e){if(e?.name!=='CanceledError'&&e?.code!=='ERR_CANCELED'&&current===generation){connectionOk.value=false;eventError.value=e.response?.status===404&&!props.task?.session?'此旧任务没有记录原生执行日志。':e.response?.data?.error||'执行记录暂时无法连接'}}
   finally{if(current===generation){requestingEvents.value=false;loadingEvents.value=false;loadingHistory.value=false}}
 }
@@ -251,6 +275,8 @@ function syncFullscreen(){isFullscreen.value=document.fullscreenElement===panel.
 async function loadReads(){if(reading.value||!props.open||!props.task?.id)return;const current=readGeneration,id=props.task.id;reading.value=true;readError.value='';try{const r=await api.get(`/ai-review/tasks/${id}/context-reads`,{params:{page:readPage.value,start:reads.value.length+1}});if(current!==readGeneration)return;reads.value.push(...r.data.items);readTotal.value=r.data.total;readPage.value++}catch(e){if(current===readGeneration)readError.value=e.response?.data?.error||'读取记录暂时无法加载'}finally{if(current===readGeneration)reading.value=false}}
 
 watch(eventFilter,resetEvents)
+watch(eventSession,resetEvents)
+watch(()=>props.task?.session_id, (value, previous)=>{ if(value !== previous) resetEvents() })
 watch(hasNativeEvents,(native,wasNative)=>{if(native&&!wasNative&&props.open&&props.task?.id)resetEvents();else if(!native&&wasNative){generation++;eventController?.abort();clearTimeout(eventTimer);requestingEvents.value=false;loadingEvents.value=false;loadingHistory.value=false;events.value=[];newestSeq.value=0;oldestSeq.value=0;connectionOk.value=false}})
 watch([()=>props.task?.id,()=>props.open],([id,open],[oldId,oldOpen])=>{if(id===oldId&&open===oldOpen)return;const reloadReads=activeTab.value==='coverage'||activeTab.value==='context';generation++;readGeneration++;eventController?.abort();clearTimeout(eventTimer);events.value=[];newestSeq.value=0;oldestSeq.value=0;requestingEvents.value=false;loadingEvents.value=false;loadingHistory.value=false;reads.value=[];readTotal.value=0;readPage.value=1;reading.value=false;readError.value='';rawDownloading.value=false;rawDownloadError.value='';expandedEvents.value=new Set();following.value=true;pendingCount.value=0;activeTab.value=continuing.value?'process':'result';if(open&&id&&hasNativeEvents.value)fetchEvents().then(schedulePoll);if(open&&id&&reloadReads)loadReads()})
 watch(activeTab,tab=>{if(tab==='context')activeTab.value='coverage';if((tab==='coverage'||tab==='context')&&readPage.value===1)loadReads()})
@@ -260,11 +286,16 @@ onBeforeUnmount(()=>{generation++;readGeneration++;eventController?.abort();clea
 </script>
 
 <style scoped>
+.diff-report { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; padding: 16px; }
 .review-detail{min-width:0;overflow-wrap:anywhere;background:rgba(255,255,255,.82);border:1px solid rgba(148,163,184,.2);border-radius:16px;box-shadow:0 12px 36px rgba(15,23,42,.08);padding:0 20px 22px}
 .review-detail.is-fullscreen{overflow:auto;border-radius:0;padding:0 28px 24px;background:#f8fafc}
 .detail-bar,.identity-row,.detail-controls,.identity-actions,.process-heading,.process-actions,.event-title,.stream-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
-.detail-bar{justify-content:space-between;border-bottom:1px solid #e5eaf1;padding:12px 0}
+.detail-bar{position:sticky;top:0;z-index:2;background:rgba(255,255,255,.96);justify-content:space-between;border-bottom:1px solid #e5eaf1;padding:12px 0}
 .detail-bar h2{font-size:20px;margin:2px 0}
+.execution-summary{margin:12px 0}.execution-summary>summary{cursor:pointer;color:#52637b;font-size:13px;padding:8px 0}.execution-summary[open]>summary{margin-bottom:8px}
+.detail-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
+.failure-card>summary,.raw-diagnostics>summary{cursor:pointer;line-height:1.6}
+@container review-page (min-width: 961px) { .identity-copy strong{font-size:17px}.metrics>div{padding:4px 8px}.metrics strong{font-size:19px}.detail-bar h2{font-size:16px}.stage-track{font-size:12px}.stage-track li{gap:5px}.stage-track li::after{margin:0 4px}.action-card h3{font-size:18px} }
 .failure-card{margin:12px 0;padding:14px;border:1px solid #f4b8b8;border-radius:10px;background:#fff7f7;color:#8f1d1d;min-width:0}
 .failure-heading{display:flex;align-items:flex-start;gap:10px;min-width:0}
 .failure-heading>svg{width:20px;height:20px;flex:0 0 20px;margin-top:2px}

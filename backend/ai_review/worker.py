@@ -164,6 +164,9 @@ def process(store, job, recovering=False):
 
 
 def _process(store, job, recovering=False):
+    if job.get('batch_protocol') and not recovering:
+        from .batch_worker import process as process_batches
+        return process_batches(store, job)
     repo, config = store.repo(job['repository']), store.job_config(job['id'])
     client = client_for(store, repo, job)
     stopped = threading.Event()
@@ -210,13 +213,15 @@ def _process(store, job, recovering=False):
             from .session_events import create_session
             from .native_workspace import prepare, bind_snapshot_evidence
             from .native_review import execute, adapt
+            from . import diff_review
             started_at = job.get('started_at') or time.time()
             planned_deadline = started_at + review_timeout(config)
             workspace_path = os.path.join(os.environ.get('AI_REVIEW_WORKSPACE_ROOT', '/app/review-workspaces'), job['id'])
             session_id, event_token, deadline = create_session(store, job['id'], job['owner'], planned_deadline, workspace_path)
             job['session_id'], job['deadline_at'] = session_id, deadline
             client.deadline_at = deadline
-            snapshot = job['snapshot'] if job.get('snapshot') else capture(client, job['number'], config, store=store, job=job)
+            snapshot = job['snapshot'] if job.get('snapshot') else diff_review.capture(client, job['number'], config)
+            diff_only = snapshot.get('review_scope') == 'diff'
             with contextlib.closing(store.connect()) as c:
                 existing = c.execute("SELECT id,review_id,result,review_fragment FROM jobs WHERE repository=? AND number=? AND status='succeeded' AND json_extract(snapshot,'$.id')=? LIMIT 1",
                                      (job['repository'], job['number'], snapshot['id'])).fetchone()
@@ -225,17 +230,26 @@ def _process(store, job, recovering=False):
                 store.finish(job['id'], job['owner'], 'succeeded', '相同代码和配置版本已经完成 Review，未重复调用模型')
                 return
             store.update(job['id'], job['owner'], snapshot=snapshot, target_head=snapshot['head'],
-                         progress_stage='context', stage='准备完整固定源码工作区')
-            workspace, workspace_info = prepare(client, job, snapshot, deadline)
-            snapshot = bind_snapshot_evidence(store, job, snapshot, workspace, deadline)
+                         progress_stage='context', stage='准备 PR diff' if diff_only else '准备完整固定源码工作区')
+            if diff_only:
+                workspace = diff_review.prepare(workspace_path)
+                workspace_info = {'变更文件数': snapshot['coverage']['files_total']}
+            else:
+                # 升级前已经固定或提交的任务继续原契约，不重放为新模式。
+                workspace, workspace_info = prepare(client, job, snapshot, deadline)
+                snapshot = bind_snapshot_evidence(store, job, snapshot, workspace, deadline)
             store.update(job['id'], job['owner'], snapshot=snapshot, workspace_path=workspace,
                          units_total=workspace_info['变更文件数'], progress_stage='analysis',
-                         stage='原生 OpenCode 会话自主审查')
+                         stage='审查 PR diff' if diff_only else '原生 OpenCode 会话自主审查')
             record(store,job['id'],'preparation','',time.monotonic()-preparation_started)
             preparation_started=None
             with span(store,job['id'],'analysis'):
-                raw_result = execute(store, job, config, workspace, event_token)
-                result = adapt(raw_result, snapshot, workspace, config['max_findings'], store, job['id'])
+                if diff_only:
+                    raw_result = execute(store, job, config, workspace, event_token, diff_snapshot=snapshot)
+                    result = diff_review.adapt(raw_result, snapshot)
+                else:
+                    raw_result = execute(store, job, config, workspace, event_token)
+                    result = adapt(raw_result, snapshot, workspace, config['max_findings'], store, job['id'])
             result_sha256 = raw_result.get('_native_result_sha256')
             final_event_seq = raw_result.get('_native_final_event_seq')
             if not result_sha256 or not final_event_seq:
@@ -247,6 +261,12 @@ def _process(store, job, recovering=False):
         if preparation_started is not None:
             record(store,job['id'],'preparation','',time.monotonic()-preparation_started)
             preparation_started=None
+        if snapshot.get('lifecycle_version') == 1:
+            # 主会话已经终态；逐问题复核使用各自请求期限，不继承主会话余量。
+            store.update(job['id'], job['owner'], deadline_at=None, stage='核对历史问题', progress_stage='issue_checks')
+            client.deadline_at = None
+            from .issue_lifecycle import reconcile
+            result = reconcile(store, client, job, repo, snapshot, result)
         store.update(job['id'], job['owner'], batch_started=time.time())
         publisher = Publisher(store, client, job, repo, snapshot, result)
         with span(store,job['id'],'publication'):
@@ -341,6 +361,16 @@ def reconcile_unknown(store):
             repo = store.repo(job['repository'])
             client = client_for(store, repo)
             publisher = Publisher(store, client, job, repo, job['snapshot'], job['result'])
+            if job['result'].get('lifecycle'):
+                from .issue_publication import recover
+                reference, incomplete = recover(publisher)
+                state = 'failed' if incomplete else 'succeeded'
+                message = '已核对部分发布；其余页面确定未发送，可在新任务中处理' if incomplete else ''
+                with store.tx() as c:
+                    completed = bool(c.execute("UPDATE jobs SET status=?,stage=?,error=?,review_id=?,review_fragment=?,updated=?,lease=0 WHERE id=? AND status='publish_unknown'",
+                        (state, '发布回执已核对', message, reference['review_id'], reference['review_fragment'], time.time(), job['id'])).rowcount)
+                    c.execute('DELETE FROM capabilities WHERE job=?', (job['id'],))
+                return
             rows = client.pages(publisher.path)
             mine = [r for r in rows if publisher.owned(r)]
             if len(mine) != 1:
@@ -441,11 +471,12 @@ def main():
             if active():
                 stop.wait(1)
                 continue
+            # 只读回查 Gitea 不依赖模型执行器；维护期间仍禁止更新核对状态。
+            reconcile_unknown(store)
             from .runtime_status import available
             if not available():
                 stop.wait(2)
                 continue
-            reconcile_unknown(store)
             reconcile_repositories(store)
             job = store.claim()
             if job:

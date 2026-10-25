@@ -1,0 +1,144 @@
+/* SVN 页面共享布局；图标和操作始终留在正常文档流。 */
+.svn-center { --svn-line: #dce7f2; --svn-muted: #64748b; display: grid; gap: 18px; min-width: 0; color: var(--text-primary); }
+.svn-center h2 { font-size: 30px; line-height: 1.35; letter-spacing: -.5px; }
+.svn-center h3 { font-size: 18px; line-height: 1.5; margin-bottom: 12px; }
+.svn-center h4 { font-size: 14px; margin: 20px 0 10px; color: var(--svn-muted); }
+.svn-center p { line-height: 1.65; }
+.svn-center .page-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 4px; }
+.svn-center .page-heading p { margin-top: 6px; color: var(--svn-muted); }
+.svn-center .button-group, .svn-center .title-line, .svn-center .toolbar, .svn-center .section-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.svn-center .title-line h2, .svn-center .title-line h3 { margin: 0; overflow-wrap: anywhere; }
+.svn-center .section-heading { justify-content: space-between; margin-bottom: 12px; }
+.svn-center .section-heading h3 { margin: 0; }
+.svn-center .button-group .el-button + .el-button, .svn-center .row-actions .el-button + .el-button { margin-left: 0; }
+.svn-center .el-button .el-icon { flex: 0 0 auto; margin: 0 5px; }
+.svn-center .el-button > span { min-width: 0; }
+.svn-center .el-tag .el-icon { vertical-align: middle; margin-right: 4px; }
+.svn-center .surface { background: rgba(255,255,255,.84); border: 1px solid var(--svn-line); border-radius: 10px; padding: 20px; min-width: 0; }
+.svn-center .overview-line { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; background: #edf6fd; border-radius: 8px; }
+.svn-center .overview-line > span { display: flex; align-items: center; gap: 10px; }
+.svn-center .source-notice { margin: 14px 0; }
+.svn-center .source-notice .el-alert__content { min-width: 0; overflow-wrap: anywhere; }
+.svn-layout-detection { display: grid; gap: 12px; min-width: 0; }
+.svn-layout-detection .layout-detection-result { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--el-border-color); border-radius: 8px; min-width: 0; }
+.svn-layout-detection .source-url, .svn-layout-detection .layout-summary { overflow-wrap: anywhere; line-height: 1.6; }
+.svn-layout-detection .section-heading, .svn-layout-detection .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.svn-layout-detection .el-form-item, .svn-layout-detection p { margin: 0; }
+.svn-layout-detection .el-select { width: 100%; min-width: 0; }
+.svn-layout-detection .el-checkbox { height: auto; white-space: normal; }
+.svn-layout-detection .el-checkbox__label { white-space: normal; }
+.svn-layout-detection .detected-directories { padding-left: 22px; overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; }
+.svn-center .muted, .svn-center .footnote { color: var(--svn-muted); font-size: 13px; }
+.svn-center .block { display: block; margin-top: 4px; }
+.svn-center .error, .svn-center .state-danger { color: #d92d20; }
+.svn-center .state-success { color: #15803d; }
+.svn-center .state-primary { color: var(--el-color-primary); }
+.svn-center .state-warning { color: #b96b00; }
+.svn-center .state-info { color: #748399; }
+.svn-center .el-table { --el-table-header-bg-color: #f1f7fc; --el-table-border-color: var(--svn-line); font-size: 14px; }
+.svn-center .el-table td.el-table__cell { padding: 14px 0; }
+.svn-center .el-table .cell { overflow-wrap: anywhere; }
+.svn-center .el-table .el-button.is-link { white-space: normal; text-align: left; line-height: 1.5; }
+.svn-center .filter-select { width: 170px; }
+.svn-center .todo-row { display: grid; grid-template-columns: 24px minmax(120px,1fr) minmax(180px,2fr) auto; align-items: center; gap: 14px; padding: 13px 0; border-top: 1px solid var(--svn-line); }
+.svn-center .todo-plan, .svn-center .todo-reason { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.svn-center .todo-row > .el-icon { font-size: 22px; }
+.svn-center .source-grid { display: grid; grid-template-columns: 220px minmax(0,1fr); gap: 16px; }
+.svn-center .source-list { align-self: start; padding: 18px 12px; }
+.svn-center .source-list > h3, .svn-center .source-list > p { margin: 0 8px 16px; }
+.svn-center .source-list > .el-input { margin-bottom: 16px; }
+.svn-center .source-choice, .svn-center .queue-item { display: flex; width: 100%; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: inherit; padding: 13px 10px; font: inherit; cursor: pointer; text-align: left; min-width: 0; }
+.svn-center .source-choice > span, .svn-center .queue-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.svn-center .source-choice > .el-icon, .svn-center .queue-item > .el-icon { flex: 0 0 19px; font-size: 19px; }
+.svn-center .source-choice small, .svn-center .queue-item small { flex: 0 0 auto; color: var(--svn-muted); }
+.svn-center .source-choice:hover, .svn-center .queue-item:hover { background: #f0f6fc; }
+.svn-center .source-choice.selected, .svn-center .queue-item.selected { color: var(--el-color-primary); background: #e8f3ff; border-color: #c8e1fd; }
+.svn-center button:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+.svn-center .repository-panel { padding: 18px; }
+.svn-center .source-url { overflow-wrap: anywhere; margin-top: 8px; }
+.svn-center .toolbar { justify-content: space-between; margin: 14px 0; }
+.svn-center .search { width: min(290px,100%); }
+.svn-center .inline-issue { margin-top: 8px; color: #b42318; background: #fff4f3; border-radius: 5px; padding: 8px; line-height: 1.5; font-size: 13px; }
+.svn-center .row-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.svn-center .selection-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 0 -18px -18px; padding: 18px; background: #f0f7ff; border-top: 1px solid var(--svn-line); border-radius: 0 0 10px 10px; }
+.svn-center .selection-bar strong { font-size: 15px; }
+.svn-center .resource-details { color: var(--svn-muted); font-size: 13px; }
+.svn-center summary { cursor: pointer; padding: 12px 0; font-weight: 500; }
+.svn-center .resource-details p { margin-bottom: 6px; }
+.svn-center .svn-detail { display: grid; gap: 18px; min-width: 0; }
+.svn-center .svn-detail > .el-button { justify-self: start; }
+.svn-center .preflight-grid { display: grid; grid-template-columns: minmax(0,2.1fr) minmax(280px,1fr); gap: 16px; }
+.svn-center .preflight-grid > aside { align-self: start; }
+.svn-center .issue-block { padding: 18px; background: #fff8f8; border: 1px solid #ffd8d6; border-radius: 8px; margin-bottom: 20px; overflow-wrap: anywhere; }
+.svn-center .issue-block h3 { margin-top: 12px; }
+.svn-center .issue-block p + p { margin-top: 10px; }
+.svn-center .facts { display: grid; grid-template-columns: minmax(90px,.75fr) minmax(0,1.25fr); margin-bottom: 24px; font-size: 14px; }
+.svn-center .facts dt, .svn-center .facts dd { padding: 13px 0; border-bottom: 1px solid var(--svn-line); overflow-wrap: anywhere; }
+.svn-center .facts dt { color: var(--svn-muted); }
+.svn-center .action-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px; border: 1px solid var(--svn-line); border-radius: 8px; margin: 12px 0; }
+.svn-center .action-row > div { flex: 1 1 230px; }
+.svn-center .scope-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--svn-line); overflow-wrap: anywhere; }
+.svn-center .scope-row > span { min-width: 0; }
+.svn-center .evidence-row { display: grid; gap: 8px; font-size: 13px; padding: 14px 0; overflow-wrap: anywhere; }
+.svn-center .execution-grid { display: grid; grid-template-columns: 260px minmax(0,1fr); gap: 16px; }
+.svn-center .queue { padding: 18px 12px; }
+.svn-center .queue > h3, .svn-center .queue > p, .svn-center .queue > h4 { margin-left: 8px; margin-right: 8px; }
+.svn-center .queue-item { font-size: 14px; }
+.svn-center .queue-item small { font-size: 12px; }
+.svn-center .run-inspector > .muted { margin-top: 12px; }
+.svn-center .stage-track { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 8px; list-style: none; padding: 22px 0; }
+.svn-center .stage-track li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; color: #77849a; font-size: 13px; line-height: 1.5; }
+.svn-center .stage-track .el-icon { font-size: 23px; }
+.svn-center .stage-track .done { color: #15803d; }
+.svn-center .stage-track .active { color: var(--el-color-primary); font-weight: 600; }
+.svn-center .stage-current { border: 1px solid var(--svn-line); border-radius: 8px; padding: 18px; margin-bottom: 16px; }
+.svn-center .stage-current h3 { overflow-wrap: anywhere; }
+.svn-center .stage-current .el-progress { margin: 12px 0; }
+.svn-center .activity-log { max-height: 360px; overflow-y: auto; }
+.svn-center .activity-log p { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--svn-line); font-size: 13px; }
+.svn-center .activity-log time { color: var(--svn-muted); }
+.svn-center pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
+.svn-center .layout-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 18px; margin-top: 18px; }
+.svn-center .confirmations { display: grid; gap: 14px; padding: 22px 0; }
+.svn-center .confirmations .el-checkbox { height: auto; white-space: normal; align-items: flex-start; }
+.svn-center .confirmations .el-checkbox__label { white-space: normal; line-height: 1.6; }
+@media (max-width: 1200px) {
+  .svn-center .source-grid { grid-template-columns: 180px minmax(0,1fr); }
+  .svn-center .execution-grid { grid-template-columns: 220px minmax(0,1fr); }
+  .svn-center .preflight-grid { grid-template-columns: minmax(0,1.6fr) minmax(250px,1fr); }
+}
+@media (max-width: 900px) {
+  .svn-center .source-grid, .svn-center .execution-grid, .svn-center .preflight-grid { grid-template-columns: minmax(0,1fr); }
+  .svn-center .source-list { max-height: 280px; overflow-y: auto; }
+  .svn-center .queue { max-height: 340px; overflow-y: auto; }
+  .svn-center .todo-row { grid-template-columns: 22px minmax(0,1fr) auto; }
+  .svn-center .todo-reason { grid-column: 2 / -1; grid-row: 2; }
+  .svn-center .stage-track { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 18px 8px; }
+}
+@media (max-width: 540px) {
+  .svn-center h2 { font-size: 23px; }
+  .svn-center .surface { padding: 14px; }
+  .svn-center .selection-bar { margin: 0 -14px -14px; padding: 14px; }
+  .svn-center .page-heading > .button-group, .svn-center .selection-bar > .button-group { width: 100%; }
+  .svn-center .el-button { padding-left: 10px; padding-right: 10px; }
+  .svn-center .layout-form { grid-template-columns: minmax(0,1fr); }
+  .svn-center .activity-log p { grid-template-columns: minmax(0,1fr); gap: 4px; }
+  .svn-center .el-tabs__item { padding: 0 12px; }
+}
+
+.svn-center .plan-table td.el-table__cell { padding: 8px 0; }
+.svn-center .history-navigation { margin-top: 18px; }
+
+/* 与设计图一致的正文层级；沿用现有全局导航与字体。 */
+.svn-center { font-size: 16px; }
+.svn-center h2 { font-size: 34px; }
+.svn-center h3 { font-size: 21px; }
+.svn-center .el-table { font-size: 15px; }
+.svn-center .el-tag { font-size: 13px; }
+.svn-center .el-button:not(.el-button--small):not(.is-link) { min-height: 36px; }
+.svn-center .repository-table td.el-table__cell { padding: 10px 0; }
+.svn-center .queue-item { font-size: 15px; }
+.svn-center .stage-track li { font-size: 14px; }
+.svn-center .activity-log p { font-size: 14px; }
+@media (min-width: 901px) { .svn-center .execution-grid > .surface { min-height: 650px; } }
+@media (max-width: 540px) { .svn-center h2 { font-size: 24px; } }

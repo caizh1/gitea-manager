@@ -1,0 +1,299 @@
+{
+  "说明": "只包含隔离验收结论与镜像身份，不包含测试凭据或运行数据库",
+  "版本": "svn-20261022-r9",
+  "平台": "Linux amd64",
+  "迁移单元通过": 25,
+  "相关回归通过": 44,
+  "页面交互通过": 11,
+  "验收": {
+    "acceptance.json": {
+      "状态": "通过",
+      "说明": "隔离 Linux 固定基准；不代表生产 SVN 或人工节省指标已验收",
+      "检查": [
+        {
+          "检查": "登记三个独立 SVN 来源与九个仓库",
+          "通过": true
+        },
+        {
+          "检查": "九仓库只读预检通过",
+          "通过": true
+        },
+        {
+          "检查": "同名 SVN 作者按来源隔离",
+          "通过": true
+        },
+        {
+          "检查": "重复请求返回同一执行任务",
+          "通过": true
+        },
+        {
+          "检查": "工作由独立 Worker 领取",
+          "通过": true
+        },
+        {
+          "检查": "迁移期间阻止删除实例及停机备份",
+          "通过": true
+        },
+        {
+          "检查": "独立 Worker 完成九个仓库迁移",
+          "通过": true
+        },
+        {
+          "检查": "每个仓库全部提交经过内容和元数据校验",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-a-3a5f37/project-0",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-a-3a5f37/project-0",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-a-3a5f37/project-0",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-a-3a5f37/project-1",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-a-3a5f37/project-1",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-a-3a5f37/project-1",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-a-3a5f37/project-2",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-a-3a5f37/project-2",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-a-3a5f37/project-2",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-b-360bbb/project-0",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-b-360bbb/project-0",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-b-360bbb/project-0",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-b-360bbb/project-1",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-b-360bbb/project-1",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-b-360bbb/project-1",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-b-360bbb/project-2",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-b-360bbb/project-2",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-b-360bbb/project-2",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-c-3bce10/project-0",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-c-3bce10/project-0",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-c-3bce10/project-0",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-c-3bce10/project-1",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-c-3bce10/project-1",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-c-3bce10/project-1",
+          "通过": true
+        },
+        {
+          "检查": "私有仓库 svn-fixture-c-3bce10/project-2",
+          "通过": true
+        },
+        {
+          "检查": "导入工作流未自动启用 svn-fixture-c-3bce10/project-2",
+          "通过": true
+        },
+        {
+          "检查": "匿名拒绝读取 svn-fixture-c-3bce10/project-2",
+          "通过": true
+        },
+        {
+          "检查": "普通只读用户与业务授权未被自动创建",
+          "通过": true
+        },
+        {
+          "检查": "旧群组人工授权后后续批次选择新的私有群组",
+          "通过": true
+        },
+        {
+          "检查": "Worker 被强制终止后状态明确标为待确认",
+          "通过": true
+        },
+        {
+          "检查": "原快照核对并恢复后续批次成功",
+          "通过": true
+        },
+        {
+          "检查": "external-current 被预检明确阻断",
+          "通过": true
+        },
+        {
+          "检查": "external-history 被预检明确阻断",
+          "通过": true
+        },
+        {
+          "检查": "已有目标被阻断而没有覆盖",
+          "通过": true
+        },
+        {
+          "检查": "清理成功工作区后迁移报告和提交映射仍保留",
+          "通过": true
+        },
+        {
+          "检查": "每个源修订均有提交映射或明确排除说明",
+          "通过": true
+        }
+      ]
+    },
+    "fault-acceptance.json": {
+      "状态": "通过",
+      "检查": [
+        {
+          "检查": "暂停完成当前仓库且未启动下一仓库",
+          "通过": true
+        },
+        {
+          "检查": "外部引用变化已注入",
+          "通过": true
+        },
+        {
+          "检查": "恢复发现外部引用后暂停并保留外部改动",
+          "通过": true
+        },
+        {
+          "检查": "取消停止当前执行且保留已完成仓库",
+          "通过": true
+        },
+        {
+          "检查": "取消后核对原快照并继续成功",
+          "通过": true
+        },
+        {
+          "检查": "已完成仓库未被重复转换或覆盖",
+          "通过": true
+        },
+        {
+          "检查": "预览后来源继续提交被阻断",
+          "通过": true
+        },
+        {
+          "检查": "来源变化未创建目标仓库",
+          "通过": true
+        },
+        {
+          "检查": "来源 UUID 改变被阻断",
+          "通过": true
+        },
+        {
+          "检查": "同一 SVN 的两个独立项目含中文空格路径均迁移成功",
+          "通过": true
+        },
+        {
+          "检查": "两个项目保持独立仓库与完整提交校验",
+          "通过": true
+        }
+      ]
+    },
+    "original-regression.json": {
+      "状态": "passed",
+      "断言数": 38,
+      "已转换提交数": 15
+    },
+    "live-flow.json": {
+      "状态": "通过",
+      "说明": "真实页面完成来源登记、仓库导入、计划预检、停写确认、迁移和自动核验",
+      "名称": "浏览器闭环 mvjcavvd"
+    },
+    "concurrency.json": {
+      "状态": "通过",
+      "第二执行器退出码": 1,
+      "说明": "第二个独立执行器被全局文件锁拒绝，未领取任务"
+    }
+  },
+  "镜像": [
+    {
+      "组件": "backend",
+      "镜像": "gitea-review-backend:svn-20261022-r9",
+      "ID": "sha256:2f8f54779f0ab0e5a3ebb967ae09e49108310c970f6a8534c461e9744569ecbf",
+      "系统": "linux",
+      "架构": "amd64"
+    },
+    {
+      "组件": "frontend",
+      "镜像": "gitea-review-frontend:svn-20261022-r9",
+      "ID": "sha256:8c2b9484e8b2fbd68963cb61755e9568a8ec475cc325afec7d60a76c70feea59",
+      "系统": "linux",
+      "架构": "amd64"
+    },
+    {
+      "组件": "svn",
+      "镜像": "gitea-review-svn:svn-20261022-r9",
+      "ID": "sha256:2fc6f12eb4684d01cf52dee8354d10544f7d61028b09403ea8b43d1348c71a00",
+      "系统": "linux",
+      "架构": "amd64"
+    },
+    {
+      "组件": "executor",
+      "镜像": "gitea-review-executor:svn-20261022-r9",
+      "ID": "sha256:0696aa66de0fc453d484f9b6c388b918a1cecf6db9bd85ebf1b9e460ea5c6bb4",
+      "系统": "linux",
+      "架构": "amd64"
+    }
+  ],
+  "首次安装": "最终 r9 原包通过",
+  "升级": {
+    "状态": "通过",
+    "来源和计划保持一致": true,
+    "原加密凭据和密钥保持一致": true,
+    "原会话保持": true
+  },
+  "未验证": [
+    "公司实际 SVN 与最大仓库",
+    "Ubuntu systemd 实机",
+    "完整网络与磁盘故障矩阵",
+    "人工投入降低至少 80%"
+  ]
+}

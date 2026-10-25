@@ -1,0 +1,16 @@
+# 由 scripts/remote-backup-acceptance.py 生成每轮实际 Compose。
+# 独立引擎、数据卷、网段、固定镜像摘要与权限均在生成阶段核验。
+services:
+  router:
+    image: ${REMOTE_LAB_HOST_IMAGE:?请先执行 deploy}
+    entrypoint: ["sleep", "infinity"]
+    cap_add: [NET_ADMIN]
+    sysctls: {net.ipv4.ip_forward: "1"}
+  host-a:
+    image: ${REMOTE_LAB_HOST_IMAGE:?请先执行 deploy}
+    privileged: true
+    environment: {DOCKER_TLS_CERTDIR: ""}
+  host-b:
+    image: ${REMOTE_LAB_HOST_IMAGE:?请先执行 deploy}
+    privileged: true
+    environment: {DOCKER_TLS_CERTDIR: ""}

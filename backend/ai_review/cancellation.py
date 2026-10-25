@@ -30,7 +30,7 @@ def request_cancel(store, job_id, actor):
             return 200
         if job['status'] == 'cancelling':
             return 202
-        if job['status'] not in ('queued', 'running'):
+        if job['status'] not in ('queued', 'running', 'awaiting_cost', 'budget_paused', 'incomplete'):
             return 409
         # 中断后重新排队的任务可能仍有原生会话，不能按尚未执行的任务直接结束。
         queued = job['status'] == 'queued' and not job['owner'] and not job['session_id'] and job['started_at'] is None

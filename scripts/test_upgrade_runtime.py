@@ -1,13 +1,15 @@
 """在交付后端镜像内核对升级日志原子性、配置转义及原密钥校验。"""
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import tarfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from cryptography.fernet import Fernet
 
 spec=importlib.util.spec_from_file_location('runtime',Path(__file__).with_name('upgrade_runtime.py'))
@@ -17,6 +19,95 @@ runtime=importlib.util.module_from_spec(spec);spec.loader.exec_module(runtime)
 class RuntimeChecks(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup);self.root=Path(self.folder.name)
+
+    def test_snapshot_includes_writes_committed_during_old_service_shutdown(self):
+        path = self.root/'manager.db'
+        with sqlite3.connect(path) as connection:
+            connection.executescript('CREATE TABLE access_sessions(last_seen_at INTEGER); INSERT INTO access_sessions VALUES (1);')
+        old = Mock(); old.attrs = {'State': {'Running': True}}
+        def stop(**_):
+            with sqlite3.connect(path) as connection:
+                connection.execute('UPDATE access_sessions SET last_seen_at=2')
+            old.attrs['State']['Running'] = False
+        old.stop.side_effect = stop
+        tool = runtime.Upgrade.__new__(runtime.Upgrade)
+        tool.info = {'phase': 'prepared', 'paused': ['old-container'],
+                     'manager_mount': {'source': 'manager-data'}, 'manager_parameters': {},
+                     'original': {'backend': {'Image': 'old-image'}}}
+        tool.client = Mock(); tool.client.containers.get.return_value = old
+        tool.client.images.get.return_value.save.return_value = iter([b'old-image'])
+        tool.containers = Mock(return_value={'backend': old})
+        phases, snapshots = [], []
+        tool.save = lambda: phases.append(tool.info['phase'])
+        def volume(action, *_):
+            if action == 'inspect': return {'database': {'busy': []}}
+            self.assertEqual(action, 'backup')
+            self.assertFalse(old.attrs['State']['Running'])
+            with sqlite3.connect(path) as connection:
+                snapshots.append(connection.execute('SELECT last_seen_at FROM access_sessions').fetchone()[0])
+        tool.volume = volume; tool.maintenance = Mock()
+        with patch.object(runtime, 'STATE', self.root):
+            tool.stop_old(); tool.backup(); tool.activate()
+        self.assertEqual(snapshots, [2])
+        self.assertEqual(phases, ['stopping', 'stopped', 'backed_up', 'replacing'])
+        tool.maintenance.assert_called_once_with(True)
+
+    def test_incomplete_offline_backup_recovers_original_without_restoring_partial_archive(self):
+        for phase in ('stopping', 'stopped', 'backed_up'):
+            tool = runtime.Upgrade.__new__(runtime.Upgrade)
+            tool.info = {'phase': phase}
+            tool.unpause = Mock(); tool.volume = Mock()
+            tool.rollback()
+            tool.unpause.assert_called_once()
+            tool.volume.assert_not_called()
+        tool.info['phase'] = 'prepared'
+        with self.assertRaisesRegex(RuntimeError, '完全停止'):
+            tool.backup()
+        with self.assertRaisesRegex(RuntimeError, '快照未完成'):
+            tool.activate()
+
+    def test_shutdown_discovered_task_cannot_be_migrated_as_an_idle_snapshot(self):
+        tool = runtime.Upgrade.__new__(runtime.Upgrade)
+        tool.info = {'phase': 'stopped', 'manager_mount': {'source': 'manager-data'}, 'manager_parameters': {}}
+        tool.containers = Mock(return_value={})
+        tool.volume = Mock(return_value={'database': {'busy': [{'table': 'jobs', 'count': 1}]}})
+        with self.assertRaisesRegex(RuntimeError, '新进入的任务'):
+            tool.backup()
+        tool.volume.assert_called_once_with('inspect', 'manager', tool.info['manager_mount'], {})
+        self.assertEqual(tool.info['phase'], 'stopped')
+
+    def test_secret_read_keeps_bytes_and_follows_container_symlink_without_exec(self):
+        content = '原执行器令牌\n'.encode()
+        def archive(name, value=None, target=None):
+            raw = io.BytesIO()
+            with tarfile.open(fileobj=raw, mode='w') as bundle:
+                member = tarfile.TarInfo(name)
+                if target:
+                    member.type = tarfile.SYMTYPE; member.linkname = target
+                    bundle.addfile(member)
+                else:
+                    member.size = len(value); bundle.addfile(member, io.BytesIO(value))
+            return iter([raw.getvalue()]), {}
+        container = Mock()
+        container.get_archive.side_effect = [archive('token-link', target='executor.token'),
+                                             archive('executor.token', value=content)]
+        self.assertEqual(runtime.read_secret_file(container, '/run/secrets/token-link'), content)
+        self.assertEqual([call.args for call in container.get_archive.call_args_list],
+                         [('/run/secrets/token-link',), ('/run/secrets/executor.token',)])
+        container.exec_run.assert_not_called()
+
+    def test_missing_or_directory_secret_cannot_be_silently_replaced(self):
+        container = Mock()
+        container.get_archive.side_effect = runtime.docker.errors.NotFound('原文件不存在')
+        self.assertEqual(runtime.read_secret_file(container, '/run/secrets/missing'), b'')
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode='w') as bundle:
+            member = tarfile.TarInfo('secret-dir'); member.type = tarfile.DIRTYPE
+            bundle.addfile(member)
+        container.get_archive.side_effect = None
+        container.get_archive.return_value = iter([raw.getvalue()]), {}
+        with self.assertRaisesRegex(RuntimeError, '普通小文件'):
+            runtime.read_secret_file(container, '/run/secrets/secret-dir')
 
     def test_failed_atomic_replace_preserves_previous_transaction(self):
         path=self.root/'状态.json';runtime.write(path,{'阶段':'已备份'})

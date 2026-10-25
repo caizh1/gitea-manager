@@ -1,0 +1,169 @@
+{
+  "说明": "完整真实数据的独立丢包剖面。新备份真实成功，但工具轮询401后退出，恢复未提交；不能算完整丢包备份恢复或连续性能通过。",
+  "状态": "工具轮询中断，备份成功，恢复未执行",
+  "实际剖面": {
+    "每出口延迟毫秒": 100,
+    "每出口抖动毫秒": 20,
+    "随机丢包百分比": 0.5,
+    "每出口限速Mbps": 20
+  },
+  "备份": {
+    "id": 37,
+    "status": "success",
+    "progress_stage": "completed",
+    "started_at": "2026-10-23T08:36:17.765838",
+    "completed_at": "2026-10-23T10:38:16.472585",
+    "file_size": 1996083200
+  },
+  "归档只读复核": {
+    "SHA256": "a5b81014948b9c374d1fa718c3c1d31d46a8114e8fcbd0ce2de5ba54bfd42dd4",
+    "ZIP条目数": 1681,
+    "全部ZIP条目CRC通过": true
+  },
+  "备份点审计SQL核对": {
+    "原事件数": 1544,
+    "原范围数": 4600,
+    "与本轮源之前逐字段相同": true
+  },
+  "恢复未提交": true,
+  "原生文件观察器未进入": true,
+  "工具首败": {
+    "HTTP状态": 401,
+    "原始错误保留": true,
+    "原因边界": "同分钟唯一会话候选最后活跃与超过30分钟采样间隔吻合，符合冻结认证闲置门槛；未保存原Cookie，不能宣称唯一原因。"
+  },
+  "整链计时": {
+    "开始时间UTC": "2026-10-23T08:33:11.966637+00:00",
+    "结束时间UTC": "2026-10-23T10:48:12.778044+00:00",
+    "单调耗时秒": 5630.789,
+    "墙钟耗时秒": 8100.811
+  },
+  "连续性能": {
+    "最大采样间隔秒": 1870.930309,
+    "时钟差额秒": 2470.022,
+    "连续性能测量可用": false
+  },
+  "独立数据复核": {
+    "a": {
+      "表数": 150,
+      "非审计相同表数": 148,
+      "Git正文配置密钥规则相同": true,
+      "原生追加": {
+        "全部旧事件及范围逐字段相同": true,
+        "原事件数": 1544,
+        "原范围数": 4600,
+        "新增原生事件数": 2,
+        "新增完整范围数": 4,
+        "身份原因对象祖先范围核对": true
+      }
+    },
+    "b": {
+      "表数": 150,
+      "非审计相同表数": 147,
+      "Git正文配置密钥规则相同": true,
+      "原生追加": {
+        "全部旧事件及范围逐字段相同": true,
+        "原事件数": 1543,
+        "原范围数": 4598,
+        "新增原生事件数": 3,
+        "新增完整范围数": 6,
+        "身份原因对象祖先范围核对": true
+      }
+    }
+  },
+  "目标保留未解释差异": [
+    {
+      "行ID": 1,
+      "字段": "updated_unix",
+      "之前": 1792719095,
+      "之后": 1792756248
+    }
+  ],
+  "差异处理": "原生追加逐事件核对旧行、系统身份、原因、对象及完整祖先范围；目标mirror时间差保留，不能宣称目标全150表完全相同。",
+  "收尾": {
+    "活动任务数": 0,
+    "Manager保留核验": true,
+    "专属目录字段数": 27,
+    "专属账号字段数": 9,
+    "权限全部字段及旧助手全部状态相同": true,
+    "三接口默认队列": true,
+    "无待还原标记": true,
+    "两侧认证HTTP": {
+      "a": 200,
+      "b": 200
+    },
+    "源旧停止助手数量": 3,
+    "目标助手数量": 0,
+    "基线待重采": true
+  },
+  "冻结副本文件数": 356,
+  "实际产品镜像": {
+    "backend": "sha256:3da7b51bb9a8dd084c899e277bd7e81e27376e44c613c0c15d297568a6c3a24f",
+    "frontend": "sha256:4646d236797c81dde2f15db002314464627bcc25ac0a2458aa9efd7a62f85476"
+  },
+  "当前三个P1因果文件与冻结副本相同": true,
+  "本轮驱动": "sha256:c4ed28dfee9e3f507bb7c348a1aa14a92405cf480ca358ace51bdd61f968934a",
+  "总体结论": "功能FAIL、审查FAIL仍两个既有P1；本轮401与采样中断不增加产品P1。",
+  "原始证据摘要": [
+    {
+      "文件": "network-lossy-1-command.json",
+      "SHA256": "b9b19a4a41cbead3169880b4b8dedfb121417195dc7fb1fce7d90f5a0642bc13"
+    },
+    {
+      "文件": "phase-runs/network-lossy-1.json",
+      "SHA256": "36f76659b305ea947cb1ed106c3e9d51e59451bf7be729543c023e93143cfe0a"
+    },
+    {
+      "文件": "network-lossy-1.json",
+      "SHA256": "92b99fc74602caaafa03531fb50e4291e9c5445cb3d45bdc42a7baaa65bd0fb8"
+    },
+    {
+      "文件": "network-lossy-1-post-command-audit-1.json",
+      "SHA256": "2cb17eebb8528150f9823874cd5b030fc0319cb27f91edec704dcf7a6c686747"
+    },
+    {
+      "文件": "network-lossy-1-independent-verification-1.json",
+      "SHA256": "c9c3d057c869329a805de06eedbb053b20a2d2d7b7e1fe9a8415b80776ddcf72"
+    },
+    {
+      "文件": "network-lossy-1-independent-verification-1.py",
+      "SHA256": "4419d65acb2555bdf3ce85c05af3d67c1923bd99daf19b0e72e8834c1ec6dcaa"
+    },
+    {
+      "文件": "network-lossy-1-final-health.json",
+      "SHA256": "042c00eaf2f63f1ccc672b57a68515242fa0abaa5cb4becee336830f9ff76921"
+    },
+    {
+      "文件": "network-lossy-backup37-archive-readback-1.json",
+      "SHA256": "dfface14ea3e23dc195d753f215461db84a60159fe7dd7a86bfac9fd7d72c0c9"
+    },
+    {
+      "文件": "network-lossy-backup37-audit-sql-1.json",
+      "SHA256": "6a12b74bb9d766ef55ed64e3da832f721aaebe08ac7e334d91fb1cddee7ca543"
+    },
+    {
+      "文件": "network-lossy-1-session-timing-1.json",
+      "SHA256": "881be67615ec34b1b18e2a441d9e53e5781efdc895f5c524fbbe4af482e31973"
+    },
+    {
+      "文件": "network-lossy-1-observation-continuity-1.json",
+      "SHA256": "c54573a5588672cd2cc6d99cf25f4bc0592f0b262f386c366fc5717d670c2682"
+    },
+    {
+      "文件": "snapshots/a-1792744480739636676.json",
+      "SHA256": "4d80dfed89cb7eb3e24f4217bb75c935accd0906d84d6ecc3fd43c0209291fee"
+    },
+    {
+      "文件": "snapshots/b-1792744565797959382.json",
+      "SHA256": "9acf5719ed45f524bcc42a00224987b40e354f06e2b4a67fb51c495b3655ab3d"
+    },
+    {
+      "文件": "snapshots/a-1792756428459401512.json",
+      "SHA256": "d6589ced4971c5ee805d2df6174638dd549c8df226b4a113208d692584f7ef24"
+    },
+    {
+      "文件": "snapshots/b-1792756521445860930.json",
+      "SHA256": "610a4ca235007861944b269665d9296e30a83c7e36c675694e23bf635fc178d9"
+    }
+  ]
+}

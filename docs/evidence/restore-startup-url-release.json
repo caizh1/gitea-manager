@@ -1,0 +1,104 @@
+{
+  "说明": "从旧交付镜像真实复现到修复镜像完整闭环；不冒充用户现场验收",
+  "现场输入": "10.10.5.21:9929",
+  "现场诊断编号": "20261013T110053Z-1a86ed05",
+  "根因": "启动检查没有复用原有 URL 协议补全，Requests 在建立连接前抛出 InvalidSchema；异常被吞掉后触发期限回退",
+  "原包SHA256": "bfb59fc2c2c9bcdc3e7ea510749f825444ca3de876bfc59d6f60e9bcf708fc8a",
+  "原镜像复现": {
+    "结果": "按预期失败",
+    "隔离目录": "work/restore-secret-6a5bc120",
+    "诊断编号": "20261013T112516Z-40e29400",
+    "失败阶段": "start_gitea",
+    "现象": "与现场相同，已保留首次失败诊断"
+  },
+  "单样本恢复耗时秒": {
+    "原镜像失败": 128.382,
+    "修复镜像成功": 8.887
+  },
+  "修复源码摘要": {
+    "backend/services/local_restore.py": "8563db60e27f2b994aeed80c542dec34a06ca0c2a417eba20c5d24403464da4a",
+    "backend/services/restore_secrets.py": "ea069de4d6ed65c85b5970e0b214d3016a002859ec5600c884ea6720fcd9519c",
+    "backend/services/gitea_service.py": "9f32641ccc2f8337a0178541a8237c5f3e1b28f45789e7f716c858d740c7fdd5"
+  },
+  "原包保留文件摘要": {
+    "backend/services/local_restore.py": "80f70e718190b90f51901f6e52ca5c385303a9e8c16d56618708da8d01cb8b8d",
+    "review-runtime/native_gateway.py": "4677c647ce9ff565ef910118803f8e3a8a77df057e3c76da642ec001320afe56",
+    "scripts/upgrade_runtime.py": "6f780b3a9cea8f16bfcee85641da113bbd50dd25b108e6edfb119481e56807e5",
+    "upgrade.sh": "13b1a442d994ce0716f2d8c487c9dd9ca2a38dae4719aaa58a4a87f8b6cb23fa"
+  },
+  "镜像": [
+    {
+      "镜像": "gitea-review-backend:restore-url-20261013-r1",
+      "标识": "sha256:ddc5bb9ae6a8a751764476aa827dd855a3363b1049dc8ddd7e40c088b2336574",
+      "系统": "linux",
+      "架构": "amd64"
+    },
+    {
+      "镜像": "gitea-review-frontend:restore-url-20261013-r1",
+      "标识": "sha256:515fa88e5d00e141290a9bba7f86f0de85216e4a0300983e6ae7113e7282066e",
+      "系统": "linux",
+      "架构": "amd64"
+    },
+    {
+      "镜像": "gitea-review-executor:restore-url-20261013-r1",
+      "标识": "sha256:fcc77f35ecf86ef98cf3e8e1bb555d804bc4371278fdcea29c3d9d2429248f4d",
+      "系统": "linux",
+      "架构": "amd64"
+    },
+    {
+      "镜像": "gitea-review-executor:restore-url-20261013-r1-legacy",
+      "标识": "sha256:42b3bd8e5444184e15d53a7453f90273169e95c5178346373089197d7a0e1419",
+      "系统": "linux",
+      "架构": "amd64"
+    }
+  ],
+  "真实隔离验收": [
+    {
+      "模式": "url",
+      "检查": "无协议 Gitea URL 的真实恢复与接口校验通过",
+      "结果": "通过"
+    },
+    {
+      "模式": "url",
+      "检查": "真实备份恢复、私有 Git 和两步验证解密通过",
+      "结果": "通过"
+    },
+    {
+      "模式": "url",
+      "检查": "目标重启后两步验证仍有效",
+      "结果": "通过"
+    },
+    {
+      "模式": "recreated",
+      "检查": "Compose 强制重建后源密钥及真实两步验证仍有效",
+      "结果": "通过"
+    },
+    {
+      "模式": "ssh",
+      "检查": "真实备份恢复、私有 Git 和两步验证解密通过",
+      "结果": "通过"
+    },
+    {
+      "模式": "ssh",
+      "检查": "目标重启后两步验证仍有效",
+      "结果": "通过"
+    },
+    {
+      "模式": "recreated",
+      "检查": "Compose 强制重建后源密钥及真实两步验证仍有效",
+      "结果": "通过"
+    },
+    {
+      "模式": "rollback",
+      "检查": "真实校验失败后容器、Compose、原密钥和两步验证全部回退",
+      "结果": "通过"
+    }
+  ],
+  "工程检查": {
+    "后端回归": "51项通过",
+    "前端构建": "通过",
+    "镜像源码一致性": "通过",
+    "代码审查": "PASS，无P0/P1阻塞"
+  },
+  "边界": "仅操作新建独立实例；用户现场 Gitea 1.26.0 未执行恢复复验；没有量化人工精力减少80%。"
+}

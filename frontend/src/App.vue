@@ -21,8 +21,10 @@
           <el-icon :size="16"><component :is="collapsed ? 'Expand' : 'Fold'" /></el-icon>
         </button>
         <el-menu
+          ref="navigationMenu"
           :default-active="activeMenu"
           :collapse="collapsed"
+          :default-openeds="['ai-review-navigation', 'svn-navigation']"
           router
           background-color="transparent"
           text-color="#5f6b7a"
@@ -53,6 +55,12 @@
             <el-icon><Clock /></el-icon>
             <template #title>定时任务</template>
           </el-menu-item>
+          <el-sub-menu v-if="hasCapability('svn_migrations')" index="svn-navigation" aria-label="SVN 迁移中心" @click="openSvnMenu" class="review-submenu" popper-class="review-submenu-popup">
+            <template #title><el-icon><Connection /></el-icon><span>SVN 迁移中心</span></template>
+            <el-menu-item index="/svn-migrations">迁移工作台</el-menu-item>
+            <el-menu-item index="/svn-migrations/sources">来源与仓库</el-menu-item>
+            <el-menu-item index="/svn-migrations/runs">执行记录</el-menu-item>
+          </el-sub-menu>
           <el-menu-item v-if="hasCapability('mirrors')" index="/mirrors" aria-label="镜像管理">
             <el-icon><Connection /></el-icon>
             <template #title>镜像管理</template>
@@ -61,6 +69,13 @@
             <el-icon><Key /></el-icon>
             <template #title>提交门禁</template>
           </el-menu-item>
+          <el-sub-menu v-if="hasCapability('ai_reviews')" index="ai-review-navigation" aria-label="AI Code Review" @click="openReviewMenu" class="review-submenu" popper-class="review-submenu-popup">
+            <template #title><el-icon><DataAnalysis /></el-icon><span>AI Code Review</span></template>
+            <el-menu-item index="/ai-reviews" :route="reviewNavigationTarget('/ai-reviews')" aria-label="审查工作区"><el-icon><Monitor /></el-icon><template #title>审查工作区</template></el-menu-item>
+            <el-menu-item index="/ai-reviews/repositories" :route="reviewNavigationTarget('/ai-reviews/repositories')" aria-label="仓库管理"><el-icon><FolderOpened /></el-icon><template #title>仓库管理</template></el-menu-item>
+            <el-menu-item index="/ai-reviews/dataset" :route="reviewNavigationTarget('/ai-reviews/dataset')" aria-label="经验数据集"><el-icon><Coin /></el-icon><template #title>经验数据集</template></el-menu-item>
+            <el-menu-item v-if="isPlatformAdmin" index="/ai-reviews/settings" :route="reviewNavigationTarget('/ai-reviews/settings')" aria-label="模型与设置"><el-icon><Setting /></el-icon><template #title>模型与设置</template></el-menu-item>
+          </el-sub-menu>
           <el-menu-item v-if="hasCapability('repository_policies')" index="/repository-policies" aria-label="仓库策略中心">
             <el-icon><Key /></el-icon>
             <template #title>仓库策略中心</template>
@@ -68,10 +83,6 @@
           <el-menu-item v-if="hasCapability('approval_rules')" index="/approval-rules" aria-label="审批规则">
             <el-icon><CircleCheck /></el-icon>
             <template #title>审批规则</template>
-          </el-menu-item>
-          <el-menu-item v-if="hasCapability('ai_reviews')" index="/ai-reviews" aria-label="AI Code Review">
-            <el-icon><DataAnalysis /></el-icon>
-            <template #title>AI Code Review</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('statistics')" index="/statistics" aria-label="统计分析">
             <el-icon><DataAnalysis /></el-icon>
@@ -146,11 +157,13 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import LoginView from './views/Login.vue'
 import AlertBell from './components/AlertBell.vue'
 import ReviewAttentionBanner from './components/ReviewAttentionBanner.vue'
-import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key, User } from '@element-plus/icons-vue'
+import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Coin, Key, User } from '@element-plus/icons-vue'
 import { api, cancelScopeRequests } from './api'
+import { notifyApiError } from './api/errors.js'
 import { accessState, accessReady, isPlatformAdmin, hasCapability, applySession, setOrganization } from './composables/accessState.js'
 
 const breadcrumbMap = {
+  '/svn-migrations': 'SVN 迁移',
   '/access': '账号与权限',
   '/dashboard': '仪表盘',
   '/servers': '服务器管理',
@@ -177,13 +190,13 @@ function decodeRouteParam(value) {
 }
 
 export default {
-  components: { LoginView, AlertBell, ReviewAttentionBanner, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Key, User },
+  components: { LoginView, AlertBell, ReviewAttentionBanner, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Coin, Key, User },
   setup() {
     const router = useRouter()
     const route = useRoute()
     const authenticated = computed(() => accessState.authenticated)
     const needsConfig = computed(() => accessState.needsConfig)
-    const routeAllowed = computed(() => Boolean(route.meta.capability && hasCapability(route.meta.capability)))
+    const routeAllowed = computed(() => Boolean(route.meta.capability && hasCapability(route.meta.capability) && (!route.meta.platformOnly || isPlatformAdmin.value)))
     const passwordForm = reactive({ current_password: '', new_password: '', confirm: '' }), passwordError = ref(''), changingPassword = ref(false)
     let sessionTimer, refreshingSession = false
     async function refreshSession() {
@@ -210,6 +223,16 @@ export default {
     onUnmounted(() => { clearInterval(sessionTimer); window.removeEventListener('manager-session-expired', expireSession); window.removeEventListener('manager-access-changed', refreshSession) })
     const compactViewport = window.matchMedia('(max-width: 1024px)')
     const collapsed = ref(compactViewport.matches)
+    const navigationMenu = ref()
+    function openReviewMenu(event) {
+      // 竖向折叠菜单默认仅响应悬停；补上触屏和点击入口。
+      if (collapsed.value && event.target.closest('.el-sub-menu__title')) {
+        navigationMenu.value?.open('ai-review-navigation')
+      }
+    }
+    function openSvnMenu(event) {
+      if (collapsed.value && event.target.closest('.el-sub-menu__title')) navigationMenu.value?.open('svn-navigation')
+    }
     const syncSidebar = event => { collapsed.value = event.matches }
     compactViewport.addEventListener('change', syncSidebar)
     onUnmounted(() => compactViewport.removeEventListener('change', syncSidebar))
@@ -218,12 +241,36 @@ export default {
       const path = route.path
       if (path.startsWith('/servers/')) return '/servers'
       if (path.startsWith('/statistics')) return '/statistics'
+      if (path.startsWith('/svn-migrations/runs/')) return '/svn-migrations/runs'
+      if (path.startsWith('/svn-migrations/preflights/')) return route.query.from === 'sources' ? '/svn-migrations/sources' : '/svn-migrations'
       return path || '/dashboard'
     })
+
+    function reviewNavigationTarget(path) {
+      const query = {}
+      // 跨审查子页面保留列表范围；打开管理页不携带详情任务参数。
+      if (route.path === '/ai-reviews' || route.path.startsWith('/ai-reviews/')) {
+        for (const key of ['start', 'end', 'timezone', 'period', 'repository', 'page', 'status', 'last_task']) {
+          if (route.query[key] !== undefined) query[key] = route.query[key]
+        }
+        if (route.query.task) query.last_task = route.query.task
+      }
+      return { path, query }
+    }
 
     const breadcrumbItems = computed(() => {
       const path = route.path
       const serverQuery = route.query.server_id ? { server_id: route.query.server_id } : {}
+      if (path.startsWith('/svn-migrations')) {
+        const pages = { workbench: '迁移工作台', sources: '来源与仓库', plan: route.params.planId ? '编辑迁移计划' : '创建迁移计划', runs: '执行记录', run: '任务 #' + route.params.runId, preflight: '预检 #' + route.params.preflightId }
+        return [{ label: '首页' }, { label: 'SVN 迁移中心', to: { path: '/svn-migrations' } },
+          ...(route.meta.svnPage === 'run' ? [{ label: '执行记录', to: { path: '/svn-migrations/runs' } }] : []),
+          { label: pages[route.meta.svnPage] || '迁移工作台' }]
+      }
+      if (path.startsWith('/ai-reviews/')) {
+        const titles = { '/ai-reviews/repositories': '仓库管理', '/ai-reviews/dataset': '经验数据集', '/ai-reviews/settings': '模型与设置' }
+        return [{ label: '首页' }, { label: 'AI Code Review', to: reviewNavigationTarget('/ai-reviews') }, { label: titles[path] || '审查管理' }]
+      }
 
       if (path === '/statistics') {
         return [
@@ -267,7 +314,7 @@ export default {
       if (route.path !== '/ai-reviews' || route.query.attention !== '1') router.push('/dashboard')
     }
     async function logout() {
-      try { await api.post('/logout'); clearScope(); applySession({ sources: accessState.sources }); await refreshSession(); router.push('/') } catch (error) { ElMessage.error(error.response?.data?.error || '退出未完成，请检查连接后再试') }
+      try { await api.post('/logout'); clearScope(); applySession({ sources: accessState.sources }); await refreshSession(); router.push('/') } catch (error) { notifyApiError(error, '退出未完成，请检查连接后再试') }
     }
 
     function goBreadcrumb(item) {
@@ -275,7 +322,7 @@ export default {
       router.push(item.to)
     }
 
-    return { accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, passwordForm, passwordError, changingPassword, changePassword, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, activeMenu, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
+    return { accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, passwordForm, passwordError, changingPassword, changePassword, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, navigationMenu, openReviewMenu, openSvnMenu, activeMenu, reviewNavigationTarget, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
   },
 }
 </script>
@@ -341,6 +388,28 @@ export default {
 .el-menu-item:hover {
   background: rgba(255,255,255,0.48) !important; color: var(--text-primary) !important;
 }
+
+.review-submenu > .el-sub-menu__title {
+  display: flex; align-items: center; gap: 0; height: 44px; margin: 3px 10px;
+  padding: 0 20px !important; border-radius: 16px; font-weight: 600;
+}
+.review-submenu.is-active > .el-sub-menu__title { color: var(--color-primary); background: rgba(0,122,255,0.06); }
+.review-submenu > .el-sub-menu__title:hover { background: rgba(255,255,255,0.48); }
+.review-submenu > .el-sub-menu__title > .el-sub-menu__icon-arrow {
+  position: static; flex: 0 0 12px; margin: 0 0 0 auto; align-self: center;
+}
+.review-submenu > .el-menu { margin: 4px 12px 8px 24px; padding: 0; border-left: 1px solid rgba(0,122,255,0.15); }
+.review-submenu > .el-menu > .el-menu-item {
+  margin: 2px 0 2px 8px; padding: 0 14px !important; min-width: 0; height: 36px !important;
+  line-height: 36px !important; font-size: 13px; font-weight: 500; border-radius: 10px !important;
+}
+.review-submenu .el-menu-item .el-icon { font-size: 17px; flex-shrink: 0; }
+.review-submenu-popup .el-menu-item { height: 36px !important; line-height: 36px !important; font-size: 13px; }
+.app-menu.el-menu--collapse .review-submenu > .el-sub-menu__title {
+  margin: 3px 6px; padding: 0 !important; justify-content: center;
+}
+.app-menu.el-menu--collapse .review-submenu > .el-sub-menu__title > .el-icon { margin: 0; }
+.app-menu.el-menu--collapse .review-submenu > .el-sub-menu__title > .el-sub-menu__icon-arrow { display: none; }
 
 .sidebar-footer {
   flex-shrink: 0;

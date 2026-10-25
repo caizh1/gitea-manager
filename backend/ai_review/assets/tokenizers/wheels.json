@@ -1,0 +1,33 @@
+{
+  "说明": "Linux amd64 Python 3.11 新增离线计数依赖；共享依赖继续使用原 wheels",
+  "依赖": [
+    {
+      "文件": "fsspec-2026.9.0-py3-none-any.whl",
+      "SHA256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f"
+    },
+    {
+      "文件": "tqdm-4.70.1-py3-none-any.whl",
+      "SHA256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73"
+    },
+    {
+      "文件": "hf_xet-1.7.0-cp38-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "SHA256": "2814a6e999d13464c4d679b788cc5d784eb5a4edfc638a31f10e9a11ab531ef8"
+    },
+    {
+      "文件": "tokenizers-0.23.3-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "SHA256": "376851d22bcf9d650a5c3090bb83e6cf9e895fbf0595369fa4cd43c1f69b5f87"
+    },
+    {
+      "文件": "huggingface_hub-0.36.0-py3-none-any.whl",
+      "SHA256": "7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d"
+    },
+    {
+      "文件": "deepseek_recipe-0.2.0-cp310-abi3-manylinux_2_28_x86_64.whl",
+      "SHA256": "259812bf382bc82668b672707c5922095cc4f5f60a6c514ff89640bb62a746f7"
+    },
+    {
+      "文件": "filelock-4.2.4-py3-none-any.whl",
+      "SHA256": "301241438c57936ef93f4243a94f2559022268bfcf9b375a9a72eb0f8db8358e"
+    }
+  ]
+}

@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+# 离线部署包保留在本地，不纳入源码基线。
+/gitea-manager.tar.gz
 data/gitea-manager.db
 data/gitea-manager.db-wal
 data/gitea-manager.db-shm
@@ -13,6 +15,7 @@ work/
 .gitea-manager-upgrades/
 compose.managed.json
 data/ai-review/
+/backend/data/
 review-runtime/vendor/opencode-linux-x64
 offline/
 /gitea-compat/gitea-1.26.4-review.1

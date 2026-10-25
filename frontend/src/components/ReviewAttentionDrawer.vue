@@ -61,8 +61,8 @@ async function load(auto = false) {
   busyGeneration = current; loading.value = true
   try {
     const params = selected.value ? { repository: repository.value, number: number.value } : { page: page.value }
-    const requests = [api.get('/ai-review/attention', { params, timeout: 5000 })]
-    if (selected.value) requests.push(api.get('/ai-review/tasks', { params: { ...params, status: 'publish_unknown', page: pendingPage.value }, timeout: 5000 }), api.get('/ai-review/tasks', { params: { ...params, status: 'queued', page: waitingPage.value }, timeout: 5000 }))
+    const requests = [api.get('/ai-review/attention', { params, timeout: 5000, notifyError: false })]
+    if (selected.value) requests.push(api.get('/ai-review/tasks', { params: { ...params, status: 'publish_unknown', page: pendingPage.value }, timeout: 5000, notifyError: false }), api.get('/ai-review/tasks', { params: { ...params, status: 'queued', page: waitingPage.value }, timeout: 5000, notifyError: false }))
     const results = await Promise.all(requests)
     if (current !== generation) return
     const value = results[0].data

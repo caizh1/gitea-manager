@@ -1,0 +1,132 @@
+{
+  "说明": "复用成功备份37的分段lossy恢复20真实失败；不是第二轮新备份、同一不中断完整剖面或网络通过。",
+  "结论": "FAIL",
+  "既有P1数量": 2,
+  "新增P1": false,
+  "驱动版本": 50,
+  "整链": {
+    "开始时间UTC": "2026-10-23T13:38:46.105453+00:00",
+    "结束时间UTC": "2026-10-23T16:24:04.366711+00:00",
+    "退出码": 1,
+    "单调耗时秒": 9918.218,
+    "墙钟耗时秒": 9918.261
+  },
+  "实际恢复": {
+    "备份ID": 37,
+    "任务ID": 20,
+    "状态": "failed",
+    "阶段": "copy_files",
+    "开始时间UTC": "2026-10-23T13:42:43.270658",
+    "结束时间UTC": "2026-10-23T16:21:11.695138",
+    "任务提交到失败秒": 9508.424,
+    "失败原因": "Actions正文与停写点哈希核对拒绝",
+    "失败相对条目": "6/6/1792661472194785090.chunk",
+    "诊断编号": "20261023T134243Z-9220e8a2"
+  },
+  "真实剖面": {
+    "每出口延迟毫秒": 100,
+    "抖动毫秒": 20,
+    "随机丢包百分比": 0.5,
+    "限速Mbps": 20,
+    "接口数": 3,
+    "运行中多次独立读回与登记相同": true
+  },
+  "独立逐行核验": {
+    "a": {
+      "表数": 150,
+      "非审计完全相同表数": 148,
+      "Git正文配置密钥规则完全相同": true,
+      "原生审计追加": {
+        "全部旧事件及范围逐字段相同": true,
+        "原事件数": 1547,
+        "原范围数": 4606,
+        "新增原生事件数": 3,
+        "新增完整范围数": 6,
+        "身份原因对象祖先范围核对": true
+      }
+    },
+    "b": {
+      "表数": 150,
+      "非审计完全相同表数": 147,
+      "Git正文配置密钥规则完全相同": true,
+      "原生审计追加": {
+        "全部旧事件及范围逐字段相同": true,
+        "原事件数": 1548,
+        "原范围数": 4608,
+        "新增原生事件数": 3,
+        "新增完整范围数": 6,
+        "身份原因对象祖先范围核对": true
+      },
+      "保留未知时间差": [
+        {
+          "行ID": 1,
+          "字段": "updated_unix",
+          "之前": 1792762848,
+          "之后": 1792771849
+        }
+      ],
+      "全150表完全相同": false
+    }
+  },
+  "哈希取证": {
+    "条目字节": 22,
+    "条目SHA256": "903c9cd071d6c1b96f90b37b7506aaac0cb4e37c677ea1619ef824d4341c4d7b",
+    "清单与条目相同": true,
+    "归档完整摘要与原37核对记录相同": true,
+    "归档点与本轮两侧前后正文摘要相同": true,
+    "固定其他条目窗口采样数": 39,
+    "固定其他条目所有存在读取摘要相同": true,
+    "失败6号条目独立窗口": false,
+    "产品原始stdout保留": false,
+    "根因": "未确定；固定2号条目的独立读取和实际哈希命令退出零不能替代失败6号条目的产品stdout。"
+  },
+  "观察器": {
+    "正常远端退出": true,
+    "记录类型数量": {
+      "就绪": 1,
+      "绑定": 1,
+      "持久阶段": 5,
+      "独立文件采样": 39,
+      "产品哈希执行事件": 30,
+      "结束": 1
+    },
+    "实际产品哈希命令数量": 10,
+    "这些命令退出码均为零": true,
+    "边界": "固定2/2条目的独立窗口与本次6/6失败条目不同；事件不含产品原始返回，不能据此断言根因。"
+  },
+  "收尾": {
+    "两侧认证HTTP": {
+      "a": 200,
+      "b": 200
+    },
+    "两侧Gitea及PG运行": true,
+    "活动任务数": 0,
+    "实例锁": false,
+    "执行锁占用": false,
+    "原旧助手全部状态保留": true,
+    "A原停止助手数": 3,
+    "B助手数": 0,
+    "Manager保留及专属目录27账号9字段相同": true,
+    "三接口默认队列且待还原标记不存在": true,
+    "基线待重采": true,
+    "没有调用recover或额外业务回退": true
+  },
+  "边界": "独立采样仅覆盖原固定2/2条目，本次失败为6/6；没有产品原stdout，根因未知，不断言传输损坏。目标mirror时间差不排除、不重采掩盖、不据此证明数据损坏。源码与工具准备错误不升级产品P1，所有首败保留。任务及整链包含准备、计划停服和核验，不作为生产RTO。",
+  "独立脚本首败更正": "首版把三个合法原生追加误作全表原始相同要求，在公开写入前拒绝；本版逐行验证所有旧审计和新增完整范围，首版不改。",
+  "原始证据SHA256": {
+    "network-lossy-restore-replay-2.json": "894ebb379a8fae333c3c7988547b5b74844b2c34423532ff3e1aa0900eaa4371",
+    "network-lossy-restore-replay-2-command.json": "229ca4bb4a4c8dd5c99224b78b1a0cd6f4df4d403ae3fd52c5f733d8a89f00de",
+    "network-lossy-restore-replay-2-final-health.json": "98f4d564962a43e218de62b73b923421bfb061e2a44387cb5aaff7c8591a9f2e",
+    "network-lossy-restore-replay-2-independent-verification-1.py": "d1d103ed731a17165f6bc8c608ca23d6057fb3b251b43df74006ee98ec554e20",
+    "network-lossy-restore-replay-2-independent-verification-first-error.json": "a9250481c4d90134f4266022bd48bb3aae6b0a9daff7140603cca63a903c5f6b",
+    "network-lossy-restore-replay-2-independent-verification-2.py": "700ef3edb2b72359a9e788350b00446f88e13f8498fc4ee152dee3273589fbf1",
+    "network-lossy-restore-replay-2-independent-verification-2.json": "012da28d5d8ec8d2b7eb95c2d76e815b1adf4ace5e0cd7e2a50e89e63833ed6b",
+    "network-lossy-restore-replay-2-observer.jsonl": "85260cdcc5c3c4646e6f30c5fdf98226a64bbec0563fb4a0a9efad5235106fb8",
+    "network-lossy-restore-replay-2-observer-final.json": "eae2c18595d7fe8a0a24361a33419f1a4d9a495ccf11f5e07d796686113b0d01",
+    "network-lossy-restore-replay-2-actions-forensics-1.py": "1af7b3705f31637ebce1427cda739b06053b66ae8cb90aa173897978fbb81e40",
+    "network-lossy-restore-replay-2-actions-forensics-1.json": "1c56a89f49a1b9462e612b5233bd202bbeb806b98ebe489d24308d036f80ad64",
+    "network-lossy-restore-replay-2-final-audit-1.json": "d9eb83a256f12f97592bc12c47461240209107eed16c320438930acb077a3f2b",
+    "phase-runs/network-lossy-restore-replay-2.json": "64cf1384f3c974985477b9ae827cd1dc567589d54ee60dac6fca8e236d8cc135",
+    "network-lossy-backup37-archive-readback-1.json": "dfface14ea3e23dc195d753f215461db84a60159fe7dd7a86bfac9fd7d72c0c9"
+  }
+}

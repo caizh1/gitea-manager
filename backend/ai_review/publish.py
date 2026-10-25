@@ -20,6 +20,10 @@ def prose(value):
 
 def finding_body(finding, job):
     from .dataset import finding_id
+    if finding.get('kind') == 'diff_inline':
+        return (marker(job) + '\n<!-- ai-review:finding:' + digest(finding['fingerprint'])[:24] + ' -->\n'
+                + f"**[{finding['severity']}] {prose(finding['title'])}**\n\n"
+                + markdown(finding['comment_markdown']))
     extra = ''
     if finding.get('quality_version', 0) >= 3:
         extra = '\n\n意见编号：`' + finding_id(job, finding) + '`'
@@ -34,8 +38,36 @@ def finding_body(finding, job):
             + '建议：' + prose(finding['recommendation']) + extra)
 
 
+def markdown(text):
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('@', '@\u200b')
+
+
 def summary(job, snapshot, result):
     coverage = result['coverage']
+    if result.get('review_scope') == 'diff':
+        text = (marker(job) + '\n### AI Code Review（仅 PR diff）\n\n'
+                + f"审查版本：`{snapshot['head']}`；比较基点：`{snapshot['merge_base']}`。\n\n"
+                + f"已提供 {coverage['files_total']} 个文件的 diff；未读取完整文件或工程，未执行构建与测试。\n\n")
+        if not coverage['complete']:
+            text += '**报告输出未完整结束，以下仅为已返回内容，不能据此判断整个 PR 没有问题。**\n\n'
+        if snapshot.get('inline_contract'):
+            if result.get('inline_parser_version') == 2:
+                from .diff_inline import publication_status
+                text += publication_status(snapshot, result)
+            else:
+                # 历史已冻结的发布正文保持不变，恢复时仍可逐字回读核对。
+                comments = expected_comments(job, result)
+                text += f"本次行内评论 {len(comments)} 条；未定位或待确认的内容保留在下方报告。\n\n"
+        report = result['report_markdown']
+        # 让普通报告也能读到具体位置；只有固定快照中的编号才转换。
+        def location(match):
+            anchor = snapshot.get('anchors', {}).get(match[1])
+            if not anchor:
+                return match[0]
+            return f"定位：{anchor['path']} · {'新' if anchor['side'] == 'new' else '旧'}侧第 {anchor['line']} 行（{match[1]}）"
+        report = re.sub(r'^定位：[ \t]*(R[1-9][0-9]*)[ \t]*$', location, report, flags=re.M)
+        # 保留 Markdown，但禁止模型正文插入发布标记、HTML 或触发用户提及。
+        return text + markdown(report)
     text = (marker(job) + '\n### AI Code Review（辅助意见）\n\n'
             + f"审查版本：`{snapshot['head']}`；比较基点：`{snapshot['merge_base']}`。\n\n"
             + f"已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。")
@@ -76,6 +108,9 @@ def verify_hunk(comment, anchor, snapshot):
     raw = comment.get('diff_hunk', '')
     if not isinstance(raw, str) or not raw.startswith('@@ '):
         raise ReviewError('Gitea 未返回可校验的评论补丁')
+    if snapshot.get('review_scope') == 'diff':
+        from .diff_inline import verify_comment
+        return verify_comment(raw, anchor, snapshot)
     # Gitea 展示片段可能在问题行截断，hunk 头仍保留原区域计数；不能把它
     # 当成完整可应用补丁。完整补丁已在 capture 中逐字节重建校验。
     rows = file_lines(raw.encode())
@@ -169,9 +204,23 @@ class Publisher:
 
     def validate_local(self):
         """发布前重新确认锚点来自本任务快照，不根据模型路径或行号补救。"""
+        diff_anchors = None
+        if self.snapshot.get('review_scope') == 'diff':
+            from .diff_inline import index
+            try:
+                diff_anchors, _ = index(self.snapshot)
+            except (ReviewError, UnicodeError):
+                diff_anchors = {}
         for item in self.result['findings']:
             anchor = item.get('anchor')
             if not anchor:
+                continue
+            if diff_anchors is not None:
+                if (self.snapshot.get('anchors', {}).get(anchor.get('id')) != anchor or
+                        diff_anchors.get(anchor.get('id')) != anchor):
+                    item['anchor'] = None
+                    item.pop('existing_review_id', None)
+                    item['fallback_reason'] = '位置与固定 PR diff 不一致，仅保留报告'
                 continue
             canonical = self.snapshot['anchors'].get(anchor.get('id'))
             file = next((f for f in self.snapshot['files'] if f['path'] == anchor.get('path')), None)
@@ -217,6 +266,16 @@ class Publisher:
                 item['existing_review_id'] = known[history_key(item)]
 
     def publish(self, recovery=False):
+        if self.snapshot.get('batch_protocol'):
+            with self.store.connect() as c:
+                pending = c.execute("SELECT 1 FROM review_batch_units WHERE job=? AND state NOT IN ('done','replaced') LIMIT 1", (self.job['id'],)).fetchone()
+                plan = c.execute('SELECT value FROM review_batch_plans WHERE job=?', (self.job['id'],)).fetchone()
+                history = c.execute("SELECT 1 FROM review_issue_checks WHERE job=? AND state!='done' LIMIT 1", (self.job['id'],)).fetchone()
+            if not plan or pending or history or not self.full_result.get('coverage', {}).get('complete'):
+                raise ReviewError('分批审查尚未完整完成，禁止发布正式结论')
+        if self.full_result.get('lifecycle'):
+            from .issue_publication import publish
+            return publish(self, recovery)
         if self.full_result.get('publication_pages') or len(self.result['findings'])>self.page_size or len(summary(self.job,self.snapshot,self.result))>12000 or any(len(c['body'])>12000 for c in expected_comments(self.job,self.result)):
             return self.publish_pages(recovery)
         with self.store.lock(f"发布-{self.job['repository']}-{self.job['number']}"):

@@ -141,6 +141,17 @@ def message_for(code, reason=None):
     if reason in by_reason:
         return by_reason[reason]
     known = {
+        'TOKENIZER_RESOURCE': '计数资源缺失或校验失败，请核对离线资源包',
+        'TOKENIZER_ENCODING': '消息编码失败，请核对计数型号与参数',
+        'DIFF_UNSPLITTABLE': '输入包含无法安全拆分的超长行或元信息',
+        'DIFF_COVERAGE': '分批文本覆盖校验失败，未调用模型',
+        'PREPROCESS_TIMEOUT': '分批预处理超过时间预算，未调用模型',
+        'PREPROCESS_RESOURCE': '分批预处理异常退出或超过内存预算',
+        'BATCH_OUTPUT_INCOMPLETE': '单元输出被截断，审查未完成',
+        'BATCH_OUTPUT_INVALID': '单元报告格式或证据引用无效，审查未完成',
+        'BATCH_RECEIPT_UNKNOWN': '单元事件或结果回执尚未完整核对',
+        'HISTORY_INCOMPLETE': '历史问题复核失败或回执未知，未正式发布',
+        'MODEL_INPUT_BUDGET': '完整消息超过本单元输入额度，未发送模型',
         'invalid_json': '模型输出不是合法 JSON，无法完成审查',
         'MODEL_INVALID_JSON': '模型输出不是合法 JSON，无法完成审查',
         'MODEL_HTTP_ERROR': '模型服务返回错误，审查未完成',

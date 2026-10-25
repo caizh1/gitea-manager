@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  svn-migration-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.svn
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+      GM_UPGRADE_MAINTENANCE_FILE: /app/data/.svn-upgrade-maintenance
+      PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [./data:/app/data]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    stop_grace_period: 30s
+    restart: unless-stopped
   backend:
     build: ./backend
     container_name: gitea-manager-api
@@ -11,6 +29,7 @@ services:
       - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/home/appuser/.ssh/id_rsa:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      - GM_SVN_MAINTENANCE_FILE=/app/data/.svn-upgrade-maintenance
       - DATABASE_URL=sqlite:////app/data/gitea-manager.db
       - BACKUP_DIR=/app/data/backups
       - SECRET_KEY=${SECRET_KEY:-}

@@ -1,0 +1,195 @@
+{
+  "说明": "已有成功备份38的默认队列分段恢复及完整Actions观察首次真实绑定；没有新备份，不代表故障解除后的新完整轮次或网络通过。",
+  "备份ID": 38,
+  "恢复任务ID": 21,
+  "实际任务": "success/completed",
+  "Manager验证": "success",
+  "任务秒": 141.929,
+  "整链单调秒": 468.276,
+  "整链墙钟秒": 468.277,
+  "生产RTO": false,
+  "完整迁移": "FAIL，既有两项P1保持，不新增P1",
+  "归档核验": {
+    "归档字节": 1996084348,
+    "归档SHA256": "eed174dd1a1bfb9ff35b5bcdc82518dc7e3bc1c19f9b9378929d98444b5ca9a4",
+    "完整ZIP及CRC通过": true,
+    "原始SQL与当时源审计逐字段相同": true,
+    "使用较晚源替代备份点": false
+  },
+  "源核验": {
+    "当前源全部150表及Git正文配置密钥前后原始相同": true,
+    "归档点至较晚源原生追加": {
+      "全部原事件及范围逐字段相同": true,
+      "原事件数": 1551,
+      "原范围数": 4614,
+      "新增原生事件数": 1,
+      "新增完整范围数": 2,
+      "新身份请求原因对象祖先范围完整": true
+    }
+  },
+  "目标核验": {
+    "完整表数": 150,
+    "非审计147表逐字段相同": true,
+    "运行状态变化": [
+      {
+        "行ID": "runtime-state",
+        "之前": 4,
+        "之后": 6,
+        "其余全部字段相同": true
+      }
+    ],
+    "归档点至目标原生追加": {
+      "全部原事件及范围逐字段相同": true,
+      "原事件数": 1551,
+      "原范围数": 4614,
+      "新增原生事件数": 1,
+      "新增完整范围数": 2,
+      "新身份请求原因对象祖先范围完整": true
+    },
+    "与较晚源的新增事件ID各自独立": true,
+    "Git正文数据密钥和采集规则相同": true
+  },
+  "仍失败业务配置": [
+    {
+      "字段": "mailer.enabled",
+      "原因": "缺失"
+    },
+    {
+      "字段": "mailer.from",
+      "原因": "缺失"
+    },
+    {
+      "字段": "mailer.protocol",
+      "原因": "缺失"
+    },
+    {
+      "字段": "mailer.smtp_addr",
+      "原因": "缺失"
+    },
+    {
+      "字段": "mailer.smtp_port",
+      "原因": "缺失"
+    },
+    {
+      "字段": "migrations.allow_localnetworks",
+      "原因": "缺失"
+    },
+    {
+      "字段": "migrations.allowed_domains",
+      "原因": "缺失"
+    },
+    {
+      "字段": "oauth2_client.enable_auto_registration",
+      "原因": "缺失"
+    },
+    {
+      "字段": "security.internal_token",
+      "原因": "内容不同"
+    },
+    {
+      "字段": "server.lfs_jwt_secret",
+      "原因": "内容不同"
+    },
+    {
+      "字段": "service.disable_registration",
+      "原因": "内容不同"
+    },
+    {
+      "字段": "service.enable_notify_mail",
+      "原因": "缺失"
+    },
+    {
+      "字段": "service.require_signin_view",
+      "原因": "内容不同"
+    },
+    {
+      "字段": "webhook.allowed_host_list",
+      "原因": "缺失"
+    }
+  ],
+  "配置差异数": 14,
+  "恢复后实际匿名边界": {
+    "a": {
+      "匿名GitHTTP": 401,
+      "Git服务广告": false,
+      "匿名正文HTTP": 303,
+      "正文与认证源相同": false,
+      "正文长度": null
+    },
+    "b": {
+      "匿名GitHTTP": 200,
+      "Git服务广告": true,
+      "匿名正文HTTP": 200,
+      "正文与认证源相同": true,
+      "正文长度": 23
+    }
+  },
+  "匿名边界解释": "源匿名Git为401、正文为303；恢复目标均200，Git为真实服务广告，23字节正文与认证源相同。继续支持RB-CONFIG-001。",
+  "完整清单观察": {
+    "真实就绪先于POST及实际任务绑定": true,
+    "原容器PG及唯一新助手同一挂载核对": true,
+    "条目数": 16,
+    "正文总字节": 352,
+    "独立窗口数": 4,
+    "所有16条至少一次完整稳定读取匹配": true,
+    "窗口项统计": {
+      "完整稳定且匹配": 128,
+      "不存在窗口项": 64
+    },
+    "实际哈希命令数": 32,
+    "每条目命令数": 2,
+    "创建启动退出事件数": 96,
+    "退出码均零": true,
+    "远端正常退出及标记清除": true,
+    "产品原始stdout已捕获": false,
+    "独立读数替换产品返回": false,
+    "支持范围": "当前URI且无需额外Compose助手的目标，不扩大到其他模式。"
+  },
+  "首版独立核验错误": "真实exec_start含完整命令；首版裸名称断言在公开前拒绝，原文件及错误保持。本版精确核对完整命令及条目。",
+  "整链收尾": {
+    "两侧认证HTTP": 200,
+    "Gitea及PG运行": true,
+    "原4停止助手全部State同且B零": true,
+    "Manager保留及目录27账号9字段相同": true,
+    "活动任务数": 0,
+    "实例及执行锁空闲": true,
+    "三接口noqueue和全部活动标记不存在": true
+  },
+  "新完整流程空间约束": {
+    "最大实际归档字节": 1996084348,
+    "分段恢复两归档保守准入字节": 18418957032,
+    "现有新完整入口的新归档保留加二次准入所需起始字节": 20415041380,
+    "实际当时可用字节": 18482933760,
+    "新完整入口在任务前阻塞": true,
+    "解释": "约19.013GiB是沿用现有备份后仍future_backups=2的保守入口约束；未降低预算，也不宣称任何可能实现统一需要该空间。"
+  },
+  "边界": {
+    "新备份数": 0,
+    "故障解除后的新完整轮次": false,
+    "网络剖面通过": false,
+    "全部恢复后业务读写已重跑": false,
+    "历史网络18和20根因关闭": false,
+    "SDK或冻结产品修复": false
+  },
+  "实际镜像": {
+    "backend": "sha256:3da7b51bb9a8dd084c899e277bd7e81e27376e44c613c0c15d297568a6c3a24f",
+    "frontend": "sha256:4646d236797c81dde2f15db002314464627bcc25ac0a2458aa9efd7a62f85476",
+    "driver": "sha256:6fa1c384af84ac055452099d42cd91bfb88580f746121f8bddc86261c93c3101"
+  },
+  "冻结文件数": 356,
+  "原始证据SHA256": {
+    "backup38-manifest-replay-1.json": "56bca38b96e32072f073449c13282dc4d6a871ffc4a139350dd83f964e36d6be",
+    "backup38-manifest-replay-1-command.json": "8cdf3aa0d84ce29209022aeac0333536982bb63fd8cde118799263143043b692",
+    "backup38-manifest-replay-1-final-health-1.json": "fd459d631f3b1701994e5f20f8a5a8a623c0954588eb134b42b446e087bcf655",
+    "backup38-manifest-replay-1-observer.jsonl": "00241558b5077e02a6a7742a866460584fb43f4b2bf2adf43bf98e53eb814902",
+    "backup38-manifest-replay-1-observer-final.json": "065d60abe878ac5efec74529b8cbf42be4764e112c39d922f3fdf3756331a46f",
+    "backup38-manifest-replay-preparation-1.json": "1f711b63b8f3bfdc1ce839cbff03a953b76f029246c8fbeaecf8c4cec067b937",
+    "backup38-manifest-replay-1-independent-verification-1.py": "63a7a446cbf9885b3d62f1eda59875557b8ef35fb5004e89c0a1c455cbaa72c5",
+    "backup38-manifest-replay-1-independent-verification-2.py": "ec00304bc9f6340489a14319587e1d2f6c8fb5d315bb9647f32097321c84d10e",
+    "backup38-manifest-replay-1-independent-verification-2.json": "74a85b79e4cb28eb27754e35f60abd9c1c1b167f684b133e3e0132bdf90a24e6",
+    "backup38-manifest-replay-1-verification-first-error.json": "269b7a3cf1666f75c548a4e7912cca29bca2c7f4aa3e7b3afd940e665b04f833",
+    "backup38-archive-readback-1.json": "474e1a2680e6ec1852f0b23e9f2af7f463cf4c6c70eaa75a696c25db97d9297b",
+    "backup38-actions-inventory-1.json": "0f904da77dc566e60bdf88860568646a7faa5185ba02ef1327196f17ed18609a",
+    "network-actions-manifest-observer-2.py": "70018623a7e16f3193e5440d68d32c9e993cf9caef4561d9c56ed905aeabd190"
+  }
+}

@@ -8,6 +8,22 @@ from services.task_manager import task_manager
 restore_bp = Blueprint('restore', __name__)
 
 
+@restore_bp.route('/restore-tasks/<int:task_id>/recover', methods=['POST'])
+@login_required
+def recover_restore(task_id):
+    from services.restore_recovery import recover
+    from services.diagnostics import redact
+    task = RestoreTask.query.get_or_404(task_id)
+    target = db.session.get(GiteaServer, task.target_server_id)
+    if target is None:
+        return jsonify(error='目标服务器已删除'), 404
+    try:
+        message = recover(target)
+        return jsonify(message=message)
+    except Exception as exc:
+        return jsonify(error=redact(str(exc))), 409
+
+
 def restore_to_dict(r):
     from models import RestoreVerification
     v = RestoreVerification.query.filter_by(restore_task_id=r.id).first()

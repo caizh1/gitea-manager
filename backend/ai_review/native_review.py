@@ -93,7 +93,7 @@ def _verify_terminal_result(store, job_id, session_id, final_seq, result):
     """
     with store.connect() as c:
         row = c.execute('''SELECT session_id,type,payload FROM review_session_events
-                           WHERE job=? AND seq=?''', (job_id, final_seq)).fetchone()
+                           WHERE job=? AND session_id=? AND seq=?''', (job_id, session_id, final_seq)).fetchone()
     if not row or row['session_id'] != session_id or row['type'] != 'session.completed':
         raise ReviewError('原生审查终态事件与会话不一致')
     try:
@@ -131,18 +131,34 @@ def acknowledge_result(store, job, result_sha256, final_event_seq):
                 error.error_code = 'EXECUTOR_RESULT_ACK_REJECTED'
                 raise error
             store.update(job['id'], job['owner'], native_result_released=1)
+            if job.get('batch_protocol'):
+                stopped_until = time.monotonic() + 10
+                while time.monotonic() < stopped_until:
+                    store.active(job['id'], job['owner'])
+                    try:
+                        status = _response(_request(session, 'GET', '/sessions/' + job['session_id']), 1024*1024)
+                    except requests.RequestException as exc:
+                        error = ReviewError('结果已落库，执行器退出回执未知；未重放模型')
+                        error.error_code = 'EXECUTOR_RESULT_ACK_UNKNOWN'
+                        raise error from exc
+                    if status.get('execution_stopped') is True:
+                        return
+                    time.sleep(.1)
+                error = ReviewError('结果已落库，执行器进程退出尚未确认；未启动下一单元')
+                error.error_code = 'EXECUTOR_RESULT_ACK_UNKNOWN'
+                raise error
             return
     finally:
         session.close()
 
 
-def execute(store, job, config, workspace, event_token):
+def execute(store, job, config, workspace, event_token, diff_snapshot=None):
     current = store.job(job['id'], evidence=False)
     deadline = current['deadline_at']
     session_deadline = deadline - FINISH_MARGIN
     if time.time() >= session_deadline:
         raise ReviewError('工作区准备已用完原生审查时间，未启动模型')
-    capability = _capability(store, job, config['model'], session_deadline, -1)
+    capability = _capability(store, job, config['model'], session_deadline, 1 if job.get('batch_protocol') else -1)
     response_limit = config.get('model_response_max_mib', 8) * 1024 * 1024
     session = requests.Session(); session.trust_env = False
     submitted = bool(current.get('session_submitted_at'))
@@ -187,6 +203,12 @@ def execute(store, job, config, workspace, event_token):
                     'thinking_enabled': config.get('thinking_enabled', False)}
             # 历史任务未配置时保留原窗口，不用当前设置改写已冻结的会话。
             data.update({key: config[key] for key in ('model_context_tokens', 'compaction_threshold_tokens') if key in config})
+            if diff_snapshot is not None:
+                from .diff_review import SYSTEM as DIFF_SYSTEM, prompt as diff_prompt
+                data.update(review_scope='diff', prompt=diff_prompt(diff_snapshot), system=DIFF_SYSTEM,
+                            context_retrieval_budget=0)
+                if diff_snapshot.get('_batch_messages'):
+                    data.update(system=diff_snapshot['_batch_messages'][0]['content'], prompt=diff_snapshot['_batch_messages'][1]['content'], batch_protocol=1)
             try:
                 response = _request(session, 'POST', '/execute', json=data)
                 value = _response(response, response_limit)
@@ -279,6 +301,29 @@ def execute(store, job, config, workspace, event_token):
         error = ReviewError('原生审查达到本任务总期限，已保留 40 秒收尾且未重放')
         error.error_code = 'EXECUTOR_DEADLINE'
         raise error
+    finally:
+        session.close()
+
+
+def inspect_result(store, job, config):
+    """过期单元仅 GET 原会话；不刷新模型授权，也不重放输入。"""
+    session = requests.Session(); session.trust_env = False
+    try:
+        response = _request(session, 'GET', '/sessions/' + job['session_id'])
+        if response.status_code != 200:
+            raise ReviewError('原会话回执仍不可确认，未重发模型请求')
+        value = _response(response, config.get('model_response_max_mib', 8)*1024*1024)
+        status = value.get('status', 'unknown')
+        store.update(job['id'], job['owner'], session_status=status)
+        if status != 'completed':
+            raise ReviewError('原会话尚无可用完成结果：' + str(status))
+        seq, acked, closed = _persist_log_watermark(store, job, value)
+        if not seq or acked < seq or not closed or not isinstance(value.get('result'), dict):
+            raise ReviewError('原会话终态日志或结果尚未完整到达')
+        sha = _verify_terminal_result(store, job['id'], job['session_id'], seq, value['result'])
+        return dict(value['result'], _native_result_sha256=sha, _native_final_event_seq=seq, _event_log_complete=True)
+    except requests.RequestException:
+        raise ReviewError('读取原会话失败，未重发模型请求') from None
     finally:
         session.close()
 

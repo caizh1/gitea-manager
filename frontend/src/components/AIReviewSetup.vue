@@ -90,7 +90,7 @@ async function poll() {
   try {
     if (id && !submitting.value) {
       const previous = job.value?.status
-      const r = await api.get(jobId ? `/ai-review/setup/${jobId}` : '/ai-review/setup', { params: jobId ? undefined : { server_id: id } })
+      const r = await api.get(jobId ? `/ai-review/setup/${jobId}` : '/ai-review/setup', { notifyError: false, params: jobId ? undefined : { server_id: id } })
       if (!stopped && current === statusGeneration && id === serverId.value) {
         pollError.value = ''
         if ('automatic_available' in r.data) available.value = r.data.automatic_available

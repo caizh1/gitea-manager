@@ -13,7 +13,7 @@ export async function refreshReviewAttention(force = false) {
   }
   const request = (async () => {
     try {
-      const { data } = await api.get('/ai-review/attention', { timeout: 5000 })
+      const { data } = await api.get('/ai-review/attention', { timeout: 5000, notifyError: false })
       if (current !== epoch) return
       Object.assign(state, { summary: data.summary, items: data.items, worker: data.worker,
         loaded: true, error: '', updatedAt: Date.now() })

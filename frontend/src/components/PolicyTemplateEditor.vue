@@ -56,6 +56,7 @@
 import { computed, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import PolicyOrganizationSelect from './PolicyOrganizationSelect.vue'
 import PolicyRuleEditor from './PolicyRuleEditor.vue'
 import { createCandidateSearch, teamFields, toApiRule, toEditorRule } from './policyForm'
@@ -72,7 +73,7 @@ const activeIndex = ref(0), busy = ref(false), verifying = ref(false), error = r
 const activeRule = computed(() => form.value.rules[activeIndex.value])
 const ruleKeys = new WeakMap(); let nextKey = 0, disposed = false, importSequence = 0
 function ruleKey(rule) { if (!ruleKeys.has(rule)) ruleKeys.set(rule, ++nextKey); return ruleKeys.get(rule) }
-function fail(e) { error.value = e.response?.data?.error || e.message || '操作失败'; ElMessage.error(error.value) }
+function fail(e) { error.value = e.response?.data?.error || e.message || '操作失败'; notifyApiError(e, error.value) }
 async function send(method, path, data) { return (await api.request({ method, url: '/repository-policies' + path, data, headers: { 'X-Policy-CSRF': props.csrfToken } })).data }
 const original = JSON.stringify(form.value)
 async function close() { if (busy.value || verifying.value) return; try { if (JSON.stringify(form.value) !== original) await ElMessageBox.confirm('离开后未保存的模板修改将丢失。', '返回策略模板', { confirmButtonText: '放弃修改', cancelButtonText: '继续编辑' }); emit('close') } catch {} }

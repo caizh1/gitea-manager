@@ -62,6 +62,56 @@ class UninstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '不一致'):
                 u.choose_target(package, 'manager', None, cleaner, rows[:1])
 
+    def test_gitea_missing_old_package_and_orphan_resources(self):
+        cleaner = u.Cleaner(None, 'gitea', None)
+        project = 'gitea-gitea-0123456789'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rows = [{'实例': project, '原安装目录': str(root / 'missing'), '端口': ''}]
+            self.assertEqual(u.choose_target(root, 'gitea', None, cleaner, rows), (None, project))
+            rows[0]['原安装目录'] = ''
+            self.assertEqual(u.choose_target(root, 'gitea', None, cleaner, rows), (None, project))
+            rows[0]['原安装目录'] = str(root)
+            self.assertEqual(u.choose_target(root, 'gitea', None, cleaner, rows), (None, project))
+
+    def test_gitea_orphan_discovery(self):
+        cleaner = u.Cleaner(None, 'gitea', None)
+        project = 'gitea-gitea-0123456789'
+        def docker(*args):
+            if args[0] == 'ps': return ''
+            return 'resource ' + project + '\nforeign gitea-manager-0123456789'
+        cleaner.docker = docker
+        self.assertEqual({r['实例'] for r in cleaner.discover()}, {project})
+        self.assertEqual(len(cleaner.discover()), 2)
+
+    def test_gitea_foreign_mount_and_network(self):
+        cleaner = u.Cleaner(None, 'gitea', 'gitea-gitea-0123456789')
+        mounts = []
+        attached = {}
+        def docker(*args):
+            if args[:2] == ('ps', '-aq'): return 'abcdef123456'
+            if args[:2] == ('volume', 'ls'): return ''
+            if args[:2] == ('network', 'ls'): return 'net'
+            if args[:2] == ('container', 'inspect'): return json.dumps(mounts)
+            if args[:2] == ('network', 'inspect'): return json.dumps(attached)
+            raise AssertionError(args)
+        cleaner.docker = docker
+        mounts.append({'Type': 'bind', 'Source': '/srv/shared'})
+        with self.assertRaisesRegex(RuntimeError, '范围外'): cleaner.inventory()
+        mounts.clear()
+        attached['foreign'] = {}
+        with self.assertRaisesRegex(RuntimeError, '其他实例'): cleaner.inventory()
+        attached.clear()
+        attached['abcdef1234567890'] = {}
+        self.assertEqual(cleaner.inventory()['container'], ['abcdef123456'])
+
+    def test_gitea_double_confirmation(self):
+        project = 'gitea-gitea-0123456789'
+        for answers, expected in [([''], False), (['UNINSTALL', ''], False),
+                                  (['UNINSTALL', 'DELETE ' + project], True)]:
+            iterator = iter(answers)
+            self.assertEqual(u.confirm('gitea', project, lambda _: next(iterator)), expected)
+
     def test_confirmation(self):
         for answers, expected in [(['no'], False), (['UNINSTALL', 'no'], False),
                                   (['UNINSTALL', 'DELETE gitea-manager-0123456789'], True)]:

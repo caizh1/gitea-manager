@@ -4,9 +4,11 @@ import base64
 import contextlib
 import copy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
+import posixpath
 import secrets
 import shutil
 import sys
@@ -17,8 +19,8 @@ import time
 import docker
 from docker.types import Mount
 
-SERVICES = ('backend', 'frontend', 'review-worker', 'review-executor', 'review-progress', 'review-feedback', 'approval-view')
-WRITERS = ('backend', 'review-worker', 'review-progress', 'review-feedback', 'approval-view')
+SERVICES = ('backend', 'frontend', 'review-worker', 'review-executor', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker')
+WRITERS = ('backend', 'review-worker', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker')
 STATE = Path('/state')
 CHECK_KEY = '''
 from pathlib import Path
@@ -48,12 +50,17 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import hashlib, json, sqlite3, sys
 path=Path(sys.argv[1]); key=Path(sys.argv[2]) if sys.argv[2] else path.parent/'access.key'
-files=[key,path.parent/'.session-key']; encrypted=[]
+files=[key,path.parent/'.session-key',path.parent/'svn-migration.key']; encrypted=[]
 if path.is_file():
     with sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True) as c:
         names={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if 'access_directory_sources' in names:
             encrypted=[r[0] for r in c.execute("SELECT password_ciphertext FROM access_directory_sources WHERE password_ciphertext != ''")]
+        if 'svn_sources' in names:
+            migration_values=[r[0] for r in c.execute("SELECT password_ciphertext FROM svn_sources WHERE password_ciphertext != ''")]
+            if migration_values:
+                migration_cipher=Fernet((path.parent/'svn-migration.key').read_bytes().strip())
+                for value in migration_values: migration_cipher.decrypt(value.encode())
 if encrypted:
     cipher=Fernet(key.read_bytes().strip())
     for value in encrypted: cipher.decrypt(value.encode())
@@ -104,6 +111,36 @@ def extract():
 
 def environment(info):
     return dict(v.split('=', 1) for v in info['Config'].get('Env', []) if '=' in v)
+
+
+def read_secret_file(container, path):
+    """读取原容器的文件与挂载，容器已停止时也不需要启动业务进程。"""
+    limit = 2 * 1024 * 1024
+    for _ in range(40):
+        try:
+            stream, _details = container.get_archive(path)
+        except docker.errors.NotFound:
+            return b''
+        raw = bytearray()
+        try:
+            for chunk in stream:
+                raw.extend(chunk)
+                if len(raw) > limit + 65536:
+                    raise RuntimeError('原服务密钥文件超过允许大小')
+        finally:
+            if hasattr(stream, 'close'): stream.close()
+        with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+            members = archive.getmembers()
+            if len(members) != 1:
+                raise RuntimeError('原服务密钥路径必须指向单个文件')
+            member = members[0]
+            if member.issym():
+                path = posixpath.normpath(posixpath.join(posixpath.dirname(path), member.linkname))
+                continue
+            if not member.isfile() or member.size > limit:
+                raise RuntimeError('原服务密钥路径必须指向普通小文件')
+            return archive.extractfile(member).read()
+    raise RuntimeError('原服务密钥符号链接层级过多或存在循环')
 
 
 def mount_value(item):
@@ -205,7 +242,7 @@ class Upgrade:
             raise RuntimeError('原服务处于暂停状态，未自动改变其状态')
         loaded_images = {}
         manifest = json.loads(Path('/release/offline/镜像清单.json').read_text())['镜像']
-        components = ['backend', 'frontend', 'executor']
+        components = ['backend', 'frontend', 'executor', 'svn']
         if any(r['镜像'] == 'gitea-review-executor-legacy:offline' for r in manifest): components.append('executor-legacy')
         for image in components:
             actual = self.client.images.get('gitea-review-' + image + ':offline')
@@ -224,7 +261,10 @@ class Upgrade:
             try:
                 probe.start(); code = probe.wait(timeout=75)['StatusCode']
                 try: result = json.loads(probe.logs(stdout=True, stderr=False))
-                except ValueError: result = {'ready': False, 'reason': '执行器检测输出无效'}
+                except ValueError:
+                    # 隔离探针不挂载凭据；保留有限标准错误，避免缺文件被隐藏成空输出。
+                    result = {'ready': False, 'reason': '执行器检测输出无效',
+                              'stderr': probe.logs(stdout=False, stderr=True)[-4096:].decode(errors='replace')}
                 probes.append({'component':component, 'exit_code':code, 'result':result})
                 write(STATE / 'runtime-probes.json', probes)
                 if code == 0 and result.get('ready'):
@@ -232,6 +272,16 @@ class Upgrade:
                     break
             finally: probe.remove(force=True)
         else: raise RuntimeError('执行器真实启动检测失败，原 Manager 未停止；请查看 runtime-probes.json')
+        probe = self.client.containers.create(loaded_images['svn'], ['python', '-c',
+            "import subprocess,svn_migration.worker; subprocess.run(['git','svn','--version'],check=True); subprocess.run(['svn','--version','--quiet'],check=True)"],
+            platform='linux/amd64', network_disabled=True, read_only=True,
+            environment={'PYTHONDONTWRITEBYTECODE': '1'}, tmpfs={'/tmp': 'size=32m,mode=1777'})
+        try:
+            probe.start()
+            if probe.wait(timeout=60)['StatusCode']:
+                raise RuntimeError('SVN 迁移镜像的工具链不完整，原 Manager 未停止')
+        finally:
+            probe.remove(force=True)
         env = environment(self.backend.attrs)
         uri = env.get('DATABASE_URL', '')
         if not uri.startswith('sqlite:////') or '?' in uri:
@@ -277,11 +327,11 @@ class Upgrade:
         for service, container in rows.items():
             for key, path in environment(container.attrs).items():
                 if key != 'SSH_KEY_PATH' and not key.endswith(('_KEY_FILE', '_TOKEN_FILE')): continue
-                result = container.exec_run(['python', '-c', 'from pathlib import Path; import sys; p=Path(sys.argv[1]); sys.stdout.buffer.write(p.read_bytes() if p.is_file() else b"")', path])
-                if result.exit_code or not result.output:
+                content = read_secret_file(container, path)
+                if not content:
                     if key == 'SSH_KEY_PATH': continue
                     raise RuntimeError('原服务密钥文件无法读取：' + service + '/' + key)
-                saved_secrets.append({'service': service, 'variable': key, 'path': path, 'value': base64.b64encode(result.output).decode()})
+                saved_secrets.append({'service': service, 'variable': key, 'path': path, 'value': base64.b64encode(content).decode()})
         write(STATE / '原密钥备份.json', saved_secrets)
         self.info = {'project': self.project, 'phase': 'checked', 'started_at': float(os.environ.get('GM_UPGRADE_STARTED_AT', time.time())), 'loaded_images': loaded_images, 'original': {name: c.attrs for name, c in rows.items()},
                      'manager_mount': mount, 'manager_parameters': parameters, 'access_keys': access_keys, 'review_mount': review_mount,
@@ -319,7 +369,13 @@ class Upgrade:
         self.info['paused'] = []; self.save()
 
     def backup(self):
-        if self.info['phase'] != 'frozen': raise RuntimeError('必须先冻结并核对原服务')
+        if self.info['phase'] != 'stopped': raise RuntimeError('必须先完全停止原服务再备份')
+        if any(c.attrs['State']['Running'] for c in self.containers().values()):
+            raise RuntimeError('原服务尚未完全停止，拒绝生成升级快照')
+        for name in ('manager', 'review'):
+            mount = self.info.get(name + '_mount')
+            if mount and self.volume('inspect', name, mount, self.info[name + '_parameters'])['database']['busy']:
+                raise RuntimeError('停机后发现新进入的任务，将恢复原服务，待任务完成后再升级')
         for name in ('manager', 'review'):
             mount = self.info.get(name + '_mount')
             if mount: self.volume('backup', name, mount, self.info[name + '_parameters'])
@@ -489,6 +545,19 @@ class Upgrade:
         spec=approval_view_spec(backend,images['backend'],default_networks)
         if 'approval-view' in self.info['original']:spec['container_name']=self.info['original']['approval-view']['Name'].lstrip('/')
         current['services']['approval-view']=spec
+        migration_env = {'DATABASE_URL': env['DATABASE_URL'],
+                         'GM_UPGRADE_MAINTENANCE_FILE': env['GM_UPGRADE_MAINTENANCE_FILE'],
+                         'PYTHONDONTWRITEBYTECODE': '1'}
+        # 转换现场与密钥固定保存在 Manager 数据卷；不向迁移执行器挂载宿主机控制接口。
+        migration_mounts = [dict(self.info['manager_mount'], read_only=False), dict(review, read_only=True)]
+        spec = dict(image=images['svn'], platform='linux/amd64', pull_policy='never', restart='unless-stopped',
+                    command=['python', '-m', 'svn_migration.worker'], environment=migration_env,
+                    volumes=migration_mounts, networks=copy.deepcopy(default_networks), read_only=True,
+                    tmpfs=['/tmp:size=128m,mode=1777'], cap_drop=['ALL'], security_opt=['no-new-privileges:true'],
+                    pids_limit=256, mem_limit='2g', cpus=2.0, stop_grace_period='30s')
+        if 'svn-migration-worker' in self.info['original']:
+            spec['container_name'] = self.info['original']['svn-migration-worker']['Name'].lstrip('/')
+        current['services']['svn-migration-worker'] = spec
         write(STATE / '新Compose.json', escaped(current))
         self.info['phase'] = 'prepared'; self.info['new_images'] = images; self.save()
 
@@ -496,11 +565,16 @@ class Upgrade:
         self.volume('maintenance', 'review', self.info['review_mount'], {'enabled': enabled})
 
     def stop_old(self):
-        self.info['phase'] = 'replacing'; self.save()
-        # 数据快照已完成；冻结时确认无在途任务。Docker stop 会解除暂停并停止进程。
+        if self.info['phase'] != 'prepared': raise RuntimeError('必须先固定升级和回退配置')
+        self.info['phase'] = 'stopping'; self.save()
+        # 优雅停机可能继续提交已进入的请求；必须等其完成后才能生成数据快照。
         for ident in self.info['paused']:
             c = self.client.containers.get(ident); c.stop(timeout=30)
-        self.info['paused'] = []; self.save()
+        self.info['paused'] = []; self.info['phase'] = 'stopped'; self.save()
+
+    def activate(self):
+        if self.info['phase'] != 'backed_up': raise RuntimeError('离线快照未完成，不能启动新版本')
+        self.info['phase'] = 'replacing'; self.save()
         self.maintenance(True)
 
     def verify(self):
@@ -512,7 +586,8 @@ class Upgrade:
                 health = rows['review-worker'].exec_run(['python', '-c', "import requests,time; from ai_review.store import Store; h=Store().health_status(); assert all(any(x['name']==n and time.time()-x['updated']<30 for x in h) for n in ('worker','progress','feedback')); r=requests.get('http://review-executor:5052/health',timeout=3); assert r.status_code==200 and r.json().get('ready')"])
                 view_health=rows['approval-view'].exec_run(['python','-c',"import requests; r=requests.get('http://127.0.0.1:5000/health',timeout=3); assert r.status_code==200 and r.json().get('role')=='approval-view'; blocked=requests.get('http://127.0.0.1:5000/api/session',timeout=3); assert blocked.status_code==503 and blocked.json().get('error')=='正在升级并核对数据，请稍后访问'; from approval.view_app import create_app; assert '/api/session' not in {r.rule for r in create_app().url_map.iter_rules()}"])
                 gate_health = rows['backend'].exec_run(['python', '-c', "from ai_review.runtime_status import available,status; assert available(), status().get('reason')"])
-                if result.exit_code == 0 and health.exit_code == 0 and view_health.exit_code == 0 and gate_health.exit_code == 0: break
+                svn_health = rows['svn-migration-worker'].exec_run(['python', '-m', 'svn_migration.worker', '--check'])
+                if result.exit_code == 0 and health.exit_code == 0 and view_health.exit_code == 0 and gate_health.exit_code == 0 and svn_health.exit_code == 0: break
             time.sleep(2)
         else: raise RuntimeError('新服务未通过健康检查，将恢复旧版本')
         new_env = environment(rows['backend'].attrs)
@@ -548,7 +623,8 @@ class Upgrade:
     def rollback(self):
         if not self.info: return
         phase = self.info.get('phase')
-        if phase in ('checked', 'freezing', 'frozen', 'backed_up', 'prepared'):
+        if phase in ('checked', 'freezing', 'frozen', 'prepared', 'stopping', 'stopped', 'backed_up'):
+            # 新版本尚未运行，原库没有被替换；备份中途失败也不得恢复半份快照。
             self.unpause(); return
         if phase in ('complete', 'committing'):
             raise RuntimeError('维护窗口已结束；为保护升级后的新数据，不自动覆盖数据库。请先检查在途任务并使用回退检查流程')
@@ -578,7 +654,7 @@ class Upgrade:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['extract', 'preflight', 'freeze', 'backup', 'prepare', 'stop', 'verify', 'commit', 'rollback', 'rollback_health'])
+    parser.add_argument('action', choices=['extract', 'preflight', 'freeze', 'backup', 'prepare', 'stop', 'activate', 'verify', 'commit', 'rollback', 'rollback_health'])
     args = parser.parse_args()
     if args.action == 'extract': extract(); return
     tool = Upgrade()

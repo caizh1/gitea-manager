@@ -1,0 +1,89 @@
+{
+  "说明": "第二次实际命中源gitea dump后强杀同一Manager，三分钟产品观察仍悬挂，随后严格按同一身份人工接管。",
+  "问题编号": "RB-INTERRUPT-003",
+  "严重级别": "P1，既有问题的第二次dump复验，不新增P1",
+  "功能及审查": "FAIL，两个既有P1保持",
+  "真实任务类型": "备份",
+  "任务ID": 39,
+  "诊断编号": "20261023T173645Z-4466dd3c",
+  "实际阶段": "dump",
+  "固定产品未修改": true,
+  "工具安全回归数": 66,
+  "严格关联": {
+    "真实dump两次同PID": true,
+    "同一完整新助手与事务标记": true,
+    "原Gitea和PG完整身份镜像挂载保持": true,
+    "持久诊断业务编号及原进程退出": true,
+    "接管只使用本次观察的完整助手": true
+  },
+  "产品观察": {
+    "观察循环秒": 180,
+    "样本数": 89,
+    "最后样本单调秒": 179.214,
+    "源认证连接失败样本数": 89,
+    "循环后实际任务": "running",
+    "Manager仍可真实登录和读取任务": true,
+    "精确完整源停机秒数": "未发布，样本与整链不能替代完整停止事件。"
+  },
+  "人工接管": {
+    "任务最终状态": "failed，由指定维护工具标记",
+    "原源启动且空锁释放": true,
+    "本轮助手停止并保留": true,
+    "原三助手全部State字段相同": true,
+    "A最终助手数": 4,
+    "B最终助手数": 0,
+    "原助手未删除启动或再次接管": true
+  },
+  "源完整核验": {
+    "表数": 150,
+    "非审计148表原始全部字段相同": true,
+    "Git正文配置密钥规则相同": true,
+    "原生审计": {
+      "全部原事件及范围逐字段相同": true,
+      "原事件数": 1551,
+      "原范围数": 4614,
+      "新增原生事件数": 1,
+      "新增完整范围数": 2,
+      "新身份请求原因对象祖先范围完整": true
+    }
+  },
+  "独立收尾": {
+    "两侧认证HTTP": 200,
+    "两侧Gitea和PG运行": true,
+    "活动任务数": 0,
+    "实例及执行锁空闲": true,
+    "三接口noqueue及全部活动标记不存在": true,
+    "Manager保留及目录27账号9字段相同": true
+  },
+  "范围限制": "本轮B只读健康及权限助手保护，无本轮B前后全150表比较；人工接管和整链时长不是自动恢复或生产RTO。",
+  "整链计时": {
+    "单调秒": 453.8,
+    "墙钟秒": 453.801,
+    "解释": "包含前后快照、三分钟观察与人工维护，不能计自动恢复或生产RTO。"
+  },
+  "首次未命中保留": {
+    "入口": "source-dump-guarded-2",
+    "任务ID": 38,
+    "实际任务": "success/completed",
+    "工具结果": "退出1，未强杀未接管，不计为第二次中断命中",
+    "原始dump窗口": "首入口未保存，不能以事后Rosetta窗口补造。"
+  },
+  "历史网络18和20根因": "未关闭；本次源中断不是网络哈希失败复现或SDK修复。",
+  "当前产品后端": "sha256:3da7b51bb9a8dd084c899e277bd7e81e27376e44c613c0c15d297568a6c3a24f",
+  "当前产品前端": "sha256:4646d236797c81dde2f15db002314464627bcc25ac0a2458aa9efd7a62f85476",
+  "当前测试驱动": "sha256:6fa1c384af84ac055452099d42cd91bfb88580f746121f8bddc86261c93c3101",
+  "冻结文件数": 356,
+  "原始证据SHA256": {
+    "source-dump-guarded-3-command.json": "86345f66d57881d35593025393431414f6ba6096fad9ac2624135d028012993f",
+    "source-dump-guarded-1792776923689890754.json": "eeaa7221c2c63e51f2d3d53ac23c8944a7a90c5d78745876a801d0e3f634cb0c",
+    "source-dump-guarded-3-final-health-1.json": "daa65e4435e9c5a2416c92fc1061f42c4a2acd8e13350e632a4aefe8e2f4c7fa",
+    "source-guard-preparation-2.json": "9888d024b210f7346908c365995d0e1ce4720cc38c6572d11d1427d723b2571e",
+    "source-dump-guarded-3-independent-verification-1.json": "1a85c68f87e3e5092e888110c1cf372ab0d09bb0147a9bc8ddafd1175a9f4652",
+    "source-dump-guarded-3-independent-verification-1.py": "1e0bb7edf485a7052018244509e5b510233c1f43382e19cec986295a9fa95f47",
+    "source-dump-guarded-3-final-health-1.py": "c8ffb3cba6d6f1da9eba1ab7e5e4534a006e216f0a3db1d0a257783eecd23173",
+    "source-dump-guarded-2-final-health-1.json": "f389e8724edc9afbb3490baf9ab4c12eb7fc9cc67405da9189f3465bb96f3b1c",
+    "source-guard-runtime-calibration-2.json": "712b2c108f0f1028ceb1cd9e0a8e4a9a2f228719424193e8f605b32c80c1f5ec",
+    "source-guard-safety-2.log": "d39aa20d01913cfb9624a077ca1358f7070ff467e46a8f5ef888f629ff84db60",
+    "build-driver-52-command.json": "8bac864bf503d653334e8a07601a8ab8ba33afdb0323f1479ea3913ab2550cee"
+  }
+}

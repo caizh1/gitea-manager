@@ -86,6 +86,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import { currentOrganization, isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 const policies = ref([]), servers = ref([]), organizations = ref([]), repositories = ref([]), teams = ref([]), nativeInstances = ref([])
 const busy = ref(false), error = ref(''), editing = ref(false), previewing = ref(false), previewData = ref(null), orgId = ref(null)
@@ -98,7 +99,7 @@ const modes = { draft: '草稿', shadow: '影子观察', prepared_shadow: '待�
 const isNative = row => ['native', 'native_pending_uninstall'].includes(row.mode)
 const actionNames = { 'policy.create': '创建规则', 'policy.update': '更新规则', 'preview.complete': '完成规则预检', 'bundle.prepare': '生成安装包', 'installation.reported': '收到安装回执', 'policy.disable': '申请停用门禁', 'installation.removed': '收到卸载回执', 'gate.check': '合并门禁检查' }
 const headers = () => ({ 'X-Approval-CSRF': csrf })
-async function task(fn) { if (busy.value) return; busy.value = true; error.value = ''; try { await fn() } catch (e) { error.value = e.response?.data?.error || e.message || '操作未完成'; ElMessage.error(error.value) } finally { busy.value = false } }
+async function task(fn) { if (busy.value) return; busy.value = true; error.value = ''; try { await fn() } catch (e) { error.value = e.response?.data?.error || e.message || '操作未完成'; notifyApiError(e, error.value) } finally { busy.value = false } }
 async function load() {
   policies.value = (await api.get('/approval-rules/policies')).data.items
   if (isPlatformAdmin.value) nativeInstances.value = (await api.get('/approval-rules/native-governance')).data.items

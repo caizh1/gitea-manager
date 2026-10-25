@@ -5,6 +5,8 @@ COPY backend/wheels/ /tmp/wheels/
 RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels flask==3.0.0 requests==2.31.0 gunicorn==21.2.0 && rm -rf /tmp/wheels && useradd --uid 10001 --create-home reviewer
 COPY --chmod=555 review-runtime/vendor/opencode-linux-x64 /opt/review/opencode
 COPY review-runtime/executor.py /opt/review/executor.py
+COPY review-runtime/native_session.py review-runtime/native_gateway.py review-runtime/raw_diagnostics.py review-runtime/runtime_diagnostics.py review-runtime/runtime_probe.py review-runtime/legacy_adapter.py review-runtime/review_result_schema.json review-runtime/StructuredOutput.js /opt/review/
+RUN python -c "import native_session, runtime_probe; native_session.load_review_result_schema()"
 RUN test "$(/opt/review/opencode --version)" = "1.18.7"
 USER 10001:10001
 EXPOSE 5052

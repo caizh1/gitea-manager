@@ -59,7 +59,7 @@
         </el-table-column>
         <el-table-column label="启用" width="70">
           <template #default="{ row }">
-            <el-switch v-model="row.enabled" size="small" @change="toggleEnabled(row)" />
+            <el-switch v-model="row.enabled" size="small" :disabled="updatingTaskIds.has(row.id)" @change="toggleEnabled(row)" />
           </template>
         </el-table-column>
         <el-table-column prop="last_status" label="上次" width="110">
@@ -129,6 +129,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import OperationProgress from '../components/OperationProgress.vue'
 import { useOperationPolling } from '../composables/useOperationPolling'
 import { operationActive } from '../components/operationDisplay'
@@ -140,6 +141,7 @@ export default {
     const servers = ref([])
     const loading = ref(false)
     const saving = ref(false)
+    const updatingTaskIds = ref(new Set())
     const dialogVisible = ref(false)
     const isEdit = ref(false)
     const editingId = ref(null)
@@ -233,7 +235,8 @@ export default {
     }
 
     function toggleEnabled(row) {
-      api.put(`/schedules/${row.id}`, { enabled: row.enabled })
+      updatingTaskIds.value.add(row.id)
+      api.put(`/schedules/${row.id}`, { enabled: row.enabled }).catch(() => { row.enabled = !row.enabled }).finally(() => { updatingTaskIds.value.delete(row.id) })
     }
 
     function runNow(row) {
@@ -241,7 +244,7 @@ export default {
         loadData({ silent: true })
       }).catch(err => {
         loadData()
-        ElMessage.error(err.response?.data?.error || '请求失败')
+        notifyApiError(err)
       })
     }
 
@@ -328,7 +331,7 @@ export default {
     }
 
     onUnmounted(() => { if (pollTimer) clearInterval(pollTimer); clearInterval(clockTimer) })
-    return { tasks, pollError, loading, saving, dialogVisible, isEdit, form,
+    return { tasks, pollError, loading, saving, updatingTaskIds, dialogVisible, isEdit, form,
              primaryServers, backupServers, serverNameMap, logsCache, criticalAlert,
              loadData, openDialog, saveTask, deleteTask, toggleEnabled, runNow,
               pad, loadLogs, fmt, flatLogs, now, isCooldown, cooldownTip, statusType,

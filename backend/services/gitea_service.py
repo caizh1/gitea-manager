@@ -250,103 +250,19 @@ def test_server_connection(server):
 
 
 def _backup_local(server, backup):
-    container_tmp = f'/tmp/gitea-manager-backup-{backup.id}-{backup.filename}'
-    local_path = os.path.join(BACKUP_DIR, backup.filename)
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-
-    try:
-        update_backup_progress(backup, "permissions", "正在检查备份权限", 5, server.name)
-        _repair_gitea_data_permissions_local(server)
-        local_exec(server.gitea_container, f'rm -f "{container_tmp}"')
-        dump_cmd = f'/usr/local/bin/gitea dump -c /data/gitea/conf/app.ini --tempdir /tmp -f "{container_tmp}"'
-        update_backup_progress(backup, 'dump', '正在导出数据库和仓库', 10, server.name, item=backup.filename)
-        logging.info('[备份-本地] 执行: gitea dump ...')
-        exit_code, out = local_exec(server.gitea_container, dump_cmd, user='git', workdir='/tmp')
-        if exit_code != 0:
-            raise Exception(_format_command_error('gitea dump failed', exit_code, stdout=out))
-
-        exit_code, out = local_exec(server.gitea_container, ['test', '-s', container_tmp])
-        if exit_code != 0:
-            raise Exception(_format_command_error(
-                'dump exited successfully but backup file is missing or empty',
-                exit_code,
-                stdout=out,
-            ))
-
-        logging.info('[备份-本地] 提取文件到: %s', local_path)
-        update_backup_progress(backup, 'transfer', '正在提取备份文件', 50, backup.filename)
-        local_cp_from(server.gitea_container, container_tmp, local_path, callback=lambda n, total: update_backup_progress(backup, 'transfer', '正在提取备份文件', 50, backup.filename, current=n, total=total, unit='bytes', item=backup.filename))
-    finally:
-        try:
-            local_exec(server.gitea_container, f'rm -f "{container_tmp}"')
-        except Exception:
-            logging.warning('[备份-本地] 清理临时文件失败: %s', container_tmp, exc_info=True)
-
-    file_size = os.path.getsize(local_path)
-    backup.file_size = file_size
-    backup.file_path = local_path
-    logging.info('[备份-本地] 完成 - 大小: %d 字节', file_size)
+    from services.backup_consistency import consistent_backup
+    consistent_backup(server, backup)
 
 
 def _backup_remote(server, backup):
-    ssh = SSHService(server.host, server.ssh_port, server.ssh_user)
-
-    remote_tmp = f'/tmp/gitea-manager-backup-{backup.id}-{backup.filename}'
-    container_tmp = f'/tmp/gitea-manager-backup-{backup.id}-{backup.filename}'
-    cleanup_cmds = [
-        f'docker exec {server.gitea_container} rm -f "{container_tmp}"',
-        f'rm -f "{remote_tmp}"',
-    ]
-    try:
-        update_backup_progress(backup, 'permissions', '正在检查备份权限', 5, server.name)
-        _repair_gitea_data_permissions_remote(server, ssh)
-        for cmd in cleanup_cmds:
-            ssh.exec(cmd)
-
-        dump_cmd = (
-            f'docker exec -u git -w /tmp {server.gitea_container} '
-            f'/usr/local/bin/gitea dump -c /data/gitea/conf/app.ini --tempdir /tmp -f "{container_tmp}"'
-        )
-        update_backup_progress(backup, 'dump', '正在导出数据库和仓库', 10, server.name, item=backup.filename)
-        logging.info('[备份-远程] 执行: gitea dump ...')
-        exit_code, out, err = ssh.exec(dump_cmd)
-        if exit_code != 0:
-            raise Exception(_format_command_error('gitea dump failed', exit_code, out, err))
-
-        exit_code, out, err = ssh.exec(f'docker exec {server.gitea_container} test -s "{container_tmp}"')
-        if exit_code != 0:
-            raise Exception(_format_command_error(
-                'dump exited successfully but backup file is missing or empty',
-                exit_code,
-                out,
-                err,
-            ))
-
-        cp_cmd = f'docker cp {server.gitea_container}:"{container_tmp}" "{remote_tmp}"'
-        update_backup_progress(backup, 'extract', '正在提取备份到源主机', 40, backup.filename)
-        logging.info('[备份-远程] 拷贝文件到宿主机 ...')
-        exit_code, out, err = ssh.exec(cp_cmd)
-        if exit_code != 0:
-            raise Exception(_format_command_error('docker cp failed', exit_code, out, err))
-
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-        local_path = os.path.join(BACKUP_DIR, backup.filename)
-        logging.info('[备份-远程] 下载文件到本地: %s', local_path)
-        update_backup_progress(backup, 'transfer', '正在下载备份文件', 50, backup.filename)
-        ssh.get_file(remote_tmp, local_path, callback=lambda n, total: update_backup_progress(backup, 'transfer', '正在下载备份文件', 50, backup.filename, current=n, total=total, unit='bytes', item=backup.filename))
-    finally:
-        for cmd in cleanup_cmds:
-            try:
-                ssh.exec(cmd)
-            except Exception:
-                logging.warning('[备份-远程] 清理临时文件失败: %s', cmd, exc_info=True)
-
-    file_size = os.path.getsize(local_path)
-    backup.file_size = file_size
-    backup.file_path = local_path
-    logging.info('[备份-远程] 完成 - 大小: %d 字节', file_size)
+    from services.backup_consistency import consistent_backup
+    consistent_backup(server, backup)
 
 
+from svn_migration.guards import guard_task
+
+
+@guard_task(Backup, 'source_server_id')
 @tracked_operation("备份", Backup)
 def do_backup(backup_id):
     backup = Backup.query.get(backup_id)
@@ -940,6 +856,7 @@ def _sync_restored_api_token(target, backup):
         logging.info('[restore] synced target %s API token from backup snapshot', target.name)
 
 
+@guard_task(RestoreTask, 'target_server_id')
 @tracked_operation("恢复", RestoreTask)
 def do_restore(task_id):
     task = RestoreTask.query.get(task_id)
@@ -976,6 +893,8 @@ def do_restore(task_id):
     try:
         restore_step = start_restore_step(task.id, 'restore_data', '正在恢复并保存回退点', detail=target.name)
         local_finalize = _restore_local(target, backup, task)
+        target._restore_api_reader = getattr(local_finalize, 'api_get_json', None)
+        target._restore_snapshot_check = getattr(local_finalize, 'snapshot_check', None)
         finish_restore_step(restore_step, status='success', detail='数据恢复完成，回退点保留至验证结束', exit_code=0)
 
         def sync_token():
@@ -1079,6 +998,9 @@ def do_restore(task_id):
         update_restore_progress(task, 'failed', '恢复失败', 100, error_text[:500])
         logging.exception('[恢复] 失败 - task_id=%s stage=%s error=%s', task_id, failed_stage, error_text)
 
+    finally:
+        for attribute in ('_restore_api_reader', '_restore_snapshot_check'):
+            if hasattr(target, attribute): delattr(target, attribute)
     db.session.commit()
 
 

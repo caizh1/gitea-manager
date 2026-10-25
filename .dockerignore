@@ -6,5 +6,13 @@ backend/*
 !review-runtime/
 review-runtime/*
 !review-runtime/executor.py
+!review-runtime/native_session.py
+!review-runtime/native_gateway.py
+!review-runtime/raw_diagnostics.py
+!review-runtime/runtime_diagnostics.py
+!review-runtime/runtime_probe.py
+!review-runtime/legacy_adapter.py
+!review-runtime/review_result_schema.json
+!review-runtime/StructuredOutput.js
 !review-runtime/vendor/
 !review-runtime/Dockerfile

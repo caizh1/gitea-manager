@@ -4,7 +4,7 @@
       {{ alertLabel(latestAlert.alert_type) }}: {{ latestAlert.server_name }}
     </span>
     <span v-else class="alert-latest-text">无告警</span>
-    <el-popover placement="bottom-end" :width="420" trigger="click" popper-class="alert-popover">
+    <el-popover placement="bottom-end" :width="420" trigger="click" popper-class="alert-popover" @show="loadAlerts()">
       <template #reference>
         <button type="button" class="bell-icon-wrap" :aria-label="`告警中心，${activeCount} 条未解决`">
           <el-icon :size="20" class="bell-icon"><Bell /></el-icon>
@@ -12,6 +12,7 @@
         </button>
       </template>
       <div class="alert-panel">
+        <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
         <div class="alert-panel-header">
           <span class="alert-panel-title">告警中心</span>
           <el-button v-if="resolvedCount > 0" size="small" text type="primary" @click="clearResolved">清除已解决</el-button>
@@ -41,6 +42,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { Bell } from '@element-plus/icons-vue'
 import { api } from '../api'
+import { apiErrorMessage } from '../api/errors.js'
 
 export default {
   components: { Bell },
@@ -49,23 +51,25 @@ export default {
     const activeCount = ref(0)
     const resolvedCount = ref(0)
     const latestAlert = ref(null)
+    const loadError = ref('')
     let timer = null
 
     const alertLabel = type => ({ backup_failed: '备份失败', restore_failed: '恢复失败', policy_failed: '策略应用失败' }[type] || '任务失败')
 
     function loadSummary() {
-      api.get('/alerts/summary').then(res => {
+      api.get('/alerts/summary', { notifyError: false }).then(res => {
         activeCount.value = res.data.active_count || 0
         const latest = res.data.latest_alert
         latestAlert.value = latest && latest.status === 'active' ? latest : null
       }).catch(() => {})
     }
 
-    function loadAlerts() {
-      api.get('/alerts').then(res => {
+    function loadAlerts(silent = false) {
+      api.get('/alerts', { notifyError: !silent }).then(res => {
         alerts.value = res.data
         resolvedCount.value = res.data.filter(a => a.status === 'resolved').length
-      }).catch(() => {})
+        loadError.value = ''
+      }).catch(e => { if (e.code !== 'ERR_CANCELED') loadError.value = apiErrorMessage(e) })
     }
 
     function clearOne(id) {
@@ -89,10 +93,10 @@ export default {
 
     onMounted(() => {
       loadSummary()
-      loadAlerts()
+      loadAlerts(true)
       timer = setInterval(() => {
         loadSummary()
-        loadAlerts()
+        loadAlerts(true)
       }, 10000)
     })
 
@@ -100,7 +104,7 @@ export default {
       if (timer) clearInterval(timer)
     })
 
-    return { alertLabel, alerts, activeCount, resolvedCount, latestAlert, clearOne, clearResolved, fmtTime }
+    return { alertLabel, alerts, activeCount, resolvedCount, latestAlert, loadError, loadAlerts, clearOne, clearResolved, fmtTime }
   },
 }
 </script>

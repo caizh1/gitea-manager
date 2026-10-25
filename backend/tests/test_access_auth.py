@@ -111,6 +111,43 @@ class AccessAuthenticationTest(unittest.TestCase):
             db.session.commit()
         self.assertFalse(self.client.get('/api/session', base_url='https://localhost').json['authenticated'])
 
+    def test_upgrade_session_polling_never_changes_history_and_cookie_recovers(self):
+        self.login()
+        with self.app.app_context():
+            before = db.session.execute(db.text('SELECT * FROM access_sessions ORDER BY token_hash')).all()
+        with patch.dict(os.environ, {'GM_UPGRADE_MAINTENANCE': '1'}):
+            for _ in range(3):
+                response = self.client.get('/api/session', base_url='https://localhost')
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.json['authenticated'])
+            with self.app.app_context():
+                self.assertEqual(db.session.execute(db.text(
+                    'SELECT * FROM access_sessions ORDER BY token_hash')).all(), before)
+        self.assertTrue(self.client.get('/api/session', base_url='https://localhost').json['authenticated'])
+        with self.app.app_context():
+            self.assertGreater(AccessSession.query.one().last_seen_at, before[0].last_seen_at)
+
+    def test_upgrade_session_polling_never_revalidates_directory_identity(self):
+        self.ldap_source()
+        self.ldap_login()
+        with self.app.app_context():
+            AccessSession.query.one().directory_checked_at = time.time() - 301
+            db.session.commit()
+            before = db.session.execute(db.text('SELECT * FROM access_sessions ORDER BY token_hash')).all()
+            accounts = db.session.execute(db.text('SELECT * FROM access_accounts ORDER BY id')).all()
+        marker = Path(self.directory.name) / 'upgrade-maintenance'
+        marker.write_text('维护期间禁止修改会话和目录身份。')
+        with patch.dict(os.environ, {'GM_UPGRADE_MAINTENANCE_FILE': str(marker)}), \
+                patch('access.authentication.ldap_directory.revalidate') as revalidate:
+            response = self.client.get('/api/session', base_url='https://localhost')
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.json['authenticated'])
+            revalidate.assert_not_called()
+            with self.app.app_context():
+                self.assertEqual(db.session.execute(db.text(
+                    'SELECT * FROM access_sessions ORDER BY token_hash')).all(), before)
+                self.assertEqual(db.session.execute(db.text('SELECT * FROM access_accounts ORDER BY id')).all(), accounts)
+
     def test_directory_user_starts_unprivileged_and_cannot_manage_access(self):
         self.ldap_source()
         response = self.ldap_login()

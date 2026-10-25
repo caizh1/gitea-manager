@@ -14,6 +14,32 @@ from native_gateway import NativeGateway, leading_system_messages
 
 
 class CompactionRuntimeTests(unittest.TestCase):
+    def test_tool_stream_preserves_usage_across_chunk_boundaries(self):
+        with tempfile.TemporaryDirectory() as folder:
+            gateway = NativeGateway('http://localhost', '能力', '任务', '会话', '模型', time.time()+60, folder)
+            try:
+                def frame(value):
+                    return ('data: '+json.dumps(value)+'\n\n').encode()
+                usage = {'prompt_tokens':260989, 'completion_tokens':100, 'total_tokens':261089,
+                         'completion_tokens_details':{'reasoning_tokens':0}}
+                tool = frame({'choices':[{'delta':{'tool_calls':[{'index':0, 'id':'调用',
+                    'type':'function', 'function':{'name':'read', 'arguments':'{"filePath":"sample.c"}'}}]},
+                    'finish_reason':None}]})
+                finish = frame({'choices':[{'delta':{}, 'finish_reason':'tool_calls'}]})
+                count = frame({'choices':[], 'usage':usage})
+                for before_finish in (False, True):
+                    expected = tool + (count+finish if before_finish else finish+count) + b'data: [DONE]\n\n'
+                    wire = tool + b': heartbeat\n\n' + frame({'choices':[]}) + expected[len(tool):]
+                    for size in (1, 7, len(wire)):
+                        with self.subTest(usage_before_finish=before_finish, chunk_size=size):
+                            stream = gateway.stream_filter()
+                            output = b''.join(stream.feed(wire[i:i+size]) for i in range(0,len(wire),size))
+                            output += stream.finish()
+                            self.assertEqual(output, expected, '用量、工具和结束标记必须保持原样及顺序')
+                            self.assertEqual(stream.structured_bytes, len('read')+len('{"filePath":"sample.c"}'))
+            finally:
+                gateway.server.server_close()
+
     def test_single_leading_system_preserves_tool_history(self):
         dialogue = [{'role': 'user', 'content': '审查'},
                     {'role': 'assistant', 'content': None, 'tool_calls': [{'id': '调用'}]},

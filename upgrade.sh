@@ -75,7 +75,8 @@ cleanup() {
     echo '升级未通过，正在恢复原服务。'
     if runtime rollback; then
       if [ -f "$STATE/回退Compose.json" ]; then
-        if docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/回退Compose.json" up -d --no-build --pull never --no-deps "${OLD_SERVICES[@]}" > "$STATE/回退启动记录.txt" 2>&1 && runtime rollback_health; then RECOVER=0
+        if docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/回退Compose.json" up --no-start --no-build --pull never --no-deps "${OLD_ALL_SERVICES[@]}" > "$STATE/回退创建记录.txt" 2>&1 &&
+           docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/回退Compose.json" up -d --no-build --pull never --no-deps "${OLD_SERVICES[@]}" > "$STATE/回退启动记录.txt" 2>&1 && runtime rollback_health; then RECOVER=0
         else echo '原容器恢复未完成，请保留现场并查看私有升级记录。' >&2; fi
       else RECOVER=0; fi
     else echo '自动回退未完成，请保留现场并查看私有升级记录。' >&2; fi
@@ -105,21 +106,26 @@ IFS=',' read -r -a ORIGINAL_FILES <<< "$CONFIG_FILES"
 for file in "${ORIGINAL_FILES[@]}"; do COMPOSE+=(-f "$file"); done
 "${COMPOSE[@]}" config --format json > "$STATE/原Compose.json" 2> "$STATE/配置检查记录.txt"
 OLD_SERVICES=()
+OLD_ALL_SERVICES=()
 while IFS= read -r service; do
-  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view) OLD_SERVICES+=("$service") ;; esac
+  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view|svn-migration-worker) OLD_ALL_SERVICES+=("$service") ;; esac
+done < <(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Label "com.docker.compose.service"}}')
+while IFS= read -r service; do
+  case "$service" in backend|frontend|review-worker|review-executor|review-progress|review-feedback|approval-view|svn-migration-worker) OLD_SERVICES+=("$service") ;; esac
 done < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Label "com.docker.compose.service"}}')
 runtime preflight
 if [ "$CHECK_ONLY" -eq 1 ]; then echo '升级前置检查通过，原服务未停止。'; exit 0; fi
 RECOVER=1
 runtime freeze
-runtime backup
 runtime prepare
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" config --quiet > "$STATE/新配置检查记录.txt" 2>&1
 runtime stop
+runtime backup
+runtime activate
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" run --rm --no-deps -T --user 0:0 --cap-add CHOWN --cap-add FOWNER --entrypoint python review-executor -c "import os; os.chown('/app/review-native',10001,10001); os.chmod('/app/review-native',0o700)" > "$STATE/native-volume-init.log" 2>&1
 echo '正在启动新版本，业务写入将在校验通过后恢复。'
 docker compose -p "$PROJECT" --project-directory "$DEPLOYMENT" -f "$STATE/新Compose.json" up -d --no-build --pull never --no-deps \
-  backend frontend review-worker review-executor review-progress review-feedback approval-view > "$STATE/新服务启动记录.txt" 2>&1
+  backend frontend review-worker review-executor review-progress review-feedback approval-view svn-migration-worker > "$STATE/新服务启动记录.txt" 2>&1
 runtime verify
 runtime commit
 RECOVER=0

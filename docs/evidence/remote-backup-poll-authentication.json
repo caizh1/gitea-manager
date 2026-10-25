@@ -1,0 +1,76 @@
+{
+  "说明": "测试工具的真实认证续读校准；不是30分钟闲置、网络、备份或恢复验收。原401首败不覆盖。",
+  "状态": "校准通过",
+  "真实401来源": "仅退出自己的实际登录会话，再读取同一原任务",
+  "原任务ID": 37,
+  "原任务续读结果": "success",
+  "重新认证次数": 1,
+  "校准前后备份最大ID": 37,
+  "校准前后恢复最大ID": 19,
+  "新增业务任务数": 0,
+  "保障边界": "只续读原任务GET，业务POST不重放；403及其他错误仍失败，原观察截止时间不重置。",
+  "Manager保留及专属权限全部字段相同": true,
+  "目录字段数": 27,
+  "账号字段数": 9,
+  "工具安全回归数": 59,
+  "新截止时间夹具首败已保留": true,
+  "驱动49": {
+    "状态": "构建失败，未部署",
+    "原因": "依赖安装阶段无法分配内存",
+    "首败保留": true
+  },
+  "驱动50": {
+    "镜像": "sha256:a400e0711fe724d0e1b34a27e70669ed78ac38dbf7c0db53335ef8ed5f0f6243",
+    "固定原运行时": "sha256:c4ed28dfee9e3f507bb7c348a1aa14a92405cf480ca358ace51bdd61f968934a",
+    "原运行时全部镜像层及配置相同": true,
+    "仅新增测试代码层": true,
+    "实际SDK版本": {
+      "docker": "7.1.0",
+      "paramiko": "3.4.0",
+      "requests": "2.31.0"
+    }
+  },
+  "实际模块SHA256": {
+    "driver.py": "6c60c3c2a449e878b878a8d93a6179ae48e3434dd33e0ed17e9b5102132fd653",
+    "polling.py": "8a7f28e9ef49c1b3f2f93fb63c850a7ebc4f2b0e30539664f1941194262ed7a5"
+  },
+  "完整灾备结论": "功能与审查仍FAIL，两个既有P1未关闭；本校准不证明lossy恢复或完整业务迁移。",
+  "原始证据摘要": [
+    {
+      "文件": "build-driver-49-command.json",
+      "SHA256": "6b8ef3b284f23fc45cec6cff7b5f187ea13bc67239ef9d4a1bfcc5d215c9ed7e"
+    },
+    {
+      "文件": "build-driver-49-failure-audit.json",
+      "SHA256": "0172613e4fbea2af4ff6810bd4a498a70d9373d2b365a052bd5666014c5fabbb"
+    },
+    {
+      "文件": "build-driver-50-command.json",
+      "SHA256": "7e275db1aff96ec9cd38cc741bad764e16d7341276851b47f87cbcd7c2ce463c"
+    },
+    {
+      "文件": "build-driver-50.py",
+      "SHA256": "947a30c1e095f2b58bb26c7d5cf907704988caf3844b7a8aaf255fd900ea2479"
+    },
+    {
+      "文件": "driver-build-50/Dockerfile",
+      "SHA256": "758763c44a9d477fa68540ce7a7d109e5608833bad53b10e9cd88622fda30989"
+    },
+    {
+      "文件": "poll-authentication-real-calibration-1.json",
+      "SHA256": "94a9963feaac882ba171cce4dc721e2993a1cd4cdbc845c018c7f321abe9a15f"
+    },
+    {
+      "文件": "poll-authentication-real-calibration-1.py",
+      "SHA256": "803d7e3062e6ad201bc15997b78acf3fa3d92540f237d3bcf8039a47a5341299"
+    },
+    {
+      "文件": "network-lossy-polling-regression.json",
+      "SHA256": "1f0e1e1713c94b34de560c6d4e3e0548c5a4bc2fca7e8f005947e49281a9ce22"
+    },
+    {
+      "文件": "poll-authentication-backup-37-1792761973954127167.json",
+      "SHA256": "a4ddf321f4f99ba5ea08555d59c11335613062c49b5e6b31e9de2533a7f507fa"
+    }
+  ]
+}

@@ -196,8 +196,8 @@ def _receive(c, store, token_hash, event, now):
             or job['session_id'] != event['session_id']):
         raise ReviewError('会话事件授权无效')
     serialized = encode(event['payload'])
-    existing = c.execute('SELECT * FROM review_session_events WHERE job=? AND (seq=? OR event_id=?)',
-                         (event['job'], event['seq'], event['event_id'])).fetchone()
+    existing = c.execute('SELECT * FROM review_session_events WHERE job=? AND session_id=? AND (seq=? OR event_id=?)',
+                         (event['job'], event['session_id'], event['seq'], event['event_id'])).fetchone()
     if existing:
         same = (existing['seq'] == event['seq'] and existing['event_id'] == event['event_id']
                 and existing['session_id'] == event['session_id'] and existing['type'] == event['type']
@@ -206,7 +206,7 @@ def _receive(c, store, token_hash, event, now):
         if not same:
             raise ReviewError('会话事件序号或标识冲突')
         return False
-    previous = c.execute('SELECT max(seq) FROM review_session_events WHERE job=?', (event['job'],)).fetchone()[0] or 0
+    previous = c.execute('SELECT max(seq) FROM review_session_events WHERE job=? AND session_id=?', (event['job'], event['session_id'])).fetchone()[0] or 0
     if event['seq'] != previous + 1:
         raise ReviewError(f'会话事件序号不连续，当前需要 {previous + 1}')
     c.execute('INSERT INTO review_session_events VALUES (?,?,?,?,?,?,?,?,?,?)',
@@ -293,7 +293,7 @@ def project(job):
             job.pop(key, None)
         return job
     counters = job.get('session_counters') or {}
-    counters.setdefault('model_calls', job.get('model_calls', 0))
+    counters['model_calls'] = max(counters.get('model_calls', 0), job.get('model_calls', 0))
     counters.setdefault('events', job.get('event_count', 0))
     job['session'] = {'id': job.get('session_id') or '', 'status': job.get('session_status') or '',
                       'result_released': bool(job.get('native_result_released', 0))}
@@ -310,10 +310,14 @@ def project(job):
     return job
 
 
-def query(store, job, after=None, before=None, kinds=None, text='', limit=200):
+def query(store, job, after=None, before=None, kinds=None, text='', limit=200, session_id=None):
     if after is not None and before is not None:
         raise ReviewError('after 与 before 不能同时使用')
-    clauses, args = ['job=?'], [job]
+    if session_id is None:
+        with store.connect() as c:
+            row = c.execute('SELECT session_id FROM jobs WHERE id=?', (job,)).fetchone()
+            session_id = row[0] if row else ''
+    clauses, args = ['job=?', 'session_id=?'], [job, session_id]
     if after is not None:
         clauses.append('seq>?'); args.append(after)
     if before is not None:
@@ -344,10 +348,10 @@ def query(store, job, after=None, before=None, kinds=None, text='', limit=200):
             'next_before': rows[0]['seq'] if rows else before, 'has_more': more}
 
 
-def iter_export(store, job, kinds=None, text=''):
+def iter_export(store, job, kinds=None, text='', session_id=None):
     cursor = 0
     while True:
-        page = query(store, job, after=cursor, kinds=kinds, text=text, limit=500)
+        page = query(store, job, after=cursor, kinds=kinds, text=text, limit=500, session_id=session_id)
         if not page['items']:
             return
         for event in page['items']:

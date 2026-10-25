@@ -1,0 +1,46 @@
+{
+  "说明": "Manager 专属目录及账号 API 权限基线已接入通用保留核验，并经真实角色字段变更检出；未执行 Gitea 备份恢复",
+  "被测Manager镜像": "sha256:3da7b51bb9a8dd084c899e277bd7e81e27376e44c613c0c15d297568a6c3a24f",
+  "驱动镜像": "sha256:217389e8a44ab8ded1fe71625ab8fff789b86add1d8eedd0529a3c3c8f411ea3",
+  "反证阶段结束UTC": "2026-10-23T00:57:09.011484+00:00",
+  "角色复验结束UTC": "2026-10-23T00:57:54.162630+00:00",
+  "真实反证": {
+    "唯一变更": "已停用专属目录账号的 is_platform_admin 从 false 改为 true",
+    "变更时账号始终停用": true,
+    "通用保留判定器检出": true,
+    "只接受对应权限差异错误": true,
+    "原权限字段已恢复": true,
+    "没有可登录的临时平台账号": true
+  },
+  "真实角色复验": {
+    "九组原断言全部通过": true,
+    "新目录及账号仍停用": true,
+    "有效授权数": 0,
+    "TLS入口停止保留": true,
+    "全部API权限字段与旧基线相同的例外": "目录由本工具重新保存及停用，版本从2递增到4；其他全部可见字段直接重比相同，旧基线保留"
+  },
+  "后续核验": "普通完整迁移任务前及通用Manager保留核验均比较此目录配置和账号权限基线；本轮真实验证原位反证与角色复验后的检查，不追认为跨恢复通过。",
+  "原九类管理业务前后逐字段相同": true,
+  "两侧认证健康且无活动任务": true,
+  "原始受限证据SHA256": {
+    "manager-permissions-challenge-1792717027502126760.json": "6e9372462c0d3806a8ef25a1f605bc89d08a7017c4948c2f820905e89336efd9",
+    "manager-permissions-baseline-1792717027466905760.json": "c63dfdd7568da717f91bfe19af085ff26c4a7f122b69c82422a91fdec8e2fb19",
+    "manager-permissions-baseline-1792717074092352296.json": "a0403b8f175f9df663400836a29ef31c11ab1d9fd5bf869c511d7e77d6d14f54",
+    "manager-roles-1792717060218347387.json": "f6714a624f645d32e718ee98a88ec0012d4aab585322e79eb07156bb90506cb8",
+    "manager-roles-before-1792717060218347387.json": "6c678fcfdc65d9297470c55450815b537e8f6b6650a6688cd0a0ad8562d7062e",
+    "manager-roles-after-1792717060218347387.json": "6c678fcfdc65d9297470c55450815b537e8f6b6650a6688cd0a0ad8562d7062e",
+    "manager-permissions-final-health-1792717168846254090.json": "6ebd7d8d7b9eec10981c788c30e84dbe24e527247f96de4483f9656f054d0d15",
+    "phase-runs/1792717026943581000-manager-permissions.json": "f350fb93153aeddd3e456e2ef01217f38655e04f22b0fa4792e2f09d2a891a9f",
+    "phase-runs/1792717059649538000-manager-roles.json": "148d506f8202283c10016bbce4135930027ffabf9bcd123f082bf6c45ae43e48",
+    "manager-permissions-tool-preparation-1.json": "e8a9273be3c1ae026e9107c80a158ea0c525692307e0eafd9b203c8703dfba8e"
+  },
+  "测试工具SHA256": {
+    "manager_permissions.py": "c52e47fdd147de2d4d20588a720c58ee70a37f518c1d1c295e91e610f28a18db",
+    "manager_canaries.py": "d1154b81b65a387d1b001591dda5594e04a0fd18500f200bd3653db34c7fe2e7",
+    "manager_roles.py": "3d7fa5028ba52bfa0c9e94dbebba3fde8a60ef68ef85bceab0f0a5666d94fee9",
+    "scenarios.py": "cd52c8cf992727f529f52376940af8f35aca959cc17ccf6f1b686105af0b5d9f"
+  },
+  "保留边界": "真实角色修改会追加Manager访问审计、递增账号鉴权代次并撤销会话；没有回滚数据库，不声称整个Manager数据库字节相同。基线覆盖公开API返回的全部专属目录/账号业务字段，不含隐藏的密码密文或全部Manager表。",
+  "准备首败": "宿主单元回归首次导入完整驱动，因未安装paramiko而失败，未请求真实Manager；改用公共异常和标准写入辅助后45项通过，原错误记录保留。",
+  "未执行项": "新增Manager权限基线的实际跨恢复保持、完整全表检查点、源离线新Manager、剩余故障矩阵、二十四小时、最终完整离线包及百分之八十人工指标仍未完成。整体功能FAIL，两项P1未关闭。"
+}

@@ -42,11 +42,14 @@ def payload_for(repo, state, job, enabled, pr, now=None):
         progress.update(status='outdated', label=LABELS['outdated'], detail='下方任务属于历史版本，当前提交等待审查')
     result = job.get('result') or {}
     coverage = result.get('coverage') or (job.get('snapshot') or {}).get('coverage')
-    coverage = ({k: coverage.get(k) for k in ('complete', 'files_reviewed', 'files_total')} if coverage else None)
+    diff_only = bool(coverage and coverage.get('scope') == 'diff')
+    coverage = ({k: coverage.get(k) for k in ('complete', 'files_reviewed', 'files_total')}
+                if coverage and (not diff_only or job.get('batch_protocol')) else None)
     return dict(progress, attention=job.get('attention'), version=1, repository_id=repo['repo_id'], repository=repo['repo_name'], number=job['number'],
                 job=job['id'], generation=state['generation'], job_generation=job['generation'], sequence=state['progress_seq'],
                 enabled=bool(enabled and repo['enabled']), current_head=current_head, checked_at=now,
-                findings=len(result.get('findings', [])) if result and job['status'] == 'succeeded' else None, coverage=coverage,
+                findings=len(result.get('findings', [])) if result and job['status'] == 'succeeded' and not diff_only else None,
+                review_scope='diff' if diff_only else 'repository', coverage=coverage,
                 error=job['error'][:1000], review_id=job.get('review_id') if job['status'] == 'succeeded' else None,
                 review_fragment=job.get('review_fragment', '') if job['status'] == 'succeeded' else '')
 
@@ -72,6 +75,8 @@ def comment_body(payload):
     if payload['findings'] is not None:
         text += f"\n\n发现 {payload['findings']} 项问题。"
     coverage = payload['coverage']
+    if payload.get('review_scope') == 'diff':
+        text += '\n\n仅审查 PR diff；未读取完整工程。具体问题见审查报告，不提供自动提取的问题计数。'
     if coverage:
         text += f" 已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。"
         if not coverage['complete']:
@@ -154,11 +159,15 @@ class ProgressSync:
                 seq, generation = state['progress_seq'], state['generation']
                 payload = payload_for(repo, state, job, self.store.config()['enabled'], pr)
                 body = comment_body(payload)
+                from .issue_lifecycle import overview
+                body += overview(self.store, repo, job, pr)
                 comment = None
                 if state['summary_id']:
                     comment = client.request('GET', client.prefix + '/issues/comments/' + str(state['summary_id']), missing=True)
                     if comment and (not self.owned(comment, repo) or not self.belongs(comment, repo, number)):
                         raise ReviewError('总体评论归属不匹配，未覆盖现有讨论')
+                if comment is None and state['summary_id']:
+                    raise ReviewError('原总览评论已删除，未自动补发')
                 if comment is None:
                     rows = client.pages(client.prefix + f'/issues/{number}/comments')
                     owned = [r for r in rows if self.owned(r, repo)]
@@ -167,12 +176,35 @@ class ProgressSync:
                     comment = owned[0] if owned else None
                     if comment and not self.belongs(comment, repo, number):
                         raise ReviewError('总体评论不属于当前 PR')
+                with contextlib.closing(self.store.connect()) as c:
+                    managed = c.execute('SELECT body,pending FROM review_issue_summaries WHERE repository=? AND number=?',
+                                        (repository, number)).fetchone()
+                if comment:
+                    if managed:
+                        if comment.get('body') not in (managed['body'], managed['pending']):
+                            raise ReviewError('总览被人工编辑，未自动覆盖')
+                    else:
+                        # 旧总览只接管能按内嵌原始状态逐字重建的系统正文。
+                        try:
+                            encoded = comment['body'].split(DATA_PREFIX, 1)[1].split(' -->', 1)[0]
+                            previous = json.loads(base64.urlsafe_b64decode(encoded))
+                            trusted = comment_body(previous) == comment['body']
+                        except (ValueError, KeyError, IndexError, TypeError):
+                            trusted = False
+                        if not trusted:
+                            raise ReviewError('历史总览正文无法完整核对，未覆盖')
+                # 每次外部写入前重新核对 head/base，不能以缓存 PR 冒充最新版本。
+                latest_pr = client.pr(number)
+                if any(latest_pr[k]['sha'] != pr[k]['sha'] for k in ('head', 'base')):
+                    return False
                 with self.store.tx() as c:
                     latest = c.execute('SELECT * FROM pr_state WHERE repository=? AND number=?', (repository, number)).fetchone()
                     if latest['progress_seq'] != seq or latest['generation'] != generation:
                         return False
                     if comment is None and latest['progress_creating']:
                         raise ReviewError('总体评论创建结果待核对；尚未找到原请求结果，未重复创建')
+                    c.execute('INSERT INTO review_issue_summaries VALUES (?,?,?,?) ON CONFLICT(repository,number) DO UPDATE SET pending=excluded.pending',
+                              (repository, number, comment['body'] if comment else '', body))
                     # 提交前持久化不确定窗口；即使进程在 POST 后崩溃，也只能回读接管。
                     c.execute('UPDATE pr_state SET progress_creating=? WHERE repository=? AND number=?',
                               (int(comment is None), repository, number))
@@ -187,8 +219,13 @@ class ProgressSync:
                 actual = client.request('GET', client.prefix + '/issues/comments/' + str(comment_id))
                 if not self.owned(actual, repo) or not self.belongs(actual, repo, number) or actual.get('body') != body:
                     raise ReviewError('总体评论回读校验失败')
+                latest_pr = client.pr(number)
+                changed_version = any(latest_pr[k]['sha'] != pr[k]['sha'] for k in ('head', 'base'))
                 now = time.time()
                 with self.store.tx() as c:
+                    c.execute('UPDATE review_issue_summaries SET body=?,pending=NULL WHERE repository=? AND number=?', (body, repository, number))
+                    if changed_version:
+                        c.execute('UPDATE pr_state SET progress_seq=progress_seq+1 WHERE repository=? AND number=?', (repository, number))
                     # 只确认本次发送的版本；写入期间到达的新事件保持待同步。
                     c.execute('''UPDATE pr_state SET summary_id=?,progress_creating=0,progress_synced=?,progress_sent_at=?,
                                  progress_next=?,progress_error='',progress_failures=0 WHERE repository=? AND number=?''',

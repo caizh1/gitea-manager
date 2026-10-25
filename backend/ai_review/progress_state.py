@@ -6,7 +6,7 @@ from .performance import TARGET_SECONDS
 
 RUNNING = ('running', 'publishing', 'recovering')
 TERMINAL = ('succeeded', 'failed', 'superseded', 'publish_unknown', 'cancelled')
-LABELS = {'queued': '已排队', 'running': '正在审查', 'publishing': '正在发布',
+LABELS = {'awaiting_cost': '等待成本确认', 'budget_paused': '预算暂停', 'incomplete': '审查未完成', 'queued': '已排队', 'running': '正在审查', 'publishing': '正在发布',
           'recovering': '正在核对发布结果', 'succeeded': '审查完成', 'failed': '审查失败',
           'superseded': '版本已过期', 'publish_unknown': '发布结果待核对',
           'cancelling': '取消中', 'cancelled': '已取消',
@@ -80,7 +80,7 @@ def job_progress(job, now=None):
     result = job.get('result') or {}
     progress['units_failed'] = result.get('units_failed',0)
     progress['units_processed'] = result.get('units_processed',job.get('units_completed',0))
-    if job.get('session_id'):
+    if job.get('session_id') and not job.get('batch_protocol'):
         # 原生会话没有旧的“函数单元”概念，不用0/N伪造部分完成。
         coverage = result.get('coverage') or {}
         progress['native_session'] = True

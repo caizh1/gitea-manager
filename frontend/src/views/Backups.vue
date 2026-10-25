@@ -7,7 +7,12 @@
           <el-icon><Refresh /></el-icon>
         </button>
       </div>
-      <el-button type="primary" @click="showCreateDialog = true" :disabled="primaryServers.length === 0">创建备份</el-button>
+      <div class="header-left">
+        <el-upload :show-file-list="false" accept=".zip" :before-upload="importBackup">
+          <el-button :loading="importing">导入灾备 ZIP</el-button>
+        </el-upload>
+        <el-button type="primary" @click="showCreateDialog = true" :disabled="primaryServers.length === 0">创建备份</el-button>
+      </div>
     </div>
 
     <el-alert v-if="pollError" :title="pollError" type="warning" :closable="false" />
@@ -50,10 +55,11 @@
         <el-table-column prop="started_at" label="开始时间" width="170">
           <template #default="{ row }">{{ fmt(row.started_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" v-if="row.status === 'success'"
-              @click="downloadBackup(row)">下载</el-button>
+              @click="downloadBackup(row)">下载 ZIP</el-button>
+            <el-button v-if="row.status === 'success'" size="small" :loading="exporting === row.id" @click="exportBundle(row)">完整灾备包</el-button>
             <a v-if="row.diagnostic_id" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`">诊断包</a>
             <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
               <template #reference><el-button size="small" type="danger">删除</el-button></template>
@@ -91,7 +97,9 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import OperationProgress from '../components/OperationProgress.vue'
 import { useOperationPolling } from '../composables/useOperationPolling'
 import { operationActive, utcTime } from '../components/operationDisplay'
@@ -103,6 +111,8 @@ export default {
     const servers = ref([])
     const loading = ref(false)
     const creating = ref(false)
+    const importing = ref(false)
+    const exporting = ref(null)
     const showCreateDialog = ref(false)
     const selectedServerId = ref(null)
     const errorDialogVisible = ref(false)
@@ -126,8 +136,28 @@ export default {
       }).finally(() => { creating.value = false })
     }
 
+    async function exportBundle(row) {
+      exporting.value = row.id
+      try {
+        const result = await api.post(`/backups/${row.id}/disaster-bundle`, {}, { timeout: 0 })
+        window.location.assign(result.data.download_url)
+      } catch (e) { notifyApiError(e, '灾备包导出失败，请查看服务状态与磁盘空间') }
+      finally { exporting.value = null }
+    }
     function downloadBackup(row) {
       window.open(`/api/backups/${row.id}/download`, '_blank')
+    }
+
+    async function importBackup(file) {
+      importing.value = true
+      try {
+        const data = new FormData()
+        data.append('file', file)
+        await api.post('/backups/import', data)
+        await load()
+      } catch (e) { notifyApiError(e, '灾备导入失败') }
+      finally { importing.value = false }
+      return false
     }
 
     function deleteBackup(row) {
@@ -179,7 +209,7 @@ export default {
     function fmt(d) { return d ? new Date(utcTime(d)).toLocaleString() : '-' }
 
 
-    return { backups, pollError, loading, creating, showCreateDialog, selectedServerId, primaryServers,
+    return { backups, pollError, loading, creating, importing, importBackup, exporting, exportBundle, showCreateDialog, selectedServerId, primaryServers,
              errorDialogVisible, selectedErrorBackup,
              load, createBackup, downloadBackup, deleteBackup, shortError, showError,
              formatSize, statusType, snapshotText, snapshotType, fmt }

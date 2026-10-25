@@ -13,3 +13,14 @@ tree-sitter-c==0.24.1
 tree-sitter-cpp==0.23.4
 ldap3==2.9.1
 pyasn1==0.6.1
+PyYAML==6.0.3
+
+# 分批审查离线 CPU 计数；无需模型权重或 GPU。
+tokenizers==0.23.3
+deepseek-recipe==0.2.0
+huggingface-hub==0.36.0
+fsspec==2026.9.0
+filelock==4.2.4
+hf-xet==1.7.0
+tqdm==4.70.1
+Jinja2==3.1.6

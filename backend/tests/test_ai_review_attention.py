@@ -1,5 +1,6 @@
 """紧急待办的计数、代次通知、并发合并、迁移和鉴权回归。"""
 import concurrent.futures
+import contextlib
 import time
 import unittest
 from unittest.mock import patch, Mock
@@ -100,6 +101,34 @@ class AttentionTests(unittest.TestCase):
         self.assertEqual(job['reconciliation']['state'], 'failed')
         self.assertIn('Gitea 连接失败', job['reconciliation']['message'])
         self.assertTrue(job['attention']['required'])
+
+    def test_worker_reconciliation_is_independent_of_model_executor(self):
+        from ai_review import worker
+        for number, (maintenance, ready) in enumerate(((False, False), (True, False), (False, True)), 20):
+            with self.subTest(maintenance=maintenance, ready=ready):
+                with self.store.tx() as c:
+                    c.execute("UPDATE jobs SET available=? WHERE status='publish_unknown'", (time.time() + 3600,))
+                ident = self.unknown(number)
+                request_reconciliation(self.store, ident)
+                stop = Mock(); stop.is_set.side_effect = [False, True]
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(patch.object(worker, 'Store', return_value=self.store))
+                    stack.enter_context(patch.object(worker, 'make_server'))
+                    stack.enter_context(patch.object(worker.threading, 'Thread'))
+                    stack.enter_context(patch.object(worker.threading, 'Event', return_value=stop))
+                    stack.enter_context(patch.object(worker.signal, 'signal'))
+                    stack.enter_context(patch('services.upgrade_maintenance.active', return_value=maintenance))
+                    stack.enter_context(patch('ai_review.runtime_status.available', return_value=ready))
+                    reconcile = stack.enter_context(patch.object(worker, 'reconcile_unknown', wraps=worker.reconcile_unknown))
+                    repositories = stack.enter_context(patch.object(worker, 'reconcile_repositories'))
+                    claim = stack.enter_context(patch.object(self.store, 'claim', return_value=None))
+                    worker.main()
+                self.assertEqual(reconcile.call_count, int(not maintenance))
+                self.assertEqual(claim.call_count, int(ready and not maintenance))
+                self.assertEqual(repositories.call_count, int(ready and not maintenance))
+                task = self.store.job(ident)
+                self.assertTrue(task['reconciliation']['worker']['available'])
+                self.assertEqual(task['reconciliation']['state'], 'queued' if maintenance else 'needs_confirmation')
 
     def test_idempotent_migration_projection_and_worker_unavailable(self):
         ident = self.unknown()

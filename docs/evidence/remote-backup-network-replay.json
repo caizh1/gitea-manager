@@ -1,0 +1,99 @@
+{
+  "说明": "复用同一备份的真实WAN恢复重放；产品恢复成功，完整迁移与观察工具分别记录",
+  "生成时间UTC": "2026-10-23T08:09:51.827988+00:00",
+  "结果": "部分完成，完整迁移失败",
+  "备份ID": 36,
+  "新建备份": false,
+  "恢复任务ID": 19,
+  "Manager恢复状态": "success/completed",
+  "Manager校验状态": "success",
+  "整条工具命令退出码": 1,
+  "完整迁移": "失败",
+  "业务配置差异数量": 14,
+  "业务配置差异字段": [
+    "mailer.enabled",
+    "mailer.from",
+    "mailer.protocol",
+    "mailer.smtp_addr",
+    "mailer.smtp_port",
+    "migrations.allow_localnetworks",
+    "migrations.allowed_domains",
+    "oauth2_client.enable_auto_registration",
+    "security.internal_token",
+    "server.lfs_jwt_secret",
+    "service.disable_registration",
+    "service.enable_notify_mail",
+    "service.require_signin_view",
+    "webhook.allowed_host_list"
+  ],
+  "原始全表数": 150,
+  "源全部原始字段相同": true,
+  "恢复后147张表原始字段相同": true,
+  "备份点审计": {
+    "SQL与备份前1542事件及4596范围逐字段相同": true,
+    "全部原事件与范围保留": true,
+    "恢复后合法原生新增事件": 1,
+    "恢复后完整新增范围": 2,
+    "说明": "较晚源快照与恢复目标分别产生不同的原生追加；不能把较晚源快照当旧备份点，首个工具失败保留"
+  },
+  "运行计数唯一差异": {
+    "表": "app_state",
+    "行": "runtime-state",
+    "字段": "revision",
+    "之前": 4,
+    "之后": 6,
+    "其他原始字段及行相同": true,
+    "说明": "与已验证的隔离和发布两次原生配置路径切换一致，原始差异保留"
+  },
+  "Git正文密钥规则相同": true,
+  "观察器": {
+    "提交前真实就绪": true,
+    "任务及唯一助手绑定": true,
+    "远端退出确认": true,
+    "命中独立文件窗口": false,
+    "失败命令类别": [
+      "docker",
+      "inspect"
+    ],
+    "超时秒": 12,
+    "边界": "复制期间对本任务助手的docker inspect超时，未采到文件窗口；命令整链另因错误参照点比较审计分支而失败，两个工具问题都保留，不据此确定首败根因"
+  },
+  "事后Docker历史": {
+    "哈希执行数量": 16,
+    "已保留执行退出码均为零": true,
+    "边界": "有界历史和原始stdout不同，缺失事件不能推断未执行"
+  },
+  "收尾": {
+    "两侧认证HTTP": 200,
+    "Gitea与PG运行": true,
+    "无活动任务与实例锁": true,
+    "容器内执行锁空闲": true,
+    "路由默认及活动标记清除": true,
+    "专属权限与Manager保留相同": true,
+    "A旧助手数": 3,
+    "B助手数": 0
+  },
+  "整链开始UTC": "2026-10-23T07:49:34.106184+00:00",
+  "整链结束UTC": "2026-10-23T08:05:25.187903+00:00",
+  "整链耗时秒": 951.079,
+  "快照SHA256": {
+    "源之前": "e859e836d27615f3f0614568d4975147c3951a77494add0de5968cfb63a255f4",
+    "目标之前": "30ae4c54ad1d896bfbd3bc1a6cb58b668a7a85c9143249ed8498a4e7d4613fc1",
+    "源之后": "ed4ce1294cdd5e5f5bb4935825f4ab5f8c0904030904b522ebb3457f12bfba03",
+    "目标之后": "0043633c20582d677f0209959a6469747260e37cdc06198fa0a1b077c647c3d8"
+  },
+  "原始证据SHA256": {
+    "network-wan-restore-replay-1-command.json": "9ae2c4954f21c055af41d8b073915775536a66bc08b6f117abcf24d3277cb60a",
+    "network-wan-restore-replay-1.json": "51df64f5cbde17190149d09a56b4e68530d5f552a40e45051d6e595e31aa7e12",
+    "network-wan-restore-replay-1-observer-final.json": "386c9ac5a1880acd14f56f7d53d73c9bbe72663448e82ece279edf9d8d53d569",
+    "network-wan-restore-replay-1-observer-miss.json": "6c34824a532aeadd9bda82c85b69c44334725f7db5d5fb75b012dfc82d9ea423",
+    "network-wan-restore-replay-1-observer.jsonl": "5aeb964c30d0dc9e4d5481d8a1d782585cc68b5ab005cc89a1454c410b3a84f3",
+    "network-wan-restore19-hash-events-history-1.json": "6c5ee865f5062c28810fd2ff32f600420ec6d9ec7043f7616846e2b43f5fccbf",
+    "network-wan-restore-replay-1-final-health.json": "a9aa11df2903cf291e76c3125d921691b2cf02d9fe7e095b29282754dd3e6b82",
+    "network-wan-code-path-review-1.json": "368e643f178119d6a6f0cf3d3b2854248d02a0a842c4dfc1c1e63e2ee30bfbec",
+    "network-wan-replay-audit-reference.json": "69ac5ed7f7461d201d423cf780b06166dbef8ab95abadddca6d79f52b3103cb6",
+    "network-wan-backup36-audit-sql-decoded.json": "d23833e33e096c5f1dffd11cd2c9d5096de4e0d81758cd229a679c32178dbb92",
+    "network-wan-audit-sql-types.json": "0a87b09981664a84b14c5a01f0ec3daf20cbab063577b7a8f60280face659925"
+  },
+  "边界": "原WAN恢复18首败和本次工具错误不覆盖；SQL解析首次类型格式差异与原始错误保留，按真实integer与timestamp without time zone解码后独立复核，未删列。同一备份恢复19成功不能证明首次原因已定位。此项没有新建备份，不算第二轮完整备份恢复；lossy、完整网络矩阵、全部业务迁移仍未通过。整体FAIL与既有两个P1保持，整链耗时不作生产RTO。"
+}

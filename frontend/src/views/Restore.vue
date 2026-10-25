@@ -75,6 +75,7 @@
             <span v-else>—</span>
           </template>
         </el-table-column>
+        <el-table-column label="中断恢复" width="130"><template #default="{ row }"><el-button v-if="row.status !== 'success'" size="small" @click="recoverRestore(row.id)">接管恢复</el-button></template></el-table-column>
         <el-table-column label="诊断"><template #default="{ row }"><a v-if="row.diagnostic_id" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`">下载诊断包</a></template></el-table-column>
         <el-table-column prop="error_msg" label="错误信息" min-width="200" show-overflow-tooltip />
         <el-table-column prop="started_at" label="开始时间" width="170">
@@ -136,6 +137,7 @@
 <script>
 import { ref, computed } from 'vue'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import { ElMessage } from 'element-plus'
 import OperationProgress from '../components/OperationProgress.vue'
 import { useOperationPolling } from '../composables/useOperationPolling'
@@ -161,22 +163,29 @@ export default {
         await api.post('/restore', { backup_id: selectedBackupId.value, target_server_id: selectedTargetId.value })
         selectedBackupId.value = null; selectedTargetId.value = null
         await load()
-      } catch (e) { ElMessage.error(e.response?.data?.error || '创建恢复任务失败，请刷新确认任务状态') }
+      } catch (e) { notifyApiError(e, '创建恢复任务失败，请刷新确认任务状态') }
       finally { restoring.value = false }
+    }
+    async function recoverRestore(id) {
+      try {
+        const result = await api.post(`/restore-tasks/${id}/recover`, {}, { timeout: 0 })
+        ElMessage.success(result.data.message)
+        await load()
+      } catch (e) { notifyApiError(e, '接管结果未知，请刷新确认；不要手动删除恢复锁') }
     }
     async function triggerVerify(id) {
       try { await api.post(`/restore-tasks/${id}/verify`); await load() }
-      catch (e) { ElMessage.error(e.response?.data?.error || '验证请求失败，请刷新确认任务状态') }
+      catch (e) { notifyApiError(e, '验证请求失败，请刷新确认任务状态') }
     }
     async function showVerify(task) {
       try { verifyData.value = (await api.get(`/restore-tasks/${task.id}/verification`)).data; verifyDialogVisible.value = true }
-      catch (e) { ElMessage.error('验证结果读取失败') }
+      catch (e) { notifyApiError(e, '验证结果读取失败') }
     }
     function formatSize(bytes) { return bytes ? `${(bytes / 1048576).toFixed(1)} MB` : '—' }
     const fmt = d => d ? new Date(utcTime(d)).toLocaleString() : '—'
     const displayCount = n => n ?? '—'
     return { backups, servers, tasks, restoring, selectedBackupId, selectedTargetId, successBackups, backupServers, criticalAlert,
-      load, pollError, doRestore, triggerVerify, showVerify, verifyDialogVisible, verifyData, formatSize, fmt, displayCount }
+      load, pollError, doRestore, recoverRestore, triggerVerify, showVerify, verifyDialogVisible, verifyData, formatSize, fmt, displayCount }
   },
 }
 </script>

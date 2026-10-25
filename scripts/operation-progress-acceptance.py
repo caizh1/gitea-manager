@@ -81,6 +81,8 @@ def upload(container, dest, name, content, mode=0o600):
 
 
 def create(image, suffix, **kwargs):
+    if os.environ.get('ACCEPTANCE_NETWORK') and 'network_mode' not in kwargs:
+        kwargs.setdefault('network', os.environ['ACCEPTANCE_NETWORK'])
     value = client.containers.create(image, name=marker+'-'+suffix, labels={'manager.progress.acceptance': marker}, platform='linux/amd64', **kwargs)
     owned.append(value)
     return value
@@ -89,7 +91,7 @@ def create(image, suffix, **kwargs):
 def node(suffix):
     password = secrets.token_hex(16)
     pg = create('postgres:17.11-bookworm', suffix+'-db', environment={'POSTGRES_USER': 'gitea', 'POSTGRES_DB': 'gitea', 'POSTGRES_PASSWORD': password})
-    pg.start(); pg.reload(); host = pg.attrs['NetworkSettings']['Networks']['bridge']['IPAddress']
+    pg.start(); pg.reload(); host = pg.attrs['NetworkSettings']['Networks'][os.environ.get('ACCEPTANCE_NETWORK', 'bridge')]['IPAddress']
     deadline = time.monotonic() + 90
     while pg.exec_run(['pg_isready', '-U', 'gitea']).exit_code:
         if time.monotonic() > deadline: raise RuntimeError('隔离数据库未就绪')
@@ -98,7 +100,7 @@ def node(suffix):
            'GITEA__security__INSTALL_LOCK': 'true', 'GITEA__security__SECRET_KEY_URI': 'file:/data/gitea/conf/manager-secret-key', 'GITEA__service__DISABLE_REGISTRATION': 'true', 'GITEA__repository__DEFAULT_BRANCH': 'main'}
     gitea = create('gitea/gitea:1.26.4', suffix, environment=env)
     upload(gitea, '/data', 'gitea/conf/manager-secret-key', secrets.token_hex(32))
-    gitea.start(); gitea.reload(); url = 'http://' + gitea.attrs['NetworkSettings']['Networks']['bridge']['IPAddress'] + ':3000'
+    gitea.start(); gitea.reload(); url = 'http://' + gitea.attrs['NetworkSettings']['Networks'][os.environ.get('ACCEPTANCE_NETWORK', 'bridge')]['IPAddress'] + ':3000'
     deadline = time.monotonic() + 120
     while True:
         try:

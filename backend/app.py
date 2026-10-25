@@ -33,6 +33,7 @@ def create_app():
     from access import models as access_models
     from access import scopes as access_scopes
     from access import statistics as access_statistics
+    from svn_migration import models as svn_migration_models
     from services.database_startup import database_startup_lock
     with app.app_context(), database_startup_lock(app):
         import sqlalchemy.exc
@@ -172,6 +173,8 @@ def create_app():
 
         from access.migration import initialize_schema
         initialize_schema()
+        from svn_migration.preflights import backfill as backfill_svn_preflights
+        backfill_svn_preflights()
         from access.authentication import initialize_access
         initialize_access()
 
@@ -219,6 +222,8 @@ def create_app():
     app.register_blueprint(approval_view_bp, url_prefix='/api/approval-view')
     from routes.management_routes import management_bp
     app.register_blueprint(management_bp, url_prefix='/api/management')
+    from routes.svn_migration_routes import svn_migration_bp
+    app.register_blueprint(svn_migration_bp, url_prefix='/api/svn-migrations')
 
     if os.environ.get('AI_REVIEW_HOST_POLICY_FILE'):
         from ai_review.host_policy import ensure
@@ -248,6 +253,8 @@ def create_app():
 
     from access.control import install as install_access_control
     install_access_control(app)
+    from svn_migration.guards import install as install_svn_guards
+    install_svn_guards(app)
 
     from services.scheduler_service import start_scheduler
     if os.environ.get('DISABLE_BACKGROUND_TASKS') != '1':

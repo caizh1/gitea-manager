@@ -9,12 +9,13 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from .token_budget import DEFAULTS as BATCH_DEFAULTS
 from .thinking import DEFAULTS as THINKING_DEFAULTS
 from .common import ReviewError, Stale, encode, secret_file
 from .budgets import TIME_FIELDS, CONTEXT_DEFAULTS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision
 import json
 
-DEFAULTS = {**THINKING_DEFAULTS, **CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'opencode_native', 'api_base_url': '', 'model': '',
+DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'opencode_native', 'api_base_url': '', 'model': '',
             'api_key': '', 'revision': 1, 'debounce_seconds': 20, 'max_files': 40,
             'max_calls': 32, 'task_timeout_seconds': 1200, 'review_timeout_seconds': REVIEW_TIMEOUT_DEFAULT,
             'model_request_timeout_seconds': MODEL_TIMEOUT_DEFAULT,
@@ -27,10 +28,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 14:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 17:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 14:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 17:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -91,7 +92,15 @@ class Store:
             migrate_attention(c)
             from .cancellation import migrate as migrate_cancellation
             migrate_cancellation(c)
-            c.execute('PRAGMA user_version=14')
+            from .issue_lifecycle import migrate as migrate_issues
+            migrate_issues(c)
+            c.execute('CREATE INDEX IF NOT EXISTS jobs_created ON jobs(created,id)')
+            c.execute('CREATE INDEX IF NOT EXISTS jobs_repository_created ON jobs(repository,created,id)')
+            c.execute('CREATE INDEX IF NOT EXISTS review_issues_origin ON review_issues(origin_job)')
+            c.execute("CREATE INDEX IF NOT EXISTS finding_archive_job ON review_finding_archive(json_extract(value,'$.job'))")
+            from .batch_store import migrate as migrate_batches
+            migrate_batches(c)
+            c.execute('PRAGMA user_version=17')
             c.commit()
         os.chmod(self.path, 0o600)
 
@@ -182,7 +191,7 @@ class Store:
             result['thinking_protocol'] = 'deepseek'
         for key, default in THINKING_DEFAULTS.items():
             result.setdefault(key, default)
-        for key, default in CONTEXT_DEFAULTS.items():
+        for key, default in dict(CONTEXT_DEFAULTS, **BATCH_DEFAULTS).items():
             result.setdefault(key, default)
         if public:
             result.pop('execution_revision', None)
@@ -240,7 +249,7 @@ class Store:
             public = dict(old); public['api_key_configured'] = bool(public.pop('api_key',''))
             c.execute('INSERT INTO configuration_history VALUES (?,?,?)', (public['revision'],encode(public),time.time()))
             if invalidate:
-                c.execute("UPDATE jobs SET status='superseded',error='配置已变更',updated=? WHERE status IN ('queued','running')", (time.time(),))
+                c.execute("UPDATE jobs SET status='superseded',error='配置已变更',updated=? WHERE status IN ('queued','running','awaiting_cost','budget_paused','incomplete')", (time.time(),))
                 c.execute('UPDATE repositories SET last_reconcile=0')
                 c.execute('UPDATE pr_state SET progress_seq=progress_seq+1')
         return self.config(public=True)
@@ -283,7 +292,7 @@ class Store:
                 value.update(data)
                 c.execute('UPDATE repositories SET value=?,enabled=?,revision=revision+1,last_reconcile=0 WHERE id=?',
                           (encode(value), bool(value['enabled']), repository))
-                c.execute("UPDATE jobs SET status='superseded',error='仓库配置已变更',updated=? WHERE repository=? AND status IN ('queued','running')",
+                c.execute("UPDATE jobs SET status='superseded',error='仓库配置已变更',updated=? WHERE repository=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete')",
                           (time.time(), repository))
                 c.execute('UPDATE pr_state SET progress_seq=progress_seq+1 WHERE repository=?', (repository,))
             else:
@@ -368,12 +377,12 @@ class Store:
             c.execute('''INSERT INTO pr_state(repository,number,generation,signature) VALUES (?,?,?,?)
                        ON CONFLICT(repository,number) DO UPDATE SET generation=excluded.generation,signature=excluded.signature''',
                       (repository, number, generation, signature))
-            c.execute("UPDATE jobs SET status='superseded',error='PR 已更新或关闭',updated=? WHERE repository=? AND number=? AND status IN ('queued','running')", (now, repository, number))
+            c.execute("UPDATE jobs SET status='superseded',error='PR 已更新或关闭',updated=? WHERE repository=? AND number=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete')", (now, repository, number))
             if closed:
                 return None
             job = secrets.token_hex(16)
-            c.execute('''INSERT INTO jobs(id,repository,number,generation,status,stage,created,available,updated,config_revision,repo_revision,manual,target_head)
-                         VALUES (?,?,?,?,'queued','等待执行',?,?,?,?,?,?,?)''',
+            c.execute('''INSERT INTO jobs(id,repository,number,generation,status,stage,created,available,updated,config_revision,repo_revision,manual,target_head,batch_protocol)
+                         VALUES (?,?,?,?,'queued','等待执行',?,?,?,?,?,?,?,1)''',
                       (job, repository, number, generation, now, now + (0 if manual else config['debounce_seconds']), now,
                        config['revision'], repo['revision'], int(manual), target_head))
             c.execute('UPDATE jobs SET access_scope=?,access_actor=? WHERE id=?',
@@ -407,6 +416,10 @@ class Store:
             from .review_state import aggregate
             value['result'] = aggregate(self, value, evidence=evidence)
         if public:
+            if value.get('batch_protocol'):
+                from .batch_store import get, timing
+                value['batch'] = get(self, job)
+                value['timing'] = timing(self, job)
             from .performance import summary
             if value.get('configuration'):
                 value['configuration'].pop('api_key', None)
@@ -420,18 +433,24 @@ class Store:
             project(value)
         return value
 
-    def jobs(self, page=1, repository=None, number=None, status=None, allowed_jobs=None):
+    def jobs(self, page=1, repository=None, number=None, status=None, allowed_jobs=None, window=None, allowed_repositories=None):
         from .attention import STATES
         if status is not None and status not in STATES: raise ReviewError('不支持的任务状态')
         conditions, args = [], []
         for field, value in (('repository',repository),('number',number),('status',status)):
             if value is not None: conditions.append(field+'=?'); args.append(value)
+        if window is not None:
+            conditions.extend(['created>=?', 'created<?'])
+            args.extend([window['lower'], window['upper']])
+        if allowed_repositories is not None:
+            conditions.append('repository IN (SELECT value FROM json_each(?))')
+            args.append(json.dumps(allowed_repositories))
         where = ' WHERE '+' AND '.join(conditions) if conditions else ''
         if allowed_jobs is not None:
             conditions.append('id IN (SELECT value FROM json_each(?))')
             args.append(json.dumps(allowed_jobs))
             where = ' WHERE ' + ' AND '.join(conditions)
-        columns = ('id,repository,number,status,stage,created,updated,config_revision,repo_revision,'
+        columns = ('batch_protocol,id,repository,number,status,stage,created,updated,config_revision,repo_revision,'
                    'generation,lease,model_calls,started_at,finished_at,progress_stage,units_completed,'
                    "units_total,target_head,review_id,review_fragment,error,batch_index,batch_calls,plan_units,"
                    "session_id,session_status,current_action,deadline_at,last_heartbeat,log_synced_at,event_count,final_event_seq,"
@@ -449,6 +468,9 @@ class Store:
             value['result']={'coverage':{'complete':value.pop('coverage_complete') != 0},'units_failed':value.pop('units_failed') or 0,'units_processed':value.pop('units_processed') or value.get('units_completed',0)}
             value['progress'] = job_progress(value)
             value.pop('result',None)
+            if value.get('batch_protocol'):
+                from .batch_store import timing
+                value['timing'] = timing(self, value['id'])
             from .session_events import project
             project(value)
         return {'items': values, 'total': total}
@@ -456,6 +478,10 @@ class Store:
     def claim(self):
         now, owner = time.time(), secrets.token_hex(16)
         with self.tx() as c:
+            c.execute("UPDATE review_batch_plans SET uncertain_time=1 WHERE job IN (SELECT id FROM jobs WHERE status IN ('running','publishing','recovering') AND lease<?)", (now,))
+            # 中断后的无人监督区间单独记录，不能算成精确执行耗时。
+            c.execute("INSERT INTO review_batch_intervals(job,state,started,ended,verified_until) SELECT i.job,'unknown',i.verified_until,?,? FROM review_batch_intervals i JOIN jobs j ON j.id=i.job WHERE i.ended IS NULL AND j.status IN ('running','publishing','recovering') AND j.lease<?", (now, now, now))
+            c.execute("UPDATE review_batch_intervals SET ended=verified_until WHERE ended IS NULL AND job IN (SELECT id FROM jobs WHERE status IN ('running','publishing','recovering') AND lease<?)", (now,))
             # 发布中的请求可能已经生效，中断后只能进入核对流程。
             c.execute("UPDATE jobs SET status='publish_unknown',owner='',updated=?,error='执行中断，等待核对实际发布结果' WHERE status IN ('publishing','recovering') AND lease<?", (now, now))
             c.execute("UPDATE jobs SET status='failed',stage='中断次数达到上限',error='已中断三次，请排查环境后人工重审',updated=? WHERE status='running' AND lease<? AND attempts>=3", (now, now))
@@ -468,7 +494,7 @@ class Store:
                 return None
             row = c.execute("""SELECT j.id FROM jobs j WHERE j.status='queued' AND j.available<=?
                                AND NOT EXISTS (SELECT 1 FROM jobs x WHERE x.repository=j.repository AND x.number=j.number
-                                               AND x.status='publish_unknown') ORDER BY j.created LIMIT 1""", (now,)).fetchone()
+                                               AND x.status='publish_unknown') ORDER BY j.available,j.created LIMIT 1""", (now,)).fetchone()
             if not row:
                 return None
             c.execute("UPDATE jobs SET status='running',stage='读取固定版本',owner=?,lease=?,updated=?,attempts=attempts+1 WHERE id=?", (owner, now+90, now, row[0]))
@@ -550,9 +576,9 @@ class Store:
             cutoff = time.time() - 30*86400
             c.execute('DELETE FROM deliveries WHERE created<?', (cutoff,))
             c.execute('DELETE FROM capabilities WHERE expires<?', (time.time(),))
-            # 保留发布歧义证据，普通已结束任务在 30 天后释放源码快照。
+            # 保留发布歧义证据；新台账任务永久保留完整 diff 与报告，旧源码任务仍按 30 天释放。
             for table in ('review_turns','review_reads','review_source_cache','review_model_inputs'):
                 c.execute(f"DELETE FROM {table} WHERE job IN (SELECT id FROM jobs WHERE updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs))))", (cutoff,))
             c.execute("DELETE FROM review_units WHERE job IN (SELECT id FROM jobs WHERE updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs))))", (cutoff,))
-            c.execute("UPDATE jobs SET snapshot=NULL,result=NULL WHERE updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs)))", (cutoff,))
+            c.execute("UPDATE jobs SET snapshot=NULL,result=NULL WHERE COALESCE(json_extract(snapshot,'$.lifecycle_version'),0)!=1 AND updated<? AND (status IN ('failed','superseded','cancelled') OR (status='succeeded' AND id IN (SELECT job FROM review_archive_jobs)))", (cutoff,))
             c.execute("DELETE FROM review_feedback_events WHERE status='done' AND due<?", (cutoff,))

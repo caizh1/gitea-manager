@@ -84,8 +84,11 @@ class BackupCommitSnapshotTestCase(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         backup.file_path = str(Path(directory.name) / 'dump.zip')
-        Path(backup.file_path).write_bytes(b'backup' * 100)
-        backup.file_size = 600
+        import zipfile
+        with zipfile.ZipFile(backup.file_path, 'w') as archive:
+            archive.writestr('app.ini', '[security]\nSECRET_KEY = 备份快照测试密钥\n')
+            archive.writestr('gitea-db.sql', '-- 隔离快照测试\n')
+        backup.file_size = Path(backup.file_path).stat().st_size
 
     def test_do_backup_marks_success_only_after_commit_snapshot(self):
         with patch('services.gitea_service._backup_remote', side_effect=self.fake_dump), \

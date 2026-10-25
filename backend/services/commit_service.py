@@ -54,6 +54,9 @@ def _api_detail(kind, path, message, repo='Gitea API', url=None, page=None):
 
 
 def _api_get_json(server, path, params=None, timeout=30, repo='Gitea API', page=None):
+    reader = getattr(server, '_restore_api_reader', None)
+    if reader is not None:
+        return reader(path, params=params, timeout=timeout)
     url = f'{_ensure_url(server.gitea_url)}{path}'
     headers = {'Authorization': f'token {server.api_token}'}
     try:
@@ -87,12 +90,13 @@ def _api_get_json(server, path, params=None, timeout=30, repo='Gitea API', page=
         )
 
 
-def _require_target_health(server):
+def _require_target_health(server, require_auth=True):
     last_error = None
     for attempt in range(1, RESTORE_HEALTH_CHECK_ATTEMPTS + 1):
         try:
             _api_get_json(server, '/api/v1/version', timeout=10)
-            _api_get_json(server, '/api/v1/user', timeout=10)
+            if require_auth:
+                _api_get_json(server, '/api/v1/user', timeout=10)
             return
         except RestoreValidationError as e:
             last_error = e
@@ -248,6 +252,17 @@ def collect_backup_commits(backup_id, max_commits=RECENT_COMMIT_LIMIT):
             'repo': 'Commit ID 快照',
             'message': 'Backup not found',
         }])
+    from services.backup_consistency import load_snapshot, commit_rows
+    snapshot = load_snapshot(backup.file_path)
+    if snapshot is not None:
+        rows = []
+        for name, commits in commit_rows(snapshot):
+            rows.append(BackupRepoCommit(backup_id=backup_id, repo_name=name, commit_count=len(commits),
+                latest_commit_sha=commits[0] if commits else '', commit_ids=json.dumps(sorted(commits)),
+                commit_ids_hash=hashlib.sha256(','.join(sorted(commits)).encode()).hexdigest(), collected_at=datetime.utcnow()))
+        BackupRepoCommit.query.filter_by(backup_id=backup_id).delete()
+        db.session.add_all(rows); db.session.commit()
+        return len(rows)
     server = GiteaServer.query.get(backup.source_server_id)
     if not server:
         raise RestoreValidationError('Source server not found', [{
@@ -361,6 +376,12 @@ def verify_restore(task_id, defer_completion=False):
 
         update_restore_progress(task, 'verify_health', '正在检查 Gitea API 和 Token', 95, target.name)
         _require_target_health(target)
+
+        offline = getattr(target, '_restore_snapshot_check', None)
+        if offline is not None:
+            offline(backup_commits)
+            _mark_restore_validation_success(task, verification, len(backup_commits))
+            return True
 
         update_restore_progress(task, 'verify_repos', '正在读取目标仓库列表', 96, target.name)
         target_repos = _get_all_repos(target)

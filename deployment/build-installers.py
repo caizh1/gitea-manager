@@ -49,12 +49,13 @@ def main():
         shutil.copy2(ROOT / 'install.sh', directory / 'install.sh')
         shutil.copy2(ROOT / 'uninstall.sh', directory / 'uninstall.sh')
         shutil.copy2(ROOT / 'deployment/uninstall.py', directory / 'deployment/uninstall.py')
+        shutil.copy2(ROOT / 'deployment/manager_uninstall.py', directory / 'deployment/manager_uninstall.py')
         shutil.copy2(ROOT / 'deployment/install.py', directory / 'deployment/install.py')
         shutil.copy2(ROOT / 'backend/services/diagnostics.py', directory / 'deployment/diagnostics.py')
         shutil.copytree(deps, directory / 'runtime/debs', dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('partial', 'lock'))
         tags = ({'gitea': args.gitea_image, 'database': 'postgres:17.11-bookworm'} if product == 'gitea' else
-                {key: 'gitea-review-' + key + ':' + args.manager_tag for key in ('backend', 'frontend', 'executor')})
+                {key: 'gitea-review-' + key + ':' + args.manager_tag for key in ('backend', 'frontend', 'executor', 'svn')})
         if product == 'manager':
             tags['executor'] = args.executor_image
             tags['executor_legacy'] = args.executor_legacy_image
@@ -84,6 +85,15 @@ def main():
         shutil.copy2(ROOT / 'docs/oneclick-installation.md', directory / 'README.md')
         if product == 'manager':
             shutil.copy2(ROOT / 'docs/organization-access-ldap.md', directory / 'organization-access-ldap.md')
+            shutil.copy2(ROOT / 'docs/svn-migration.md', directory / 'svn-migration.md')
+            shutil.copy2(ROOT / 'docs/svn-layout-detection.md', directory / 'svn-layout-detection.md')
+            shutil.copy2(ROOT / 'docs/svn-project-discovery.md', directory / 'svn-project-discovery.md')
+            shutil.copy2(ROOT / 'docs/svn-target-groups.md', directory / 'svn-target-groups.md')
+            evidence = directory / 'docs/evidence'
+            evidence.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / 'docs/evidence/svn-layout-detection-release.json', evidence / 'svn-layout-detection-release.json')
+            shutil.copy2(ROOT / 'docs/evidence/svn-project-discovery-release.json', evidence / 'svn-project-discovery-release.json')
+            shutil.copy2(ROOT / 'docs/evidence/svn-target-groups-release.json', evidence / 'svn-target-groups-release.json')
         files = sorted(path for path in directory.rglob('*') if path.is_file() and path.name != 'SHA256SUMS')
         (directory / 'SHA256SUMS').write_text(''.join(sha(path) + '  ' + str(path.relative_to(directory)) + '\n' for path in files))
         target = directory.with_suffix('.tar.gz')

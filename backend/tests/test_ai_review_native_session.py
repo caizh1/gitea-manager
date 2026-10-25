@@ -39,6 +39,9 @@ class NativeStoreTests(unittest.TestCase):
             'repo_name': 'test/code', 'bot_id': 9})['id']
         self.ident = self.store.enqueue(self.repo, 1, {'head': 'a'*40, 'base': 'b'*40})
         self.job = self.store.claim()
+        # 本夹具模拟升级前的单会话任务。
+        with self.store.tx() as c: c.execute("UPDATE jobs SET batch_protocol=0 WHERE id=?", (self.ident,))
+        self.job["batch_protocol"] = 0
 
     def event(self, session, seq, kind, status='running', payload=None):
         return {'job_id': self.ident, 'session_id': session, 'seq': seq,

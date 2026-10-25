@@ -27,7 +27,8 @@ def database(path, reference=None):
             names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             statuses = {'backups': ('running',), 'restore_tasks': ('running',), 'scheduled_tasks': ('running',),
                         'mirror_configs': ('running', 'syncing', 'initializing'), 'policy_batches': ('previewing', 'applying'),
-                        'jobs': ('running', 'publishing', 'recovering'), 'setup_jobs': ('running',)}
+                        'jobs': ('running', 'publishing', 'recovering'), 'setup_jobs': ('running',),
+                        'svn_migration_runs': ('running',), 'svn_migration_plans': ('preflight',)}
             for table, states in statuses.items():
                 if table in names:
                     field = 'last_status' if table == 'scheduled_tasks' else 'status'

@@ -1,0 +1,47 @@
+{
+  "说明": "仅保留脱敏的真实认证边界复现结果，不包含凭据或备份正文",
+  "运行编号": "20261022-162745",
+  "镜像摘要": "sha256:3da7b51bb9a8dd084c899e277bd7e81e27376e44c613c0c15d297568a6c3a24f",
+  "业务设置场景": {
+    "说明": "未携带 Cookie、账号或令牌的真实页面读取；源与目标使用相同仓库数据",
+    "备份ID": 5,
+    "恢复ID": 5,
+    "源HTTP状态": 200,
+    "源最终路径": "http://10.231.20.10:3000/user/login?redirect_to=%2Flabadmin%2Fpublic-signin-proof",
+    "目标HTTP状态": 200,
+    "目标最终路径": "http://10.231.30.10:3000/labadmin/public-signin-proof",
+    "目标响应SHA256": "8bfe0ea142ec4edbc2e88084220544465006ac4bb2ab7eaff73b408519dca0a2",
+    "目标含仓库内容": true
+  },
+  "独立匿名协议复验": {
+    "说明": "不提供Cookie、令牌或账号；只读复验恢复任务5发布后的真实Git与原始文件访问",
+    "结果": {
+      "a": {
+        "匿名Git退出码": 128,
+        "匿名Git引用": [],
+        "原始文件HTTP状态": 200,
+        "原始文件最终路径": "http://10.231.20.10:3000/user/login?redirect_to=%2Flabadmin%2Fpublic-signin-proof%2Fraw%2Fbranch%2Fmain%2FREADME.md",
+        "原始文件SHA256": "1e7925a7546029777cca21c313670b42b894aed06e36f2d8d4295325678d936c",
+        "原始文件字节": 12743
+      },
+      "b": {
+        "匿名Git退出码": 0,
+        "匿名Git引用": [
+          "b762c15c828964c285c05b6d9de37b05f83b2135\tHEAD",
+          "b762c15c828964c285c05b6d9de37b05f83b2135\trefs/heads/main"
+        ],
+        "原始文件HTTP状态": 200,
+        "原始文件最终路径": "http://10.231.30.10:3000/labadmin/public-signin-proof/raw/branch/main/README.md",
+        "原始文件SHA256": "9e4196971473b1c564a351931f94878349b7b78dc99c7d17bacfa527f298c9ed",
+        "原始文件字节": 23
+      }
+    }
+  },
+  "Manager任务判定": {
+    "id": 5,
+    "status": "success",
+    "progress_stage": "completed",
+    "verification_status": "success",
+    "completed_at": "2026-10-22T10:05:00.662694"
+  }
+}

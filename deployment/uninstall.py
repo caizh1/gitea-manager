@@ -55,7 +55,7 @@ class Cleaner:
                                    label='卸载资源检查或清理', timeout=30, env=env)[1].strip()
 
     def discover(self):
-        # 只读取定位字段；原目录中的安装身份还需与项目标签交叉核验。
+        # 只读取定位字段，不将容器环境变量中的凭据写入诊断。
         fields = ('.ID', '.Names', '.Ports', '.Status',
                   '(.Label "com.docker.compose.project")',
                   '(.Label "com.docker.compose.project.working_dir")')
@@ -67,6 +67,16 @@ class Cleaner:
             if (project or '').startswith('gitea-' + self.product) or name.startswith('gitea-' + self.product):
                 result.append({'容器': cid, '名称': name, '端口': ports, '状态': status,
                                '实例': project, '原安装目录': directory})
+        if self.product == 'gitea':
+            # 容器已删除时，仍能发现中断卸载留下的数据卷与网络。
+            for kind in ('volume', 'network'):
+                template = '{{.Name}} {{.Label "' + LABEL + '"}}'
+                for row in self.docker(kind, 'ls', '--filter', 'label=' + LABEL,
+                                       '--format', template).splitlines():
+                    name, _, project = row.partition(' ')
+                    if re.fullmatch(r'gitea-gitea-[0-9a-f]{10}', project):
+                        result.append({'容器': '', '名称': name, '端口': '', '状态': '残留或在用资源',
+                                       '实例': project, '原安装目录': ''})
         return result
 
     def inventory(self):
@@ -81,6 +91,16 @@ class Cleaner:
             users = self.docker('ps', '-aq', '--filter', 'volume=' + name).split()
             if set(users) - set(result['container']):
                 raise RuntimeError('数据卷被其他实例引用，拒绝删除：' + name)
+        if self.product == 'gitea':
+            for cid in result['container']:
+                mounts = json.loads(self.docker('container', 'inspect', '--format', '{{json .Mounts}}', cid))
+                for mount in mounts:
+                    if mount['Type'] != 'volume' or mount.get('Name') not in result['volume']:
+                        raise RuntimeError('发现安装器范围外的挂载，拒绝部分卸载：' + cid)
+            for nid in result['network']:
+                attached = json.loads(self.docker('network', 'inspect', '--format', '{{json .Containers}}', nid)) or {}
+                if any(not any(cid.startswith(own) for own in result['container']) for cid in attached):
+                    raise RuntimeError('网络被其他实例引用，拒绝删除：' + nid)
         return result
 
     @contextlib.contextmanager
@@ -158,6 +178,19 @@ def choose_target(root, product, project, cleaner, discovered, ask=input):
             raise RuntimeError('已取消实例选择，未删除数据')
         selected = candidates[int(choice) - 1]
     directories = {row['原安装目录'] for row in discovered if row['实例'] == selected and row['原安装目录']}
+    if product == 'gitea':
+        # Docker 所有权负责资源清理；旧目录只用于可验证的凭据清理。
+        if len(directories) == 1:
+            directory = Path(next(iter(directories)))
+            if directory.is_absolute() and directory.is_dir() and not directory.is_symlink():
+                directory = directory.resolve()
+                try:
+                    if identity(directory) == (product, selected):
+                        return directory, selected
+                except (OSError, ValueError, KeyError, RuntimeError):
+                    pass
+        print('原安装目录缺失或身份无法核验，将按 Docker 资源归属卸载；不删除无法核验的宿主机文件。')
+        return None, selected
     if len(directories) != 1:
         raise RuntimeError('选中实例的原安装目录缺失或不一致，不能安全清理其凭据；未删除数据')
     directory = Path(directories.pop())
@@ -175,6 +208,15 @@ def main():
         raise RuntimeError('请使用 sudo bash uninstall.sh')
     report = Report(ROOT / 'uninstall-diagnostics', '卸载选中的安装实例')
     try:
+        manifest = ROOT / 'installer-manifest.json'
+        product = json.loads(manifest.read_text())['product'] if manifest.exists() else 'manager'
+        if product == 'manager':
+            from manager_uninstall import run
+            completed = run(Cleaner(report, 'manager', None), report)
+            report.finish('卸载完成' if completed else '用户取消，未删除数据')
+            if not completed:
+                print('已取消，未删除数据。')
+            return 0
         product, project = identity(ROOT)
         cleaner = Cleaner(report, product, project)
         with report.stage('自动发现安装实例'):
@@ -183,15 +225,22 @@ def main():
             target, project = choose_target(ROOT, product, project, cleaner, discovered)
             cleaner.project = project
         with contextlib.ExitStack() as locks:
-            if target != ROOT:
+            if product == 'gitea':
+                # 不同新包目录执行卸载时，也共享同一实例锁。
+                fd = os.open('/run/lock/' + project + '.uninstall.lock',
+                             os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+                project_lock = locks.enter_context(os.fdopen(fd, 'a'))
+                fcntl.flock(project_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if target is not None and target != ROOT:
                 lifecycle = locks.enter_context((target / '.lifecycle.lock').open('a'))
                 fcntl.flock(lifecycle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            state = target / 'state'
-            state.mkdir(mode=0o700, exist_ok=True)
-            lock = locks.enter_context((state / 'install.lock').open('a'))
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            if identity(target) != (product, project):
-                raise RuntimeError('获取锁后实例身份发生变化，未删除数据')
+            if target is not None:
+                state = target / 'state'
+                state.mkdir(mode=0o700, exist_ok=True)
+                lock = locks.enter_context((state / 'install.lock').open('a'))
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if identity(target) != (product, project):
+                    raise RuntimeError('获取锁后实例身份发生变化，未删除数据')
             with report.stage('核对实例归属与删除范围'):
                 plan = cleaner.inventory()
                 if not any(plan.values()):
@@ -206,7 +255,7 @@ def main():
                 print('已取消，未删除数据。')
                 return
             with report.stage('删除选中实例资源'):
-                if identity(target) != (product, project):
+                if target is not None and identity(target) != (product, project):
                     raise RuntimeError('实例身份已改变，停止卸载')
                 cleaner.remove(plan)
                 remaining = cleaner.discover()
@@ -214,9 +263,10 @@ def main():
                 original_ids = set(plan['container'])
                 if any(row['容器'] in original_ids or row['实例'] == project for row in remaining):
                     raise RuntimeError('卸载后发现目标容器残留，保留安装记录并停止报告成功')
-            with report.stage('清除原安装状态与凭据'):
-                (target / 'compose.install.json').unlink(missing_ok=True)
-                shutil.rmtree(state)
+            if target is not None:
+                with report.stage('清除原安装状态与凭据'):
+                    (target / 'compose.install.json').unlink(missing_ok=True)
+                    shutil.rmtree(state)
         report.finish('卸载完成')
         print('已删除目标实例：' + project)
         if remaining:

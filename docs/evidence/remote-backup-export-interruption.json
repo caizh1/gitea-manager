@@ -1,0 +1,63 @@
+{
+  "说明": "真实停机导出进程中断后仍无自动恢复，属于既有P1的新增阶段证据；人工接管单独判定",
+  "编号": "RB-INTERRUPT-003",
+  "级别": "P1",
+  "备份ID": 31,
+  "真实注入阶段": "dump",
+  "实际导出进程已观察": true,
+  "被测Manager镜像": "sha256:3da7b51bb9a8dd084c899e277bd7e81e27376e44c613c0c15d297568a6c3a24f",
+  "驱动镜像": "sha256:9f8b7b282e04af16e898e0952445def985e1e2cd79021910a16cbded1ee22043",
+  "开始UTC": "2026-10-23T00:15:27.821917+00:00",
+  "整链结束UTC": "2026-10-23T00:22:58.168987+00:00",
+  "整链退出码": 1,
+  "失败归属": "产品三分钟后仍悬挂；运维收尾及独立全表核验已经完成，保留原产品失败",
+  "中断后观察秒": 184.115,
+  "观察结束任务状态": "running/dump",
+  "观察结束错误字段为空": true,
+  "观察结束源容器状态": "Exited (0)",
+  "独立认证探针": {
+    "版本": 2,
+    "中断窗口样本数": 178,
+    "三分钟后源连接失败且Manager会话正常样本数": 4,
+    "未知源样本数": 0,
+    "目标B窗口全部认证健康": true,
+    "另一次真实Manager登录成功": true
+  },
+  "人工接管": {
+    "指定任务状态": "failed",
+    "唯一助手停止并保留": true,
+    "源原数据未被覆盖": true,
+    "全部public表数": 150,
+    "独立逐字段重比差异": [],
+    "其他比较类别": [
+      "全部Git引用及对象",
+      "软件包及附件等正文摘要",
+      "业务配置",
+      "数据密钥",
+      "精确排除规则"
+    ],
+    "接管前审计行数": 1539,
+    "接管后审计行数": 1539,
+    "最终两侧认证健康且无实例锁或活动任务": true,
+    "Manager原保留记录一致": true
+  },
+  "源码与当前工作区一致的因果文件": {
+    "backend/services/task_manager.py": "bd318f6b272bb084b4e5097fc08199440a9cfb761b18fa2d36ae5b38967780ff",
+    "backend/services/backup_consistency.py": "624710096e8a78fe72b166483456b497eccad48a889f335eb929c1ce35f6b9b6"
+  },
+  "原始受限文件摘要": {
+    "process-source-dump-31.json": "36b24fa3e7c766ea94a38a3972cacb11ba21cad812f5f437c7d0f8bdcde2e800",
+    "interrupted-backup-31.json": "178ae023dc99a81ff63d01964a12956d529de92f0fde1b858f0bc4cb15b095db",
+    "phase-runs/1792714527821387000-process-source-dump.json": "8e950671aaeca58bd2f6c0688b750b2b22cd32bb21edd04b694edf4c3198260a",
+    "control/1792714694441067875-54df1a1d.request.json": "e86fc00c35843c6a4fe93171af6babbc8e9525641276c670494532818eeaaeb9",
+    "control/1792714694441067875-54df1a1d.response.json": "7bcb10ac61ba71731db1dd5b701ca79b8d16eca1994242ffeb953a0cc676e35e",
+    "snapshots/a-1792714607487050584.json": "9b34d6ce4379d4b15e8237151f30c943d28c76011ac33973b374e232ceb0df07",
+    "snapshots/a-1792714977996727631.json": "2728e885d151bcc50c702a36bce4006df2f82ba7a7eb96fb39c913d9ed7728c9",
+    "availability/source-dump-interruption-independent-1792714978846737840.json": "4aaeced48cfb7ba9d456d03342902c1284d0481f0e4c09ab3b09c05aa8c0dc18",
+    "dump-interruption-observation-31-1792714789754510919.json": "08c9edc75904fab7969c09b5af82a2fea0f7475d54d27e94031164ec33ff9117",
+    "dump-interruption-health-31-1792715077038775135.json": "04dc0b320f11afdb27d1a7e01b4fbfe944309722f229c45d754fe853bfc21dd5",
+    "source-container-events-31-1792715101281324000.json": "b276870550957b2b70c1937cae01ec83d2f8ab0ddbf7d2c287b77b12c26edf5c"
+  },
+  "计量边界": "本轮认证观察在计划停源后开始；事后Docker有界历史仅返回启动事件，缺失本次停止事件，不能推断完整容器停机秒数。整链450秒包含停机快照、人工接管及核验，不能作为正常性能或生产RTO。",
+  "验收边界": "这是导出阶段一次真实复现，不满足关键破坏阶段重复两轮；源快照阶段的旧两轮另有证据。传输阶段、故障解除后新的完整备份恢复、全表检查点、二十四小时和最终包复验仍未完成。"
+}

@@ -175,9 +175,7 @@ export default {
         if (confirm(msg)) {
           api.delete(`/servers/${row.id}`).then(() => { loadServers() })
         }
-      }).catch(() => {
-        api.delete(`/servers/${row.id}`).then(() => { loadServers() })
-      })
+      }).catch(() => {})
     }
 
     function checkServer(row) {

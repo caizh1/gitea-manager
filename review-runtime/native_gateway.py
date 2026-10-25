@@ -188,7 +188,8 @@ def response_text_bytes(value):
 
 class NativeGateway:
     def __init__(self, broker, capability, job_id, session_id, model, deadline, workspace, event=None,
-                 response_limit=8 * 1024 * 1024, failure=None, result_schema=None, capture=None, retrieval_budget=0):
+                 response_limit=8 * 1024 * 1024, failure=None, result_schema=None, capture=None, retrieval_budget=0,
+                 diff_only=False):
         self.broker = broker.rstrip('/')
         self.capability = capability
         self.job_id = job_id
@@ -211,6 +212,7 @@ class NativeGateway:
         self.responses = set()
         self.upstream_sockets = set()
         self.retrieval_budget = retrieval_budget
+        self.diff_only = diff_only
         self.retrieval_used = 0
         self.active = True
         self.lock = threading.Lock()
@@ -308,6 +310,8 @@ class NativeGateway:
                 raise ValueError('response_message')
             effective += response_text_bytes(message) + response_text_bytes(choice)
         calls = self._tool_calls(content_type, raw)
+        if self.diff_only and calls:
+            raise ValueError('tools_disabled_for_diff_review')
         for call in calls:
             effective += len((call.get('name') or '').encode()) + len((call.get('arguments') or '').encode())
         if effective > self.response_limit:
@@ -380,6 +384,10 @@ class NativeGateway:
                             raise GatewayProtocolError('invalid_sse_frame', len(frame)) from None
                         if not isinstance(value, dict):
                             raise GatewayProtocolError('invalid_sse_frame', len(frame))
+                        # usage 常以 choices=[] 独立结束帧返回；原生压缩依赖其 Token 计数，
+                        # 不能当作心跳丢弃，也不计入模型正文额度。
+                        if isinstance(value.get('usage'), dict):
+                            meaningful = True
                         failure = value.get('_review_transport_error')
                         if failure is not None:
                             if (not isinstance(failure, dict)
@@ -656,14 +664,21 @@ class NativeGateway:
                             tool['function']['parameters'] = gateway.result_schema
                             body['tool_choice'] = 'required'
                 finishing = False
-                if gateway.retrieval_budget:
+                if gateway.retrieval_budget and not gateway.diff_only:
                     left = max(0, gateway.retrieval_budget - gateway.retrieval_used)
                     finishing = left == 0 or gateway.deadline - time.time() <= 60
-                    instruction = f'本任务剩余只读检索操作额度：{left}。自主决定每次读取范围，只补查影响结论的证据。'
                     if finishing:
                         body['tools'] = [tool for tool in body['tools'] if tool['function']['name'] == 'StructuredOutput']
                         instruction = '检索额度或收尾时间已到。禁止继续检索，立即通过 StructuredOutput 提交已有结论；未完成范围如实列入 skipped，不得宣称全部审查完成。'
-                    body['messages'] = list(body['messages']) + [{'role': 'system', 'content': instruction}]
+                        body['messages'] = list(body['messages']) + [{'role': 'system', 'content': instruction}]
+                if any(tool['function']['name'] == 'StructuredOutput' for tool in body['tools']):
+                    # 与普通 ChipMate 对话一样允许模型自主选择工具；收尾只指定结果工具。
+                    body['tool_choice'] = ({'type': 'function', 'function': {'name': 'StructuredOutput'}}
+                                           if finishing else 'auto')
+                if gateway.diff_only:
+                    # 双层限制：原生权限全部拒绝；发往模型的请求也不暴露任何工具。
+                    for key in ('tools', 'tool_choice', 'parallel_tool_calls', 'response_format'):
+                        body.pop(key, None)
                 # 严格聊天模板要求系统消息位于开头；保持工具调用和回执的相对顺序。
                 body['messages'] = leading_system_messages(body['messages'])
                 fingerprint = request_fingerprint(body)

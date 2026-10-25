@@ -22,14 +22,17 @@ args=parser.parse_args()
 def run(command):subprocess.run(command,cwd=ROOT,check=True)
 if not args.upgrade_only: run(['python3','scripts/review-runtime-prepare.py'])
 offline=ROOT/'offline';offline.mkdir(exist_ok=True)
-images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline',
+images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline','gitea-review-svn:offline',
         'python:3.11-slim','nginx:1.31.1','gitea/gitea:1.26.4','postgres:17.11-bookworm']
-if args.upgrade_only: images=images[:3]
+if args.upgrade_only: images=images[:4]
 if args.include_legacy_executor: images.append('gitea-review-executor-legacy:offline')
 expected_images={}
 if args.export_images:
-    for component in (('backend','frontend','executor','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor')):
+    for component in (('backend','frontend','executor','svn','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor','svn')):
         source=('gitea-review-executor:'+args.source_image_tag+'-legacy') if component=='executor-legacy' else 'gitea-review-'+component+':'+args.source_image_tag
+        if component.startswith('executor'):
+            run(['python3', 'scripts/executor-image-acceptance.py', source,
+                 str(ROOT/'work'/('package-'+component+'-acceptance.json'))])
         dest='gitea-review-'+component+':offline'
         expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect','--platform','linux/amd64',source],text=True))[0]['Id']
         run(['docker','tag',source,dest])
@@ -52,7 +55,7 @@ with tarfile.open(offline/'运行镜像.tar') as archive:
                          '架构':value['architecture'],'系统':value['os']})
 (offline/'镜像清单.json').write_text(json.dumps({'说明':'本交付包固定镜像；启动使用 --no-build --pull never。','镜像':manifest},ensure_ascii=False,indent=2)+'\n')
 roots=['frontend','backend','review-runtime','docs','scripts','offline','docker-compose.yml','compose.ai-review.yml',
-       'compose.ai-review.images.yml','compose.tls.yml','compose.review-local.yml','compose.local.yml','deploy.sh','upgrade.sh','install.sh','uninstall.sh','deployment','AGENTS.md','README.md','.dockerignore','.gitignore']
+       'compose.ai-review.images.yml','compose.tls.yml','compose.review-local.yml','compose.local.yml','compose.remote-backup.yml','deploy.sh','upgrade.sh','install.sh','uninstall.sh','deployment','AGENTS.md','README.md','.dockerignore','.gitignore']
 excluded={'node_modules','__pycache__','.git','.DS_Store','.env','work','data'}
 if args.upgrade_only:
     roots=['offline/运行镜像.tar','offline/镜像清单.json','scripts/upgrade_runtime.py',

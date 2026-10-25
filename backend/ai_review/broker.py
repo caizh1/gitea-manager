@@ -26,6 +26,73 @@ with (Path(__file__).with_name('review_result_schema.json')).open(encoding='utf-
     REVIEW_RESULT_SCHEMA = json.load(schema_file)
 
 
+def issue_completion(store, job, issue_id, messages, config):
+    """Worker 内部的单次纯文本网关；使用同一传输、权限与撤销检查，无工具入口。"""
+    from .authorization import authorize
+    from .common import Stale, AccessRevoked
+    from .thinking import parameters
+    from services.upgrade_maintenance import active as maintenance
+    repo = store.repo(job['repository'])
+    last_authorized = 0
+    def guard():
+        nonlocal last_authorized
+        store.active(job['id'], job['owner'])
+        if maintenance():
+            raise Stale('升级维护已开始，停止旧问题复核')
+        if time.monotonic() - last_authorized >= 5:
+            try:
+                authorize(repo, job)
+            except ReviewError as exc:
+                raise AccessRevoked(str(exc)) from None
+            last_authorized = time.monotonic()
+    guard()
+    if job.get('batch_protocol'):
+        from .batch_counter import run as count_request
+        from .batch_store import get as get_plan
+        plan = get_plan(store, job['id'])
+        config = dict(config, model_max_output_tokens=config.get('model_max_output_tokens') or 8192)
+        count_request('count', {'messages': messages, 'profile': plan['value']['profile']}, config, guard, store.path.parent)
+    with store.tx() as c:
+        store._active(c, job['id'], job['owner'])
+        if job.get('batch_protocol'):
+            used = c.execute('SELECT model_calls FROM jobs WHERE id=?', (job['id'],)).fetchone()[0]
+            authorized = c.execute('SELECT authorized_calls FROM review_batch_plans WHERE job=?', (job['id'],)).fetchone()[0]
+            if used >= authorized:
+                raise ReviewError('历史复核超过已确认调用上限')
+        changed = c.execute("UPDATE review_issue_checks SET state='started',started=? WHERE job=? AND issue=? AND state='queued'",
+                            (time.time(), job['id'], issue_id)).rowcount
+        if not changed:
+            raise ReviewError('本问题复核已经提交，未重发')
+        # 不读取 max_calls；一次性检查记录是每个问题的唯一发送约束。
+        c.execute('UPDATE jobs SET model_calls=model_calls+1 WHERE id=?', (job['id'],))
+    outbound = dict(model=config['model'], messages=messages, stream=True, **parameters(config))
+    if config.get('model_max_output_tokens'):
+        outbound['max_tokens'] = config['model_max_output_tokens']
+    transport = None
+    try:
+        transport = open_model_stream(endpoint(config['api_base_url'], 'AI_REVIEW_MODEL_HOSTS') + '/chat/completions',
+            outbound, store.unseal(config['api_key']), connect_timeout=MODEL_CONNECT_TIMEOUT,
+            timeout=min(config.get('model_request_timeout_seconds', 600), max(1, job.get('_batch_deadline', time.time()+86400)-time.time())), heartbeat=guard)
+        if transport.status != 200:
+            raise ReviewError(f'旧问题复核服务返回 HTTP {transport.status}，未重试')
+        collector = ResponseCollector(transport.content_type.split(';')[0].strip() == 'text/event-stream', body_limit(config))
+        for chunk in transport.chunks(guard):
+            collector.feed(chunk)
+        envelope, metadata = collector.finish()
+        guard()
+        choice = envelope['choices'][0]
+        if (choice['finish_reason'] != 'stop' or choice['message'].get('tool_calls') or
+                any(r != 'stop' for r in metadata['finish_reasons']) or
+                any(metadata.get(k) for k in ('malformed_event', 'upstream_error_event', 'multiple_choices', 'unsupported_content'))):
+            raise ReviewError('旧问题复核未完整结束或请求了工具，未使用该结论')
+        return json.loads(choice['message']['content']), dict(transport.metrics, usage=metadata.get('usage', {}))
+    except (ModelTransportError, CompletionError) as exc:
+        raise ReviewError('旧问题复核传输或协议失败：' + getattr(exc, 'kind', getattr(exc, 'code', '未知原因')) + '，未重试') from None
+    finally:
+        if transport:
+            transport.close()
+
+
 class NativeSSEEnd:
     """只保留当前小事件，用于区分“可信结束后断流”和“未结束断流”。"""
     MAX_EVENT = 256 * 1024
@@ -176,9 +243,29 @@ def native_request_shape(body):
         names.append(name)
     if len(names) != len(set(names)):
         raise ReviewError('原生工具声明包含重复名称')
-    if 'StructuredOutput' in names and body.get('tool_choice') != 'required':
-        raise ReviewError('原生结构化结果必须使用 required 工具选择')
+    choice = body.get('tool_choice')
+    if isinstance(choice, dict):
+        if (choice.get('type') != 'function' or not isinstance(choice.get('function'), dict)
+                or choice['function'].get('name') not in names):
+            raise ReviewError('原生工具选择必须引用已声明的工具')
+    elif choice not in (None, 'auto', 'required', 'none'):
+        raise ReviewError('原生工具选择无效')
+    if 'StructuredOutput' in names and choice == 'none':
+        raise ReviewError('原生结构化结果不能禁用工具')
     return body
+
+
+def native_sampling_parameters(body, config):
+    """保留原生采样参数；明确选择 Qwen 协议时使用该模型官方采样配置。"""
+    result = {key: body[key] for key in ('temperature', 'top_p', 'top_k', 'min_p',
+              'frequency_penalty', 'presence_penalty', 'repetition_penalty') if key in body}
+    if (config.get('thinking_protocol') == 'qwen_vllm'
+            and re.fullmatch(r'(?:.*/)?qwen3\.8-27b(?:-fp8)?', config.get('model', ''), re.I)):
+        thinking = config.get('thinking_enabled', False)
+        result.update(temperature=1.0 if thinking else 0.7, top_p=0.95 if thinking else 0.8,
+                      top_k=20, min_p=0.0, presence_penalty=0.0 if thinking else 1.5,
+                      repetition_penalty=1.0)
+    return result
 
 
 def validate_completion(content, streaming, limit=8*1024*1024, metadata=None):
@@ -306,6 +393,23 @@ def create_broker(store=None):
             native_request_shape(body)
             request_hash = hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest()
+            with store.connect() as c:
+                # 先验证能力令牌，再消耗计数进程资源；下方事务在发送前再次核对。
+                preliminary = c.execute('SELECT * FROM capabilities WHERE token_hash=?', (token_hash,)).fetchone()
+                if (not preliminary or preliminary['job'] != job_id or preliminary['expires'] < time.time()
+                        or preliminary['remaining'] == 0 or body.get('model') != preliminary['model']):
+                    raise ReviewError('任务原生会话授权无效或已过期')
+                batch_job = c.execute('SELECT batch_protocol,owner FROM jobs WHERE id=?', (job_id,)).fetchone()
+            if batch_job and batch_job['batch_protocol']:
+                from .batch_counter import run as count_request
+                from .batch_store import get as get_plan
+                cfg = store.job_config(job_id)
+                cfg['model_max_output_tokens'] = cfg.get('model_max_output_tokens') or 8192
+                planned = get_plan(store, job_id)
+                if not planned:
+                    raise ReviewError('缺少分批计划，拒绝模型调用')
+                measurement = count_request('count', {'messages': body['messages'], 'profile': planned['value']['profile']}, cfg,
+                    lambda: store.active(job_id, batch_job['owner']), store.path.parent)
             with store.tx() as c:
                 cap = c.execute('SELECT * FROM capabilities WHERE token_hash=?', (token_hash,)).fetchone()
                 if (not cap or cap['job'] != job_id or cap['expires'] < time.time()
@@ -331,6 +435,18 @@ def create_broker(store=None):
                     c.execute('UPDATE capabilities SET remaining=remaining-1 WHERE token_hash=?', (token_hash,))
                 config = store.job_config(job_id, connection=c)
                 job = c.execute('SELECT model_calls FROM jobs WHERE id=?', (job_id,)).fetchone()
+                if batch_job and batch_job['batch_protocol']:
+                    expected_session = c.execute('SELECT session_id FROM jobs WHERE id=?', (job_id,)).fetchone()[0]
+                    if expected_session != session_id:
+                        raise ReviewError('当前批次会话不匹配')
+                    plan_row = c.execute('SELECT authorized_calls,value FROM review_batch_plans WHERE job=?', (job_id,)).fetchone()
+                    if job['model_calls'] >= plan_row['authorized_calls'] or plan_row['authorized_calls'] < json.loads(plan_row['value'])['max_calls']:
+                        raise ReviewError('本计划尚未确认或已用尽调用授权')
+                    if c.execute('SELECT count(*) FROM review_native_calls WHERE job=? AND session_id=?', (job_id, session_id)).fetchone()[0] > 1:
+                        raise ReviewError('单元会话已经提交过模型调用，禁止隐式重试')
+                    config['model_max_output_tokens'] = config.get('model_max_output_tokens') or 8192
+                    c.execute('INSERT INTO review_batch_measurements(job,session_id,value,created) VALUES(?,?,?,?)',
+                              (job_id, session_id, encode(measurement), time.time()))
                 c.execute('UPDATE jobs SET model_calls=model_calls+1 WHERE id=?', (job_id,))
                 c.execute('INSERT INTO review_model_inputs VALUES (?,?,?,?)',
                           (job_id, job['model_calls'] + 1, encode(body['messages']), time.time()))
@@ -348,14 +464,19 @@ def create_broker(store=None):
                 'task_remaining_seconds': round(deadline - time.time(), 3)})
             outbound = {key: value for key, value in body.items() if key in (
                 'messages', 'tools', 'tool_choice', 'parallel_tool_calls', 'stream', 'stream_options',
-                'response_format', 'seed', 'stop', 'top_p', 'frequency_penalty', 'presence_penalty')}
-            outbound.update(model=cap['model'], temperature=0.1)
+                'response_format', 'seed', 'stop')}
+            outbound.update(model=cap['model'])
+            outbound.update(native_sampling_parameters(body, config))
             if config.get('model_max_output_tokens'):
                 outbound['max_tokens'] = config['model_max_output_tokens']
             from .thinking import parameters as thinking_parameters
             outbound.update(thinking_parameters(config))
 
             def still_authorized():
+                if batch_job and batch_job['batch_protocol']:
+                    from services.upgrade_maintenance import active as maintenance
+                    if maintenance():
+                        raise ReviewError('升级维护已开始，停止分批模型传输')
                 with contextlib.closing(store.connect()) as c:
                     current_cap = c.execute('SELECT * FROM capabilities WHERE token_hash=?', (token_hash,)).fetchone()
                     current_binding = c.execute('SELECT * FROM review_native_bindings WHERE token_hash=?',

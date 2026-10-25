@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { accessState } from '../composables/accessState.js'
+import { decodeApiError, notifyApiError } from './errors.js'
 
 export const api = axios.create({ baseURL: '/api', withCredentials: true })
 let scopeController = new AbortController()
@@ -28,14 +29,19 @@ api.interceptors.response.use(
     if (response.config.accessGeneration !== accessState.generation) throw new axios.CanceledError('权限范围已切换')
     return response
   },
-  error => {
+  async error => {
     error.config?.releaseAccessSignals?.()
+    if (error.config && error.config.accessGeneration !== accessState.generation) return Promise.reject(new axios.CanceledError('权限范围已切换'))
+    if (axios.isCancel(error)) return Promise.reject(error)
+    await decodeApiError(error)
     if (error.config && error.config.accessGeneration !== accessState.generation) return Promise.reject(new axios.CanceledError('权限范围已切换'))
     // 测试账号失败只显示在测试表单；真实会话失效卸载页面并清空数据。
     if (error.response?.status === 401 && !['/login', '/session', '/access/directory/test-login'].includes(error.config?.url)) {
       window.dispatchEvent(new Event('manager-session-expired'))
     }
     if (accessState.authenticated && [403, 404, 409].includes(error.response?.status) && error.config?.url !== '/session') window.dispatchEvent(new Event('manager-access-changed'))
+    // 后台轮询由所在区域显示连接状态；其余接口失败统一提供可见反馈。
+    if (error.config?.notifyError !== false && !['/login', '/session', '/access/directory/test-login'].includes(error.config?.url) && error.response?.status !== 401) notifyApiError(error)
     return Promise.reject(error)
   },
 )

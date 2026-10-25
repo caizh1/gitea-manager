@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--old-image-tag',default='legacy-initial-20260922')
     parser.add_argument('--fault-after-verify', action='store_true')
     parser.add_argument('--runtime-gate', action='store_true', help='覆盖旧安装器的执行器状态门禁和诊断共享卷')
+    parser.add_argument('--stopped-executor-image', default='', help='增加已退出执行器和原令牌，验证升级及回退不会遗漏停止服务')
     parser.add_argument('--skip-fault', action='store_true', help='仅用于缺陷复现，不执行故障注入')
     args=parser.parse_args()
     package=args.package_dir.resolve()
@@ -52,6 +53,14 @@ def main():
             'volumes':['manager-data:/custom/state','/var/run/docker.sock:/var/run/docker.sock']},
         'frontend':{'image':'gitea-review-frontend:'+args.old_image_tag,'platform':'linux/amd64',
             'ports':['127.0.0.1::80'],'mem_limit':'128m','cpus':.5}},'volumes':{'manager-data':{}}}
+    executor_token = secrets.token_urlsafe(40)
+    if args.stopped_executor_image:
+        token_file = folder/'executor.token'; token_file.write_text(executor_token); token_file.chmod(0o444)
+        compose['services']['review-executor'] = {
+            'image':args.stopped_executor_image, 'platform':'linux/amd64',
+            'command':['python','-c','pass'], 'labels':{'io.gitea-manager.upgrade-test':'true'},
+            'environment':{'AI_REVIEW_EXECUTOR_TOKEN_FILE':'/run/secrets/review_executor'},
+            'volumes':[str(token_file)+':/run/secrets/review_executor:ro']}
     if args.runtime_gate:
         runtime_folder=folder/'runtime';runtime_folder.mkdir()
         (runtime_folder/'status.json').write_text(json.dumps({'ready':True,'version':'1.1.51','mode':'legacy'}))
@@ -102,6 +111,14 @@ def main():
         run([docker,'exec',backend,'python','-c',seed])
         seed_servers = "from app import create_app; from models import db,GiteaServer,Backup,ScheduledTask,Setting; a=create_app(); ctx=a.app_context(); ctx.push(); db.session.add(Setting(key='host_ip',value='192.0.2.1')); rows=[GiteaServer(name='历史本地',role='primary',host='192.0.2.1',ssh_user='旧账号',gitea_port=3000,gitea_url='http://192.0.2.1:3000',api_token='fixture-local',is_local=True),GiteaServer(name='历史远端',role='backup',host='192.0.2.2',ssh_user='旧账号',gitea_port=3000,gitea_url='http://192.0.2.2:3000',api_token='fixture-remote',is_local=False)]; db.session.add_all(rows); db.session.commit(); db.session.add(Backup(source_server_id=rows[0].id,filename='backup.zip',file_path='/custom/state/backups/legacy-backup.zip',status='success')); db.session.add(ScheduledTask(name='历史计划',enabled=False,source_server_id=rows[0].id,target_ids='[2]')); db.session.commit()"
         run([docker,'exec',backend,'python','-c',seed_servers])
+        if args.stopped_executor_image:
+            executor_id = run(command+['ps','-aq','review-executor']).strip()
+            original_executor = json.loads(run([docker,'inspect',executor_id]))[0]
+            assert not original_executor['State']['Running'], '未建立已退出执行器场景'
+            failed_exec = subprocess.run([docker,'exec',executor_id,'python','-c','pass'], capture_output=True, text=True)
+            assert failed_exec.returncode and 'is not running' in failed_exec.stderr, '未复现停止容器拒绝 exec'
+            report['升级前执行器状态'] = '已退出，原 exec 路径拒绝执行'
+            report['原执行器令牌摘要'] = hashlib.sha256(executor_token.encode()).hexdigest(); save()
 
         for fault in ((False,) if args.skip_fault else (True,False)):
             env=os.environ.copy()
@@ -131,6 +148,13 @@ def main():
             if fault:
                 assert services['backend']['Image']==info['Image'],'未恢复原镜像'
                 run([docker,'exec',services['backend']['Id'],'python','-c',"import sqlite3; c=sqlite3.connect('/custom/state/gitea-manager.db'); assert 'connection_mode' not in {r[1] for r in c.execute('PRAGMA table_info(gitea_servers)')}; assert c.execute('SELECT is_local FROM gitea_servers ORDER BY id').fetchall()==[(1,),(0,)]; assert c.execute('SELECT count(*) FROM backups').fetchone()[0]==1"])
+                if args.stopped_executor_image:
+                    restored_id = run(command+['ps','-aq','review-executor']).strip()
+                    restored = json.loads(run([docker,'inspect',restored_id]))[0]
+                    assert not restored['State']['Running'], '回退擅自启动了原停止执行器'
+                    assert restored['Image']==original_executor['Image'], '回退遗漏了原停止执行器镜像'
+                    assert restored['Config']['Cmd']==original_executor['Config']['Cmd'], '回退遗漏了原停止执行器命令'
+                    row['原停止执行器镜像及停止状态'] = '保持'; save()
                 row['结果']='通过';save();continue
             view=services['approval-view']['Id'];new_backend=services['backend']['Id']
             migrated_hash=run([docker,'exec',new_backend,'python','-c',"import sqlite3; c=sqlite3.connect('/custom/state/gitea-manager.db'); print(c.execute(\"select password_hash from access_accounts where subject='local:admin' and source_id is null\").fetchone()[0])"]).strip()
@@ -155,6 +179,12 @@ def main():
             assert workspace_worker==workspace_executor['Name'] and not workspace_executor['RW']
             assert next(m['Name'] for m in services['backend']['Mounts'] if m['Destination']=='/custom/state')==next(m['Name'] for m in info['Mounts'] if m['Destination']=='/custom/state')
             row.update(结果='通过',七个服务运行=True,展示健康=True,原持久卷与数据保持=True);save()
+            if args.stopped_executor_image:
+                token_check = "from pathlib import Path; import hashlib,os; print(hashlib.sha256(Path(os.environ['AI_REVIEW_EXECUTOR_TOKEN_FILE']).read_bytes()).hexdigest())"
+                expected_token = hashlib.sha256(executor_token.encode()).hexdigest()
+                for name in ('review-worker','review-executor'):
+                    assert run([docker,'exec',services[name]['Id'],'python','-c',token_check]).strip()==expected_token, '升级未保留原执行器令牌'
+                row['原执行器令牌'] = 'Worker 与新执行器均逐字节保留'; save()
             if args.runtime_gate:
                 run([docker,'exec',new_backend,'python','-c',"from ai_review.runtime_status import status; s=status(); assert s['ready'] and s['version']=='1.1.51'; from pathlib import Path; import os; assert Path(os.environ.get('MANAGEMENT_DIAGNOSTICS','/app/data/diagnostics')).joinpath('diagnostics-'+s['diagnostic_id']+'.tar.gz').is_file()"])
                 executor=services['review-executor']['Id']

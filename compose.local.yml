@@ -1,6 +1,20 @@
 # 独立本地验证环境；使用脚本生成的凭据，所有宿主机端口仅绑定回环地址。
 name: gitea-policy-local
 services:
+  svn-migration-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.svn
+    platform: linux/amd64
+    environment:
+      DATABASE_URL: sqlite:////app/data/gitea-manager.db
+      GM_UPGRADE_MAINTENANCE_FILE: /app/data/.svn-upgrade-maintenance
+    volumes: [manager-data:/app/data]
+    read_only: true
+    tmpfs: ['/tmp:size=128m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
   postgres:
     image: postgres:17.11-bookworm
     pull_policy: never

@@ -406,6 +406,7 @@ class SessionRun:
         self.capability = data['capability']
         self.prompt = data['prompt']
         self.system = data.get('system') or ''
+        self.diff_only = data.get('review_scope') == 'diff'
         self.model_context_tokens = data.get('model_context_tokens') or 32768
         self.compaction_threshold_tokens = data.get('compaction_threshold_tokens')
         self.upstream_output_tokens = data.get('model_max_output_tokens') or 0
@@ -657,6 +658,11 @@ class SessionRun:
                               **input_limit,
                               'output': self.compaction_output_tokens}}}}},
         }
+        if self.diff_only:
+            config['permission'] = {'*': 'deny'}
+            config['agent']['review'] = {'mode': 'primary', 'prompt': self.system,
+                                         'permission': {'*': 'deny'}}
+            config['compaction']['auto'] = False
         env = {
             'PATH': '/usr/local/bin:/usr/bin:/bin', 'LANG': 'C.UTF-8', 'CI': 'true', 'NO_COLOR': '1',
             'HOME': str(self.root), 'TMPDIR': str(self.root / 'tmp'), 'TMP': str(self.root / 'tmp'),
@@ -674,7 +680,7 @@ class SessionRun:
                      'DISABLE_SHARE', 'DISABLE_CHANNEL_DB', 'DISABLE_TERMINAL_TITLE',
                      'EXPERIMENTAL_DISABLE_FILEWATCHER'):
             env['OPENCODE_' + flag] = 'true'
-        if VERSION == '1.1.51':
+        if VERSION == '1.1.51' and not self.diff_only:
             from legacy_adapter import prepare
             prepare(self.root, env)
         return env
@@ -1164,7 +1170,8 @@ class SessionRun:
                                              response_limit=self.response_limit,
                                              failure=self._model_request_failed,
                                              result_schema=REVIEW_RESULT_SCHEMA,
-                                             capture=self._capture_gateway, retrieval_budget=self.retrieval_budget)
+                                             capture=self._capture_gateway, retrieval_budget=self.retrieval_budget,
+                                             diff_only=self.diff_only)
                 self.gateway.start()
                 self.env = self._env()
                 self.server_port = self._port()
@@ -1222,7 +1229,10 @@ class SessionRun:
                        'system': self.system + safety,
                        'format': {'type': 'json_schema', 'schema': REVIEW_RESULT_SCHEMA},
                        'parts': [{'type': 'text', 'text': self.prompt}]}
-            if VERSION == '1.1.51':
+            if self.diff_only:
+                payload.pop('format')
+                payload.pop('system')  # 专用 agent.prompt 已替换通用编程提示词。
+            elif VERSION == '1.1.51':
                 payload.pop('format')
                 payload['system'] += '\n必须通过 StructuredOutput 工具提交结果，且只提交一次。'
             self.prompt_submitted = True
@@ -1254,10 +1264,16 @@ class SessionRun:
                 'text_part_count': len(text_parts), 'response_chars': len(text),
                 'received_bytes': len(raw)})
             structured = info.get('structured')
-            if VERSION == '1.1.51':
+            if VERSION == '1.1.51' and not self.diff_only:
                 from legacy_adapter import result_from_messages
                 raw_messages, _ = self._request('GET', f'/session/{quote(self.native_session_id)}/message')
                 structured = result_from_messages(json.loads(raw_messages), self.native_session_id)
+            if self.diff_only:
+                if not text.strip() or info.get('error') or info.get('finish') not in ('stop', 'length'):
+                    raise NativeError('native_message_error', dict(diagnostic,
+                        source='native_result', phase='message_completion', reason='diff_report_incomplete'))
+                # 不做 JSON 提取或第二次模型总结；报告原文直接进入既有持久化和发布链路。
+                structured = {'review_scope': 'diff', 'report_markdown': text}
             if structured is None:
                 self.raw_diagnostics.result_text(text)
                 if diagnostic.get('native_error_type') == 'StructuredOutputError':
@@ -1283,7 +1299,7 @@ class SessionRun:
             result, result_bytes = decode_structured_result(
                 structured, self.response_limit, diagnostic)
             self.raw_diagnostics.result_text(result_bytes.decode())
-            completion = completion_metadata(result, info, structured=True)
+            completion = completion_metadata(result, info, structured=not self.diff_only)
             self._reconcile_events()
             self._freeze_events()
             with self.lock:
@@ -1437,6 +1453,10 @@ class NativeSessions:
                     'event_url', 'event_token', 'capability')
         if not isinstance(data, dict) or any(k not in data for k in required):
             raise NativeError('execute_input_invalid')
+        if data.get('review_scope', 'repository') not in ('repository', 'diff'):
+            raise NativeError('execute_input_invalid')
+        if data.get('batch_protocol', 0) not in (0, 1) or (data.get('batch_protocol') and data.get('review_scope') != 'diff'):
+            raise NativeError('execute_input_invalid')
         if not ID.fullmatch(str(data['job_id'])) or not ID.fullmatch(str(data['session_id'])):
             raise NativeError('execute_identity_invalid')
         if any(not isinstance(data[k], str) or not data[k] for k in
@@ -1463,7 +1483,26 @@ class NativeSessions:
         runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
         terminal_path = runtime / 'sessions' / (data['session_id'] + '.json')
         binding_path = runtime / 'bindings' / (data['job_id'] + '.json')
+        batch_path = runtime / 'batch-jobs' / (data['job_id'] + '.json')
+        batched = data.get('batch_protocol') == 1
         with self.lock:
+            if batched:
+                # 保留旧任务绑定；分批会话绑定到 (父任务, 会话)，同父任务仍只允许一个活跃会话。
+                if binding_path.exists():
+                    raise NativeError('job_session_conflict')
+                if batch_path.exists():
+                    batch = json.loads(batch_path.read_text())
+                    if batch.get('cancelled'):
+                        raise NativeError('authorization_revoked')
+                    previous = batch.get('session_id')
+                    if previous and previous != data['session_id']:
+                        active = self.sessions.get(previous)
+                        terminal = runtime / 'sessions' / (previous + '.json')
+                        if active is not None and not active.done.is_set() or not terminal.exists():
+                            raise NativeError('job_session_conflict')
+                binding_path = runtime / 'bindings' / (data['job_id'] + '.' + data['session_id'] + '.json')
+            elif batch_path.exists():
+                raise NativeError('job_session_conflict')
             if binding_path.exists():
                 binding = json.loads(binding_path.read_text())
                 if binding.get('session_id') != data['session_id']:
@@ -1476,17 +1515,22 @@ class NativeSessions:
                     raise NativeError('session_identity_conflict')
                 return existing, False
             if terminal_path.exists():
-                return TerminalSession(terminal_path), False
+                terminal = TerminalSession(terminal_path)
+                if terminal.job_id != data['job_id']:
+                    raise NativeError('session_identity_conflict')
+                return terminal, False
             if binding_path.exists():
                 binding = json.loads(binding_path.read_text())
                 if binding.get('session_id') != data['session_id']:
                     raise NativeError('job_session_conflict')
                 raise NativeError('session_state_unknown')
-            if any(row.job_id == data['job_id'] for row in self.sessions.values()):
+            if any(row.job_id == data['job_id'] and (not batched or not row.done.is_set()) for row in self.sessions.values()):
                 raise NativeError('job_session_conflict')
             workspace = self._workspace(data)
             atomic_json(binding_path, {'job_id': data['job_id'], 'session_id': data['session_id'],
                                        'model': data['model'], 'deadline_at': data['deadline_at']})
+            if batched:
+                atomic_json(batch_path, {'job_id': data['job_id'], 'session_id': data['session_id'], 'cancelled': False})
             row = SessionRun(data, workspace, runtime,
                 os.environ.get('AI_REVIEW_BROKER_URL', 'http://review-worker:5051/v1'))
             self.sessions[row.session_id] = row
@@ -1508,6 +1552,12 @@ class NativeSessions:
         runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))
         binding_path = runtime / 'bindings' / (job_id + '.json')
         with self.lock:
+            batch_path = runtime / 'batch-jobs' / (job_id + '.json')
+            if batch_path.exists():
+                batch = json.loads(batch_path.read_text())
+                batch['cancelled'] = True
+                atomic_json(batch_path, batch)
+                binding_path = runtime / 'bindings' / (job_id + '.' + session_id + '.json')
             row = self.sessions.get(session_id)
             if row is not None and row.job_id != job_id:
                 raise NativeError('session_identity_conflict')

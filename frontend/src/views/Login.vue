@@ -1,39 +1,56 @@
 <template>
-  <div class="login-container">
-    <div class="login-orb login-orb-1"></div>
-    <div class="login-orb login-orb-2"></div>
-    <div class="login-orb login-orb-3"></div>
-    <div class="login-card">
-      <h2 class="login-title">Gitea Manager</h2>
-      <p class="login-subtitle">安全登录到管理控制台</p>
-      <el-form @submit.prevent="doLogin" class="login-form">
-        <el-form-item label="登录方式">
-          <el-select v-model="source" aria-label="登录方式" class="login-source"><el-option label="本地应急管理员" value="local" /><el-option v-for="item in sources.filter(s => s.source === 'ldap' || s.type === 'ldap' || s.id === 'ldap')" :key="item.id || item.source" :label="item.name || '公司 LDAP / AD'" value="ldap" /></el-select>
-        </el-form-item>
-        <el-form-item label="账号">
-          <el-input v-model="username" autocomplete="username" :placeholder="source === 'local' ? '本地管理员账号' : '公司目录账号'" aria-label="登录账号" size="large" />
-        </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" aria-label="登录密码" size="large" prefix-icon="Lock" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" native-type="submit" :loading="loading" class="login-btn">登 录</el-button>
-        </el-form-item>
-      </el-form>
-      <p v-if="error" class="login-error">{{ error }}</p>
-      <p class="login-footer">Powered by Gitea Manager v2.0</p>
+  <main class="login-container">
+    <div class="login-background" aria-hidden="true">
+      <div class="login-orb login-orb-1"></div>
+      <div class="login-orb login-orb-2"></div>
+      <div class="login-orb login-orb-3"></div>
     </div>
-  </div>
+    <section class="login-card" aria-labelledby="login-title">
+      <h1 id="login-title" class="login-title">Gitea Manager</h1>
+      <p class="login-subtitle">安全登录到管理控制台</p>
+
+      <div class="login-access">
+        <div v-if="directorySource" class="login-methods" role="group" aria-label="登录方式">
+          <button type="button" class="login-method" :aria-pressed="source === 'local'" :disabled="loading" @click="source = 'local'">
+            <el-icon aria-hidden="true"><UserFilled /></el-icon>
+            <span>本地管理员</span>
+          </button>
+          <button type="button" class="login-method" :aria-pressed="source === 'ldap'" :disabled="loading" @click="source = 'ldap'">
+            <el-icon aria-hidden="true"><OfficeBuilding /></el-icon>
+            <span>{{ directorySource.name || '公司 LDAP / AD' }}</span>
+          </button>
+        </div>
+        <div v-else class="login-identity">
+          <el-icon aria-hidden="true"><UserFilled /></el-icon>
+          <span>本地管理员登录</span>
+        </div>
+        <p id="login-method-hint" class="login-method-hint">{{ source === 'local' ? '使用本地账号进行平台管理与应急维护' : '使用公司 LDAP / AD 目录账号登录' }}</p>
+      </div>
+
+      <el-form @submit.prevent="doLogin" class="login-form" label-position="top" aria-describedby="login-method-hint">
+        <el-form-item label="账号" for="login-username">
+          <el-input id="login-username" v-model="username" autocomplete="username" :placeholder="source === 'local' ? '请输入本地管理员账号' : '请输入公司目录账号'" :disabled="loading" size="large" prefix-icon="User" />
+        </el-form-item>
+        <el-form-item label="密码" for="login-password">
+          <el-input id="login-password" v-model="password" type="password" show-password autocomplete="current-password" placeholder="请输入密码" :disabled="loading" size="large" prefix-icon="Lock" />
+        </el-form-item>
+        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
+        <el-button type="primary" native-type="submit" :loading="loading" class="login-btn">登录</el-button>
+      </el-form>
+      <p class="login-footer">Powered by Gitea Manager v2.0</p>
+    </section>
+  </main>
 </template>
 
 <script>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api } from '../api'
 
 export default {
   props: { sources: { type: Array, default: () => [] } },
   emits: ['login'],
   setup(props, { emit }) {
+    const directorySource = computed(() => props.sources.find(s => s.source === 'ldap' || s.type === 'ldap' || s.id === 'ldap'))
     const source = ref('local'), username = ref('admin')
     watch(source, value => { username.value = value === 'local' ? 'admin' : ''; password.value = ''; error.value = '' })
     const password = ref('')
@@ -53,17 +70,19 @@ export default {
       })
     }
 
-    return { source, username, password, loading, error, doLogin }
+    return { source, username, password, loading, error, directorySource, doLogin }
   },
 }
 </script>
 
 <style scoped>
 .login-container {
-  display: flex; justify-content: center; align-items: center; height: 100vh;
+  display: flex; justify-content: center; align-items: center;
+  min-height: 100vh; min-height: 100dvh; padding: 32px 20px;
   background: var(--gradient-bg);
-  position: relative; overflow: hidden;
+  position: relative;
 }
+.login-background { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .login-container::before {
   content: ''; position: absolute; inset: 0;
   background:
@@ -84,9 +103,8 @@ export default {
 @keyframes float2 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(20px); } }
 @keyframes float3 { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
 
-.login-source { width: 100%; }
 .login-card {
-  box-sizing: border-box; max-width: calc(100vw - 32px); width: 460px; padding: 48px 40px; border-radius: 28px;
+  box-sizing: border-box; max-width: 100%; min-width: 0; width: 440px; padding: 40px; border-radius: 28px;
   background: var(--glass-dialog); backdrop-filter: var(--blur-dialog); -webkit-backdrop-filter: var(--blur-dialog);
   border: 1px solid rgba(255,255,255,0.68); box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), var(--shadow-lg);
   animation: fadeInUp 0.24s ease; position: relative; z-index: 1;
@@ -95,15 +113,50 @@ export default {
   text-align: center; font-size: 26px; font-weight: 760; margin-bottom: 8px;
   color: var(--text-primary);
 }
-.login-subtitle { text-align: center; color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; }
+.login-subtitle { text-align: center; color: var(--text-secondary); font-size: 14px; margin-bottom: 28px; }
+.login-access { margin-bottom: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--glass-border-dark); }
+.login-methods {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px;
+  padding: 4px; border-radius: 14px; background: rgba(15, 23, 42, 0.045);
+}
+.login-method {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0;
+  padding: 11px 10px; border: 1px solid transparent; border-radius: 11px;
+  background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px;
+  line-height: 20px; cursor: pointer; transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+.login-method span { min-width: 0; overflow-wrap: anywhere; }
+.login-method .el-icon, .login-identity .el-icon { flex: 0 0 16px; width: 16px; height: 16px; }
+.login-method:hover:not(:disabled) { color: var(--color-primary); background: rgba(255, 255, 255, 0.6); }
+.login-method[aria-pressed="true"] {
+  background: #fff; color: var(--color-primary); font-weight: 600;
+  border-color: rgba(15, 23, 42, 0.05); box-shadow: var(--shadow-xs);
+}
+.login-method:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.login-method:disabled { cursor: wait; opacity: 0.65; }
+.login-identity { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-primary); font-size: 14px; font-weight: 600; }
+.login-method-hint { margin-top: 12px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; text-align: center; }
+.login-form :deep(.el-form-item) { margin-bottom: 20px; }
+.login-form :deep(.el-form-item__label) { height: auto; margin-bottom: 8px; padding: 0; line-height: 20px; color: var(--text-primary); font-size: 13px; font-weight: 600; }
 .login-form :deep(.el-input__wrapper) {
   background: rgba(255,255,255,0.66) !important;
-  border-radius: 16px !important; padding: 4px 12px !important;
+  min-height: 46px; gap: 8px; border-radius: 12px !important; padding: 4px 14px !important;
 }
+.login-form :deep(.el-input__icon) { margin: 0; }
+.login-form :deep(.el-input__inner) { min-width: 0; }
 .login-btn {
-  width: 100%; height: 44px !important; font-size: 15px !important; font-weight: 600 !important;
-  border-radius: 16px !important;
+  width: 100%; height: 46px !important; margin-top: 4px; font-size: 15px !important; font-weight: 600 !important;
+  border-radius: 12px !important;
 }
-.login-error { color: var(--color-danger); text-align: center; margin-top: 8px; font-size: 13px; }
-.login-footer { text-align: center; margin-top: 20px; font-size: 12px; color: var(--text-muted); }
+.login-error { margin-bottom: 16px; padding: 10px 12px; border-radius: 10px; background: var(--color-danger-light); color: var(--color-danger); line-height: 1.6; overflow-wrap: anywhere; font-size: 13px; }
+.login-footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-muted); }
+@media (max-width: 480px) {
+  .login-container { padding: 24px 16px; }
+  .login-card { padding: 32px 24px; border-radius: 24px; }
+  .login-title { font-size: 24px; }
+  .login-method { gap: 6px; padding: 10px 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-orb, .login-card { animation: none; }
+}
 </style>

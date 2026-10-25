@@ -113,6 +113,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Close, Delete, Edit, Finished, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import { isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 
 export default {
@@ -162,7 +163,7 @@ export default {
       loadingRepos.value = true
       return api.get(`/commit-gates/repos?server_id=${selectedServerId.value}`)
         .then(res => { repos.value = res.data })
-        .catch(e => ElMessage.error(e.response?.data?.error || '仓库加载失败'))
+        .catch(e => notifyApiError(e, '仓库加载失败'))
         .finally(() => { loadingRepos.value = false })
     }
 
@@ -223,7 +224,7 @@ export default {
         editingRuleId.value = res.data.id
         loadRules()
       }).catch(e => {
-        ElMessage.error(e.response?.data?.detail || e.response?.data?.error || '保存失败')
+        notifyApiError(e, '保存失败')
       }).finally(() => { savingRule.value = false })
     }
 
@@ -233,7 +234,7 @@ export default {
           ElMessage.success('规则已删除')
           if (editingRuleId.value === row.id) newRule()
           loadRules()
-        }).catch(e => ElMessage.error(e.response?.data?.error || '删除失败'))
+        }).catch(e => notifyApiError(e, '删除失败'))
       }).catch(() => {})
     }
 
@@ -289,7 +290,7 @@ export default {
         else ElMessage.success('门禁已应用')
         loadRepos()
         loadRules()
-      }).catch(e => ElMessage.error(e.response?.data?.error || '应用失败'))
+      }).catch(e => notifyApiError(e, '应用失败'))
         .finally(() => { applying.value = false })
     }
 
@@ -302,7 +303,7 @@ export default {
         ElMessage.success('门禁已移除')
         loadRepos()
         loadRules()
-      }).catch(e => ElMessage.error(e.response?.data?.error || '移除失败'))
+      }).catch(e => notifyApiError(e, '移除失败'))
         .finally(() => { removing.value = false })
     }
 

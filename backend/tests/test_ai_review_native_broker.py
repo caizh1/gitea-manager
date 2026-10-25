@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from ai_review.broker import (create_broker, NativeSSEEnd, NativeSSEInspector, native_request_shape,
-                              upstream_error_identity,
+                              upstream_error_identity, native_sampling_parameters,
                               REVIEW_RESULT_SCHEMA)
 from ai_review.common import ReviewError
 from ai_review.diagnostics import message_for, safe_remote
@@ -132,6 +132,11 @@ class NativeBrokerFailureTests(unittest.TestCase):
         read = {'type': 'function', 'function': {'name': 'read', 'parameters': {'type': 'object'}}}
         valid = dict(base, tools=[read, structured])
         self.assertIs(native_request_shape(valid), valid)
+        for choice in (None, 'auto', 'required',
+                       {'type': 'function', 'function': {'name': 'StructuredOutput'}}):
+            with self.subTest(choice=choice):
+                value = dict(valid, tool_choice=choice)
+                self.assertIs(native_request_shape(value), value)
 
         changed = json.loads(json.dumps(structured))
         changed['function']['parameters']['additionalProperties'] = True
@@ -140,7 +145,10 @@ class NativeBrokerFailureTests(unittest.TestCase):
             dict(base, tools=[structured, structured]),
             dict(base, tools=[{'type': 'function', 'function': {'name': 'shell', 'parameters': {}}}]),
             dict(base, tools=[[]]),
-            dict(base, tools=[structured], tool_choice='auto'),
+            dict(base, tools=[structured], tool_choice='none'),
+            dict(base, tools=[structured], tool_choice={'type': 'function', 'function': {'name': 'glob'}}),
+            dict(base, tools=[structured], tool_choice={'type': 'invalid', 'function': {'name': 'StructuredOutput'}}),
+            dict(base, tools=[structured], tool_choice=[]),
         ]
         for body in invalid:
             with self.subTest(body=body):
@@ -215,12 +223,13 @@ class NativeBrokerFailureTests(unittest.TestCase):
         self.addCleanup(environment.stop)
         self.store = Store(root / 'review.db')
 
-    def request(self, mode, timeout, repository_id=99, output_tokens=0, thinking=None):
+    def request(self, mode, timeout, repository_id=99, output_tokens=0, thinking=None,
+                model='测试模型', request_values=None):
         upstream = _Upstream(mode)
         self.addCleanup(upstream.close)
         current = self.store.config()
         self.store.save_config({'revision': current['revision'], 'enabled': True,
-            'debounce_seconds': 0, 'model': '测试模型', 'engine': 'opencode_native',
+            'debounce_seconds': 0, 'model': model, 'engine': 'opencode_native',
             'api_base_url': upstream.url, 'api_key': self.store.seal('upstream-test-key'),
             'model_request_timeout_seconds': timeout,
             'model_max_output_tokens': output_tokens, **(thinking or {})})
@@ -229,10 +238,13 @@ class NativeBrokerFailureTests(unittest.TestCase):
             'repo_name': f'test/native-broker-{repository_id}', 'bot_id': 9})['id']
         job_id = self.store.enqueue(repository, 1, {'head': 'a' * 40, 'base': 'b' * 40})
         job = self.store.claim()
+        # 验证旧单会话协议；分批协议另有成本与恢复测试。
+        with self.store.tx() as c: c.execute("UPDATE jobs SET batch_protocol=0 WHERE id=?", (job["id"],))
         deadline = time.time() + timeout + 5
-        capability = _capability(self.store, job, '测试模型', deadline, -1)
-        body = {'model': '测试模型', 'stream': True,
+        capability = _capability(self.store, job, model, deadline, -1)
+        body = {'model': model, 'stream': True,
                 'messages': [{'role': 'user', 'content': '仅测试失败链'}], 'tools': []}
+        body.update(request_values or {})
         headers = {'Authorization': 'Bearer ' + capability, 'X-Review-Job': job_id,
                    'X-Review-Session': f'session_test_{repository_id:04d}',
                    'X-Review-Call': f'call_test_{repository_id:06d}', 'X-Review-Deadline': str(deadline)}
@@ -241,6 +253,46 @@ class NativeBrokerFailureTests(unittest.TestCase):
                                                                      json=body, headers=headers)
             response.get_data()
         return response, self.store.job(job_id, evidence=False)['diagnostic'], upstream
+
+    def test_actual_http_qwen_sampling_and_tool_choice_match_deployment_contract(self):
+        structured = {'type': 'function', 'function': {
+            'name': 'StructuredOutput', 'parameters': REVIEW_RESULT_SCHEMA}}
+        glob = {'type': 'function', 'function': {'name': 'glob', 'parameters': {'type': 'object'}}}
+        messages = [
+            {'role': 'user', 'content': '审查固定源码'},
+            {'role': 'assistant', 'content': None, 'tool_calls': [{
+                'id': 'empty-build-search', 'type': 'function',
+                'function': {'name': 'glob', 'arguments': '{"pattern":"after/**/build.sh"}'}}]},
+            {'role': 'tool', 'tool_call_id': 'empty-build-search', 'content': 'No files found'},
+        ]
+        for index, choice in enumerate(('auto', {'type': 'function', 'function': {'name': 'StructuredOutput'}})):
+            with self.subTest(choice=choice):
+                response, _, upstream = self.request('capture', 5, repository_id=950+index,
+                    model='qwen3.8-27b-fp8', thinking={'thinking_protocol': 'qwen_vllm', 'thinking_enabled': False},
+                    request_values={'temperature': 0.55, 'top_p': 1, 'tool_choice': choice,
+                                    'tools': [glob, structured] if choice == 'auto' else [structured],
+                                    'messages': messages})
+                self.assertEqual(response.status_code, 200)
+                sent = upstream.bodies[0]
+                self.assertEqual(sent['temperature'], 0.7)
+                self.assertEqual(sent['top_p'], 0.8)
+                self.assertEqual(sent['top_k'], 20)
+                self.assertEqual(sent['presence_penalty'], 1.5)
+                self.assertEqual(sent['chat_template_kwargs'], {'enable_thinking': False})
+                self.assertNotIn('reasoning_effort', sent)
+                self.assertEqual(sent['tool_choice'], choice)
+                self.assertEqual(sent['messages'], messages)
+                self.assertEqual(sent['tools'][-1], structured)
+
+    def test_sampling_preserves_other_models_and_qwen_thinking_profile(self):
+        values = {'temperature': 0.55, 'top_p': 1, 'presence_penalty': 0.2}
+        self.assertEqual(native_sampling_parameters(values, {'model': '其他模型'}), values)
+        self.assertEqual(native_sampling_parameters({}, {'model': '其他模型'}), {})
+        profile = native_sampling_parameters(values, {'model': 'Qwen/Qwen3.8-27B-FP8',
+            'thinking_protocol': 'qwen_vllm', 'thinking_enabled': True})
+        self.assertEqual(profile['temperature'], 1.0)
+        self.assertEqual(profile['top_p'], 0.95)
+        self.assertEqual(profile['presence_penalty'], 0.0)
 
     def test_actual_http_403_keeps_status_and_header_metrics(self):
         response, diagnostic, _upstream = self.request('http403', 5)

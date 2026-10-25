@@ -211,7 +211,9 @@ POST /api/restore { backup_id, target_server_id }
 - 恢复过程会持续更新 `RestoreTask.progress_stage`、`progress_label`、`progress_percent`、`progress_detail`。
 - 远程恢复先上传并校验 ZIP 大小/SHA-256、完成解压和内容检查，再停止目标 Gitea。
 - 远端数据库导入、解压、仓库/数据复制、权限修复和 hooks/keys 使用 `/tmp/gitea-manager/restore-<task_id>/steps/<step>/` 后台作业；Manager 每 5 秒用短 SSH 连接轮询，默认允许 300 秒 SSH 重连并限制长步骤最多运行 7200 秒。
-- `repos/` 恢复到 `/data/git/repositories/`，`data/` 恢复到 `/data/gitea/`；备份中的 `app.ini` 全量覆盖 `/data/gitea/conf/app.ini`。
+- `repos/` 恢复到 `/data/git/repositories/`，`data/` 恢复到 `/data/gitea/`；保留目标 `app.ini` 的连接配置，只将数据加密密钥切换到备份的源密钥。
+- `restore_secrets.py` 支持普通配置、文件密钥与容器环境覆盖；有覆盖时保留实际端口、挂载和网络重建容器，并同步目标 Compose 的密钥项。原容器及 Compose 回退文件保留到验证结束；不能只改 `app.ini` 后宣称重启兼容。
+- 新备份携带密钥快照，包括源实例外置文件密钥。历史备份若缺失外置密钥，需要重新备份源实例；不要求重装目标。备份和回退文件均按敏感数据保管，密钥不能进入日志。边界与验收见 `docs/restore-secret-compatibility.md`。
 - 每个步骤写入 `RestoreStepLog`，长步骤每 30 秒更新进程、输出大小、源/目标大小、数据库状态和磁盘空间等有限诊断信息，不保存 Token、SQL 正文、app.ini 内容或密码。
 - 远程恢复只有在同步源 API Token并通过 API 与 Commit ID 验证后才清理现场；失败现场由后续恢复任务清理超过 7 天的目录。
 - 本地和远程恢复都会停止目标 Gitea、覆盖仓库/配置、重建或导入 PostgreSQL、修复权限、重新生成 hooks/keys、启动 Gitea。
@@ -406,3 +408,13 @@ bash deploy.sh
 - 页面卸载和门禁停用分开；先记录停用原因，再移除本组件 Hook，保留新增业务和其他模板内容。不能恢复整个 Gitea 数据库或旧页脚覆盖他人更新。
 - `scripts/approval-integration.py` 只创建独立实例；`--packaged --image-tag offline` 验证交付镜像，不挂载源码。当前40项有限断言不能替代全矩阵、持续写流量、24小时、生产与人工精力验收。
 - 精确状态、证据与后续缺口见 `docs/审批规则开发验收报告.md`，不得根据核心路径通过宣称全部生产无感接入完成。
+
+## 15. SVN 迁移中心
+
+- `backend/svn_migration/` 管理来源、计划、固定执行快照和内容核验；API 为 `/api/svn-migrations`，仅平台管理员可用。`SvnMigrations.vue` 提供工作台、来源与仓库和执行记录路由；预检详情与执行详情使用独立地址。每次预检写入 `SvnPreflight` 与仓库关联索引，旧记录不覆盖；两个页面共用同一预检编号，输入变化后不得沿用旧结果。
+- `svn-migration-worker` 是独立串行服务，不接入 AI 执行器，不挂载 Docker socket 或宿主机 SSH 密钥。数据库、任务锁、`svn-migrations/` 及 `svn-migration.key` 在同一个 Manager 持久卷；缺失原密钥不能重新生成替代品。
+- 本期不创建业务账号、不迁移 SVN 权限、不自动冻结源端。正式执行需记录完整读取与停写确认；源变化、externals、目标冲突或无法确认的写入必须明确阻断或进入待确认。
+- 只接管任务已记录的目标或带该任务唯一标记的写入回执；不能按同名接管其他群组或仓库。新页面明确选择已有群组时，使用稳定群组 ID、完整路径及授权摘要核对，保留成员和共享；旧自动群组模式遇到人工授权仍为新批次规划新私有群组。子群组仓库身份优先使用增强版 `full_path`，不能把内部兼容组织名当作对外路径。
+- 复用原工具的历史转换，但保留逐提交内容/元数据核验、目标重新克隆和引用核对。重启先回收本任务标记的孤儿进程；暂停在仓库边界生效，取消保留现场。
+- 迁移与备份、恢复和实例修改互斥；升级器必须识别并处理此 Worker，保留原密钥、数据库和检查点。离线包及首次安装包均需包含固定的 SVN Worker 镜像。
+- 隔离验收入口 `scripts/svn-migration-acceptance.py`，原工具回归入口 `scripts/svn-original-regression.py`，证据在 `work/`。真实生产、大仓库与人工节省 80% 指标没有实测时必须标为未验证。使用边界见 `docs/svn-migration.md`。

@@ -1,0 +1,120 @@
+{
+  "说明": "源主机关闭的新Manager导入恢复成功后，在其实际B数据上真实复验；业务整体仍失败",
+  "生成时间UTC": "2026-10-23T03:18:04.494597+00:00",
+  "功能判定": "FAIL",
+  "整条命令退出码": 1,
+  "备份ID": 32,
+  "实际新Manager恢复ID": 1,
+  "驱动镜像": "sha256:a3dc3b1e59f27238bb493e16ef6c20ba089a0fb54280cec09f076908c72269d8",
+  "开始时间UTC": "2026-10-23T02:49:09.354641+00:00",
+  "结束时间UTC": "2026-10-23T02:54:05.164097+00:00",
+  "整链耗时秒": 295.809,
+  "逐项结果": [
+    {
+      "类别": "git-protocol",
+      "用例": "当前恢复后的目标：Git 协议与写入权限",
+      "状态": "通过"
+    },
+    {
+      "类别": "packages-partial",
+      "用例": "当前恢复后的目标：软件包正文与客户端",
+      "状态": "通过"
+    },
+    {
+      "类别": "lfs-readback",
+      "用例": "b：新 LFS 对象上传和空客户端读取",
+      "状态": "通过"
+    },
+    {
+      "类别": "lfs-partial",
+      "用例": "当前恢复后的目标：LFS 上传下载与子模块",
+      "状态": "通过"
+    },
+    {
+      "类别": "identities-partial",
+      "用例": "当前恢复后的目标：真实认证与令牌边界",
+      "状态": "通过"
+    },
+    {
+      "类别": "governance-partial",
+      "用例": "当前恢复后的目标：群组继承、审批与 Hook",
+      "状态": "通过"
+    },
+    {
+      "类别": "actions-partial",
+      "用例": "当前恢复后的目标：流水线、日志与制品",
+      "状态": "通过"
+    },
+    {
+      "类别": "identities-ssh-partial",
+      "用例": "当前恢复后的目标：独立SSH用户、部署密钥和禁用身份",
+      "状态": "通过"
+    },
+    {
+      "类别": "collaboration-extended-partial",
+      "用例": "当前恢复后的目标：Issue和PR附件、Wiki历史、关注、收藏及改名仓库",
+      "状态": "通过"
+    },
+    {
+      "类别": "settings",
+      "用例": "当前恢复后的目标：匿名访问边界",
+      "状态": "失败"
+    },
+    {
+      "类别": "collaboration-partial",
+      "用例": "当前恢复后的目标：Issue 与发布附件",
+      "状态": "通过"
+    },
+    {
+      "类别": "manager-partial",
+      "用例": "当前恢复后的目标：管理数据与会话",
+      "状态": "通过"
+    },
+    {
+      "类别": "integrations-mail",
+      "用例": "b：真实 SMTP 发信",
+      "状态": "失败"
+    },
+    {
+      "类别": "integrations-webhook",
+      "用例": "b：真实签名 Webhook",
+      "状态": "失败"
+    },
+    {
+      "类别": "integrations-ldap",
+      "用例": "b：真实 LDAP 登录",
+      "状态": "通过"
+    },
+    {
+      "类别": "integrations-oauth",
+      "用例": "b：真实 OAuth 登录",
+      "状态": "通过"
+    },
+    {
+      "类别": "integrations-mirror",
+      "用例": "b：真实镜像同步",
+      "状态": "失败"
+    },
+    {
+      "类别": "integrations-partial",
+      "用例": "当前恢复后的目标：外部集成实际调用",
+      "状态": "失败"
+    },
+    {
+      "类别": "restored-business-check",
+      "用例": "当前已恢复目标的完整真实业务复验",
+      "状态": "失败"
+    }
+  ],
+  "Manager专属权限字段独立逐字段相同": true,
+  "原始摘要": {
+    "validate-target-cold-1-command.json": "43997c9f9c2f8101418ec4a459b84c3a46c9ef76d8c95efa337f2343896f8346",
+    "restored-business-result-1.json": "3747227b8ef707f045229cedb997281b6d8c848e5ecd9b9a01cc1cbaf27a86df",
+    "offline-permissions-independent-final-1.json": "6008821f971d7a2988e0239563fe53a10a3a5ed3fa53c41886bdeb549ad34e96",
+    "manager-permissions-baseline-1792717074092352296.json": "a0403b8f175f9df663400836a29ef31c11ab1d9fd5bf869c511d7e77d6d14f54",
+    "remote-backup-offline.json": "326f9da270c0760d54940e4f90ef5c893dd8a3353e8dc15205722e32694b612d",
+    "ssh-key-verification-b-1792723859323164964.json": "ad1866eb2d8793439d2a076829e138699643d0a89e0545711f192015e3690070",
+    "collaboration-checks-b-1792723860448137798.json": "0d00d0c2645f4d0456ad338ffebfd230575246a89ffbcaef5b713cb545755ec6"
+  },
+  "边界": "新增SSH角色与协作样本已有恢复后真实使用证据；不证明全部角色、运行中页面、并发、数据库导入中断、长期稳定性、最终离线包或人工指标。目标实际写入已标记基线待重采，旧基线不覆盖"
+}

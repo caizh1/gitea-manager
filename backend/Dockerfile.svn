@@ -1,0 +1,11 @@
+ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE}
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git git-svn subversion ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+COPY wheels/ /tmp/wheels/
+RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels/ -r requirements.txt && rm -rf /tmp/wheels
+COPY . .
+ENV PYTHONDONTWRITEBYTECODE=1 LANG=C.UTF-8
+CMD ["python", "-m", "svn_migration.worker"]

@@ -1,0 +1,7 @@
+{
+  "说明": "内容转换与引用映射基于既有独立迁移工具重新整理，增加持久化阶段及逐提交验证；运行时不读取原仓库。",
+  "来源仓库": "gitea-enhancement",
+  "来源文件": "tools/migrate-svn-to-gitea.py",
+  "来源提交": "b8232258eecb490654ff9d8d98d4767259b4c1c6",
+  "来源文件SHA256": "0ab370ce676b7a6528bd26aebec3ff611ef5d1a38c30e9b3b06a772554e7f29c"
+}

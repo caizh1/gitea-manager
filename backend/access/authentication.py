@@ -161,6 +161,10 @@ def authenticate_login(payload):
 
 
 def load_session_user(token):
+    # 会话查询也会写入活跃时间或刷新目录身份，维护期间必须在加载前阻断。
+    from services.upgrade_maintenance import active
+    if active():
+        return None
     if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', token):
         return None
     record = db.session.get(AccessSession, _hash(token))
@@ -235,7 +239,7 @@ def session_payload():
         payload['organizations'] = visible_organizations(current_user)
         if current_user.is_platform_admin:
             payload['capabilities'] = ['platform', 'access', 'servers', 'backups', 'restore', 'schedules',
-                'mirrors', 'settings', 'repository_policies', 'commit_gates', 'ai_reviews', 'approval_rules', 'statistics', 'alerts', 'dashboard', 'management']
+                'mirrors', 'settings', 'repository_policies', 'commit_gates', 'ai_reviews', 'approval_rules', 'statistics', 'alerts', 'dashboard', 'management', 'svn_migrations']
             setting = db.session.get(Setting, 'host_ip')
             payload['needs_config'] = not bool(setting and setting.value)
         elif payload['organizations']:

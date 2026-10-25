@@ -12,7 +12,7 @@ export function useOperationPolling(read, apply, active) {
     controller = new AbortController()
     const current = controller
     try {
-      const result = await read({ signal: current.signal, timeout: 8000 })
+      const result = await read({ signal: current.signal, timeout: 8000, notifyError: false })
       if (!stopped && !current.signal.aborted) { apply(result); error.value = '' }
     } catch (e) {
       if (!stopped) error.value = '进度刷新失败，保留最后记录；正在等待连接恢复。'

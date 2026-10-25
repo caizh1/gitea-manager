@@ -1,0 +1,97 @@
+{
+  "说明": "源模拟主机实际关闭，在新创建独立数据卷的Manager导入真实完整归档并恢复；完整迁移仍失败",
+  "生成时间UTC": "2026-10-23T02:51:54.867301+00:00",
+  "功能判定": "FAIL",
+  "整条命令退出码": 1,
+  "驱动镜像": "sha256:217389e8a44ab8ded1fe71625ab8fff789b86add1d8eedd0529a3c3c8f411ea3",
+  "备份ID": 32,
+  "新Manager恢复ID": 1,
+  "恢复任务状态": "success",
+  "恢复校验状态": "success",
+  "恢复任务耗时秒": 136.151,
+  "整链耗时秒": 530.003,
+  "开始时间UTC": "2026-10-23T02:33:17.463926+00:00",
+  "结束时间UTC": "2026-10-23T02:42:07.474546+00:00",
+  "源主机离线及新独立数据卷实际确认": true,
+  "完整表数": 150,
+  "原审计事件及范围逐行保留": true,
+  "合法新增原生审计数": 0,
+  "其余表及Git正文密钥符合": true,
+  "运行状态原始计数": {
+    "之前": 4,
+    "之后": 6,
+    "其他字段完全相同": true
+  },
+  "运行计数解释": "原生配置路径从正常配置切至隔离验证配置，再切回正常配置，两次写入只递增revision；原字段及首败未改写",
+  "业务配置差异": [
+    {
+      "配置项": "mailer.enabled",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "mailer.from",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "mailer.protocol",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "mailer.smtp_addr",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "mailer.smtp_port",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "migrations.allow_localnetworks",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "migrations.allowed_domains",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "oauth2_client.enable_auto_registration",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "security.internal_token",
+      "变化": "内容不同"
+    },
+    {
+      "配置项": "server.lfs_jwt_secret",
+      "变化": "内容不同"
+    },
+    {
+      "配置项": "service.disable_registration",
+      "变化": "内容不同"
+    },
+    {
+      "配置项": "service.enable_notify_mail",
+      "变化": "缺失"
+    },
+    {
+      "配置项": "service.require_signin_view",
+      "变化": "内容不同"
+    },
+    {
+      "配置项": "webhook.allowed_host_list",
+      "变化": "缺失"
+    }
+  ],
+  "归属": "既有业务配置迁移缺陷RB-CONFIG-001，不增加第三个P1",
+  "收尾原源与主Manager恢复": true,
+  "原Manager保留及权限基线一致": true,
+  "原始摘要": {
+    "offline-2-command.json": "80eef43dd0e43b02af06d90a12b74cfb7327085458273feaeb882896d1b71652",
+    "a-1792722877579299677.json": "85861711500a42f06b748f78ae92b42c899681e56ae51f093ce2cd00cc52fde8",
+    "b-1792723320713232007.json": "eb3fd3863fd042d9d86221f3d5f51cff0b43dabc1ba63dc065634e881d50b633",
+    "restore-1-cold-backend-1792723240121538970.json": "c4f80d0de159d45f0369032aeecaa31c76850f08ef7df33f4ce5919afa79e9d1",
+    "offline-independent-live-proof-1.json": "176c6ee0892aecfc07943916ee0042c8d7e1a3f5198e729e62fb8555199a977b",
+    "offline-final-health-1.json": "882abe64a11be8d92a4f63b45af21051dfa0869eddf68dda23f1b10156d2f0fb",
+    "1792722797493425000-offline.json": "39b07efe340246e70af7d4578aba0e736571b2510efd863639f97cf2e8fd8ffa"
+  },
+  "边界": "任务成功不等于完整迁移通过；530秒整链包含计划停机和核验，不是生产RTO；没有人工中断接管，也未完成二十四小时、最终包或人工指标"
+}

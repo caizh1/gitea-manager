@@ -111,10 +111,13 @@ def save_config():
     allowed = {'revision', 'enabled', 'engine', 'api_base_url', 'model', 'api_key',
                'debounce_seconds', 'max_files', 'max_calls', 'task_timeout_seconds', 'review_timeout_seconds',
                'model_request_timeout_seconds', 'model_max_output_tokens', 'model_response_max_mib', 'max_findings', 'thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'context_retrieval_budget', 'model_context_tokens', 'compaction_threshold_tokens'}
+    from ai_review.token_budget import DEFAULTS as batch_defaults, validate as validate_batch
+    allowed.update(batch_defaults)
     if set(data)-allowed:
         raise ReviewError('配置包含不支持的字段')
     old = state.config()
     value = dict(old, **data)
+    validate_batch(value)
     if not isinstance(value['enabled'], bool) or value['engine'] != 'opencode_native':
         raise ReviewError('开关或执行引擎无效')
     for key, low, high in [('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
@@ -146,6 +149,9 @@ def connection_test():
     state = store(); config = state.config()
     if not config['api_key']:
         raise ReviewError('请先保存模型地址、名称和 Key')
+    if body().get('token_samples') == 4:
+        from ai_review.token_calibration import run
+        return jsonify(ok=True, calibration=run(state, config))
     checked = verify_model(state, config)
     return jsonify(ok=True, model_available=checked['listed'], revision=config['revision'],
                    model=config['model'], message=checked['message'])
@@ -341,12 +347,38 @@ def setup_probe(token):
 
 @ai_review_bp.get('/tasks')
 def tasks():
-    from access.organization_api import review_job_ids
+    from access.organization_api import review_job_ids, review_repository_ids
+    from ai_review.statistics import period
     state = store()
+    window = period(request.args) if any(k in request.args for k in ('start', 'end', 'timezone')) else None
     return jsonify(state.jobs(positive(request.args.get('page', '1')),
         positive(request.args['repository']) if request.args.get('repository') else None,
         positive(request.args['number']) if request.args.get('number') else None, request.args.get('status'),
-        allowed_jobs=review_job_ids(state)))
+        allowed_jobs=review_job_ids(state), window=window, allowed_repositories=review_repository_ids()))
+
+
+@ai_review_bp.get('/statistics')
+def statistics():
+    from access.organization_api import review_job_ids, review_repository_ids
+    from ai_review.statistics import period, overview
+    state = store()
+    return jsonify(overview(state, period(request.args),
+        positive(request.args['repository']) if request.args.get('repository') else None,
+        allowed_jobs=review_job_ids(state), allowed_repositories=review_repository_ids()))
+
+
+@ai_review_bp.get('/repositories/<int:repository>/pulls/<int:number>/issues')
+def issue_list(repository, number):
+    from ai_review.issue_lifecycle import listing
+    state = store(); state.repo(repository)
+    return jsonify(listing(state, repository, positive(number), positive(request.args.get('page', '1'))))
+
+
+@ai_review_bp.get('/tasks/<job>/issues')
+def task_issues(job):
+    from ai_review.issue_lifecycle import listing
+    state = store(); task = state.job(job, public=True, evidence=False)
+    return jsonify(listing(state, task['repository'], task['number'], positive(request.args.get('page', '1')), job))
 
 
 
@@ -384,6 +416,51 @@ def dataset_history(repository,ident):
 @ai_review_bp.get('/tasks/<job>')
 def task(job):
     return jsonify(store().job(job, public=True, evidence=request.args.get('evidence', '1') != '0'))
+
+
+@ai_review_bp.get('/tokenizers')
+def tokenizers():
+    from ai_review.token_budget import catalog
+    return jsonify(catalog(store().config()))
+
+
+@ai_review_bp.get('/tasks/<job>/plan')
+def task_plan(job):
+    from ai_review.batch_store import get
+    return jsonify(plan=get(store(), job))
+
+
+def validate_plan_version(state, job):
+    from ai_review.gitea import assert_version
+    task = state.job(job)
+    repo = state.repo(task['repository'])
+    client = Gitea(repo['gitea_url'], state.unseal(repo['bot_token']), repo['repo_name'], repo['repo_id'])
+    try:
+        if not task.get('snapshot'):
+            raise ReviewError('任务尚未生成计划')
+        assert_version(client, task['number'], task['snapshot'])
+    finally:
+        client.close()
+
+
+@ai_review_bp.post('/tasks/<job>/confirm-plan')
+def confirm_plan(job):
+    from ai_review.batch_store import control
+    from access.scopes import actor_name
+    state = store()
+    validate_plan_version(state, job)
+    control(state, job, body(), actor_name(), confirm=True)
+    return jsonify(state.job(job, public=True))
+
+
+@ai_review_bp.post('/tasks/<job>/continue')
+def continue_plan(job):
+    from ai_review.batch_store import control
+    from access.scopes import actor_name
+    state = store()
+    validate_plan_version(state, job)
+    control(state, job, body(), actor_name())
+    return jsonify(state.job(job, public=True))
 
 
 @ai_review_bp.post('/tasks/<job>/cancel')
@@ -458,14 +535,14 @@ def task_events(job):
     if not raw_limit.isdigit() or not 1 <= int(raw_limit) <= 500:
         raise ReviewError('limit 需要 1 至 500')
     kinds, text = event_filters()
-    return jsonify(query(store(), job, event_cursor('after'), event_cursor('before'), kinds, text, int(raw_limit)))
+    return jsonify(query(store(), job, event_cursor('after'), event_cursor('before'), kinds, text, int(raw_limit), session_id=request.args.get('session_id')))
 
 
 @ai_review_bp.get('/tasks/<job>/events/export')
 def task_events_export(job):
     from ai_review.session_events import iter_export
     kinds, text = event_filters()
-    response = Response(stream_with_context(iter_export(store(), job, kinds, text)), mimetype='application/x-ndjson')
+    response = Response(stream_with_context(iter_export(store(), job, kinds, text, session_id=request.args.get('session_id'))), mimetype='application/x-ndjson')
     response.headers['Content-Disposition'] = f'attachment; filename="ai-review-events-{job}.jsonl"'
     return response
 

@@ -1,5 +1,5 @@
 // 旧任务和缺字段结果统一在显示边界兼容；不修改原始审查证据。
-export const errorMessage = e => e?.response?.data?.error || '请求未完成，请检查连接；结果不确定时先刷新核对'
+export { apiErrorMessage as errorMessage } from '../api/errors.js'
 export const statusType = s => s === 'succeeded' ? 'success' : s === 'failed' ? 'danger' : ['publish_unknown', 'superseded', 'cancelling'].includes(s) ? 'warning' : s === 'cancelled' ? 'info' : 'primary'
 export function coverageGroups(coverage) {
   const groups = new Map()

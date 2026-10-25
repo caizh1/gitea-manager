@@ -73,6 +73,8 @@ class ProgressTests(unittest.TestCase):
         core.StoreTests.setUp(self)
         self.store.repo_status(self.repo, gitea_url='http://gitea')
         self.id = self.store.enqueue(self.repo, 1, {'head': 'a'*40, 'base': 'b'*40})
+        with self.store.tx() as c:
+            c.execute('UPDATE jobs SET batch_protocol=0 WHERE id=?', (self.id,))
         self.client = CommentGitea()
         self.sync = ProgressSync(self.store, lambda _: self.client)
 
@@ -222,9 +224,26 @@ class ProgressTests(unittest.TestCase):
         self.client.rows[0]['user']['id'] = 9; self.client.rows[0]['pull_request_url'] = 'http://gitea/test/code/pulls/2'
         self.assertFalse(self.send()); self.assertEqual(len(self.client.writes), 1)
 
-    def test_legacy_summary_is_adopted(self):
+    def test_unverifiable_legacy_summary_is_preserved(self):
         self.client.rows = [{'id': 501, 'user': {'id': 9}, 'body': SUMMARY_MARK + '\n历史总体状态', 'pull_request_url': 'http://gitea/test/code/pulls/1'}]
-        self.assertTrue(self.send()); self.assertEqual(self.client.writes, ['PATCH'])
+        self.assertFalse(self.send()); self.assertEqual(self.client.writes, [])
+
+    def test_untouched_legacy_summary_is_adopted(self):
+        self.assertTrue(self.send())
+        with self.store.tx() as c:
+            c.execute('DELETE FROM review_issue_summaries')
+            c.execute('UPDATE pr_state SET summary_id=NULL')
+        self.assertTrue(self.send())
+        self.assertEqual(self.client.writes.count('POST'), 1)
+
+    def test_manual_summary_edit_and_deletion_are_preserved(self):
+        self.assertTrue(self.send())
+        self.client.rows[0]['body'] += '\n人工备注'
+        self.assertFalse(self.send())
+        self.assertIn('人工备注', self.client.rows[0]['body'])
+        self.client.rows.clear()
+        self.assertFalse(self.send())
+        self.assertEqual(self.client.writes, ['POST'])
 
     def test_legacy_reference_uses_verified_review_not_issue_number(self):
         job = self.store.claim(); self.store.update(job['id'], job['owner'], review_id=42)

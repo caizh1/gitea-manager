@@ -170,6 +170,11 @@ def configuration(state, manifest, root):
             command=['gunicorn', '--bind', '0.0.0.0:5000', '--workers', '2', '--threads', '8', '--timeout', '30', 'approval.view_app:create_app()'],
             environment={k: env[k] for k in ('DATABASE_URL','SSH_KEY_PATH','SSH_KNOWN_HOSTS')}, volumes=['manager-data:/app/data', mount, f'{root}/state/ssh:/run/manager-ssh:ro'], depends_on=['backend'])
         services['frontend'] = spec(images['frontend']['tag'], ports=[f'{binding}:{state["port"]}:80'], depends_on=['backend'])
+        if 'svn' in images:
+            services['svn-migration-worker'] = spec(images['svn']['tag'], command=['python', '-m', 'svn_migration.worker'],
+                environment={'DATABASE_URL': env['DATABASE_URL'], 'PYTHONDONTWRITEBYTECODE': '1'},
+                volumes=['manager-data:/app/data'], read_only=True, tmpfs=['/tmp:size=128m,mode=1777'],
+                cap_drop=['ALL'], security_opt=['no-new-privileges:true'], pids_limit=256, mem_limit='2g', cpus=2.0)
         if state.get('tls_port'):
             services['frontend']['ports'].append(f'{binding}:{state["tls_port"]}:443')
             services['frontend']['volumes'] = [f'{root}/state/tls/cert.pem:/etc/nginx/tls/cert.pem:ro',
@@ -460,6 +465,10 @@ class Installer:
                 if REPORT: REPORT.event('检查','后台心跳',实际=values,预期='各进程小于 90 秒')
                 return all(0 <= value < 90 for value in values.values())
             wait_for(heartbeat, '审查后台心跳')
+            if 'svn' in self.manifest['images']:
+                wait_for(lambda: bool(self.compose('exec', '-T', 'svn-migration-worker', 'python', '-m',
+                                                  'svn_migration.worker', '--check')),
+                         'SVN 迁移工具链与独立执行器', seconds=60)
             if state.get('runtime',{}).get('ready'):
                 probe = "import requests,json; r=requests.get('http://review-executor:5052/health',timeout=(3,5)); print(json.dumps({'http':r.status_code,'result':r.json()}))"
                 def executor_ready():
@@ -497,7 +506,7 @@ class Installer:
         state['complete'] = True
         private_write(self.state_file, state)
         private_write(self.root / 'state/access.txt', '安装完成\n访问地址：' + state['url'] +
-                      ('\n管理员：administrator' if state['product'] == 'gitea' else '\n登录使用管理员密码，无用户名') +
+                      ('\n管理员：administrator' if state['product'] == 'gitea' else '\n管理员：admin') +
                       '\n初始密码：' + state['admin_password'] + '\n密码修改后请使用新密码；安装器不会重置密码。\n')
         print('安装成功：' + state['url'])
         print('初始登录凭据已保存到：' + str(self.root / 'state/access.txt') + '（仅当前用户可读）')

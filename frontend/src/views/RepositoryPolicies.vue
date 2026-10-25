@@ -116,6 +116,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api } from '../api'
+import { notifyApiError } from '../api/errors.js'
 import { currentOrganization, isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 import PolicyTemplateEditor from '../components/PolicyTemplateEditor.vue'
 import PolicyOrganizationSelect from '../components/PolicyOrganizationSelect.vue'
@@ -148,7 +149,7 @@ const fmt = value => value ? new Date(value).toLocaleString() : '—'
 const display = value => value === null ? '不存在' : typeof value === 'boolean' ? (value ? '是' : '否') : Array.isArray(value) ? value.join('、') || '空' : String(value) || '空'
 const applicableCount = computed(() => (batch.value?.counts.changes || 0) + (batch.value?.counts.unchanged || 0))
 const readableSnapshot = computed(() => JSON.stringify(snapshot.value.map(rule => Object.fromEntries(Object.entries(rule).map(([key, value]) => [labels[key] || key, value]))), null, 2))
-function fail(e) { error.value = e.response?.data?.error || e.message || '操作失败'; ElMessage.error(error.value) }
+function fail(e) { error.value = e.response?.data?.error || e.message || '操作失败'; notifyApiError(e, error.value) }
 async function send(method, path, data) { return (await api.request({ method, url: prefix + path, data, headers: { 'X-Policy-CSRF': csrfToken } })).data }
 async function loadTemplates() {
   const sequence = ++templateRequest, sid = serverId.value, org = organization.value

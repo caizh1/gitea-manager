@@ -1,5 +1,6 @@
 <template>
   <div>
+    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
     <div class="section-header">
       <h3 class="section-title">镜像管理</h3>
       <el-button type="primary" size="small" @click="showCreateDialog = true">新建镜像配置</el-button>
@@ -186,11 +187,13 @@
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
+import { apiErrorMessage } from '../api/errors.js'
 import { ElMessage } from 'element-plus'
 
 export default {
   setup() {
     const mirrors = ref([])
+    const loadError = ref('')
     const servers = ref([])
     const showCreateDialog = ref(false)
     const editingMirror = ref(null)
@@ -230,15 +233,16 @@ export default {
     }
 
     function load(options = {}) {
-      return Promise.all([api.get('/mirrors'), api.get('/servers')])
+      return Promise.all([api.get('/mirrors', { notifyError: !options.silent }), api.get('/servers', { notifyError: !options.silent })])
         .then(([mRes, sRes]) => {
           mirrors.value = mRes.data
           servers.value = sRes.data
+          loadError.value = ''
           syncPolling()
           if (detailVisible.value && hasRunningMirrors(mirrors.value)) {
-            refreshDetail()
+            refreshDetail({ silent: true })
           }
-        })
+        }).catch(e => { if (e.code !== 'ERR_CANCELED') loadError.value = apiErrorMessage(e) })
     }
 
     function createMirror() {
@@ -314,23 +318,23 @@ export default {
       refreshDetail()
     }
 
-    function loadDetailRepo() {
+    function loadDetailRepo(options = {}) {
       if (!detailConfigId.value) return
-      api.get(`/mirrors/${detailConfigId.value}/status`).then(res => {
+      api.get(`/mirrors/${detailConfigId.value}/status`, { notifyError: !options.silent }).then(res => {
         detailRepos.value = res.data
       })
     }
 
-    function loadAuditLogs() {
+    function loadAuditLogs(options = {}) {
       if (!detailConfigId.value) return
-      api.get(`/mirrors/${detailConfigId.value}/audit-logs`).then(res => {
+      api.get(`/mirrors/${detailConfigId.value}/audit-logs`, { notifyError: !options.silent }).then(res => {
         auditLogs.value = res.data
       })
     }
 
-    function refreshDetail() {
-      loadDetailRepo()
-      loadAuditLogs()
+    function refreshDetail(options = {}) {
+      loadDetailRepo(options)
+      loadAuditLogs(options)
     }
 
     function syncOneRepo(repo) {
@@ -430,7 +434,7 @@ export default {
     onMounted(load)
     onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 
-    return { mirrors, servers, showCreateDialog, editingMirror, form, detailVisible, detailRepos,
+    return { mirrors, loadError, servers, showCreateDialog, editingMirror, form, detailVisible, detailRepos,
              auditLogs,
              detailTab, detailMirror,
              detailSyncLog,

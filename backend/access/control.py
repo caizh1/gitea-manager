@@ -14,9 +14,10 @@ MACHINE = {'ai_review.webhook', 'ai_review.setup_probe', 'approval_internal.gate
            'approval_internal.installed', 'approval_internal.uninstall_ready', 'approval_view.view',
            'integrations.health', 'integrations.events', 'integrations.task_detail', 'access_internal.check'}
 PLATFORM = {
+    'svn_migration': 'status targets target_groups target_paths create_target_group sources source test_source discover_projects discovery_result enroll_projects detect_layouts layout_detection repositories repository plans plan preflight preflight_detail runs run control events report cleanup',
     'servers': 'get_server add_server delete_info update_server delete_server check_server refresh_server get_server_detail_route',
-    'backups': 'list_backups create_backup delete_backup download_backup get_backup_steps',
-    'restore': 'list_restore_tasks get_restore_steps execute_restore get_verification trigger_verify get_backup_commits',
+    'backups': 'list_backups create_backup import_backup delete_backup download_backup export_disaster_bundle download_disaster_bundle get_backup_steps',
+    'restore': 'list_restore_tasks get_restore_steps execute_restore recover_restore get_verification trigger_verify get_backup_commits',
     'schedule': 'list_schedules create_schedule update_schedule delete_schedule run_schedule get_schedule_logs',
     'mirror': 'list_mirrors create_mirror update_mirror delete_mirror setup_mirror sync_mirror mirror_status mirror_audit_logs sync_repo',
     'settings': 'get_settings update_settings',
@@ -28,7 +29,7 @@ ORGANIZATION = {
     'access_context': 'context',
     'repository_policies': 'csrf schema servers organizations candidate_users candidate_teams repositories repository_rules templates create_template update_template delete_template verify_template_identities preview_batch apply_batch batches batch_detail',
     'commit_gate': 'list_rules create_rule update_rule delete_rule list_repos apply_gate remove_gate_route test_rule',
-    'ai_review': 'csrf config servers catalog repositories update_repository tasks dataset_list dataset_disable dataset_export dataset_history task task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention',
+    'ai_review': 'csrf config servers catalog repositories update_repository tasks statistics issue_list task_issues dataset_list dataset_disable dataset_export dataset_history task task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention task_plan confirm_plan continue_plan tokenizers',
     'approval': 'csrf policies create_policy update_policy preview delete_policy enable disable admin_status audits',
     'statistics': 'overview commit_trend repo_ranking author_ranking author_detail author_repos author_trend refresh_statistics',
     'alert': 'list_alerts alert_summary clear_alert clear_resolved',
