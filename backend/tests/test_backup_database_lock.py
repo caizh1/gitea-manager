@@ -55,7 +55,7 @@ class BackupDatabaseLockTests(unittest.TestCase):
                     source.attrs = {'Image':'隔离镜像', 'Config':{}, 'NetworkSettings':{'Networks':{'network':{}}}}
                     database.attrs = {'NetworkSettings':{'Networks':{'network':{}}}}
                     client.containers.get.side_effect = [source, database]
-                    client.containers.run.return_value = helper
+                    client.containers.create.return_value = helper
                     helper.get_archive.return_value = ((block for block in [raw.getvalue()]), {})
                     source.get_archive.return_value = ((block for block in [b'keys']), {})
                     phases = []
@@ -102,7 +102,9 @@ class BackupDatabaseLockTests(unittest.TestCase):
                         stack.enter_context(patch('services.restore_archive.validate_ssh_archive'))
                         stack.enter_context(patch('services.backup_actions.append_artifacts', side_effect=artifact_stage))
                         stack.enter_context(patch('services.operation_progress.update_backup_progress', side_effect=progress))
-                        consistent_backup(server, backup)
+                        journal = MagicMock(value={'原源': {'说明': '此用例只隔离验证SQLite写锁；进程恢复另有真实跨进程用例'}})
+                        stack.enter_context(patch('services.backup_recovery.recover_source', side_effect=lambda *args: source.start()))
+                        consistent_backup(server, backup, journal=journal)
                     self.assertEqual(phases, ['密钥文件处理期间','制品传输与校验期间'])
                     source.start.assert_called_once()
                     db.session.remove()

@@ -15,22 +15,39 @@ PHASES = ('准备', '停止', '数据库修改', '文件切换', '启动配置',
 
 
 def lease(target):
-    from config import BACKUP_DIR
-    root = Path(BACKUP_DIR).parent / 'restore-locks'
-    root.mkdir(mode=0o700, parents=True, exist_ok=True)
     from services.docker_service import managed_client
     client = managed_client(target)
     try:
         database = client.containers.get(target.pg_container)
-        key = hashlib.sha256((database.id + ':' + target.pg_dbname).encode()).hexdigest()
+        identifier = database.id
     finally:
         client.close()
-    stream = (root / key).open('a')
+    try:
+        lock = database_lease(identifier, target.pg_dbname)
+    except BlockingIOError:
+        raise RuntimeError('该实例仍有活跃恢复进程，拒绝接管') from None
+    try:
+        from services.backup_recovery import ensure_database_ready
+        ensure_database_ready(identifier, target.pg_dbname)
+        return lock
+    except BaseException:
+        lock.close()
+        raise
+
+
+def database_lease(identifier, database_name):
+    """备份、恢复及中断收尾共用同一实际PG数据库锁，进程退出后由OS释放。"""
+    from config import BACKUP_DIR
+    root = Path(BACKUP_DIR).parent / 'restore-locks'
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    key = hashlib.sha256((identifier + ':' + database_name).encode()).hexdigest()
+    descriptor = os.open(root / key, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    stream = os.fdopen(descriptor, 'r+b')
     try:
         fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except BaseException:
         stream.close()
-        raise RuntimeError('该实例仍有活跃恢复进程，拒绝接管') from None
+        raise
     return stream
 
 

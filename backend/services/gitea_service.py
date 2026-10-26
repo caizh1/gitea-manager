@@ -249,25 +249,36 @@ def test_server_connection(server):
         return False, str(e)
 
 
-def _backup_local(server, backup):
+def _backup_local(server, backup, journal=None):
     from services.backup_consistency import consistent_backup
-    consistent_backup(server, backup)
+    consistent_backup(server, backup, journal=journal)
 
 
-def _backup_remote(server, backup):
+def _backup_remote(server, backup, journal=None):
     from services.backup_consistency import consistent_backup
-    consistent_backup(server, backup)
+    consistent_backup(server, backup, journal=journal)
 
 
 from svn_migration.guards import guard_task
 
 
 @guard_task(Backup, 'source_server_id')
-@tracked_operation("备份", Backup)
 def do_backup(backup_id):
+    backup = db.session.get(Backup, backup_id)
+    if backup is None:
+        return
+    from services.backup_recovery import execution
+    with execution(backup) as journal:
+        return _perform_backup(backup_id, journal)
+
+
+@tracked_operation("备份", Backup)
+def _perform_backup(backup_id, journal):
     backup = Backup.query.get(backup_id)
     if not backup:
         return
+    journal.value['诊断编号'] = backup.diagnostic_id
+    journal.save('诊断已绑定')
 
     server = GiteaServer.query.get(backup.source_server_id)
     if not server:
@@ -288,9 +299,9 @@ def do_backup(backup_id):
 
     try:
         if server.is_local:
-            _backup_local(server, backup)
+            _backup_local(server, backup, journal=journal)
         else:
-            _backup_remote(server, backup)
+            _backup_remote(server, backup, journal=journal)
         _collect_backup_commit_snapshot(backup_id)
         update_backup_progress(backup, 'checksum', '正在生成备份校验信息', 95, backup.filename)
         digest = hashlib.sha256()

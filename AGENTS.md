@@ -257,8 +257,11 @@ start_scheduler(app)
 
 ### 6.5 认证与 host_ip
 
-- 登录接口验证 `Setting.admin_password`，首次启动若不存在则用 `INIT_PASSWORD` 初始化。
+- 登录接口验证 `ManagerAccount.password_hash`，首次启动从 `Setting.admin_password` 迁移本地管理员；不存在旧密码时才用 `INIT_PASSWORD` 初始化。
 - 默认管理员密码为 `admin123`，生产环境必须通过环境变量修改。
+- 顶栏“账号与安全”对应 `/account/security`，本地管理员通过 `/api/access/password` 修改本人密码。与首次强制改密共用 `PasswordChangeForm.vue`；后端同时更新两处密码哈希、撤销旧会话、轮换当前会话与 CSRF，并以条件更新避免并发覆盖。
+- `session.user.auth_source` 区分本地与目录账号，不按用户名或管理员角色推断；目录账号只显示公司目录改密说明。账号页面独立于本机 IP 和组织授权门禁。
+- 侧栏主图标使用固定版本 `@lucide/vue`，图标与按钮留在正常文档流，折叠菜单禁用宽度过渡以避免短暂裁切。操作与验收范围见 `docs/account-security.md`。
 - `app.py` 的 `before_request` 会阻止部分写操作，直到 `Settings.vue` 配置 `host_ip`。
 - 读接口、登录、设置读取等不会被 `host_ip` 阻断。
 

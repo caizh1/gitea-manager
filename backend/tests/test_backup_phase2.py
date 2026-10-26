@@ -58,10 +58,16 @@ class PhaseTwoTests(unittest.TestCase):
 
     def test_live_worker_cannot_be_taken_over(self):
         from services.restore_recovery import lease
+        from flask import Flask
+        from models import db
+        app = Flask('实际数据库锁隔离验证')
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        db.init_app(app)
         target = SimpleNamespace(host='隔离宿主', gitea_container='固定实例', pg_container='固定数据库', pg_dbname='gitea')
         client = MagicMock()
         client.containers.get.return_value.id = '固定数据库容器ID'
-        with tempfile.TemporaryDirectory() as root, patch('config.BACKUP_DIR', root + '/backups'), patch('services.docker_service.managed_client', return_value=client):
+        with app.app_context(), tempfile.TemporaryDirectory() as root, patch('config.BACKUP_DIR', root + '/backups'), patch('services.docker_service.managed_client', return_value=client):
+            db.create_all()
             first = lease(target)
             try:
                 target.host = '同一数据库的另一个连接别名'
@@ -70,6 +76,7 @@ class PhaseTwoTests(unittest.TestCase):
             finally:
                 first.close()
             lease(target).close()
+            db.session.remove()
 
     def test_changed_hook_permission_cannot_pass_manifest(self):
         with tempfile.TemporaryDirectory() as root:

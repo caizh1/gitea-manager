@@ -55,15 +55,36 @@
         <el-table-column prop="started_at" label="开始时间" width="170">
           <template #default="{ row }">{{ fmt(row.started_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" v-if="row.status === 'success'"
-              @click="downloadBackup(row)">下载 ZIP</el-button>
-            <el-button v-if="row.status === 'success'" size="small" :loading="exporting === row.id" @click="exportBundle(row)">完整灾备包</el-button>
-            <a v-if="row.diagnostic_id" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`">诊断包</a>
-            <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
-              <template #reference><el-button size="small" type="danger">删除</el-button></template>
-            </el-popconfirm>
+            <div class="backup-actions" role="group" :aria-label="`备份 ${row.id} 操作`">
+              <el-tooltip v-if="row.status === 'success'" content="下载 ZIP" placement="top" :show-after="200" :hide-after="0" :trigger="['hover', 'focus']" :trigger-keys="[]">
+                <el-button class="backup-action" size="small" type="primary" aria-label="下载 ZIP" @click="downloadBackup(row)">
+                  <Download :size="16" aria-hidden="true" />
+                </el-button>
+              </el-tooltip>
+              <el-tooltip v-if="row.status === 'success'" :content="exporting === row.id ? '正在生成完整灾备包' : '完整灾备包'" placement="top" :show-after="200" :hide-after="0" :trigger="['hover', 'focus']" :trigger-keys="[]">
+                <el-button class="backup-action" size="small" :loading="exporting === row.id" :aria-busy="exporting === row.id" aria-label="完整灾备包" @click="exportBundle(row)">
+                  <Archive v-if="exporting !== row.id" :size="16" aria-hidden="true" />
+                </el-button>
+              </el-tooltip>
+              <el-tooltip v-if="row.diagnostic_id" content="诊断包" placement="top" :show-after="200" :hide-after="0" :trigger="['hover', 'focus']" :trigger-keys="[]">
+                <a class="backup-action backup-action-link" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`" aria-label="诊断包">
+                  <FileHeart :size="16" aria-hidden="true" />
+                </a>
+              </el-tooltip>
+              <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
+                <template #reference>
+                  <span class="backup-action-trigger">
+                    <el-tooltip content="删除" placement="top" :show-after="200" :hide-after="0" :trigger="['hover', 'focus']" :trigger-keys="[]">
+                      <el-button class="backup-action" size="small" type="danger" plain aria-label="删除">
+                        <Trash2 :size="16" aria-hidden="true" />
+                      </el-button>
+                    </el-tooltip>
+                  </span>
+                </template>
+              </el-popconfirm>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -98,6 +119,7 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Download, Archive, FileHeart, Trash2 } from '@lucide/vue'
 import { api } from '../api'
 import { notifyApiError } from '../api/errors.js'
 import OperationProgress from '../components/OperationProgress.vue'
@@ -105,7 +127,7 @@ import { useOperationPolling } from '../composables/useOperationPolling'
 import { operationActive, utcTime } from '../components/operationDisplay'
 
 export default {
-  components: { OperationProgress },
+  components: { OperationProgress, Download, Archive, FileHeart, Trash2 },
   setup() {
     const backups = ref([])
     const servers = ref([])
@@ -231,6 +253,25 @@ export default {
   display: inline-flex; align-items: center; justify-content: center;
 }
 .icon-btn:hover { background: var(--glass-surface-hover); border-color: rgba(0,122,255,0.18); color: var(--color-primary); transform: rotate(90deg); }
+.backup-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; padding: 3px 0;
+}
+.backup-action-trigger { display: inline-flex; flex: 0 0 32px; min-width: 0; }
+.backup-actions .backup-action {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px;
+  box-sizing: border-box; width: 32px; height: 32px; min-width: 0; padding: 0; margin: 0;
+}
+.backup-action :deep(svg) { flex-shrink: 0; }
+.backup-action :deep(.el-icon) { margin: 0; }
+.backup-action-link {
+  border: 1px solid var(--el-border-color); border-radius: var(--radius-xs);
+  background: var(--el-button-bg-color, var(--el-fill-color-blank)); color: var(--el-text-color-regular);
+  text-decoration: none; cursor: pointer; transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.backup-action-link:hover {
+  color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7);
+}
+.backup-action:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .error-summary { color: #ef4444; font-size: 12px; vertical-align: middle; }
 .text-muted { color: var(--text-muted); }
 .error-dialog { display: flex; flex-direction: column; gap: 12px; }

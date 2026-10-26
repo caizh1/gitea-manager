@@ -94,6 +94,9 @@ class Backup(db.Model):
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
     diagnostic_id = db.Column(db.String(100), nullable=False, default='')
+    recovery_token = db.Column(db.String(32), nullable=False, default=lambda: __import__('uuid').uuid4().hex)
+    recovery_pending = db.Column(db.Boolean, nullable=False,
+        default=lambda context: (context.get_current_parameters().get('status') or 'running') in ('running', 'pending'))
     source_api_token = db.Column(db.String(200), default='')
     source_server_name = db.Column(db.String(100), default='')
     commit_snapshot_status = db.Column(db.String(20), default='')

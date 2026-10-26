@@ -58,9 +58,11 @@ def retire_network(network, database):
 
 
 class IsolatedGitea:
-    def __init__(self, client, original, database, server, marker):
+    def __init__(self, client, original, database, server, marker, validation_token=None):
         self.client, self.original, self.database, self.server = client, original, database, server
         self.marker = marker
+        # 数据库已经来自备份，隔离启动必须使用该备份的身份；目标旧令牌此时尚未同步。
+        self.validation_token = getattr(server, 'api_token', '') if validation_token is None else validation_token
         self.network = self.container = None
 
     def start(self):
@@ -92,7 +94,7 @@ class IsolatedGitea:
         deadline = time.monotonic() + 120
         while True:
             try:
-                self.api_get_json('/api/v1/version', timeout=3, token='')
+                self.api_get_json('/api/v1/version', timeout=3, token=self.validation_token)
                 return
             except Exception:
                 if time.monotonic() >= deadline:

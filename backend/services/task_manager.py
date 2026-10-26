@@ -20,7 +20,7 @@ class TaskManager:
             with app.app_context():
                 do_backup(backup_id)
                 backup = Backup.query.get(backup_id)
-                if backup:
+                if backup and backup.status in ('success', 'failed') and not backup.recovery_pending:
                     from services.alert_service import on_backup_completed
                     on_backup_completed(
                         backup.source_server_id,

@@ -57,6 +57,8 @@ def create_app():
             "ALTER TABLE restore_tasks ADD COLUMN progress_item VARCHAR(1000) DEFAULT ''",
             'ALTER TABLE restore_tasks ADD COLUMN progress_step_started_at DATETIME',
             "ALTER TABLE backups ADD COLUMN diagnostic_id VARCHAR(100) NOT NULL DEFAULT ''",
+            "ALTER TABLE backups ADD COLUMN recovery_token VARCHAR(32) NOT NULL DEFAULT ''",
+            'ALTER TABLE backups ADD COLUMN recovery_pending BOOLEAN NOT NULL DEFAULT 0',
             "ALTER TABLE restore_tasks ADD COLUMN diagnostic_id VARCHAR(100) NOT NULL DEFAULT ''",
             "ALTER TABLE gitea_servers ADD COLUMN connection_mode VARCHAR(20) NOT NULL DEFAULT 'ssh'",
             "ALTER TABLE gitea_servers ADD COLUMN instance_identity VARCHAR(200) NOT NULL DEFAULT ''",
@@ -255,12 +257,17 @@ def create_app():
     install_access_control(app)
     from svn_migration.guards import install as install_svn_guards
     install_svn_guards(app)
+    from services.backup_recovery import install_guards as install_backup_recovery_guards
+    install_backup_recovery_guards(app)
 
     from services.scheduler_service import start_scheduler
     if os.environ.get('DISABLE_BACKGROUND_TASKS') != '1':
         start_scheduler(app)
         from services.policy_tasks import start_policy_worker
         start_policy_worker(app)
+        if os.environ.get('GM_UPGRADE_MAINTENANCE') != '1':
+            from services.backup_recovery import start as start_backup_recovery
+            start_backup_recovery(app)
 
     if os.environ.get('GM_UPGRADE_MAINTENANCE') != '1' and os.environ.get('AI_REVIEW_HOST_POLICY_FILE'):
         from ai_review.setup_service import start

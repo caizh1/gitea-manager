@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  { path: '/account/security', meta: { account: true }, component: () => import('../views/AccountSecurity.vue') },
   ...[
     ['', 'workbench'], ['/sources', 'sources'], ['/runs', 'runs'],
     ['/plans/new', 'plan'], ['/plans/:planId/edit', 'plan'],

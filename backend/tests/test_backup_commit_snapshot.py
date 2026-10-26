@@ -78,7 +78,7 @@ class BackupCommitSnapshotTestCase(unittest.TestCase):
         db.drop_all()
         self.ctx.pop()
 
-    def fake_dump(self, server, backup):
+    def fake_dump(self, server, backup, journal=None):
         import tempfile
         from pathlib import Path
         directory = tempfile.TemporaryDirectory()
