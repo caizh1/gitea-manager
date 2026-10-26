@@ -195,7 +195,7 @@ def rotate_target_credentials(ident, token):
                         require(status.get('actor_id') == actor['id'] and status.get('repo_id') == progress['repo_id'], '历史接收会话身份不符', 'identity', 409)
                     plan['target_actor'] = actor
                     row.plan_json = encode(plan)
-                receiver.verify_selected_scope(plan['selection'])
+                # 授权变化仍由执行入口阻断；凭据必须可恢复，才能关闭会话并安全终止。
             finally:
                 receiver.close()
             server.api_token = token

@@ -1,5 +1,7 @@
 # GitLab 与 Gitea 迁移实施记录
 
+最新实现与完整最终包验收以 [迁移补齐说明](git-migration-completion.md) 为准。下文早期镜像、计数和待处理项保留为历史证据，不替代本轮结论。
+
 ## 目标与当前边界
 
 将其他 GitLab CE、GitLab EE 和开源 Gitea 的项目迁入指定 Gitea Enhancement 群组。当前开发分支为 `codex/gitlab-gitea-migration`。目标接收端基于用户确认的当前增强版独立源码快照；原增强版工作区未被修改。

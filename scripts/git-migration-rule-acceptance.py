@@ -14,12 +14,15 @@ def main():
     assert json.loads(advanced.docker('inspect',target['name']))[0]['Config']['Labels']['io.gitea-manager.test']=='git-migration-receiver'
     run=advanced.read_run(manager['name'],a.run_id);assert run['status']=='succeeded';checkpoint=json.loads(run['checkpoint_json'])[str(fixture['project']['id'])]
     path=checkpoint['final_path'];base=target['base'];remote=base+'/'+path+'.git';client=requests.Session();client.trust_env=False;client.auth=('migration-admin',target['password'])
+    client.get(base+'/user/login',timeout=30)
+    logged=client.post(base+'/user/login',headers={'Origin':base},data={'user_name':'migration-admin','password':target['password']},allow_redirects=False,timeout=30)
+    assert logged.status_code in (302,303), '规则验收的真实网页登录失败'
     def api(method,path,data=None,expected=(200,201,204)):
         r=client.request(method,base+'/api/v1'+path,json=data,timeout=60);assert r.status_code in expected, '规则验收 API 失败 '+path+' HTTP '+str(r.status_code)
         return r.json() if r.content else None
     key=secrets.token_hex(4);folder=a.manager_state.parent/('rule-'+str(a.run_id)+'-'+key);folder.mkdir()
     def env(user,password):
-        e=dict(os.environ);e.update({'GIT_TERMINAL_PROMPT':'0','GIT_CONFIG_COUNT':'4','GIT_CONFIG_KEY_0':'http.'+remote+'.extraHeader','GIT_CONFIG_VALUE_0':'Authorization: Basic '+base64.b64encode((user+':'+password).encode()).decode(),'GIT_CONFIG_KEY_1':'credential.helper','GIT_CONFIG_VALUE_1':'','GIT_CONFIG_KEY_2':'http.followRedirects','GIT_CONFIG_VALUE_2':'false','GIT_CONFIG_KEY_3':'http.proxy','GIT_CONFIG_VALUE_3':''});return e
+        e=dict(os.environ);e.update({'GIT_LFS_SKIP_SMUDGE':'1','GIT_TERMINAL_PROMPT':'0','GIT_CONFIG_COUNT':'4','GIT_CONFIG_KEY_0':'http.'+remote+'.extraHeader','GIT_CONFIG_VALUE_0':'Authorization: Basic '+base64.b64encode((user+':'+password).encode()).decode(),'GIT_CONFIG_KEY_1':'credential.helper','GIT_CONFIG_VALUE_1':'','GIT_CONFIG_KEY_2':'http.followRedirects','GIT_CONFIG_VALUE_2':'false','GIT_CONFIG_KEY_3':'http.proxy','GIT_CONFIG_VALUE_3':''});return e
     admin=env('migration-admin',target['password']);rows=[]
     def git(*args,identity=admin,expected=True,label=None):
         r=subprocess.run(['git',*args],cwd=folder,env=identity,capture_output=True)
@@ -53,11 +56,22 @@ def main():
     # 私有历史文件不能通过猜测编号绕过仓库读取授权。
     outsider=requests.Session();outsider.trust_env=False
     if checkpoint.get('assets'):
-        asset=next(iter(checkpoint['assets'].values()));r=outsider.get(base+'/'+path+'/migration-history/assets/'+str(asset['id']),allow_redirects=False,timeout=30)
+        asset=next(iter(checkpoint['assets'].values()))
+        asset_path='/attachments/'+asset['uuid'] if asset['parent_kind'] in ('issue','pull','comment','code_comment','release') else '/'+path+'/migration-history/assets/'+str(asset['id'])
+        allowed=client.get(base+asset_path,allow_redirects=False,timeout=30)
+        if allowed.status_code in (302,303):
+            client.get(base+'/user/login',timeout=30)
+            logged=client.post(base+'/user/login',headers={'Origin':base},data={'user_name':'migration-admin','password':target['password']},allow_redirects=False,timeout=30)
+            assert logged.status_code in (302,303)
+            allowed=client.get(base+asset_path,allow_redirects=False,timeout=30)
+        assert allowed.status_code==200, '私有文件拒绝测试必须先证明该文件实际存在且授权身份可读取'
+        r=outsider.get(base+asset_path,allow_redirects=False,timeout=30)
         assert r.status_code in (302,303,404);rows.append({'场景':'未登录读取私有历史文件','预期':'拒绝','实际':'拒绝'})
     cases=a.fixture.parent/(a.fixture.stem+'-rule-cases.json')
     if cases.exists():
-        case=json.loads(cases.read_text());number=case['请求编号']
+        case=json.loads(cases.read_text())
+        receipt=checkpoint['objects']['pull:'+str(case['来源稳定编号'])]
+        number=next(issue['number'] for issue in api('GET','/repos/'+path+'/issues?state=all&type=pulls&limit=100') if issue['id']==receipt['target_id'])
         pr=api('GET','/repos/'+path+'/pulls/'+str(number))
         assert pr['base']['ref']==case['分支'] and not pr['merged']
         r=client.post(base+'/api/v1/repos/'+path+'/pulls/'+str(number)+'/merge',json={'Do':'merge'},timeout=60)

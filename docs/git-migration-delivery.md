@@ -1,13 +1,13 @@
 # Git 迁移隔离测试交付说明
 
-本包用于完整固定基准的隔离链路测试，不构成全部版本或生产能力认证。已知未支持资料会阻断最终交接，详细范围见 `git-migration-implementation.md`。
+最新完整性、人员和合并条件说明见 [迁移补齐说明](git-migration-completion.md)。本包用于完整固定基准的隔离链路测试，不构成全部版本或生产能力认证。已知未支持资料会阻断最终交接，详细范围见 `git-migration-implementation.md`。
 
 ## 组成
 
-- Manager 后端、前端、Git Worker、SVN Worker 固定标签：`git-migration-final-20261025-r13`。
-- 原有 AI 执行镜像沿用已验收的 `git-migration-20261025-r5` 内容，没有增加迁移管理权限。
-- 配套增强版接收镜像：`gm-migration-receiver:20261025-r24`，包内导出名 `gitea-migration-receiver:offline`。
-- 独立接收端源码：`offline/git-migration-receiver.bundle`。分支 `codex/git-migration-receiver`，实现提交 `e89eacf`，基线 `1c0dab7`。该基线包含用户指定的当前增强版源码快照，不能将提交直接应用到未知版本并宣称兼容。
+- Manager 后端、前端、Git Worker、SVN Worker 固定标签：`git-migration-completion-20261026-r6`。
+- 原有 AI 执行镜像沿用已验收的 `backup-icons-20261026-r1` 内容，没有增加迁移管理权限。
+- 配套增强版接收镜像：`gm-migration-receiver:20261026-r7`，包内导出名 `gitea-migration-receiver:offline`。
+- 独立接收端源码：`offline/git-migration-receiver.bundle`。分支 `codex/git-migration-receiver`，实现提交 `1f25d03`，基线 `1c0dab7`。该基线包含用户指定的当前增强版源码快照，不能将提交直接应用到未知版本并宣称兼容。
 
 ## 使用顺序
 
@@ -35,8 +35,10 @@
 - `git-migration-rule-acceptance.py` 执行真实允许与拒绝行为，拒绝必须有明确保护或权限原因，网络错误不能计为拒绝通过。
 - `git-migration-recovery-acceptance.py` 保留旧 Worker，替换固定镜像后从原任务与仓库编号继续；不能用于生产实例。
 
-源端要求强制 CI 成功、讨论解决或不兼容合并方式时，目前会保留待处理并阻断交接，需要确认等价目标门禁；不能把迁入的历史成功记录当作当前 CI 通过。
+来源要求 CI 成功、讨论解决及已支持合并方式时，使用配套第三版接收端的最终门禁；可信 CI 账号需提前指定。历史成功不能代替当前提交的 CI 回执。无法等价转换的额外条件继续阻断交接。
 
 旧版 Gitea Actions 制品和部分 GitLab 文件需要来源专用迁移管理员的网页会话，令牌不能完成时会明确阻断。源码和任务凭据不能进入命令输出或发布包。OCI／容器镜像暂不包含；EE 付费能力保持未验证。
 
 配套接收端还需声明 npm 注册表元数据能力，缺少该能力会在创建目标仓库前拒绝执行。`git-migration-registry-fixture.py` 补充多版本、注册表说明和归档依赖不一致的固定基准。
+
+最终包使用 `git-migration-final-acceptance.py` 从包内源码与固定镜像建立空白环境，执行二十七项目、二十三合并变体、六类协议、全部文件与规则行为验收，并记录最终包 SHA-256。来源凭据失效、目标令牌失效及安全终止均包含在该链路中。详细回执位置见补齐说明。

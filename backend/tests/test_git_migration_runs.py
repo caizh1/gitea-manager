@@ -134,6 +134,18 @@ class RunTests(unittest.TestCase):
             rotate_target_credentials(row.id, 'different-admin-token')
         self.assertEqual(self.server.api_token, 'new-target-token')
 
+    def test_changed_group_scope_does_not_prevent_token_recovery_for_abort(self):
+        from git_migration.runs import rotate_target_credentials
+        row = enqueue(self.data, 1)
+        row.status = 'uncertain'
+        db.session.commit()
+        plan = row.plan_json
+        self.receiver.return_value.verify_selected_scope.side_effect = MigrationError('目标群组授权已变化')
+        rotate_target_credentials(row.id, 'recovery-only-token')
+        self.assertEqual(self.server.api_token, 'recovery-only-token')
+        self.assertEqual(row.plan_json, plan, '恢复凭据不能改写原执行授权快照')
+        self.receiver.return_value.verify_selected_scope.assert_not_called()
+
     def test_existing_url_alias_blocks_migration_before_any_target_write(self):
         duplicate = GiteaServer(name='重复连接', gitea_url='https://TARGET.test:443/', api_token='令牌',
             host='other.test', ssh_user='root', gitea_port=3000)

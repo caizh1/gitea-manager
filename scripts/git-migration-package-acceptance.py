@@ -46,7 +46,18 @@ def main():
     for name in ('gitea-review-backend:offline','gitea-review-git:offline','gitea-review-svn:offline'):
         got=json.loads(docker('run','--rm','--platform','linux/amd64','--network','none','--read-only','--entrypoint','python',name,'-c',code))
         assert got==expected_python, '镜像内 Python 代码与包内来源不一致：'+name
-    output={'说明':'最终离线包逐文件摘要、敏感运行数据排除、真实镜像装载与运行时代码一致性核对；不代表生产验收','结果':'通过','包SHA256':sha(a.package),'字节':a.package.stat().st_size,'核对文件数':len(expected),'每个管理镜像Python文件数':len(expected_python),'镜像':actual}
+    static=docker('run','--rm','--platform','linux/amd64','--network','none','--read-only','--entrypoint','sh','gitea-review-frontend:offline','-c','find /usr/share/nginx/html -type f -exec sha256sum {} \\;')
+    frontend={line.split(None,1)[1].removeprefix('/usr/share/nginx/html/'):line.split(None,1)[0] for line in static.splitlines()}
+    expected_frontend={str(f.relative_to(a.output/'frontend/dist')):sha(f) for f in (a.output/'frontend/dist').rglob('*') if f.is_file()}
+    assert frontend==expected_frontend, '前端运行镜像与最终包静态文件不一致'
+    receiver=json.loads((a.output/'offline/git-migration-receiver.json').read_text())
+    bundle=a.output/'offline/git-migration-receiver.bundle'
+    assert sha(bundle)==receiver['源码包SHA256']
+    heads=subprocess.check_output(['git','bundle','list-heads',str(bundle)],text=True).splitlines()
+    assert receiver['源码提交']+' refs/heads/'+receiver['源码分支'] in heads, '接收端源码包提交不符'
+    binary=docker('run','--rm','--platform','linux/amd64','--network','none','--read-only','--entrypoint','sha256sum','gitea-migration-receiver:offline','/usr/local/bin/gitea').split()[0]
+    assert binary==receiver['二进制SHA256'], '接收端运行二进制不符'
+    output={'说明':'最终离线包逐文件摘要、敏感运行数据排除、真实镜像装载与运行时代码一致性核对；不代表生产验收','结果':'通过','包SHA256':sha(a.package),'字节':a.package.stat().st_size,'核对文件数':len(expected),'每个管理镜像Python文件数':len(expected_python),'前端文件数':len(frontend),'接收端源码提交':receiver['源码提交'],'接收端二进制SHA256':binary,'镜像':actual}
     (a.output/'package-acceptance.json').write_text(json.dumps(output,ensure_ascii=False,indent=2)+'\n');print('最终包与镜像一致性验收通过：'+str(a.output/'package-acceptance.json'))
 
 if __name__=='__main__':main()

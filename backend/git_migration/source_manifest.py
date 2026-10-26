@@ -36,12 +36,33 @@ class Census:
         require(len(self.files) <= 100000, '独立来源文件清单超过容量上限', 'capacity')
 
     def run(self):
+        project_state = self.project_state()
         if self.provider.kind == 'gitea': self.gitea()
         else: self.gitlab()
         value = {'schema': 1, 'kind': self.provider.kind, 'project_id': self.project['id'], 'objects': sorted(self.objects),
-                 'files': sorted(self.files.values(), key=lambda row: encode(row)), 'rules': sorted(self.rules), 'gaps': self.gaps}
+                 'project': project_state, 'files': sorted(self.files.values(), key=lambda row: encode(row)), 'rules': sorted(self.rules), 'gaps': self.gaps}
         require(len(encode(value).encode()) <= 32*1024*1024, '独立来源清单容量超限', 'capacity')
         return value
+
+    def project_state(self):
+        """重新读取项目基础属性，不能沿用发现记录掩盖描述、归档或归属变化。"""
+        kind = self.provider.kind
+        route = '/projects/' + str(self.project['id']) if kind == 'gitlab' else '/repos/' + quote(self.project['path'], safe='/')
+        current = self.provider.get(route)
+        path = current.get('path_with_namespace') if kind == 'gitlab' else current.get('full_name')
+        require(current.get('id') == self.project['id'] and path == self.project['path'],
+                '来源项目身份或路径已变化，请重新发现及盘点', 'source_changed')
+        namespace = current.get('namespace') or {}
+        state = {'id': current['id'], 'path': path, 'name': current.get('name') or path.rsplit('/', 1)[1],
+                 'description': current.get('description') or '', 'archived': bool(current.get('archived')),
+                 'visibility': current.get('visibility') if kind == 'gitlab' else 'private' if current.get('private') else 'public',
+                 'default_branch': current.get('default_branch'),
+                 'group_id': namespace.get('id') if kind == 'gitlab' and namespace.get('kind') == 'group' else None if kind == 'gitlab' else (current.get('owner') or {}).get('id'),
+                 'clone_url': current.get('http_url_to_repo') if kind == 'gitlab' else current.get('clone_url'),
+                 'web_url': current.get('web_url') or current.get('html_url') or ''}
+        require(all(state[key] == expected for key, expected in self.project.items() if key in state),
+                '来源项目基础属性已变化，请重新发现及盘点', 'source_changed')
+        return state
 
     def gitea(self):
         base = '/repos/' + quote(self.project['path'], safe='/')

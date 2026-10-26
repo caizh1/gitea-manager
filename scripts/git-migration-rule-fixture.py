@@ -32,6 +32,6 @@ def main():
     assert api('GET','/user')['id']==1 and details.get('user',{}).get('can_merge') is False, '必须证明认证有效且来源明确拒绝合并权限'
     assert denied.status_code in (401,403,405,406), '来源禁止合并行为与预期不同'
     restored=api('GET',base+'/protected_branches/'+quote(pattern,safe=''));assert restored['push_access_levels'][0]['access_level']==restored['merge_access_levels'][0]['access_level']==0
-    output=a.fixture.parent/(a.fixture.stem+'-rule-cases.json');output.write_text(json.dumps({'说明':'独立来源新增的现存保护分支，临时取消规则后已恢复并回读；来源管理员实际合并被拒绝','分支':branch,'请求编号':found['iid'],'源端拒绝状态':denied.status_code,'恢复规则':restored,'结果':'通过'},ensure_ascii=False,indent=2)+'\n');print('现存分支禁止合并夹具通过：'+str(output))
+    output=a.fixture.parent/(a.fixture.stem+'-rule-cases.json');output.write_text(json.dumps({'说明':'独立来源新增的现存保护分支，临时取消规则后已恢复并回读；来源管理员实际合并被拒绝','分支':branch,'请求编号':found['iid'],'来源稳定编号':found['id'],'源端拒绝状态':denied.status_code,'恢复规则':restored,'结果':'通过'},ensure_ascii=False,indent=2)+'\n');print('现存分支禁止合并夹具通过：'+str(output))
 
 if __name__=='__main__':main()

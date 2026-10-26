@@ -33,6 +33,28 @@ class CommentAttachmentTests(unittest.TestCase):
 
 
 class IndependentManifestTests(unittest.TestCase):
+    def test_project_metadata_must_be_fresh_and_match_discovery(self):
+        from git_migration.source_manifest import Census
+        class Source:
+            kind = 'gitea'
+            def get(self, path): return dict(self.current)
+        source = Source()
+        source.current = {'id': 1, 'full_name': 'team/repo', 'name': 'repo', 'description': '发现时说明', 'archived': False,
+                          'private': True, 'default_branch': 'main', 'owner': {'id': 2},
+                          'clone_url': 'https://source.test/team/repo.git', 'html_url': 'https://source.test/team/repo'}
+        project = {'id': 1, 'path': 'team/repo', 'name': 'repo', 'description': '发现时说明', 'archived': False,
+                   'visibility': 'private', 'default_branch': 'main', 'group_id': 2,
+                   'clone_url': source.current['clone_url'], 'web_url': source.current['html_url']}
+        self.assertEqual(Census(source, project).project_state(), project)
+        for key, value in (('description', '变化后的说明'), ('archived', True), ('full_name', 'other/repo'),
+                           ('owner', {'id': 3}), ('private', False), ('default_branch', 'next')):
+            with self.subTest(field=key):
+                original = source.current[key]
+                source.current[key] = value
+                with self.assertRaisesRegex(MigrationError, '来源项目'):
+                    Census(source, project).project_state()
+                source.current[key] = original
+
     def test_independent_per_issue_view_detects_missing_global_comment(self):
         from git_migration.source_manifest import capture, verify_plan
         created = '2020-01-01T00:00:00Z'

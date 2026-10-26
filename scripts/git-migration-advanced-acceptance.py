@@ -15,7 +15,7 @@ def read_run(name, ident):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('manager-state','target-state','fixture'): p.add_argument('--'+name,type=Path,required=True)
-    p.add_argument('--run-id',type=int,required=True);p.add_argument('--merge',action='store_true');p.add_argument('--runner-image',default='gm-migration-ci-runner:20261026');a=p.parse_args()
+    p.add_argument('--run-id',type=int,required=True);p.add_argument('--merge',action='store_true');p.add_argument('--runner-image',default='python:3.11-slim');a=p.parse_args()
     manager=json.loads(a.manager_state.read_text());target=json.loads(a.target_state.read_text());fixture=json.loads(a.fixture.read_text())
     for state,label in ((manager,'git-migration-manager'),(target,'git-migration-receiver')):
         assert json.loads(docker('container','inspect',state['name']+'-worker' if label=='git-migration-manager' else state['name']))[0]['Config']['Labels']['io.gitea-manager.test']==label
@@ -45,7 +45,7 @@ def main():
         assert set(row.get('assets',{}))=={file['source_id'] for file in manifest['files']},'目标文件与独立来源清单不一致'
         repo=api('/repos/'+row['final_path']);assert repo['id']==row['repo_id'] and not repo['archived'] and not repo['has_actions']
         assert repo['default_branch']==row['snapshot']['default_ref'].removeprefix('refs/heads/')
-        report['项目'].append({'路径':row['final_path'],'编号':repo['id'],'对象数':len(row['objects']),'文件数':len(row.get('assets',{})),'代码重新克隆核验':True,'Wiki核验':row.get('wiki_verified',False)})
+        report['项目'].append({'路径':row['final_path'],'编号':repo['id'],'对象数':len(row['objects']),'来源对象数':len(expected_objects),'来源规则数':len(manifest['rules']),'文件数':len(row.get('assets',{})),'代码重新克隆核验':True,'Wiki核验':row.get('wiki_verified',False)})
         assert row.get('wiki_verified'), '依赖仓库 Wiki 未逐个核验'
         for ident, receipt in row.get('assets',{}).items():
             source=row['downloads'][ident]
@@ -64,7 +64,10 @@ def main():
                         result=subprocess.run(['docker','run','--rm','--platform','linux/amd64','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','-v',str(folder.resolve())+':/fixture:ro','--entrypoint','/fixture/fixture-app',a.runner_image],capture_output=True)
                         assert result.returncode==0 and '迁移' in result.stdout.decode()
                         report['C产物执行'].append({'来源编号':ident,'SHA256':hashlib.sha256(binary).hexdigest(),'结果':'隔离执行通过'})
-    pull=api('/repos/'+root['final_path']+'/pulls/1');assert pull['head']['repo']['id']==fork['repo_id'] and pull['base']['repo']['id']==root['repo_id']
+    pull_receipt=root['objects']['pull:'+str(fixture['pull']['id'])]
+    pull_number=next(issue['number'] for issue in api('/repos/'+root['final_path']+'/issues?state=all&type=pulls&limit=100') if issue['id']==pull_receipt['target_id'])
+    pull_path='/repos/'+root['final_path']+'/pulls/'+str(pull_number)
+    pull=api(pull_path);assert pull['head']['repo']['id']==fork['repo_id'] and pull['base']['repo']['id']==root['repo_id']
     assert pull['head']['ref']=='cross-feature' and pull['base']['ref']=='main'
     report['跨仓库关系']={'来源仓库':fork['repo_id'],'目标仓库':root['repo_id'],'保持真实依赖':True}
     repo=api('/repos/'+root['final_path']);owner=repo['owner']['login'];registry='/api/packages/'+quote(owner,safe='')
@@ -117,13 +120,13 @@ def main():
         if not pull['merged']:
             deadline=time.monotonic()+60
             while time.monotonic()<deadline:
-                pull=api('/repos/'+root['final_path']+'/pulls/1')
+                pull=api(pull_path)
                 if pull.get('mergeable'):break
                 time.sleep(1)
             assert pull.get('mergeable'), '真实跨仓库 PR 不能合并'
-            r=client.post(base+'/api/v1/repos/'+root['final_path']+'/pulls/1/merge',json={'Do':'merge','merge_when_checks_succeed':False},timeout=90)
+            r=client.post(base+'/api/v1'+pull_path+'/merge',json={'Do':'merge','merge_when_checks_succeed':False},timeout=90)
             assert r.status_code in (200,201,204), '真实跨仓库 PR 合并失败 HTTP '+str(r.status_code)
-        assert api('/repos/'+root['final_path']+'/pulls/1')['merged'];report['跨仓库合并']='真实原生 API 合并通过'
+        assert api(pull_path)['merged'];report['跨仓库合并']='真实原生 API 合并通过'
     output=a.manager_state.parent/('advanced-acceptance-'+str(a.run_id)+'.json');output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print('完整高级基准验收通过：'+str(output))
 

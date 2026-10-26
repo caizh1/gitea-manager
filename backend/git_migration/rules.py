@@ -116,7 +116,8 @@ def apply(receiver, repo, rules, mapping, progress, save):
         return
     path = '/repos/' + quote(repo['full_name'], safe='/')
     for key, users in mapping.items():
-        if ':person:' in key or ':review-team:' in key:
+        if ':person:' in key or ':review-team:' in key or key == 'gitlab:ci:issuer':
+            # 人员与 CI 使用原生接收端按单元核对权限；治理群组成员的总体 permission 可为 none。
             continue
         for expected in users:
             actual = receiver.api('GET', '/users/' + quote(expected['login'], safe=''))

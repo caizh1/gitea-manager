@@ -8,7 +8,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,required=True);a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
     archive=subprocess.check_output(['git','archive','--format=tar','HEAD'],cwd=ROOT)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:tar.extractall(out)
-    paths=[ROOT/'backend/git_migration',ROOT/'backend/routes/git_migration_routes.py',ROOT/'frontend/src/views/GitMigrations.vue',ROOT/'frontend/src/components/GitMigrationExecution.vue',ROOT/'frontend/dist',ROOT/'review-runtime/vendor']
+    paths=[ROOT/'backend/git_migration',ROOT/'backend/routes/git_migration_routes.py',ROOT/'backend/access/control.py',ROOT/'frontend/src/views/GitMigrations.vue',ROOT/'frontend/src/components/GitMigrationExecution.vue',ROOT/'frontend/dist',ROOT/'review-runtime/vendor']
     paths+=list((ROOT/'backend/tests').glob('test_git_migration_*.py'))
     paths+=list((ROOT/'scripts').glob('git-migration-*.py'))+list((ROOT/'scripts').glob('gitlab-migration-*.py'))
     paths+=list((ROOT/'docs').glob('git-migration-*.md'))
