@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  { path: '/account/security', meta: { account: true }, component: () => import('../views/AccountSecurity.vue') },
   { path: '/git-migrations', meta: { capability: 'git_migrations', platformOnly: true }, component: () => import('../views/GitMigrations.vue') },
   ...[
     ['', 'workbench'], ['/sources', 'sources'], ['/runs', 'runs'],

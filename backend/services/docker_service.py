@@ -99,6 +99,8 @@ def managed_client(server):
         client.api.mount('http+docker://ssh', adapter)
         client.api.base_url = 'http+docker://ssh'
         client.api.trust_env = False
+        from services.docker_ssh_stream import install
+        install(client.api)
         client.api._version = client.api._retrieve_server_version()
         return client
     except Exception:

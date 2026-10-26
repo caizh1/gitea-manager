@@ -150,18 +150,23 @@ def verify_snapshot(expected, actual, saved_rows):
             raise RuntimeError('Manager 校验记录与备份快照提交不一致：' + name)
 
 
-def consistent_backup(server, backup):
+def consistent_backup(server, backup, journal=None):
+    if journal is None:
+        from services.backup_recovery import execution
+        with execution(backup) as current:
+            return consistent_backup(server, backup, journal=current)
     from config import BACKUP_DIR
     from services.docker_service import managed_client
     from services.operation_progress import update_backup_progress
     from services.restore_secrets import capture_backup_secret
     client = managed_client(server)
     helper = None
-    locked = stopped = was_running = False
+    was_running = False
     marker = 'manager-backup-' + uuid.uuid4().hex
     try:
         gitea = client.containers.get(server.gitea_container)
         database = client.containers.get(server.pg_container)
+        journal.attach(server, gitea, database, marker)
         check_layout(gitea, database, server)
         from services.backup_manifest import identity, table_snapshot, append_manifest
         requirements = identity(gitea, database, server)
@@ -173,14 +178,19 @@ def consistent_backup(server, backup):
                 raise RuntimeError(label + ' 已禁用但仍有对象记录；dump 会跳过正文，拒绝生成不完整备份')
         was_running = gitea.status == 'running'
         network = sorted(set(gitea.attrs['NetworkSettings']['Networks']) & set(database.attrs['NetworkSettings']['Networks']))[0]
-        helper = client.containers.run(gitea.attrs['Image'], entrypoint=['sleep'], command=['infinity'],
+        journal.before_helper(gitea, network)
+        helper = client.containers.create(gitea.attrs['Image'], name=marker, entrypoint=['sleep'], command=['infinity'],
             environment=gitea.attrs['Config'].get('Env'), volumes_from=[gitea.id], network=network,
-            detach=True, labels={'gitea.manager.operation': marker})
-        execute(helper, ['mkdir', INSTANCE_LOCK]); locked = True
+            labels={'gitea.manager.operation': marker})
+        journal.helper(helper)
+        helper.start()
+        journal.before_lock()
+        journal.lock(helper)
         update_backup_progress(backup, 'stop_source', '正在停止源 Gitea，建立一致性备份点', 5, server.name)
         if was_running:
+            journal.before_stop(gitea)
             gitea.stop(timeout=60)
-        stopped = True
+        journal.stopped(gitea)
         require_quiet(database, server)
         from services.backup_dependencies import capture_startup_files, append_startup_files
         from services.backup_actions import append_artifacts
@@ -239,26 +249,27 @@ def consistent_backup(server, backup):
         original_error = sys.exc_info()[1]
         cleanup_error = None
         try:
-            if stopped and was_running:
-                gitea.start()
-            if locked:
-                execute(helper, ['rmdir', INSTANCE_LOCK])
-        except Exception as exc:
+            if journal.value.get('原源'):
+                from services.backup_recovery import recover_source
+                recover_source(client, server, journal)
+            else:
+                journal.complete_source()
+        except BaseException as exc:
             cleanup_error = exc
-            logging.error('备份源启动或解锁失败，保留现场锁；异常类型：%s', type(exc).__name__)
+            try:
+                logging.error('备份源启动或解锁失败，保留现场锁；异常类型：%s', type(exc).__name__)
+            except BaseException:
+                pass
         finally:
             try:
-                if helper is not None: helper.remove(force=True)
-            except Exception as exc:
+                client.close()
+            except BaseException as exc:
                 cleanup_error = cleanup_error or exc
-                logging.error('备份辅助容器回收失败；异常类型：%s', type(exc).__name__)
-            finally:
-                try:
-                    client.close()
-                except Exception as exc:
-                    cleanup_error = cleanup_error or exc
         if cleanup_error:
             if original_error is not None:
-                original_error.add_note('备份清理未完整完成，请检查源服务、实例锁及辅助容器；异常类型：' + type(cleanup_error).__name__)
+                try:
+                    original_error.add_note('备份清理未完整完成，请检查源服务、实例锁及辅助容器；异常类型：' + type(cleanup_error).__name__)
+                except BaseException:
+                    pass
             else:
                 raise cleanup_error

@@ -144,6 +144,8 @@ def create_backup():
 @login_required
 def delete_backup(bid):
     b = Backup.query.get_or_404(bid)
+    if b.status in ('running', 'pending') or b.recovery_pending:
+        return jsonify(error='备份仍在运行或尚未完成中断收尾，不能删除恢复凭据'), 409
     if b.file_path and os.path.exists(b.file_path):
         os.remove(b.file_path)
     from pathlib import Path

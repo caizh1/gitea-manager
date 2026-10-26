@@ -53,7 +53,7 @@ class BackupStreamTests(unittest.TestCase):
         database = MagicMock()
         database.attrs = {'NetworkSettings': {'Networks': {'network': {}}}}
         client.containers.get.side_effect = [original, database]
-        client.containers.run.return_value = helper
+        client.containers.create.return_value = helper
         original.start.side_effect = RuntimeError('验收启动失败')
         helper.remove.side_effect = RuntimeError('验收回收失败')
         primary = RuntimeError('验收首次错误')
@@ -66,8 +66,10 @@ class BackupStreamTests(unittest.TestCase):
             stack.enter_context(patch('services.backup_dependencies.capture_startup_files', return_value={}))
             stack.enter_context(patch('services.operation_progress.update_backup_progress'))
             stack.enter_context(patch('services.backup_consistency.repository_snapshot', side_effect=primary))
+            stack.enter_context(patch('services.backup_recovery.recover_source', side_effect=lambda *args: helper.remove(force=True)))
             with self.assertRaises(RuntimeError) as error:
-                consistent_backup(SimpleNamespace(gitea_container='源', pg_container='数据库', name='隔离实例'), MagicMock())
+                consistent_backup(SimpleNamespace(gitea_container='源', pg_container='数据库', name='隔离实例'), MagicMock(),
+                                  journal=MagicMock(value={'原源': {'说明': '此用例验证清理错误不得遮蔽归档首败'}}))
         self.assertIs(error.exception, primary)
         self.assertIn('清理未完整完成', primary.__notes__[0])
         helper.remove.assert_called_once_with(force=True)

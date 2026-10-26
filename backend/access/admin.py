@@ -342,14 +342,23 @@ def change_password():
         raise AccessError('当前密码不正确', 403)
     if not isinstance(password, str) or not 12 <= len(password) <= 4096 or password == old:
         raise AccessError('新密码至少十二位，并且不能与原密码相同')
-    account.password_hash = generate_password_hash(password)
-    account.must_change_password = False
-    account.auth_version += 1
+    # 两个 worker 同时验证旧密码时只允许一份修改提交，避免后提交者覆盖已生效的新密码。
+    password_hash = generate_password_hash(password)
+    changed = db.session.execute(db.update(ManagerAccount).where(
+        ManagerAccount.id == account.id,
+        ManagerAccount.password_hash == account.password_hash,
+        ManagerAccount.auth_version == account.auth_version,
+    ).values(password_hash=password_hash, must_change_password=False,
+             auth_version=ManagerAccount.auth_version + 1),
+        execution_options={'synchronize_session': False}).rowcount
+    if changed != 1:
+        raise AccessError('密码或账号状态已变化，请重新登录后再试', 409)
     setting = db.session.get(Setting, 'admin_password')
-    setting.value = account.password_hash
+    setting.value = password_hash
     revoke_account_sessions(account.id)
     audit('修改本地应急管理员密码', account.id)
     db.session.commit()
+    db.session.refresh(account)
     issue_session(account)
     return jsonify(session_payload() | {'ok': True})
 

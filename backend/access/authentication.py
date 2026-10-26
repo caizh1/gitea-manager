@@ -236,6 +236,7 @@ def session_payload():
     if current_user.is_authenticated:
         payload['user'] = {key: getattr(current_user, key) for key in
             ('id', 'username', 'display_name', 'is_platform_admin', 'must_change_password')}
+        payload['user']['auth_source'] = 'local' if current_user.source_id is None else 'ldap'
         payload['organizations'] = visible_organizations(current_user)
         if current_user.is_platform_admin:
             payload['capabilities'] = ['platform', 'access', 'servers', 'backups', 'restore', 'schedules',

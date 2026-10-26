@@ -5,10 +5,10 @@
   </div>
   <div v-else-if="accessState.user?.must_change_password" class="session-gate">
     <div class="glass-card password-card"><h2>设置安全的管理员密码</h2><p>初始密码需要修改后才能继续管理平台。</p>
-      <el-form label-position="top" @submit.prevent="changePassword"><el-form-item label="当前密码"><el-input v-model="passwordForm.current_password" type="password" autocomplete="current-password" show-password /></el-form-item><el-form-item label="新密码"><el-input v-model="passwordForm.new_password" type="password" autocomplete="new-password" show-password /></el-form-item><el-form-item label="确认新密码"><el-input v-model="passwordForm.confirm" type="password" autocomplete="new-password" show-password /></el-form-item><el-alert v-if="passwordError" :title="passwordError" type="error" :closable="false" /><div class="session-actions"><el-button type="primary" native-type="submit" :loading="changingPassword">保存密码</el-button><el-button @click="logout">退出登录</el-button></div></el-form>
+      <PasswordChangeForm form-id="initial-password"><template #actions="{ saving }"><el-button :disabled="saving" @click="logout">退出登录</el-button></template></PasswordChangeForm>
     </div>
   </div>
-  <div v-else-if="!accessReady" class="session-gate"><el-result icon="info" title="尚未分配管理权限" :sub-title="`${accessState.user?.display_name || accessState.user?.username || ''}，请联系平台管理员分配组织。`"><template #extra><el-button @click="refreshSession">刷新授权</el-button><el-button @click="logout">退出登录</el-button></template></el-result></div>
+  <div v-else-if="!accessReady && !isAccountPage" class="session-gate"><el-result icon="info" title="尚未分配管理权限" :sub-title="`${accessState.user?.display_name || accessState.user?.username || ''}，请联系平台管理员分配组织。`"><template #extra><el-button @click="refreshSession">刷新授权</el-button><el-button @click="$router.push('/account/security')">账号与安全</el-button><el-button @click="logout">退出登录</el-button></template></el-result></div>
   <div v-else class="layout">
     <el-container>
       <el-aside :width="collapsed ? '64px' : '240px'" class="app-aside" :class="{ 'is-collapsed': collapsed }">
@@ -24,6 +24,7 @@
           ref="navigationMenu"
           :default-active="activeMenu"
           :collapse="collapsed"
+          :collapse-transition="false"
           :default-openeds="['ai-review-navigation', 'svn-navigation']"
           router
           background-color="transparent"
@@ -32,68 +33,68 @@
           class="app-menu"
         >
           <el-menu-item v-if="hasCapability('dashboard')" index="/dashboard" aria-label="仪表盘">
-            <el-icon><Monitor /></el-icon>
+            <el-icon><NavHouse /></el-icon>
             <template #title>仪表盘</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('servers')" index="/servers" aria-label="服务器管理">
-            <el-icon><Setting /></el-icon>
+            <el-icon><NavServer /></el-icon>
             <template #title>服务器管理</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('backups')" index="/backups" aria-label="备份管理">
-            <el-icon><FolderOpened /></el-icon>
+            <el-icon><NavDatabase /></el-icon>
             <template #title>备份管理</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('restore')" index="/restore" aria-label="恢复操作">
-            <el-icon><RefreshRight /></el-icon>
+            <el-icon><NavRestore /></el-icon>
             <template #title>恢复操作</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('settings')" index="/settings" aria-label="系统设置">
-            <el-icon><Tools /></el-icon>
+            <el-icon><NavSettings /></el-icon>
             <template #title>系统设置</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('schedules')" index="/schedules" aria-label="定时任务">
-            <el-icon><Clock /></el-icon>
+            <el-icon><NavClock /></el-icon>
             <template #title>定时任务</template>
           </el-menu-item>
           <el-sub-menu v-if="hasCapability('svn_migrations')" index="svn-navigation" aria-label="迁移中心" @click="openSvnMenu" class="review-submenu" popper-class="review-submenu-popup">
-            <template #title><el-icon><Connection /></el-icon><span>迁移中心</span></template>
+            <template #title><el-icon><NavMigration /></el-icon><span>迁移中心</span></template>
             <el-menu-item index="/svn-migrations">SVN 迁移工作台</el-menu-item>
             <el-menu-item index="/svn-migrations/sources">SVN 来源与仓库</el-menu-item>
             <el-menu-item index="/svn-migrations/runs">SVN 执行记录</el-menu-item>
             <el-menu-item v-if="hasCapability('git_migrations')" index="/git-migrations">GitLab / Gitea 来源</el-menu-item>
           </el-sub-menu>
           <el-menu-item v-if="hasCapability('mirrors')" index="/mirrors" aria-label="镜像管理">
-            <el-icon><Connection /></el-icon>
+            <el-icon><NavBox /></el-icon>
             <template #title>镜像管理</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('commit_gates')" index="/commit-gates" aria-label="提交门禁">
-            <el-icon><Key /></el-icon>
+            <el-icon><NavShield /></el-icon>
             <template #title>提交门禁</template>
           </el-menu-item>
           <el-sub-menu v-if="hasCapability('ai_reviews')" index="ai-review-navigation" aria-label="AI Code Review" @click="openReviewMenu" class="review-submenu" popper-class="review-submenu-popup">
-            <template #title><el-icon><DataAnalysis /></el-icon><span>AI Code Review</span></template>
-            <el-menu-item index="/ai-reviews" :route="reviewNavigationTarget('/ai-reviews')" aria-label="审查工作区"><el-icon><Monitor /></el-icon><template #title>审查工作区</template></el-menu-item>
-            <el-menu-item index="/ai-reviews/repositories" :route="reviewNavigationTarget('/ai-reviews/repositories')" aria-label="仓库管理"><el-icon><FolderOpened /></el-icon><template #title>仓库管理</template></el-menu-item>
-            <el-menu-item index="/ai-reviews/dataset" :route="reviewNavigationTarget('/ai-reviews/dataset')" aria-label="经验数据集"><el-icon><Coin /></el-icon><template #title>经验数据集</template></el-menu-item>
-            <el-menu-item v-if="isPlatformAdmin" index="/ai-reviews/settings" :route="reviewNavigationTarget('/ai-reviews/settings')" aria-label="模型与设置"><el-icon><Setting /></el-icon><template #title>模型与设置</template></el-menu-item>
+            <template #title><el-icon><NavReview /></el-icon><span>AI Code Review</span></template>
+            <el-menu-item index="/ai-reviews" :route="reviewNavigationTarget('/ai-reviews')" aria-label="审查工作区"><el-icon><NavReview /></el-icon><template #title>审查工作区</template></el-menu-item>
+            <el-menu-item index="/ai-reviews/repositories" :route="reviewNavigationTarget('/ai-reviews/repositories')" aria-label="仓库管理"><el-icon><NavFolder /></el-icon><template #title>仓库管理</template></el-menu-item>
+            <el-menu-item index="/ai-reviews/dataset" :route="reviewNavigationTarget('/ai-reviews/dataset')" aria-label="经验数据集"><el-icon><NavDatabase /></el-icon><template #title>经验数据集</template></el-menu-item>
+            <el-menu-item v-if="isPlatformAdmin" index="/ai-reviews/settings" :route="reviewNavigationTarget('/ai-reviews/settings')" aria-label="模型与设置"><el-icon><NavSettings /></el-icon><template #title>模型与设置</template></el-menu-item>
           </el-sub-menu>
           <el-menu-item v-if="hasCapability('repository_policies')" index="/repository-policies" aria-label="仓库策略中心">
-            <el-icon><Key /></el-icon>
+            <el-icon><NavBranch /></el-icon>
             <template #title>仓库策略中心</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('approval_rules')" index="/approval-rules" aria-label="审批规则">
-            <el-icon><CircleCheck /></el-icon>
+            <el-icon><NavApproval /></el-icon>
             <template #title>审批规则</template>
           </el-menu-item>
           <el-menu-item v-if="hasCapability('statistics')" index="/statistics" aria-label="统计分析">
-            <el-icon><DataAnalysis /></el-icon>
+            <el-icon><NavChart /></el-icon>
             <template #title>统计分析</template>
           </el-menu-item>
-        <el-menu-item v-if="hasCapability('access')" index="/access" aria-label="账号与权限"><el-icon><User /></el-icon><template #title>账号与权限</template></el-menu-item>
+        <el-menu-item v-if="hasCapability('access')" index="/access" aria-label="账号与权限"><el-icon><NavUsers /></el-icon><template #title>账号与权限</template></el-menu-item>
         </el-menu>
         <div class="sidebar-footer">
           <div class="sidebar-user">
-            <div class="user-avatar">{{ (accessState.user?.display_name || accessState.user?.username || '').slice(0, 1) }}</div>
+              <div class="user-avatar">{{ accessState.user?.display_name === '平台管理员' ? '管' : (accessState.user?.display_name || accessState.user?.username || '').slice(0, 1) }}</div>
             <div v-if="!collapsed" class="user-info">
               <div class="user-name">{{ accessState.user?.display_name || accessState.user?.username }}</div>
               <div class="user-role">{{ isPlatformAdmin ? '平台管理员' : '组织管理员' }}</div>
@@ -124,15 +125,18 @@
           <div class="header-right">
             <el-select v-if="!isPlatformAdmin" :model-value="accessState.organizationId" aria-label="当前管理组织" class="scope-select" @change="switchOrganization"><el-option v-for="org in accessState.organizations" :key="org.binding_id" :value="org.binding_id" :label="`${org.server_name} / ${org.organization_name}`" /></el-select>
             <AlertBell v-if="hasCapability('alerts')" :key="`alerts-${accessState.generation}`" />
+            <el-button size="small" class="account-security-button" :class="{ 'is-active': isAccountPage }" :aria-current="isAccountPage ? 'page' : undefined" @click="$router.push('/account/security')">
+              <NavUser :size="20" :stroke-width="1.7" aria-hidden="true" /><span>账号与安全</span>
+            </el-button>
             <el-button size="small" @click="logout" class="logout-btn">
-              <el-icon><SwitchButton /></el-icon>
+              <NavLogout :size="18" :stroke-width="1.7" aria-hidden="true" />
               <span>退出登录</span>
             </el-button>
           </div>
         </el-header>
         <ReviewAttentionBanner v-if="hasCapability('ai_reviews')" :key="`review-${accessState.generation}`" />
         <el-main class="app-main">
-          <div v-if="needsConfig && !isSettingsPage" class="blocking-card">
+          <div v-if="needsConfig && !isSettingsPage && !isAccountPage" class="blocking-card">
             <el-result icon="warning" title="请先配置本机 IP" :sub-title="isPlatformAdmin ? '使用平台前需在系统设置中配置本机 IP，用于区分本地和远程服务器。' : '请联系平台管理员完成系统设置。'">
               <template #extra>
                 <el-button v-if="isPlatformAdmin" type="primary" @click="$router.push('/settings')">前往系统设置</el-button>
@@ -141,7 +145,8 @@
           </div>
           <el-result v-else-if="!routeAllowed" icon="warning" title="无权访问此功能" sub-title="请从导航中选择已授权的功能。" />
           <router-view v-else :key="accessState.generation" v-slot="{ Component }">
-            <transition name="page" mode="out-in">
+            <component v-if="isAccountPage" :is="Component" :key="`${accessState.generation}-${$route.path}`" />
+            <transition v-else name="page" mode="out-in">
               <component :is="Component" :key="`${accessState.generation}-${$route.path}`" />
             </transition>
           </router-view>
@@ -152,18 +157,25 @@
 </template>
 
 <script>
-import { ref, reactive, computed, provide, onUnmounted } from 'vue'
+import { ref, computed, provide, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LoginView from './views/Login.vue'
 import AlertBell from './components/AlertBell.vue'
 import ReviewAttentionBanner from './components/ReviewAttentionBanner.vue'
-import { Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Coin, Key, User } from '@element-plus/icons-vue'
+import PasswordChangeForm from './components/PasswordChangeForm.vue'
+import { Expand, Fold } from '@element-plus/icons-vue'
+import { House as NavHouse, Server as NavServer, Database as NavDatabase, RotateCcw as NavRestore,
+  Settings as NavSettings, Clock as NavClock, ArrowRightLeft as NavMigration, Box as NavBox,
+  ShieldCheck as NavShield, ClipboardList as NavReview, Folder as NavFolder, GitBranch as NavBranch,
+  FileCheck2 as NavApproval, ChartNoAxesCombined as NavChart, UsersRound as NavUsers,
+  UserRound as NavUser, LogOut as NavLogout } from '@lucide/vue'
 import { api, cancelScopeRequests } from './api'
 import { notifyApiError } from './api/errors.js'
 import { accessState, accessReady, isPlatformAdmin, hasCapability, applySession, setOrganization } from './composables/accessState.js'
 
 const breadcrumbMap = {
+  '/account/security': '账号与安全',
   '/git-migrations': 'GitLab / Gitea 来源',
   '/svn-migrations': 'SVN 迁移',
   '/access': '账号与权限',
@@ -192,14 +204,16 @@ function decodeRouteParam(value) {
 }
 
 export default {
-  components: { LoginView, AlertBell, ReviewAttentionBanner, Monitor, Setting, FolderOpened, RefreshRight, Tools, Clock, Expand, Fold, SwitchButton, Connection, DataAnalysis, Coin, Key, User },
+  components: { LoginView, AlertBell, ReviewAttentionBanner, PasswordChangeForm, Expand, Fold,
+    NavHouse, NavServer, NavDatabase, NavRestore, NavSettings, NavClock, NavMigration, NavBox, NavShield,
+    NavReview, NavFolder, NavBranch, NavApproval, NavChart, NavUsers, NavUser, NavLogout },
   setup() {
     const router = useRouter()
     const route = useRoute()
     const authenticated = computed(() => accessState.authenticated)
     const needsConfig = computed(() => accessState.needsConfig)
-    const routeAllowed = computed(() => Boolean(route.meta.capability && hasCapability(route.meta.capability) && (!route.meta.platformOnly || isPlatformAdmin.value)))
-    const passwordForm = reactive({ current_password: '', new_password: '', confirm: '' }), passwordError = ref(''), changingPassword = ref(false)
+    const isAccountPage = computed(() => Boolean(route.meta.account))
+    const routeAllowed = computed(() => isAccountPage.value || Boolean(route.meta.capability && hasCapability(route.meta.capability) && (!route.meta.platformOnly || isPlatformAdmin.value)))
     let sessionTimer, refreshingSession = false
     async function refreshSession() {
       if (refreshingSession) return
@@ -211,15 +225,6 @@ export default {
     function clearScope() { cancelScopeRequests(); ElMessageBox.close(); ElMessage.closeAll() }
     function expireSession() { clearScope(); applySession({ sources: accessState.sources }); refreshSession() }
     function switchOrganization(id) { if (!setOrganization(id)) return; clearScope(); router.replace({ path: route.path.startsWith('/statistics/') ? '/statistics' : route.path, query: {} }) }
-    async function changePassword() {
-      if (changingPassword.value) return
-      passwordError.value = ''
-      if (!passwordForm.new_password || passwordForm.new_password !== passwordForm.confirm) { passwordError.value = '两次新密码不一致'; return }
-      changingPassword.value = true
-      try { await api.post('/access/password', { current_password: passwordForm.current_password, new_password: passwordForm.new_password }); Object.assign(passwordForm, { current_password: '', new_password: '', confirm: '' }); await refreshSession() }
-      catch (error) { passwordError.value = error.response?.data?.error || '密码修改失败' }
-      finally { changingPassword.value = false }
-    }
     window.addEventListener('manager-session-expired', expireSession)
     window.addEventListener('manager-access-changed', refreshSession)
     onUnmounted(() => { clearInterval(sessionTimer); window.removeEventListener('manager-session-expired', expireSession); window.removeEventListener('manager-access-changed', refreshSession) })
@@ -324,14 +329,14 @@ export default {
       router.push(item.to)
     }
 
-    return { accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, passwordForm, passwordError, changingPassword, changePassword, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, navigationMenu, openReviewMenu, openSvnMenu, activeMenu, reviewNavigationTarget, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
+    return { accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, isAccountPage, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, navigationMenu, openReviewMenu, openSvnMenu, activeMenu, reviewNavigationTarget, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
   },
 }
 </script>
 
 <style>
 .session-loading, .session-gate { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
-.password-card { width: 420px; max-width: 100%; padding: 28px; }
+.password-card { width: 520px; max-width: 100%; padding: 28px; }
 .password-card p { color: var(--text-secondary); margin-bottom: 20px; }
 .session-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 .scope-select { width: 280px; max-width: 42vw; }
@@ -378,6 +383,8 @@ export default {
 .collapse-btn:hover { color: var(--color-primary); background: rgba(255,255,255,0.45); }
 
 .app-menu { border-right: none; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; }
+.app-menu .el-icon { position: static !important; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; font-size: 22px; }
+.app-menu .el-icon > svg { width: 22px; height: 22px; stroke-width: 1.7; }
 .el-menu-item {
   transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; margin: 3px 10px; border-radius: 16px !important;
   height: 44px !important; line-height: 44px !important;
@@ -454,6 +461,11 @@ export default {
 }
 .breadcrumb-link:hover { background: rgba(0,122,255,0.08); color: var(--color-primary); }
 .header-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.account-security-button, .logout-btn { min-height: 36px; }
+.account-security-button > span, .logout-btn > span { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.account-security-button > span > svg, .logout-btn > span > svg { flex-shrink: 0; }
+.account-security-button { margin: 0 !important; border-color: transparent !important; background: transparent !important; color: var(--text-secondary) !important; }
+.account-security-button.is-active, .account-security-button:hover { background: rgba(0,122,255,.08) !important; color: var(--color-primary) !important; }
 .logout-btn {
   background: rgba(255,255,255,0.62) !important; border: 1px solid rgba(15,23,42,0.08) !important;
   color: var(--text-secondary) !important; border-radius: 14px !important;

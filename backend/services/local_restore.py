@@ -19,6 +19,8 @@ from services.restore_isolation import IsolatedGitea
 
 
 def restore(target, backup, task, progress):
+    from services.backup_recovery import ensure_ready
+    ensure_ready(target.id)
     from services.docker_service import managed_client
     from services.restore_recovery import lease
     lock = lease(target)
@@ -50,7 +52,8 @@ def _restore(client, target, backup, task, progress):
     requirements = identity(gitea, database, target)
     admit(manifest, requirements)
     from services.backup_actions import external_path, ARCHIVE_ROOT, switch_command, rollback_command, verify_artifacts
-    artifacts = external_path(read_file(gitea, '/data/gitea/conf/app.ini')[0])
+    target_config = read_file(gitea, '/data/gitea/conf/app.ini')[0]
+    artifacts = external_path(target_config)
     external_lfs = requirements['存储'].get('lfs', {}).get('path') == '/data/git/lfs'
     if manifest is None:
         from services.backup_consistency import database_sql
@@ -141,6 +144,9 @@ def _restore(client, target, backup, task, progress):
         secret_file.write_text(source_secret); secret_file.chmod(0o600)
         (secret_file.parent/'manager-secret-uri').write_text(SECRET_URI)
         (secret_file.parent/'manager-empty-secret').write_text('')
+        from services.restore_config import RestoreConfig
+        business_config = RestoreConfig(root, workspace, target_config, SECRET_URI)
+        transition.configure_business(business_config)
         common_networks = set(gitea.attrs['NetworkSettings']['Networks']) & set(database.attrs['NetworkSettings']['Networks'])
         if not common_networks: raise RuntimeError('Gitea 与 PostgreSQL 没有共同网络，尚未修改目标数据')
         helper = client.containers.run(gitea.attrs['Image'], entrypoint=['sleep'], command=['infinity'],
@@ -153,6 +159,7 @@ def _restore(client, target, backup, task, progress):
             journal = Journal(helper, database, target, task, transition, stage, pg_temp, backup.source_api_token)
             journal.value['Actions目录'] = artifacts
             transition.prepare()
+            business_config.write()
             journal.prepared(transition)
             free = int(execute(helper, ['sh', '-ec', "df -Pk /data | tail -1 | awk '{print $4}'"], '检查目标磁盘空间').strip())*1024
             if free < total * 2 + 64*1024*1024:
@@ -169,9 +176,7 @@ def _restore(client, target, backup, task, progress):
                 progress(task, 'transfer_files', '正在传输仓库和数据文件', 25, target.name)
                 reader = ProgressReader(stream, lambda n, total: progress(task, 'transfer_files', '正在传输仓库和数据文件', 25, target.name, current=n, total=total, unit='bytes'))
                 if not helper.put_archive(stage, reader): raise RuntimeError('写入文件暂存区失败')
-            execute(helper, ['sh','-ec', f'mkdir -p {stage}/new-gitea/conf; cp -p /data/gitea/conf/app.ini {stage}/new-gitea/conf/app.ini; chown -R git:git {stage}/new-gitea {stage}/new-repositories'], '保留目标配置并校验文件权限')
-            execute(helper, ['env', 'GITEA__security__SECRET_KEY=', 'GITEA__security__SECRET_KEY_URI='+SECRET_URI,
-                             'environment-to-ini', '--config', stage+'/new-gitea/conf/app.ini'], '将源密钥接入目标配置，保留目标连接设置')
+            execute(helper, ['sh','-ec', f'chown -R git:git {stage}/new-gitea {stage}/new-repositories'], '校验源业务配置及文件权限，保留明确目标部署参数')
             sql(['mkdir', '-m', '700', pg_temp], '建立数据库暂存区')
             with tempfile.TemporaryFile() as stream:
                 with tarfile.open(fileobj=stream, mode='w') as bundle:
@@ -211,13 +216,16 @@ def _restore(client, target, backup, task, progress):
             progress(task, 'configure_secret', '正在同步目标密钥启动配置', 78, target.name)
             journal.save('启动配置')
             gitea = transition.switch()
+            transition.verify_environment()
+            business_config.verify(read_file(gitea, '/data/gitea/conf/app.ini')[0])
             progress(task, 'regenerate_hooks', '正在重新生成仓库 Hook', 80, target.name)
             execute(helper, ['/usr/local/bin/gitea','--config','/data/gitea/conf/app.ini','admin','regenerate','hooks'], '重新生成仓库 Hook', user='git')
             verify_hooks(helper, hooks)
             progress(task, 'regenerate_keys', '正在重新生成 Git SSH 公钥', 85, target.name)
             execute(helper, ['/usr/local/bin/gitea','--config','/data/gitea/conf/app.ini','admin','regenerate','keys'], '重新生成 Git SSH 公钥', user='git')
             progress(task, 'start_gitea', '正在隔离网络中验证恢复实例，业务端口保持关闭', 90, target.name)
-            isolated = IsolatedGitea(client, gitea, database, target, marker)
+            isolated = IsolatedGitea(client, gitea, database, target, marker,
+                                    validation_token=(backup.source_api_token or '').strip() or target.api_token)
             isolated.start()
             progress(task, 'verify_secret', '正在回读目标生效的加密密钥配置', 92, target.name)
             actual_secret, actual_uri = security_values(read_file(isolated.container, '/tmp/manager-verify.ini')[0])
@@ -254,6 +262,8 @@ def _restore(client, target, backup, task, progress):
                         journal.save('发布')
                         gitea.start()
                     else:
+                        transition.verify_environment()
+                        business_config.verify(read_file(gitea, '/data/gitea/conf/app.ini')[0])
                         # 这是开放写入的唯一边界。此后任何启动/清理异常都不能回退已接收的新数据。
                         progress(task, 'publish', '隔离验证通过，正在开放目标服务', 98, target.name)
                         execute(helper, ['sh', '-ec', f'echo verified > {stage}/verified'], '记录已验证的发布边界')
@@ -264,6 +274,7 @@ def _restore(client, target, backup, task, progress):
                             target._restore_api_reader = None
                             from services.commit_service import _require_target_health
                             _require_target_health(target)
+                            business_config.verify(read_file(gitea, '/data/gitea/conf/app.ini')[0])
                         except Exception as exc:
                             raise RuntimeError('隔离验证通过，但开放目标服务未确认成功；保留当前数据及回退点，不自动覆盖可能已接收的新数据：' + str(exc)) from exc
                     progress(task, 'cleanup', '正在清理暂存文件与释放恢复锁', 99, target.name)

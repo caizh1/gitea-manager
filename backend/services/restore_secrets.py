@@ -186,9 +186,24 @@ class SecretTransition:
         self.renamed = False
         self.disconnected = []
         self.compose_original = self.compose_new = None
+        self.business = None
+
+    def configure_business(self, business):
+        self.business = business
+        updated = business.environment(self.environment)
+        self.needed = self.needed or updated != self.environment
+        self.environment = updated
+
+    def verify_environment(self):
+        self.current.reload()
+        actual = dict(item.split('=', 1) for item in self.current.attrs['Config'].get('Env', []) if '=' in item)
+        expected = self.environment if self.needed else dict(
+            item.split('=', 1) for item in self.attrs['Config'].get('Env', []) if '=' in item)
+        if actual != expected:
+            raise RuntimeError('恢复容器的实际启动环境已变化，拒绝开放可能覆盖业务策略的实例')
 
     def prepare(self):
-        if not self.needed:
+        if not self.needed and self.business is None:
             return
         host = self.attrs['HostConfig']
         if host.get('AutoRemove') or str(host.get('NetworkMode', '')).startswith('container:'):
@@ -220,6 +235,7 @@ class SecretTransition:
                 env = dict(v.split('=', 1) if '=' in v else (v, None) for v in env)
             if not isinstance(env, dict):
                 raise ValueError()
+            original_env = copy.deepcopy(env)
             # 显式覆盖上游文件及 env_file 的每个已生效拼写；不修改 .env 或外部 Secret。
             for key in secret_environment(self.environment) | secret_environment(
                     dict(v.split('=', 1) for v in self.attrs['Config'].get('Env', []) if '=' in v)) | secret_environment(env):
@@ -227,6 +243,13 @@ class SecretTransition:
                 env[key] = ('/data/gitea/conf/manager-secret-uri' if normalized.endswith('SECRET_KEY_URI__FILE') else
                             '/data/gitea/conf/manager-empty-secret' if normalized.endswith('SECRET_KEY__FILE') else
                             SECRET_URI if normalized.endswith('SECRET_KEY_URI') else '')
+            if self.business is not None:
+                migrated = self.business.environment(env)
+                for key, env_value in migrated.items():
+                    if env_value != env.get(key):
+                        self.environment[key] = env_value
+                env = migrated
+                self.needed = self.needed or env != original_env
             entry['environment'] = env
             self.compose_new = yaml.safe_dump(value, allow_unicode=True, sort_keys=False).encode()
         except (ValueError, TypeError, AttributeError, yaml.YAMLError):
@@ -250,8 +273,9 @@ class SecretTransition:
         aliases = [v for v in (value.get('Aliases') or []) if v not in (self.original.id, self.original.short_id)]
         if name not in ('bridge', 'host', 'none'):
             endpoint['Aliases'] = aliases
-            endpoint['IPAMConfig'] = value.get('IPAMConfig') or {
-                'IPv4Address': value.get('IPAddress', ''), 'IPv6Address': value.get('GlobalIPv6Address', '')}
+            # IPAddress 是 Docker 的动态分配结果；只有原 IPAMConfig 才表示显式地址请求。
+            if value.get('IPAMConfig'):
+                endpoint['IPAMConfig'] = copy.deepcopy(value['IPAMConfig'])
         return endpoint
 
     def switch(self):

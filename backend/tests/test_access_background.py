@@ -134,7 +134,8 @@ class BackgroundAccessTests(unittest.TestCase):
             connection.execute('PRAGMA user_version=12')
         upgraded = Store(self.store.path)
         with contextlib.closing(upgraded.connect()) as connection:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 13)
+            # 权限列升级后仍会执行后续迁移；当前完整结构版本为 17，不能停在旧版本 13。
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 17)
             columns = {row[1] for row in connection.execute('PRAGMA table_info(jobs)')}
             self.assertTrue({'access_scope', 'access_actor'} <= columns)
             self.assertEqual(connection.execute('SELECT count(*) FROM jobs').fetchone()[0], 2)

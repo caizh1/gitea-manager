@@ -25,7 +25,8 @@ def target_guard(server_id, migration=False, git_run_id=None):
                     raise MigrationError('目标存在未完成 SVN 迁移', 'busy', 409)
             if conflicts.first():
                 raise MigrationError('目标存在未完成 Git 迁移', 'busy', 409)
-            busy = Backup.query.filter_by(source_server_id=server_id, status='running').first() or RestoreTask.query.filter_by(target_server_id=server_id, status='running').first()
+            busy = Backup.query.filter(Backup.source_server_id == server_id,
+                (Backup.status == 'running') | Backup.recovery_pending.is_(True)).first() or RestoreTask.query.filter_by(target_server_id=server_id, status='running').first()
             if busy:
                 raise MigrationError('目标正在备份或恢复，迁移暂缓执行', 'busy', 409)
         else:
