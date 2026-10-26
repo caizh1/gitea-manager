@@ -29,6 +29,12 @@ def main():
     session=requests.Session();session.trust_env=False;owner='root' if kind=='gitlab' else 'source-admin'
     if kind=='gitlab':
         r=session.post(base+'/oauth/token',data={'grant_type':'password','username':owner,'password':state['password'],'scope':'api'},timeout=60);r.raise_for_status();session.headers['Authorization']='Bearer '+r.json()['access_token']
+        # NuGet 发布不接受普通 OAuth 凭据；夹具使用独立且短期的管理令牌。
+        from datetime import datetime, timedelta, timezone
+        r=session.post(base+'/api/v4/users/1/personal_access_tokens',json={'name':'迁移隔离夹具-'+secrets.token_hex(4),'scopes':['api'],
+                       'expires_at':(datetime.now(timezone.utc)+timedelta(days=1)).date().isoformat()},timeout=60)
+        r.raise_for_status()
+        session.headers.pop('Authorization',None);session.headers['PRIVATE-TOKEN']=r.json()['token']
     else:session.auth=(owner,state['password'])
     def request(method,url,**kwargs):
         r=session.request(method,base+url,timeout=90,**kwargs)
@@ -81,7 +87,7 @@ def main():
     nuget_name='Adv.'+key;nuget_file=(nuget_name+'.'+version+'.nupkg').lower();nuspec=('<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"><metadata><id>'+nuget_name+'</id><version>'+version+'</version><authors>迁移验收</authors><description>保留依赖和包内容</description><dependencies><dependency id="Fixture.Dep" version="[1.0.0]" /></dependencies></metadata></package>').encode();nuget_data=zip_bytes({nuget_name+'.nuspec':nuspec,'lib/net8.0/evidence.txt':'制品内容\n'.encode()})
     nuget_headers = {}
     if kind == 'gitlab':
-        credential = request('POST',api+'/users/1/personal_access_tokens',json={'name':'隔离制品验收 '+key,'scopes':['api'],'expires_at':'2026-10-26'})
+        credential = request('POST',api+'/users/1/personal_access_tokens',json={'name':'隔离制品验收 '+key,'scopes':['api'],'expires_at':(datetime.now(timezone.utc)+timedelta(days=1)).date().isoformat()})
         nuget_headers={'Authorization':None,'X-NuGet-ApiKey':credential['token']}
     request('PUT',root+'/packages/nuget/' if kind=='gitlab' else '/api/packages/'+owner+'/nuget',headers=nuget_headers,files={'package':(nuget_file,nuget_data,'application/octet-stream')})
     packages.append({'type':'nuget','name':nuget_name,'version':version,'files':{nuget_file:hashlib.sha256(nuget_data).hexdigest()}})

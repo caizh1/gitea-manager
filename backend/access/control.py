@@ -14,7 +14,7 @@ MACHINE = {'ai_review.webhook', 'ai_review.setup_probe', 'approval_internal.gate
            'approval_internal.installed', 'approval_internal.uninstall_ready', 'approval_view.view',
            'integrations.health', 'integrations.events', 'integrations.task_detail', 'access_internal.check'}
 PLATFORM = {
-    'git_migration': 'status sources source discoveries discovery inventories inventory runs run_detail resume_run target_groups principals',
+    'git_migration': 'status sources source rotate_credentials rotate_target_credentials discoveries discovery inventories inventory runs run_detail resume_run abandon_run target_groups principals principal_details',
     'svn_migration': 'status targets target_groups target_paths create_target_group sources source test_source discover_projects discovery_result enroll_projects detect_layouts layout_detection repositories repository plans plan preflight preflight_detail runs run control events report cleanup',
     'servers': 'get_server add_server delete_info update_server delete_server check_server refresh_server get_server_detail_route',
     'backups': 'list_backups create_backup import_backup delete_backup download_backup export_disaster_bundle download_disaster_bundle get_backup_steps',

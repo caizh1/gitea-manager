@@ -37,6 +37,7 @@ def main():
     parser.add_argument('--image', required=True)
     parser.add_argument('--project')
     parser.add_argument('--handoff', action='store_true')
+    parser.add_argument('--initialize-only', action='store_true', help='只初始化独立接收端，后续由完整 Manager 链路写入')
     parser.add_argument('--source-state', required=True, type=Path)
     parser.add_argument('--resume-state', type=Path)
     args = parser.parse_args()
@@ -86,6 +87,9 @@ def main():
             raise RuntimeError('接收端初始化令牌失败，HTTP ' + str(response.status_code))
         state['token'] = response.json()['sha1']
         save_secret(folder / 'resources.json', state)
+    if args.initialize_only:
+        print('独立接收端已初始化：' + str(folder / 'resources.json'), flush=True)
+        return
     run_folder = folder / ('run-' + secrets.token_hex(8))
     run_folder.mkdir(mode=0o700)
     source_http = Transport(source['base'])

@@ -36,12 +36,14 @@ def author(row, kind):
     return {'author': name, 'author_id': ident}
 
 
-def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map=None):
+def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map=None, principal_map=None):
     """这里只转换已支持的对象；返回待处理目录供执行门禁核对，不能将其忽略。"""
     require(kind in ('gitlab', 'gitea'), '来源类型无效')
     result, pending = [], []
     labels, milestones, seen = {}, {}, set()
     datasets = inventory['datasets']
+    from .people import mapped
+    mapping = principal_map or {}
 
     def append(value):
         key = (value['kind'], value['source_id'])
@@ -84,9 +86,7 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
             ident = identifier(row['id'])
             require(number not in issue_ids, '来源议题编号重复')
             issue_ids[number] = ident
-            if row.get('assignees') or row.get('assignee'):
-                pending.append({'category': '议题负责人映射', 'source_id': ident,
-                                'reason': '需要将来源负责人映射为目标已有账号'})
+            people = mapped(row, kind, mapping, pending)
             selected = []
             for label in row.get('labels', []):
                 name = label if isinstance(label, str) else label['name']
@@ -104,7 +104,7 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
                     'state': 'closed' if state == 'closed' else 'open', 'labels': selected,
                     'milestone': milestone_id, 'locked': bool(row.get('discussion_locked' if kind == 'gitlab' else 'is_locked')),
                     'created': timestamp(row.get('created_at')), 'updated': timestamp(row.get('updated_at')),
-                    'closed': timestamp(row.get('closed_at'), True), **author(row, kind)})
+                    'closed': timestamp(row.get('closed_at'), True), **author(row, kind), **people})
     pull_ids = {}
     occupied = set(issue_ids)
     pulls = [row for dataset in datasets if dataset['category'] == ('合并请求详情' if kind == 'gitlab' else '合并请求') for row in dataset['rows']]
@@ -114,9 +114,8 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
         occupied.add(number)
         ident = identifier(row['id'])
         pull_ids[original_number] = ident
-        if row.get('assignees') or row.get('assignee') or row.get('requested_reviewers') or row.get('reviewers'):
-            pending.append({'category': '合并请求人员映射', 'source_id': ident,
-                            'reason': '需要明确负责人及当前评审人的目标账号'})
+        reviews = [r for d in datasets if d['category'] == '评审' and '/pulls/' + str(original_number) + '/' in d['path'] for r in d['rows']]
+        people = mapped(row, kind, mapping, pending, reviews)
         if kind == 'gitlab':
             refs = row.get('diff_refs') or {}
             head, base = refs.get('head_sha'), refs.get('base_sha')
@@ -150,7 +149,7 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
                 'closed': timestamp(row.get('closed_at') or row.get('merged_at'), True),
                 'merged': timestamp(row.get('merged_at'), True), 'merge_commit': row.get('merge_commit_sha') or '',
                 'head_commit': head, 'base_commit': base, 'head_repo_id': head_target, 'head_branch': head_branch, 'base_branch': base_branch,
-                'labels': selected, 'milestone': milestone_id, 'history': row, **author(row, kind)})
+                'labels': selected, 'milestone': milestone_id, 'history': row, **author(row, kind), **people})
     for dataset in datasets:
         category = dataset['category']
         if category == '项目合并前置条件':
@@ -186,6 +185,8 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
                 obj = {'source_id': identifier(row['id']), 'parent_kind': 'pull', 'parent_id': pull_ids[number],
                        'content': row.get('body') or '', 'history': row, **author(row, kind)}
                 if category == '评审':
+                    if row['state'] == 'REQUEST_REVIEW':
+                        continue
                     states = {'APPROVED': 'APPROVED', 'REQUEST_CHANGES': 'CHANGES_REQUESTED', 'COMMENT': 'COMMENTED'}
                     require(row['state'] in states, '来源评审状态未支持')
                     obj.update(kind='review', review_state=states[row['state']],
@@ -217,6 +218,19 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
                 append({'kind': 'ci_artifact', 'source_id': identifier(row['id']), 'title': row['name'],
                         'state': 'expired' if row.get('expired') else 'available',
                         'created': timestamp(row['created_at']), 'history': row})
+            continue
+        if category == '触发作业':
+            for row in dataset['rows']:
+                downstream = row.get('downstream_pipeline')
+                history = dict(row)
+                if downstream:
+                    target = (repository_map or {}).get(downstream['project_id'])
+                    require(target is not None, '下游流水线项目未纳入固定批次')
+                    history['target_repository_id'] = target['repo_id']
+                append({'kind': 'ci_trigger', 'source_id': identifier(row['id']), 'title': row['name'],
+                        'parent_id': identifier(row['parent_pipeline_id']), 'state': row['status'],
+                        'commit': row.get('commit', {}).get('id') or '', 'ref': row.get('ref') or '',
+                        'created': timestamp(row['created_at']), 'history': history})
             continue
         if category in ('流水线', 'Actions 流水线', '作业', 'Actions 作业'):
             is_job = category in ('作业', 'Actions 作业')

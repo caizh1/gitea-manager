@@ -17,7 +17,7 @@ def plan_assets(inventory, kind, normalized, key, source_base, target_base):
     issues = {obj['number']: obj for obj in normalized['objects'] if obj['kind'] in ('issue', 'pull')}
     for dataset in inventory['datasets']:
         category = dataset['category']
-        if category not in ('议题附件', '发布附件'):
+        if category not in ('议题附件', '评论附件', '发布附件'):
             continue
         path = dataset['path']
         if category == '议题附件':
@@ -25,6 +25,11 @@ def plan_assets(inventory, kind, normalized, key, source_base, target_base):
             parent = issues.get(number)
             require(parent is not None, '附件所属议题未纳入迁移')
             parent_kind, parent_id = parent['kind'], parent['source_id']
+        elif category == '评论附件':
+            parent_id = path.split('/issues/comments/')[1].split('/')[0]
+            parent = next((o for o in normalized['objects'] if o['kind'] in ('comment', 'code_comment') and o['source_id'] == parent_id), None)
+            require(parent is not None, '附件所属评论未纳入迁移')
+            parent_kind = parent['kind']
         else:
             parent_kind, parent_id = 'release', path.split('/releases/')[1].split('/')[0]
             require(any(o['kind'] == 'release' and o['source_id'] == parent_id for o in normalized['objects']), '附件所属发布尚未迁移')

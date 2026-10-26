@@ -18,7 +18,7 @@
         <template v-if="selected">
           <div class="section-heading">
             <div><h3>{{ selected.name }}</h3><p>{{ selected.url }}</p></div>
-            <div class="actions"><el-button :disabled="running" @click="editSource(selected)">编辑来源</el-button><el-button type="primary" :loading="saving || running" :disabled="!health.worker?.online || selected.archived" @click="discover">连接并发现项目</el-button></div>
+            <div class="actions"><el-button :disabled="running" @click="editSource(selected)">编辑来源</el-button><el-button :disabled="running" @click="editSource(selected, true)">更新凭据</el-button><el-button type="primary" :loading="saving || running" :disabled="!health.worker?.online || selected.archived" @click="discover">连接并发现项目</el-button></div>
           </div>
           <el-alert v-if="!health.worker?.online" title="来源执行器未在线，请先启动 Git 来源执行器。不会在浏览器请求中执行长时间发现。" type="warning" :closable="false" />
           <div v-if="history.length" class="history-line"><span>发现记录</span><el-select v-model="selectedDiscovery" aria-label="选择发现记录" @change="refresh"><el-option v-for="item in history" :key="item.id" :value="item.id" :label="`#${item.id} · ${label(item.status)}${item.stale ? ' · 来源已变化' : ''}`" /></el-select></div>
@@ -42,6 +42,7 @@
             <el-alert v-if="inventoryRecord?.stale" title="来源配置已变化，以下盘点结果仅供查看历史。" type="warning" :closable="false" />
             <template v-for="project in inventoryRecord?.result?.projects || []" :key="project.project.id">
               <h4>{{ project.project.path }} · {{ project.object_count }} 个元数据对象</h4>
+              <p v-for="excluded in project.excluded || []" :key="excluded.category" class="note">{{ excluded.category }}：{{ excluded.reason }}</p>
               <el-alert v-if="project.dependency" title="此仓库是跨仓库合并请求的依赖，已自动纳入同批迁移和停写范围。" type="warning" :closable="false" />
               <p v-if="project.code_snapshot">代码引用核验完成，{{ project.code_snapshot.lfs_objects.length }} 个历史 LFS 对象；尚未写入目标。</p>
               <el-alert :title="project.code_snapshot ? 'Git 与 LFS 已完成来源侧核验；Wiki、附件、日志和制品内容尚未核验，也未证明源端停写与目标兼容。' : project.boundary" type="info" :closable="false" />
@@ -54,12 +55,12 @@
         <el-empty v-else description="选择或添加一个来源" :image-size="80" />
       </section>
     </div>
-    <el-dialog v-model="dialog" :title="editingId ? '编辑来源' : '添加来源'" width="min(640px, 94vw)" :close-on-click-modal="false" @closed="form.secret = ''">
+    <el-dialog v-model="dialog" :title="credentialsOnly ? '更新来源凭据' : editingId ? '编辑来源' : '添加来源'" width="min(640px, 94vw)" :close-on-click-modal="false" @closed="form.secret = ''">
       <el-form label-position="top" @submit.prevent="save">
-        <el-form-item label="来源名称"><el-input v-model="form.name" maxlength="200" placeholder="例如：研发 GitLab" /></el-form-item>
-        <div class="form-grid"><el-form-item label="来源平台"><el-select v-model="form.kind"><el-option label="GitLab 社区版 / 企业版" value="gitlab" /><el-option label="开源 Gitea" value="gitea" /></el-select></el-form-item><el-form-item label="认证方式"><el-select v-model="form.auth_method" @change="form.secret = ''"><el-option label="管理员账号和密码" value="password" /><el-option label="访问令牌" value="token" /></el-select></el-form-item></div>
-        <el-form-item label="实例连接地址"><el-input v-model="form.url" placeholder="https://git.example.com，不需要填写具体仓库地址" /></el-form-item>
-        <el-form-item label="管理员账号"><el-input v-model="form.username" autocomplete="off" /></el-form-item>
+        <el-form-item label="来源名称"><el-input v-model="form.name" :disabled="credentialsOnly" maxlength="200" placeholder="例如：研发 GitLab" /></el-form-item>
+        <div class="form-grid"><el-form-item label="来源平台"><el-select v-model="form.kind" :disabled="credentialsOnly"><el-option label="GitLab 社区版 / 企业版" value="gitlab" /><el-option label="开源 Gitea" value="gitea" /></el-select></el-form-item><el-form-item label="认证方式"><el-select v-model="form.auth_method" @change="form.secret = ''"><el-option label="管理员账号和密码" value="password" /><el-option label="访问令牌" value="token" /></el-select></el-form-item></div>
+        <el-form-item label="实例连接地址"><el-input v-model="form.url" :disabled="credentialsOnly" placeholder="https://git.example.com，不需要填写具体仓库地址" /></el-form-item>
+        <el-form-item label="管理员账号"><el-input v-model="form.username" :disabled="credentialsOnly" autocomplete="off" /></el-form-item>
         <el-form-item :label="form.auth_method === 'password' ? '管理员密码' : '访问令牌'"><el-input v-model="form.secret" type="password" show-password autocomplete="new-password" :placeholder="editingId ? '保持地址和账号不变时，留空保留已有凭据' : ''" /></el-form-item>
         <p class="note">凭据加密保存在 Manager。若源端启用多因素认证或禁用密码授权，请使用具备所需读取权限的管理员令牌。</p>
         <el-collapse><el-collapse-item title="自定义证书" name="ca"><el-form-item label="内部 CA 证书（可选）"><el-input v-model="form.ca_pem" type="textarea" :rows="4" placeholder="PEM 格式 CA 证书；默认校验系统信任链" /></el-form-item></el-collapse-item></el-collapse>
@@ -79,6 +80,7 @@ import { useOperationPolling } from '../composables/useOperationPolling'
 
 const sources = ref([]), health = ref({}), selectedId = ref(null), selectedDiscovery = ref(null)
 const history = ref([]), record = ref(null), loaded = ref(false), saving = ref(false), dialog = ref(false), editingId = ref(null)
+const credentialsOnly = ref(false)
 const search = ref(''), page = ref(1), captureCode = ref(true)
 const inventoryHistory = ref([]), inventoryRecord = ref(null), selectedInventory = ref(null)
 const form = reactive({ name: '', kind: 'gitlab', url: '', username: '', auth_method: 'password', secret: '', ca_pem: '' })
@@ -133,13 +135,15 @@ function selectSource(id) {
   page.value = 1
   refresh()
 }
-function editSource(row) {
+function editSource(row, credentials = false) {
+  credentialsOnly.value = credentials
   editingId.value = row?.id ?? null
   Object.assign(form, { name: '', kind: 'gitlab', url: '', username: '', auth_method: 'password', secret: '', ca_pem: '' }, row || {})
   form.secret = ''
   dialog.value = true
 }
 async function save() {
+  if (credentialsOnly.value && !form.secret) { ElMessage.error('请填写新的来源凭据'); return }
   if (!form.name.trim() || !form.url.trim() || (form.auth_method === 'password' && !form.username.trim()) || (!editingId.value && !form.secret)) {
     ElMessage.error('请填写来源名称、连接地址及所需认证信息')
     return
@@ -148,7 +152,7 @@ async function save() {
   const body = Object.fromEntries(['name', 'kind', 'url', 'username', 'auth_method', 'secret', 'ca_pem'].map(key => [key, form[key]]))
   if (editingId.value) body.version = form.version
   try {
-    const reply = editingId.value ? await api.put(`/git-migrations/sources/${editingId.value}`, body) : await api.post('/git-migrations/sources', body)
+    const reply = credentialsOnly.value ? await api.post(`/git-migrations/sources/${editingId.value}/credentials`, { version: form.version, secret: form.secret, auth_method: form.auth_method, ca_pem: form.ca_pem }) : editingId.value ? await api.put(`/git-migrations/sources/${editingId.value}`, body) : await api.post('/git-migrations/sources', body)
     dialog.value = false
     form.secret = ''
     selectSource(reply.data.id)

@@ -112,6 +112,8 @@ def step():
                           'requested_project_ids': sorted(ids), 'migration_verified': False}
                 total_size = 0
                 for item in result['projects']:
+                    from .source_manifest import capture
+                    item['source_manifest'] = capture(provider, item['project'])
                     if row.capture_code:
                         directory = root() / 'code-snapshots' / str(ident) / str(item['project']['id'])
                         item['code_snapshot'] = GitSnapshot(provider, item['project'], directory, tick=tick).capture()

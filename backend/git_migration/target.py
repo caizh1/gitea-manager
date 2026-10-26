@@ -14,20 +14,20 @@ class Receiver(Gitea):
     def check(self):
         super().check()
         capability = self.api('GET', '/governance/migration-capabilities', missing=True)
-        require(isinstance(capability, dict) and capability.get('protocol') == 2 and capability.get('npm_registry_metadata') is True,
+        require(isinstance(capability, dict) and capability.get('protocol') == 3 and capability.get('npm_registry_metadata') is True,
                 '目标尚未安装兼容的迁移接收端，请先部署配套增强版；未创建目标仓库', 'capability')
         return capability
 
     def environment(self, remote):
         require(self.actor is not None, '目标身份尚未核对')
-        token = base64.b64encode((self.actor['login'] + ':' + self.token).encode()).decode()
-        pairs = [('http.' + remote + '.extraHeader', 'Authorization: Basic ' + token),
-                 ('http.followRedirects', 'false'), ('credential.helper', ''), ('http.proxy', ''),
+        from .git_credentials import environment
+        credentials, credential_env = environment(remote, self.actor['login'], self.token)
+        pairs = credentials + [('http.followRedirects', 'false'), ('http.proxy', ''),
                  ('protocol.allow', 'never'), ('protocol.http.allow', 'always'),
                  ('protocol.https.allow', 'always'), ('lfs.url', remote + '/info/lfs')]
         if isinstance(self.verify, str):
             pairs.append(('http.sslCAInfo', self.verify))
-        env = {'GIT_CONFIG_COUNT': str(len(pairs)), 'GIT_LFS_SKIP_SMUDGE': '1',
+        env = {'GIT_CONFIG_COUNT': str(len(pairs)), 'GIT_LFS_SKIP_SMUDGE': '1', **credential_env,
                'HTTP_PROXY': '', 'HTTPS_PROXY': '', 'ALL_PROXY': '',
                'http_proxy': '', 'https_proxy': '', 'all_proxy': '', 'NO_PROXY': '*', 'no_proxy': '*'}
         for i, (key, value) in enumerate(pairs):

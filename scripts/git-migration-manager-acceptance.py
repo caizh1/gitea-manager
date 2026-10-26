@@ -24,8 +24,11 @@ def main():
     parser.add_argument('--subnet', required=True, help='经检查未占用的独立容器网段')
     parser.add_argument('--resume-state', type=Path, help='恢复本脚本已创建的隔离环境')
     parser.add_argument('--project-name', default='source-project', help='本次核验的固定样本仓库名')
+    parser.add_argument('--fixture', type=Path, help='完整固定清单，包括全部合并方式矩阵')
+    parser.add_argument('--rotate-source-credential', action='store_true', help='真实验证来源凭据失效、轮换和同任务恢复')
     args = parser.parse_args()
     source = json.loads(args.source_state.read_text())
+    fixture = json.loads(args.fixture.read_text()) if args.fixture else None
     details = json.loads(docker('inspect', source['name']))[0]
     if details['Config']['Labels'].get('io.gitea-manager.test') != 'git-migration-source':
         raise RuntimeError('仅接受独立来源夹具')
@@ -125,9 +128,10 @@ def main():
 
     discovery = wait(lambda: completed('discoveries', discovery['id']), '真实来源发现')
     project = next(p for p in discovery['result']['projects'] if p['path'].endswith('/' + args.project_name))
+    selected_ids = [project['id']] + ([row['project_id'] for row in fixture['completeness']['merge_cases']] if fixture else [])
     inventory = call('POST', '/git-migrations/sources/' + str(registered['id']) + '/inventories',
-                     {'discovery_id': discovery['id'], 'project_ids': [project['id']], 'request_key': secrets.token_hex(20), 'capture_code': True})
-    inventory = wait(lambda: completed('inventories', inventory['id']), '真实元数据盘点')
+                     {'discovery_id': discovery['id'], 'project_ids': selected_ids, 'request_key': secrets.token_hex(20), 'capture_code': True})
+    inventory = wait(lambda: completed('inventories', inventory['id']), '真实元数据盘点', seconds=1800)
     migration = None
     alias_gate = False
     if args.target_state:
@@ -146,8 +150,30 @@ def main():
         if reply.status_code not in (200, 201):
             raise RuntimeError('创建隔离接收群组失败')
         group = reply.json()
+        if fixture:
+            def target_api(method,path,**kwargs):
+                r = requests.request(method,target['base']+'/api/v1'+path,headers={'Authorization':'token '+target['token']},timeout=60,**kwargs)
+                if not 200 <= r.status_code < 300: raise RuntimeError('准备目标测试账号失败：'+path+' HTTP '+str(r.status_code))
+                return r.json() if r.content else None
+            target.setdefault('test_users',{})
+            for login_name in ('migration-assignee','migration-reviewer','migration-ci'):
+                existing = requests.get(target['base']+'/api/v1/users/'+login_name,headers={'Authorization':'token '+target['token']},timeout=30)
+                if existing.status_code == 404:
+                    user_password = secrets.token_urlsafe(28)
+                    user = target_api('POST','/admin/users',json={'username':login_name,'password':user_password,'email':login_name+'@example.invalid','must_change_password':False})
+                    target['test_users'][login_name] = {'id':user['id'],'password':user_password}
+                else:
+                    existing.raise_for_status();user=existing.json()
+                    if login_name not in target['test_users']: raise RuntimeError('同名测试账号没有本夹具的创建回执')
+                current_group = target_api('GET','/governance/groups/'+str(group['id']))
+                target_api('PUT','/governance/groups/'+str(group['id'])+'/members/'+str(user['id']),json={'role':30,'revision':current_group['revision']})
+            args.target_state.write_text(json.dumps(target,ensure_ascii=False,indent=2)+'\n');args.target_state.chmod(0o600)
         required = call('GET', '/git-migrations/inventories/' + str(inventory['id']) + '/principals')
-        run_request = {'principal_map': {key: ['migration-admin'] for key in required}, 'inventory_id': inventory['id'],
+        principal_map = {key: ['migration-admin'] for key in required}
+        if fixture:
+            principal_map.update(fixture['completeness']['principal_map'])
+            if 'gitlab:ci:issuer' in required: principal_map['gitlab:ci:issuer']=['migration-ci']
+        run_request = {'principal_map': principal_map, 'inventory_id': inventory['id'],
             'server_id': server['id'], 'group_id': group['id'], 'source_frozen': True, 'request_key': secrets.token_hex(20)}
         alias_data = {'name': '重复连接门禁验收', 'host': 'alias.invalid', 'ssh_user': 'root', 'gitea_port': 3000,
                       'gitea_url': target_url + '/', 'api_token': target['token']}
@@ -176,9 +202,43 @@ def main():
                 raise RuntimeError('等待写入中断点超时')
             before_repos = {key: value['repo_id'] for key, value in observed['checkpoint'].items() if value.get('repo_id')}
             docker('stop', '-t', '20', name + '-worker')
+            if args.rotate_source_credential:
+                if source['kind'] != 'gitea': raise RuntimeError('真实失效验收当前使用 Gitea 密码路径')
+                new_password = secrets.token_urlsafe(28)
+                profile = requests.get(source['base']+'/api/v1/user',auth=('source-admin',source['password']),timeout=30)
+                profile.raise_for_status()
+                reply = requests.patch(source['base']+'/api/v1/admin/users/source-admin',auth=('source-admin',source['password']),json={'login_name':profile.json()['login_name'],'password':new_password,'must_change_password':False},timeout=30)
+                reply.raise_for_status()
+                source['password']=new_password
+                args.source_state.write_text(json.dumps(source,ensure_ascii=False,indent=2)+'\n');args.source_state.chmod(0o600)
             docker('start', name + '-worker')
             wait(lambda: call('GET', '/git-migrations/runs/' + str(migration['id']))['status'] == 'interrupted', '执行器中断回收')
             resumed = call('POST', '/git-migrations/runs/' + str(migration['id']) + '/resume', {})
+            if args.rotate_source_credential:
+                wait(lambda:call('GET','/git-migrations/runs/'+str(migration['id']))['status']=='uncertain','真实凭据失效回收')
+                call('POST','/git-migrations/sources/'+str(registered['id'])+'/credentials',{'version':registered['version'],'secret':new_password})
+                resumed=call('POST','/git-migrations/runs/'+str(migration['id'])+'/resume',{})
+                # 再独立验证目标令牌失效，不能依靠实例编辑绕过迁移互斥。
+                target_auth=('migration-admin',target['password'])
+                token_list=requests.get(target['base']+'/api/v1/users/migration-admin/tokens',auth=target_auth,timeout=30)
+                token_list.raise_for_status()
+                old_tokens=[token for token in token_list.json() if token.get('token_last_eight')==target['token'][-8:]]
+                if len(old_tokens)!=1: raise RuntimeError('不能唯一核对待撤销的当前目标令牌')
+                replacement=requests.post(target['base']+'/api/v1/users/migration-admin/tokens',auth=target_auth,
+                    json={'name':'凭据恢复验收-'+secrets.token_hex(4),'scopes':['all']},timeout=30)
+                replacement.raise_for_status();new_target_token=replacement.json()['sha1']
+                for token in old_tokens:
+                    revoked=requests.delete(target['base']+'/api/v1/users/migration-admin/tokens/'+str(token['id']),auth=target_auth,timeout=30);revoked.raise_for_status()
+                # 停止后重新领取，保证下一次目标检查使用已经失效的原令牌。
+                docker('stop','-t','20',name+'-worker');docker('start',name+'-worker')
+                wait(lambda:call('GET','/git-migrations/runs/'+str(migration['id']))['status'] in ('interrupted','uncertain'),'目标令牌失效回收')
+                stopped=call('GET','/git-migrations/runs/'+str(migration['id']))
+                if stopped['status']=='interrupted':call('POST','/git-migrations/runs/'+str(migration['id'])+'/resume',{})
+                wait(lambda:call('GET','/git-migrations/runs/'+str(migration['id']))['status']=='uncertain','目标令牌真实拒绝')
+                call('POST','/git-migrations/runs/'+str(migration['id'])+'/target-credentials',{'token':new_target_token})
+                target['token']=new_target_token
+                args.target_state.write_text(json.dumps(target,ensure_ascii=False,indent=2)+'\n');args.target_state.chmod(0o600)
+                resumed=call('POST','/git-migrations/runs/'+str(migration['id'])+'/resume',{})
             if resumed['id'] != migration['id'] or any(resumed['checkpoint'][key]['repo_id'] != value for key, value in before_repos.items()):
                 raise RuntimeError('恢复时创建了替代任务或仓库')
         def execution_done():
@@ -186,7 +246,7 @@ def main():
             if row['status'] in ('failed', 'interrupted', 'uncertain', 'quarantined'):
                 raise RuntimeError('完整执行未通过：' + row['stage'] + '；' + row['error'])
             return row if row['status'] == 'succeeded' else None
-        migration = wait(execution_done, '完整迁移与交接', seconds=900)
+        migration = wait(execution_done, '完整迁移与交接', seconds=1800)
         duplicate = call('POST', '/git-migrations/runs', migration['plan']['request'])
         if duplicate['id'] != migration['id']:
             raise RuntimeError('同一执行请求重复创建任务')
@@ -219,7 +279,7 @@ def main():
         docker('exec', name + '-worker', 'python', '-c', "from pathlib import Path; Path('" + marker + "').unlink(missing_ok=True)")
     wait(lambda: call('GET', '/git-migrations/status')['worker']['online'], '维护后恢复')
     evidence = {'说明': '固定镜像内代表性样本完整迁移验收；不代表全范围、生产或人工节省指标' if migration else '固定镜像内真实来源发现及元数据盘点，不代表完整迁移与生产验收', '结果': '通过',
-                '写入中断恢复': bool(args.interrupt_once and migration), '重复实例连接双向阻断': alias_gate, '迁移执行': migration, '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
+                '写入中断恢复': bool(args.interrupt_once and migration), '真实凭据失效轮换':bool(args.rotate_source_credential and migration), '重复实例连接双向阻断': alias_gate, '迁移执行': migration, '项目数': len(discovery['result']['projects']), '盘点对象数': inventory['result']['projects'][0]['object_count'],
                 '代码快照': inventory['result']['projects'][0].get('code_snapshot'), '维护重启数据一致': True,
                 '管理端地址': base, '后端镜像': state['backend_image'], '前端镜像': state['frontend_image']}
     output = folder / ('acceptance-' + source['kind'] + '-' + str(inventory['id']) + '.json')

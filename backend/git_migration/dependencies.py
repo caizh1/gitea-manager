@@ -6,6 +6,14 @@ from .inventory import Inventory
 def head_projects(item, kind):
     result = set()
     for dataset in item['datasets']:
+        if kind == 'gitlab' and dataset['category'] == '触发作业':
+            for trigger in dataset['rows']:
+                downstream = trigger.get('downstream_pipeline')
+                if downstream:
+                    require(type(downstream.get('project_id')) is int and downstream['project_id'] > 0,
+                            '下游流水线缺少所属项目，无法固定依赖')
+                    result.add(downstream['project_id'])
+            continue
         if dataset['category'] != ('合并请求详情' if kind == 'gitlab' else '合并请求'):
             continue
         for pull in dataset['rows']:

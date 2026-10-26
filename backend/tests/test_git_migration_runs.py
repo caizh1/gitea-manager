@@ -42,6 +42,7 @@ class RunTests(unittest.TestCase):
         self.receiver = patch('git_migration.runs.Receiver').start()
         self.addCleanup(patch.stopall)
         self.receiver.return_value.selected_scope.return_value = {'id': 7, 'path': 'target', 'access_fingerprint': '固定摘要'}
+        self.receiver.return_value.actor = {'id': 1, 'login': 'migration-admin'}
 
     def test_same_request_replays_and_changed_input_fails(self):
         row = enqueue(self.data, 1)
@@ -76,6 +77,62 @@ class RunTests(unittest.TestCase):
         db.session.commit()
         with self.assertRaises(MigrationError):
             enqueue(self.data, 1)
+
+    def test_same_actor_credential_rotation_preserves_plan_and_resumes(self):
+        from git_migration.store import rotate_credentials, decrypt
+        from git_migration.models import GitMigrationDiscovery
+        identity = {'actor': {'id': 8, 'username': 'admin'}, 'version': '1.26.4'}
+        discovery = GitMigrationDiscovery.query.first()
+        discovery.result_json = json.dumps(identity)
+        row = enqueue(self.data, 1)
+        row.status = 'uncertain'
+        db.session.commit()
+        version, plan = self.source.version, row.plan_json
+        with patch('git_migration.providers.Provider.authenticate', return_value=identity):
+            updated = rotate_credentials(self.source.id, {'version': version, 'secret': '新的来源凭据'})
+        self.assertEqual(updated.version, version)
+        self.assertEqual(decrypt(updated.secret_ciphertext), '新的来源凭据')
+        self.assertEqual(resume(row.id).plan_json, plan)
+        with self.assertRaises(MigrationError):
+            rotate_credentials(self.source.id, {'version': version, 'secret': '排队时不能替换'})
+
+    def test_rotated_credentials_cannot_change_source_actor(self):
+        from git_migration.store import rotate_credentials, decrypt
+        from git_migration.models import GitMigrationDiscovery
+        discovery = GitMigrationDiscovery.query.first()
+        discovery.result_json = json.dumps({'actor': {'id': 8, 'username': 'admin'}, 'version': '1.26.4'})
+        row = enqueue(self.data, 1)
+        row.status = 'uncertain'
+        db.session.commit()
+        with patch('git_migration.providers.Provider.authenticate', return_value={'actor': {'id': 9, 'username': 'other'}, 'version': '1.26.4'}):
+            with self.assertRaisesRegex(MigrationError, '管理员或版本'):
+                rotate_credentials(self.source.id, {'version': self.source.version, 'secret': '其他人的凭据'})
+        self.assertEqual(decrypt(self.source.secret_ciphertext), '来源口令')
+
+    def test_abandon_without_target_writes_releases_guard_and_is_terminal(self):
+        from git_migration.runs import abandon
+        row = enqueue(self.data, 1)
+        row.status = 'uncertain'
+        db.session.commit()
+        self.assertEqual(abandon(row.id, '来源已停用，保留现场').status, 'abandoned')
+        with target_guard(self.server.id):
+            pass
+        with self.assertRaises(MigrationError):
+            resume(row.id)
+
+    def test_target_token_can_rotate_only_for_the_same_frozen_actor(self):
+        from git_migration.runs import rotate_target_credentials
+        row = enqueue(self.data, 1)
+        row.status = 'uncertain'
+        db.session.commit()
+        original = self.server.access_epoch
+        rotate_target_credentials(row.id, 'new-target-token')
+        self.assertEqual(self.server.api_token, 'new-target-token')
+        self.assertEqual(self.server.access_epoch, original)
+        self.receiver.return_value.actor = {'id': 2, 'login': 'other-admin'}
+        with self.assertRaisesRegex(MigrationError, '固定的目标管理员'):
+            rotate_target_credentials(row.id, 'different-admin-token')
+        self.assertEqual(self.server.api_token, 'new-target-token')
 
     def test_existing_url_alias_blocks_migration_before_any_target_write(self):
         duplicate = GiteaServer(name='重复连接', gitea_url='https://TARGET.test:443/', api_token='令牌',

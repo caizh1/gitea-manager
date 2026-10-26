@@ -15,13 +15,16 @@ def read_run(name, ident):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('manager-state','target-state','fixture'): p.add_argument('--'+name,type=Path,required=True)
-    p.add_argument('--run-id',type=int,required=True);p.add_argument('--merge',action='store_true');a=p.parse_args()
+    p.add_argument('--run-id',type=int,required=True);p.add_argument('--merge',action='store_true');p.add_argument('--runner-image',default='gm-migration-ci-runner:20261026');a=p.parse_args()
     manager=json.loads(a.manager_state.read_text());target=json.loads(a.target_state.read_text());fixture=json.loads(a.fixture.read_text())
     for state,label in ((manager,'git-migration-manager'),(target,'git-migration-receiver')):
         assert json.loads(docker('container','inspect',state['name']+'-worker' if label=='git-migration-manager' else state['name']))[0]['Config']['Labels']['io.gitea-manager.test']==label
     run=read_run(manager['name'],a.run_id);assert run['status']=='succeeded', '执行尚未成功'
     checkpoint=json.loads(run['checkpoint_json']);root=checkpoint[str(fixture['project']['id'])];fork=checkpoint[str(fixture['fork']['id'])]
-    projects=[v for k,v in checkpoint.items() if k.isdigit()];assert len(projects)==2
+    projects=[v for k,v in checkpoint.items() if k.isdigit()];assert len(projects)==2+len(fixture.get('completeness',{}).get('merge_cases',[]))
+    code="import sqlite3,json;c=sqlite3.connect('file:/app/data/gitea-manager.db?mode=ro',uri=True);print(c.execute('SELECT result_json FROM git_migration_inventories WHERE id=?',("+str(run['inventory_id'])+",)).fetchone()[0])"
+    inventory=json.loads(docker('exec',manager['name']+'-worker','python','-c',code))
+    manifests={item['project']['id']:item['source_manifest'] for item in inventory['projects']}
     client=requests.Session();client.trust_env=False;client.auth=('migration-admin',target['password']);base=target['base']
     client.get(base+'/user/login',timeout=30)
     login=client.post(base+'/user/login',headers={'Origin':base},data={'user_name':'migration-admin','password':target['password']},allow_redirects=False,timeout=30)
@@ -34,13 +37,20 @@ def main():
     def api(path):return get('/api/v1'+path)
     report={'说明':'固定真实来源的全部盘点项目、对象和文件验收，不代表生产或人工节省指标','来源':fixture['kind'],'执行':a.run_id,'项目':[],'制品协议':[],'历史文件':[],'C产物执行':[]}
     for row in projects:
-        assert row['handed_off'] and row['code_verified'] and row['objects_verified'] and not row['pending'] and not row['gaps']
+        assert row['handed_off'] and row['code_verified'] and row['objects_verified'] and row['source_verified'] and not row['pending'] and not row['gaps']
+        manifest=manifests[row['snapshot']['project_id']] if 'project_id' in row['snapshot'] else next(value for ident,value in manifests.items() if checkpoint[str(ident)] is row)
+        expected_objects={kind+':'+ident for kind,ident in manifest['objects']}
+        actual_objects={key for key in row['objects'] if not key.startswith(('git_ref:','merge_policy:'))}
+        assert actual_objects==expected_objects,'目标回执与独立来源对象清单不一致'
+        assert set(row.get('assets',{}))=={file['source_id'] for file in manifest['files']},'目标文件与独立来源清单不一致'
         repo=api('/repos/'+row['final_path']);assert repo['id']==row['repo_id'] and not repo['archived'] and not repo['has_actions']
         assert repo['default_branch']==row['snapshot']['default_ref'].removeprefix('refs/heads/')
         report['项目'].append({'路径':row['final_path'],'编号':repo['id'],'对象数':len(row['objects']),'文件数':len(row.get('assets',{})),'代码重新克隆核验':True,'Wiki核验':row.get('wiki_verified',False)})
         assert row.get('wiki_verified'), '依赖仓库 Wiki 未逐个核验'
         for ident, receipt in row.get('assets',{}).items():
-            source=row['downloads'][ident];data=get('/'+row['final_path']+'/migration-history/assets/'+str(receipt['id']),True)
+            source=row['downloads'][ident]
+            path='/attachments/'+receipt['uuid'] if receipt['parent_kind'] in ('issue','pull','comment','code_comment','release') else '/'+row['final_path']+'/migration-history/assets/'+str(receipt['id'])
+            data=get(path,True)
             assert len(data)==source['size'] and hashlib.sha256(data).hexdigest()==source['sha256']==receipt['sha256']
             report['历史文件'].append({'来源编号':ident,'SHA256':receipt['sha256'],'字节':len(data)})
             if ident.startswith(('ci-artifact-','job-artifact-')) and zipfile.is_zipfile(io.BytesIO(data)):
@@ -51,7 +61,7 @@ def main():
                         if not binary.startswith(b'\x7fELF'):continue
                         folder=a.manager_state.parent/('binary-'+str(a.run_id)+'-'+str(receipt['id']));folder.mkdir(exist_ok=True)
                         executable=folder/'fixture-app';executable.write_bytes(binary);executable.chmod(0o755)
-                        result=subprocess.run(['docker','run','--rm','--platform','linux/amd64','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','-v',str(folder.resolve())+':/fixture:ro','--entrypoint','/fixture/fixture-app','gm-migration-ci-runner:20261025'],capture_output=True)
+                        result=subprocess.run(['docker','run','--rm','--platform','linux/amd64','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','-v',str(folder.resolve())+':/fixture:ro','--entrypoint','/fixture/fixture-app',a.runner_image],capture_output=True)
                         assert result.returncode==0 and '迁移' in result.stdout.decode()
                         report['C产物执行'].append({'来源编号':ident,'SHA256':hashlib.sha256(binary).hexdigest(),'结果':'隔离执行通过'})
     pull=api('/repos/'+root['final_path']+'/pulls/1');assert pull['head']['repo']['id']==fork['repo_id'] and pull['base']['repo']['id']==root['repo_id']
@@ -60,7 +70,9 @@ def main():
     repo=api('/repos/'+root['final_path']);owner=repo['owner']['login'];registry='/api/packages/'+quote(owner,safe='')
     for package in fixture['packages']:
         kind,name,version=package['type'],package['name'],package['version'];downloads={};details={}
-        if kind=='npm':
+        if kind=='generic':
+            for filename in package['files']:downloads[filename]=get(registry+'/generic/'+quote(name,safe='')+'/'+quote(version,safe='')+'/'+quote(filename,safe=''),True)
+        elif kind=='npm':
             index=get(registry+'/npm/'+quote(name,safe=''));v=index['versions'][version]
             source_packages=[item['package'] for item in root['package_files'] if item['package']['type']=='npm' and item['package']['name']==name]
             source_package=next(item for item in source_packages if item['version']==version)
@@ -100,7 +112,7 @@ def main():
         assert (actual.get('readme') or '')==(case.get('readme') or '') and (index.get('readme') or '')==(case.get('readme') or '')
         report['注册表元数据差异']='原生索引保留注册表说明与实际依赖，多版本标签和全部文件均核对'
     assert report['C产物执行'], '没有从目标下载并执行真实 C 编译产物'
-    report['对象覆盖']={'依赖闭包项目':'2/2','原生对象':sum(r['对象数'] for r in report['项目']),'全部文件':len(report['历史文件']),'协议':'5/5'}
+    report['对象覆盖']={'依赖闭包项目':str(len(projects))+'/'+str(len(manifests)),'原生对象':sum(r['对象数'] for r in report['项目']),'全部文件':len(report['历史文件']),'协议':str(len({p['类型'] for p in report['制品协议']}))+'/6','独立来源对象文件清单':'逐项一致'}
     if a.merge:
         if not pull['merged']:
             deadline=time.monotonic()+60

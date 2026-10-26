@@ -56,17 +56,18 @@ class GitSnapshot:
         self.provider.credentials()
         if self.provider.kind == 'gitlab':
             token = self.provider.secret if self.provider.auth_method == 'token' else self.provider.access_token
-            authorization = 'Basic ' + base64.b64encode(('oauth2:' + token).encode()).decode()
+            username, password = 'oauth2', token
         else:
             # Gitea Git HTTP 只使用 Basic；令牌放在密码位。
-            authorization = 'Basic ' + base64.b64encode((self.provider.actor['username'] + ':' + self.provider.secret).encode()).decode()
-        pairs = [('credential.helper', ''), ('http.followRedirects', 'false'), ('http.proxy', ''),
-                 ('http.' + self.url + '.extraHeader', 'Authorization: ' + authorization),
+            username, password = self.provider.actor['username'], self.provider.secret
+        from .git_credentials import environment
+        credentials, credential_env = environment(self.url, username, password)
+        pairs = credentials + [('http.followRedirects', 'false'), ('http.proxy', ''),
                  ('protocol.allow', 'never'), ('protocol.http.allow', 'always'), ('protocol.https.allow', 'always'),
                  ('lfs.url', self.url + '/info/lfs'), ('lfs.concurrenttransfers', '2')]
         if isinstance(self.provider.http.verify, str):
             pairs.append(('http.sslCAInfo', self.provider.http.verify))
-        env = {'GIT_CONFIG_COUNT': str(len(pairs)), 'GIT_LFS_SKIP_SMUDGE': '1'}
+        env = {'GIT_CONFIG_COUNT': str(len(pairs)), 'GIT_LFS_SKIP_SMUDGE': '1', **credential_env}
         env.update({key: '' for key in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy')})
         env.update(NO_PROXY='*', no_proxy='*')
         for index, (key, value) in enumerate(pairs):

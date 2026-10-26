@@ -31,7 +31,7 @@ def public(row, detail=True):
             'completed_at': row.completed_at.isoformat() + 'Z' if row.completed_at else None}
     if detail:
         result['plan'] = json.loads(row.plan_json)
-        fields = {'repo_id', 'repo_name', 'final_path', 'code_verified', 'objects_verified', 'handed_off', 'pending', 'gaps'}
+        fields = {'repo_id', 'repo_name', 'final_path', 'code_verified', 'objects_verified', 'source_verified', 'handed_off', 'pending', 'gaps'}
         result['checkpoint'] = {key: {name: value for name, value in item.items() if name in fields}
                                 for key, item in json.loads(row.checkpoint_json).items()
                                 if key.isdigit() and isinstance(item, dict)}
@@ -87,6 +87,7 @@ def enqueue(data, actor_id):
             receiver = Receiver(server, Process(folder / 'commands'), folder)
             try:
                 receiver.check()
+                target_actor = {key: receiver.actor[key] for key in ('id', 'login')}
                 selection = receiver.selected_scope(data['group_id'])
                 snapshot = json.loads(inventory.result_json)
                 mapping = rules.validate_mapping(data.get('principal_map', {}), rules.requirements(snapshot), receiver)
@@ -95,7 +96,8 @@ def enqueue(data, actor_id):
             snapshot = json.loads(inventory.result_json)
             require(snapshot.get('projects'), '盘点没有项目')
             plan = {'request': data, 'target': target_identity(server), 'selection': selection,
-                    'inventory_digest': digest(snapshot), 'key': secrets.token_hex(16), 'principal_map': mapping}
+                    'inventory_digest': digest(snapshot), 'key': secrets.token_hex(16), 'principal_map': mapping,
+                    'target_actor': target_actor}
             row = GitMigrationRun(source_id=source.id, source_version=source.version, inventory_id=inventory.id,
                                   server_id=server.id, actor_id=actor_id, request_key=data['request_key'], plan_json=encode(plan))
             db.session.add(row)
@@ -113,6 +115,92 @@ def resume(ident):
         row.status, row.error, row.completed_at = 'queued', '', None
         db.session.commit()
         return row
+
+
+def abandon(ident, reason):
+    """先关闭本任务接收会话并核对归档，最后释放实例互斥；不删除任何现场。"""
+    require(isinstance(reason, str) and 0 < len(reason.strip()) <= 1000, '请填写终止原因')
+    with file_lock(root() / 'enqueue.lock', blocking=True):
+        row = get(GitMigrationRun, ident)
+        if row.status == 'abandoned':
+            return row
+        require(row.status in ('interrupted', 'uncertain', 'quarantined'), '只能终止已停止的迁移任务', 'conflict', 409)
+        server = get(GiteaServer, row.server_id)
+        plan, checkpoint = json.loads(row.plan_json), json.loads(row.checkpoint_json)
+        require(target_identity(server) == plan['target'], '目标连接身份已变化，不能自动收尾')
+        folder = root() / 'runs' / str(row.id) / 'abandon'
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with target_guard(server.id, migration=True, git_run_id=row.id):
+            pending_targets = [p for k,p in checkpoint.items() if k.isdigit() and not p.get('handed_off') and (p.get('repo_id') or p.get('creating_repo'))]
+            if not pending_targets:
+                row.status, row.stage, row.error, row.completed_at = 'abandoned', '已终止，无未完成目标写入', reason.strip(), datetime.utcnow()
+                db.session.commit()
+                return row
+            receiver = Receiver(server, Process(folder / 'commands'), folder)
+            try:
+                receiver.check()
+                for key, progress in checkpoint.items():
+                    if not key.isdigit() or progress.get('handed_off'):
+                        continue
+                    intent = progress.get('creating_repo', {})
+                    repo_id = progress.get('repo_id')
+                    if not repo_id and intent:
+                        repo = receiver.repository(receiver.actor['login'], intent['name'], missing=True)
+                        if repo:
+                            require(repo.get('description') == intent['marker'], '创建回执丢失且目标标记不符，不能接管')
+                            repo_id = progress['repo_id'] = repo['id']
+                    if repo_id:
+                        reply = receiver.api('POST', '/governance/migration-sessions/' + progress['key'] + '/abort',
+                                             {'repo_id': repo_id, 'marker': intent.get('marker', '')})
+                        require(reply.get('repo_id') == repo_id and reply.get('state') == 'abandoned' and reply.get('archived') is True,
+                                '终止回执无法确认，继续保留实例互斥')
+                        actual = receiver.api('GET', '/repositories/' + str(repo_id))
+                        require(actual.get('id') == repo_id and actual.get('private') and actual.get('archived'), '终止后的目标归档核对失败')
+                        progress['abandoned'] = True
+                        row.checkpoint_json = encode(checkpoint)
+                        db.session.commit()
+            finally:
+                receiver.close()
+            row.status, row.stage, row.error, row.completed_at = 'abandoned', '已终止，现场保留归档', reason.strip(), datetime.utcnow()
+            row.checkpoint_json = encode(checkpoint)
+            db.session.commit()
+            return row
+
+
+def rotate_target_credentials(ident, token):
+    """目标令牌也可能失效；只替换同一管理员的令牌，不修改实例连接或授权版本。"""
+    from types import SimpleNamespace
+    require(isinstance(token, str) and 0 < len(token) <= 200 and not any(c.isspace() for c in token), '目标令牌格式无效')
+    with file_lock(root() / 'enqueue.lock', blocking=True):
+        row = get(GitMigrationRun, ident)
+        require(row.status in ('interrupted', 'uncertain', 'quarantined'), '请等到安全检查点后更新目标令牌', 'busy', 409)
+        plan = json.loads(row.plan_json)
+        server = get(GiteaServer, row.server_id)
+        require(target_identity(server) == plan['target'], '目标连接身份已变化')
+        folder = root() / 'runs' / str(ident) / 'target-credential-check'
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with target_guard(server.id, migration=True, git_run_id=row.id):
+            receiver = Receiver(SimpleNamespace(gitea_url=server.gitea_url, api_token=token), Process(folder / 'commands'), folder)
+            try:
+                receiver.check()
+                actor = {key: receiver.actor[key] for key in ('id', 'login')}
+                if plan.get('target_actor'):
+                    require(actor == plan['target_actor'], '新令牌不属于固定的目标管理员', 'identity', 409)
+                else:
+                    checkpoints = json.loads(row.checkpoint_json)
+                    sessions = [p for k,p in checkpoints.items() if k.isdigit() and p.get('session_id')]
+                    require(sessions, '历史任务没有可核对的接收身份，请先安全收尾再重新规划', 'identity', 409)
+                    for progress in sessions:
+                        status = receiver.api('GET', '/governance/migration-sessions/' + progress['key'] + '/status')
+                        require(status.get('actor_id') == actor['id'] and status.get('repo_id') == progress['repo_id'], '历史接收会话身份不符', 'identity', 409)
+                    plan['target_actor'] = actor
+                    row.plan_json = encode(plan)
+                receiver.verify_selected_scope(plan['selection'])
+            finally:
+                receiver.close()
+            server.api_token = token
+            db.session.commit()
+            return row
 
 
 def execute(row, provider, tick):
@@ -143,9 +231,12 @@ def execute(row, provider, tick):
             # 所有依赖仓库先固定并建立代码，再导入跨仓库关系；仓库编号跨转移保持不变。
             for item in frozen['projects']:
                 project = item['project']
-                expected = {k: v for k, v in item.items() if k not in ('code_snapshot', 'dependency')}
+                expected = {k: v for k, v in item.items() if k not in ('code_snapshot', 'dependency', 'source_manifest')}
                 require(digest(content_digest(Inventory(provider).inspect(project))) == digest(content_digest(expected)),
                         '来源元数据已改变，不能沿用固定依赖图', 'source_changed')
+                from .source_manifest import capture as source_manifest, verify_plan
+                require(item.get('source_manifest') and digest(source_manifest(provider, project)) == digest(item['source_manifest']),
+                        '独立来源清单缺失或已经变化，请重新盘点', 'source_changed')
                 progress = checkpoint.setdefault(str(project['id']), {'key': secrets.token_hex(16)})
                 if progress.get('sealed') or progress.get('handed_off'):
                     continue
@@ -168,7 +259,7 @@ def execute(row, provider, tick):
             for item in frozen['projects']:
                 project = item['project']
                 current = Inventory(provider).inspect(project)
-                expected = {k: v for k, v in item.items() if k not in ('code_snapshot', 'dependency')}
+                expected = {k: v for k, v in item.items() if k not in ('code_snapshot', 'dependency', 'source_manifest')}
                 require(digest(content_digest(current)) == digest(content_digest(expected)), '来源元数据已经变化，请保持停写并重新盘点', 'source_changed')
                 progress = checkpoint.setdefault(str(project['id']), {'key': secrets.token_hex(16)})
                 if progress.get('sealed') or progress.get('handed_off'):
@@ -191,16 +282,21 @@ def execute(row, provider, tick):
                 def resolve_tag(tag):
                     return receiver.process.run(['git', 'rev-parse', '--verify', 'refs/tags/' + tag + '^{commit}'], cwd=folder / progress['directory'] / 'repository.git').decode().strip()
                 normalized = objects(item, provider.kind, resolve_tag=resolve_tag, repository_map=repository_map,
+                    principal_map=plan.get('principal_map', {}),
                     resolve_diff=lambda position: historical_diff(receiver.process,
                         folder / progress['directory'] / 'repository.git', position))
                 assets = plan_assets(item, provider.kind, normalized, progress['key'], provider.http.base, receiver.base)
                 assets.extend(package_assets(item, provider.kind, normalized, provider.http.base))
                 progress['package_files'] = verification_plan(normalized, assets)
                 progress['rule_plan'] = rules.convert(item, provider.kind, plan.get('principal_map', {}), normalized)
+                from .merge_conditions import convert as merge_conditions
+                merge_conditions(item, provider.kind, plan.get('principal_map', {}), normalized)
                 progress['principal_map'] = plan.get('principal_map', {})
                 historical_files, historical_gaps = ci_assets(item, provider.kind, provider.http.base)
                 assets.extend(historical_files)
                 normalized['pending'].extend(historical_gaps)
+                # 独立清单与转换计划始终比较。Wiki 历史稍后核验，不能因为它仍在待办中跳过清单。
+                progress['source_verified'] = verify_plan(item['source_manifest'], normalized, assets, progress['rule_plan'])
                 stage('创建并核对隔离仓库')
                 repo = receiver.stage(progress['key'], digest([snapshot, expected]), progress, lambda _: save(), batch_key=checkpoint['key'])
                 stage('传输代码、引用与 LFS')
@@ -223,10 +319,11 @@ def execute(row, provider, tick):
                 stage('重新克隆目标并核对来源停写')
                 receiver.verify_code(snapshot, repo, folder / ('verify-' + secrets.token_hex(8)), progress, lambda _: save())
                 require(digest(content_digest(Inventory(provider).inspect(project))) == digest(content_digest(expected)), '写入期间来源元数据改变，目标保留隔离', 'source_changed')
+                require(digest(source_manifest(provider, project)) == digest(item['source_manifest']), '写入期间独立来源清单变化', 'source_changed')
                 progress['pending'], progress['gaps'] = normalized['pending'], normalized['gaps']
                 save()
             receiver.verify_selected_scope(plan['selection'])
-            ready = all(not checkpoint[str(item['project']['id'])].get('pending') and not checkpoint[str(item['project']['id'])].get('gaps') for item in frozen['projects'])
+            ready = all(checkpoint[str(item['project']['id'])].get('source_verified') and not checkpoint[str(item['project']['id'])].get('pending') and not checkpoint[str(item['project']['id'])].get('gaps') for item in frozen['projects'])
             if ready:
                 from .handoff import finish
                 for item in frozen['projects']:

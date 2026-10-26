@@ -89,7 +89,8 @@ def finish(receiver, selection, project, progress, checkpoint, save):
     desired_archive = bool(project.get('archived'))
     progress['unarchive_intent'] = not desired_archive
     save()
-    receiver.api('PATCH', '/repos/' + quote(group['full_path'], safe='/') + '/' + quote(name, safe=''), {'archived': desired_archive})
+    receiver.api('PATCH', '/repos/' + quote(group['full_path'], safe='/') + '/' + quote(name, safe=''),
+                 {'archived': desired_archive, 'description': project.get('description') or ''})
     repo = receiver.repository(group['full_path'], name)
     require(repo['id'] == progress['repo_id'] and repo['archived'] == desired_archive and not repo.get('has_actions'), '最终归档状态回读失败')
     progress['final_path'], progress['handed_off'] = final_path, True

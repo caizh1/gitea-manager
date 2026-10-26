@@ -13,6 +13,7 @@ class Inventory:
         self.gaps = []
         self.objects = 0
         self.bytes = 0
+        self.excluded = [{'category': 'OCI／容器镜像', 'reason': '用户明确排除，未纳入迁移与完整性通过范围'}]
 
     def collect(self, category, path, **kwargs):
         try:
@@ -41,7 +42,7 @@ class Inventory:
             self.gitlab(project)
         else:
             self.gitea(project)
-        return {'project': project, 'datasets': self.datasets, 'gaps': self.gaps,
+        return {'project': project, 'datasets': self.datasets, 'gaps': self.gaps, 'excluded': self.excluded,
                 'object_count': self.objects, 'migration_verified': False,
                 'boundary': '固定接口元数据及旧版制品摘要；其余 Git、LFS、Wiki、附件和日志仍需执行核验，尚未证明来源停写及目标兼容'}
 
@@ -55,7 +56,7 @@ class Inventory:
         constraints = {name: current.get(name) for name in (
             'only_allow_merge_if_pipeline_succeeds', 'only_allow_merge_if_build_succeeds',
             'only_allow_merge_if_all_discussions_are_resolved', 'only_allow_merge_if_all_status_checks_passed',
-            'merge_method', 'squash_option') if name in current}
+            'merge_method', 'squash_option', 'allow_merge_on_skipped_pipeline') if name in current}
         self.datasets.append({'category': '项目合并前置条件', 'path': base, 'rows': [constraints]})
         self.objects += 1
         self.bytes += len(encode(constraints).encode())
@@ -85,8 +86,7 @@ class Inventory:
         self.collect('分支保护', base + '/protected_branches', identity='name')
         self.collect('标签保护', base + '/protected_tags', identity='name')
         self.collect('审批规则', base + '/approval_rules')
-        self.collect('流水线', base + '/pipelines', params={'order_by': 'id', 'sort': 'asc'})
-        self.collect('作业', base + '/jobs', params={'include_retried': 'true'})
+        self.gitlab_ci(base, project['id'])
         packages = self.collect('制品包', base + '/packages', params={'order_by': 'created_at', 'sort': 'asc'})
         for package in packages:
             if package.get('status','default') not in ('default','deprecated'):
@@ -98,7 +98,46 @@ class Inventory:
                 path = base + '/packages/npm/' + quote(package['name'], safe='')
                 if not any(d['path'] == path for d in self.datasets):
                     self.object('制品索引', path)
-        self.collect('容器镜像仓库', base + '/registry/repositories')
+
+    def gitlab_ci(self, base, project_id):
+        """从根流水线、项目作业和触发边三路闭包枚举，兼容十七版以前的子流水线。"""
+        pipelines = self.collect('流水线', base + '/pipelines', params={'order_by': 'id', 'sort': 'asc'})
+        pipeline_dataset = self.datasets[-1] if self.datasets and self.datasets[-1]['path'] == base + '/pipelines' else None
+        jobs = self.collect('作业', base + '/jobs', params={'include_retried': 'true'})
+        job_dataset = self.datasets[-1] if self.datasets and self.datasets[-1]['path'] == base + '/jobs' else None
+        if pipeline_dataset is None or job_dataset is None:
+            return
+        by_id, by_job = {p['id']: p for p in pipelines}, {j['id']: j for j in jobs}
+        queue = list(by_id) + [j['pipeline']['id'] for j in jobs if j.get('pipeline')]
+        visited = set()
+        while queue:
+            ident = queue.pop(0)
+            if ident in visited:
+                continue
+            visited.add(ident)
+            require(len(visited) <= 10000, '流水线依赖闭包超过上限', 'capacity')
+            detail = self.provider.get(base + '/pipelines/' + str(ident))
+            require(detail.get('id') == ident and detail.get('project_id') == project_id,
+                    '来源返回了不同项目的流水线', 'source_format')
+            by_id[ident] = detail
+            rows = self.provider.collection(base + '/pipelines/' + str(ident) + '/jobs', params={'include_retried': 'true'})
+            for row in rows:
+                require((row.get('pipeline') or {}).get('id') == ident, '流水线作业的父级不一致')
+                by_job[row['id']] = row
+            bridges = self.collect('触发作业', base + '/pipelines/' + str(ident) + '/bridges')
+            for bridge in bridges:
+                bridge['parent_pipeline_id'] = ident
+                downstream = bridge.get('downstream_pipeline')
+                if downstream and downstream.get('project_id') == project_id:
+                    queue.append(downstream['id'])
+            if bridges:
+                self.datasets[-1]['sha256'] = hashlib.sha256(encode(bridges).encode()).hexdigest()
+        for dataset, rows in ((pipeline_dataset, list(by_id.values())), (job_dataset, list(by_job.values()))):
+            rows.sort(key=lambda row: row['id'])
+            self.objects += len(rows) - len(dataset['rows'])
+            self.bytes += len(encode(rows).encode()) - len(encode(dataset['rows']).encode())
+            require(self.objects <= 100000 and self.bytes <= 32*1024*1024, '流水线或作业清单容量超限', 'capacity')
+            dataset['rows'], dataset['sha256'] = rows, hashlib.sha256(encode(rows).encode()).hexdigest()
 
     def object(self, category, path):
         try:
@@ -129,7 +168,8 @@ class Inventory:
         constraints = {name: current.get(name) for name in (
             'only_allow_merge_if_pipeline_succeeds', 'only_allow_merge_if_build_succeeds',
             'only_allow_merge_if_all_discussions_are_resolved', 'only_allow_merge_if_all_status_checks_passed',
-            'merge_method', 'squash_option') if name in current}
+            'merge_method', 'squash_option', 'allow_merge_commits', 'allow_rebase', 'allow_rebase_explicit',
+            'allow_squash_merge', 'allow_fast_forward_only_merge', 'allow_manual_merge', 'default_merge_style', 'autodetect_manual_merge') if name in current}
         self.datasets.append({'category': '项目合并前置条件', 'path': base, 'rows': [constraints]})
         self.objects += 1
         self.bytes += len(encode(constraints).encode())
@@ -143,7 +183,10 @@ class Inventory:
         for release in releases:
             self.collect('发布附件', base + '/releases/' + str(release['id']) + '/assets')
         issues = self.collect('议题与合并请求', base + '/issues', params={'state': 'all', 'type': 'all'})
-        self.collect('议题评论', base + '/issues/comments')
+        comments = self.collect('议题评论', base + '/issues/comments')
+        attachment_comments = {comment['id'] for comment in comments}
+        for comment in comments:
+            self.collect('评论附件', base + '/issues/comments/' + str(comment['id']) + '/assets')
         for issue in issues:
             number = issue.get('number')
             require(type(number) is int and number > 0, '议题缺少项目内编号', 'source_format')
@@ -155,7 +198,11 @@ class Inventory:
             path = base + '/pulls/' + str(number)
             reviews = self.collect('评审', path + '/reviews')
             for review in reviews:
-                self.collect('行内评审', path + '/reviews/' + str(review['id']) + '/comments')
+                inline = self.collect('行内评审', path + '/reviews/' + str(review['id']) + '/comments')
+                for comment in inline:
+                    if comment['id'] not in attachment_comments:
+                        self.collect('评论附件', base + '/issues/comments/' + str(comment['id']) + '/assets')
+                        attachment_comments.add(comment['id'])
         self.collect('分支保护', base + '/branch_protections', identity='rule_name')
         self.collect('标签保护', base + '/tag_protections')
         runs = self.collect('Actions 流水线', base + '/actions/runs', key='workflow_runs')
@@ -164,11 +211,11 @@ class Inventory:
         self.legacy_artifacts(project, runs, artifacts)
         packages = self.collect('所有者制品包', '/packages/' + quote(parts[0], safe=''))
         if packages:
-            linked = [p for p in packages if (p.get('repository') or {}).get('id') == project['id']]
+            linked = [p for p in packages if (p.get('repository') or {}).get('id') == project['id'] and p.get('type') != 'container']
             self.objects -= len(packages) - len(linked)
             self.datasets[-1]['rows'] = linked
             self.datasets[-1]['sha256'] = hashlib.sha256(encode(linked).encode()).hexdigest()
-            if any(not p.get('repository') for p in packages):
+            if any(not p.get('repository') and p.get('type') != 'container' for p in packages):
                 self.gaps.append({'category': '制品归属', 'path': '/packages/' + parts[0],
                               'reason': '来源所有者存在未关联仓库的制品，需要单独指定目标归属'})
             for package in linked:

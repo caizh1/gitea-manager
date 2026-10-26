@@ -17,8 +17,9 @@
       </div>
       <div v-if="chosen" class="paths"><strong>目标路径</strong><div v-for="item in inventory.result.projects" :key="item.project.id">{{ chosen.full_path }}/{{ item.project.path }}</div></div>
       <div v-if="principals.length" class="principal-map">
-        <strong>规则主体映射</strong>
-        <p>填写目标已有用户的登录名，多个用户用逗号分隔。不会创建账号或复制授权；这些用户必须已有目标群组的代码写入权限。</p>
+        <strong>人员与规则主体映射</strong>
+        <p>填写目标已有账号。单个人员对应一个账号，团队或规则角色可用逗号分隔多个账号。目标权限需提前配置。</p>
+        <p v-if="principals.includes('gitlab:ci:issuer')">强制 CI 需指定专用的可信回执账号。目标只接受该账号对当前提交发出的流水线成功状态，历史成功记录不会解除门禁。</p>
         <el-form label-position="top">
           <el-form-item v-for="key in principals" :key="key" :label="principalLabel(key)">
             <el-input v-model="principalInputs[key]" placeholder="目标用户登录名" />
@@ -33,15 +34,16 @@
       <el-table-column prop="id" label="编号" width="75" />
       <el-table-column label="状态" min-width="120"><template #default="{ row }">{{ statusLabel(row.status) }}</template></el-table-column>
       <el-table-column prop="stage" label="当前步骤" min-width="200" />
-      <el-table-column label="操作" width="140"><template #default="{ row }"><el-button link @click="openDetail(row)">详情</el-button><el-button v-if="['interrupted', 'uncertain', 'quarantined'].includes(row.status)" link :disabled="busy" @click="resume(row)">继续核对</el-button></template></el-table-column>
+      <el-table-column label="操作" min-width="240"><template #default="{ row }"><div class="actions"><el-button link @click="openDetail(row)">详情</el-button><template v-if="['interrupted', 'uncertain', 'quarantined'].includes(row.status)"><el-button link :disabled="busy" @click="resume(row)">继续核对</el-button><el-button link type="danger" :disabled="busy" @click="abandon(row)">终止并保留现场</el-button></template></div></template></el-table-column>
     </el-table>
     <el-dialog v-model="showDetail" title="迁移执行详情" width="min(800px, 96vw)">
       <template v-if="detail">
         <p>任务 #{{ detail.id }} · {{ statusLabel(detail.status) }}</p>
         <el-alert v-if="detail.error" :title="detail.error" type="error" :closable="false" />
+        <div v-if="['interrupted', 'uncertain', 'quarantined'].includes(detail.status)" class="actions"><el-button @click="rotateTarget(detail)">更新目标令牌</el-button><span>需属于原目标管理员，核对身份后可继续同一任务。</span></div>
         <div v-for="[id, project] in projectCheckpoints" :key="id" class="checkpoint">
           <strong>来源项目 #{{ id }} · {{ project.final_path || project.repo_name || '尚未创建目标' }}</strong>
-          <p>代码核验：{{ project.code_verified ? '通过' : '未完成' }}；原生资料核验：{{ project.objects_verified ? '通过' : '未完成' }}；交接：{{ project.handed_off ? '完成' : '未完成' }}</p>
+          <p>独立来源核验：{{ project.source_verified ? '通过' : '未完成' }}；代码核验：{{ project.code_verified ? '通过' : '未完成' }}；原生资料核验：{{ project.objects_verified ? '通过' : '未完成' }}；交接：{{ project.handed_off ? '完成' : '未完成' }}</p>
           <el-table v-if="project.pending?.length || project.gaps?.length" :data="[...(project.pending || []), ...(project.gaps || [])]">
             <el-table-column prop="category" label="尚未完成的范围" /><el-table-column prop="reason" label="原因" />
           </el-table>
@@ -53,15 +55,17 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import { useOperationPolling } from '../composables/useOperationPolling'
 const props = defineProps({ inventory: Object, sourceId: Number })
 const servers = ref([]), serverId = ref(null), groupId = ref(null), groups = ref([]), parents = ref([]), chosen = ref(null), nextGroup = ref(0)
 const frozen = ref(false), busy = ref(false), runs = ref([]), detail = ref(null)
 const principals = ref([]), principalInputs = ref({})
-const principalLabel = key => key.startsWith('gitlab:access:') ? `GitLab ${({ 30: '开发者', 40: '维护者', 50: '所有者' })[key.split(':').at(-1)] || '角色'}及更高权限` : `${key.startsWith('gitea:') ? 'Gitea' : 'GitLab'} ${key.includes(':group:') || key.includes(':team:') ? '群组或团队' : '用户'} ${key.split(':').at(-1)}`
+const principalDetails = ref({})
+const principalLabel = key => key === 'gitlab:ci:issuer' ? '可信 CI 回执账号（目标已有专用账号）' : principalDetails.value[key] ? `${principalDetails.value[key].username} · ${principalDetails.value[key].roles.join('、')} · 来源编号 ${key.split(':').at(-1)}` : key.startsWith('gitlab:access:') ? `GitLab ${({ 30: '开发者', 40: '维护者', 50: '所有者' })[key.split(':').at(-1)] || '角色'}及更高权限` : `${key.startsWith('gitea:') ? 'Gitea' : 'GitLab'} ${key.includes(':group:') || key.includes(':team:') || key.includes(':review-team:') ? '群组或团队' : '用户编号'} ${key.split(':').at(-1)}`
 let principalRequest = 0, groupRequest = 0
-const statusLabel = status => ({ queued: '等待执行', running: '正在迁移', succeeded: '交接完成', interrupted: '已中断', uncertain: '待核对', quarantined: '隔离待处理' }[status] || status)
+const statusLabel = status => ({ queued: '等待执行', running: '正在迁移', succeeded: '交接完成', interrupted: '已中断', uncertain: '待核对', quarantined: '隔离待处理', abandoned: '已终止，保留现场' }[status] || status)
 const activeRun = computed(() => runs.value.some(row => ['queued', 'running'].includes(row.status)))
 const showDetail = computed({ get: () => !!detail.value, set: value => { if (!value) detail.value = null } })
 const projectCheckpoints = computed(() => Object.entries(detail.value?.checkpoint || {}).filter(([id]) => /^\d+$/.test(id)))
@@ -78,11 +82,11 @@ function openDetail(row) { detail.value = row; refresh() }
 onMounted(async () => { servers.value = (await api.get('/servers')).data.filter(row => row.role !== 'archive') })
 watch(() => props.sourceId, () => { frozen.value = false; refresh() })
 watch(() => props.inventory?.id, async id => {
-  frozen.value = false; principals.value = []; principalInputs.value = {}
+  frozen.value = false; principals.value = []; principalInputs.value = {}; principalDetails.value = {}
   const request = ++principalRequest
   if (!id || props.inventory?.status !== 'succeeded') return
-  const result = await api.get(`/git-migrations/inventories/${id}/principals`)
-  if (request === principalRequest) principals.value = result.data
+  const [result, details] = await Promise.all([api.get(`/git-migrations/inventories/${id}/principals`), api.get(`/git-migrations/inventories/${id}/principal-details`)])
+  if (request === principalRequest) { principals.value = result.data; principalDetails.value = Object.fromEntries(details.data.map(row => [row.key, row])) }
 }, { immediate: true })
 async function loadGroups(append = false) {
   const request = ++groupRequest
@@ -107,6 +111,22 @@ async function resume(row) {
   busy.value = true
   try { await api.post(`/git-migrations/runs/${row.id}/resume`, {}) }
   finally { busy.value = false; refresh() }
+}
+async function abandon(row) {
+  let reason
+  try { reason = (await ElMessageBox.prompt('未完成的仓库将归档保留，接收会话会关闭。请填写终止原因。', '终止迁移', { inputValidator: value => !!value?.trim() || '请填写终止原因', confirmButtonText: '终止并保留现场' })).value }
+  catch { return }
+  busy.value = true
+  try { await api.post(`/git-migrations/runs/${row.id}/abandon`, { reason }) }
+  finally { busy.value = false; refresh() }
+}
+async function rotateTarget(row) {
+  let token
+  try { token = (await ElMessageBox.prompt('填写原目标管理员的新令牌，实例地址和授权范围保持固定。', '更新目标令牌', { inputType: 'password', inputValidator: value => !!value?.trim() || '请填写新令牌' })).value }
+  catch { return }
+  busy.value = true
+  try { await api.post(`/git-migrations/runs/${row.id}/target-credentials`, { token }) }
+  finally { token = ''; busy.value = false; refresh() }
 }
 </script>
 

@@ -20,9 +20,14 @@ def principal_key(entry):
 
 
 def requirements(inventory):
-    keys = set()
+    from .people import requirements as people_requirements
+    keys = people_requirements(inventory) if inventory.get('kind') else set()
     for item in inventory.get('projects', []):
         for dataset in item['datasets']:
+            if inventory.get('kind') == 'gitlab' and dataset['category'] == '项目合并前置条件':
+                from .merge_conditions import CI_ISSUER, needs_pipeline
+                if any(needs_pipeline(row) for row in dataset['rows']):
+                    keys.add(CI_ISSUER)
             if dataset['category'] in ('分支保护', '标签保护'):
                 for rule in dataset['rows']:
                     if dataset['category']=='标签保护' and 'create_access_levels' in rule:keys.add('gitlab:access:40')
@@ -42,6 +47,8 @@ def validate_mapping(raw, required, receiver):
     for key, names in raw.items():
         require(isinstance(names, list) and 0 < len(names) <= 100 and all(isinstance(n, str) and n.strip() == n and n for n in names),
                 '每个规则主体必须指定目标已有用户')
+        require(':person:' not in key or len(names) == 1, '单个来源人员必须对应一个目标账号')
+        require(key != 'gitlab:ci:issuer' or len(names) == 1, '必须指定一个可信 CI 回执账号')
         users = []
         for name in sorted(set(names)):
             user = receiver.api('GET', '/users/' + quote(name, safe=''))
@@ -108,7 +115,9 @@ def apply(receiver, repo, rules, mapping, progress, save):
     if not rules:
         return
     path = '/repos/' + quote(repo['full_name'], safe='/')
-    for users in mapping.values():
+    for key, users in mapping.items():
+        if ':person:' in key or ':review-team:' in key:
+            continue
         for expected in users:
             actual = receiver.api('GET', '/users/' + quote(expected['login'], safe=''))
             require(actual['id'] == expected['id'], '映射账号已更换，禁止沿用同名账号')

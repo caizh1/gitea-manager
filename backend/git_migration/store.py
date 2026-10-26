@@ -3,6 +3,8 @@ import json
 import os
 import re
 import ssl
+import tempfile
+from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 from models import db
@@ -68,6 +70,11 @@ def public_discovery(row, detail=True):
         if isinstance(row, GitMigrationInventory):
             # 页面只读取摘要，避免每次轮询传输完整评论与作业正文。
             for project in result['result'].get('projects', []):
+                manifest = project.get('source_manifest')
+                if manifest:
+                    from svn_migration.common import digest
+                    project['source_manifest'] = {'sha256': digest(manifest), 'objects': len(manifest['objects']),
+                                                  'files': len(manifest['files']), 'rules': len(manifest['rules']), 'gaps': manifest['gaps']}
                 for dataset in project.get('datasets', []):
                     dataset['object_count'] = len(dataset.pop('rows', []))
     if isinstance(row, GitMigrationInventory):
@@ -116,6 +123,58 @@ def save_source(data, ident=None):
     db.session.add(row)
     db.session.commit()
     return row
+
+
+def rotate_credentials(ident, data):
+    """配置版本保持不变；只允许空闲检查点使用已核对同一来源管理员的新凭据。"""
+    from .providers import Provider
+    from .transport import Transport
+    require(isinstance(data, dict) and set(data) <= {'version', 'secret', 'auth_method', 'ca_pem'}, '凭据更新字段无效')
+    with file_lock(root() / 'enqueue.lock', blocking=True):
+        db.session.expire_all()
+        row = get(GitMigrationSource, ident)
+        require(type(data.get('version')) is int and data['version'] == row.version, '来源已变化，请刷新', 'stale', 409)
+        for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun):
+            require(not model.query.filter_by(source_id=ident).filter(model.status.in_(('queued', 'running'))).first(),
+                    '来源仍有排队或执行中的任务，请等到安全检查点后更新凭据', 'busy', 409)
+        secret = data.get('secret')
+        method = data.get('auth_method', row.auth_method)
+        ca = data.get('ca_pem', row.ca_pem)
+        require(isinstance(secret, str) and 0 < len(secret) <= 8192 and not any(c in secret for c in '\r\n\x00'), '请填写有效新凭据')
+        require(method in ('password', 'token'), '认证方式无效')
+        require(isinstance(ca, str) and len(ca) <= 128000, '证书格式无效')
+        if ca:
+            try:
+                ssl.create_default_context(cadata=ca)
+            except (ssl.SSLError, ValueError):
+                raise MigrationError('自定义 CA 不是有效 PEM 证书') from None
+        with tempfile.TemporaryDirectory(prefix='credential-check-', dir=root()) as directory:
+            verify = True
+            if ca:
+                path = Path(directory) / 'ca.pem'
+                path.write_text(ca)
+                path.chmod(0o600)
+                verify = str(path)
+            transport = Transport(row.url, verify=verify)
+            try:
+                identity = Provider(transport, row.kind, row.username, secret, method).authenticate()
+            finally:
+                transport.close()
+        snapshots = GitMigrationDiscovery.query.filter_by(source_id=ident, source_version=row.version, status='succeeded').all()
+        for snapshot in snapshots:
+            previous = json.loads(snapshot.result_json)
+            require(identity['actor'] == previous.get('actor') and identity['version'] == previous.get('version'),
+                    '新凭据对应的来源管理员或版本与固定快照不一致', 'identity', 409)
+        old_ciphertext = row.secret_ciphertext
+        encrypted = cipher().encrypt(secret.encode()).decode()
+        # 不经 ORM 的版本递增路径：业务配置和固定计划未变，只替换已验证的认证材料。
+        changed = db.session.query(GitMigrationSource).filter_by(id=ident, version=row.version,
+            secret_ciphertext=old_ciphertext).update({'secret_ciphertext': encrypted, 'auth_method': method, 'ca_pem': ca},
+                                                    synchronize_session=False)
+        require(changed == 1, '来源凭据已被其他操作更新，请刷新', 'stale', 409)
+        db.session.commit()
+        db.session.expire_all()
+        return get(GitMigrationSource, ident)
 
 
 def enqueue_discovery(source_id, data, actor_id):

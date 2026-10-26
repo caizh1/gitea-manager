@@ -93,6 +93,11 @@ def source(source_id):
         return jsonify(store.public_source(store.save_source(body(), source_id)))
 
 
+@git_migration_bp.post('/sources/<int:source_id>/credentials')
+def rotate_credentials(source_id):
+    return jsonify(store.public_source(store.rotate_credentials(source_id, body())))
+
+
 @git_migration_bp.route('/sources/<int:source_id>/discoveries', methods=['GET', 'POST'])
 def discoveries(source_id):
     store.get(GitMigrationSource, source_id)
@@ -152,6 +157,22 @@ def resume_run(run_id):
     return jsonify(service.public(service.resume(run_id))), 202
 
 
+@git_migration_bp.post('/runs/<int:run_id>/abandon')
+def abandon_run(run_id):
+    from git_migration import runs as service
+    data = body()
+    require(set(data) == {'reason'}, '终止请求需要且只接受原因')
+    return jsonify(service.public(service.abandon(run_id, data['reason'])))
+
+
+@git_migration_bp.post('/runs/<int:run_id>/target-credentials')
+def rotate_target_credentials(run_id):
+    from git_migration import runs as service
+    data = body()
+    require(set(data) == {'token'}, '目标凭据更新只接受令牌')
+    return jsonify(service.public(service.rotate_target_credentials(run_id, data['token'])))
+
+
 @git_migration_bp.get('/targets/<int:server_id>/groups')
 def target_groups(server_id):
     from models import GiteaServer
@@ -168,3 +189,12 @@ def principals(inventory_id):
     row = store.get(GitMigrationInventory, inventory_id)
     require(row.status == 'succeeded', '盘点尚未完成')
     return jsonify(requirements(json.loads(row.result_json)))
+
+
+@git_migration_bp.get('/inventories/<int:inventory_id>/principal-details')
+def principal_details(inventory_id):
+    import json
+    from git_migration.people import details
+    row = store.get(GitMigrationInventory, inventory_id)
+    require(row.status == 'succeeded', '盘点尚未完成')
+    return jsonify(details(json.loads(row.result_json)))
