@@ -119,7 +119,6 @@ def save_config():
         raise ReviewError('配置包含不支持的字段')
     old = state.config()
     value = dict(old, **data)
-    validate_batch(value)
     if not isinstance(value['enabled'], bool) or value['engine'] != 'opencode_native':
         raise ReviewError('开关或执行引擎无效')
     for key, low, high in [('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
@@ -132,6 +131,7 @@ def save_config():
     validate_thinking(value)
     from ai_review.budgets import validate_context
     validate_context(value)
+    validate_batch(value)
     if value['api_base_url']:
         from ai_review.host_policy import path, approve
         if path() and 'api_base_url' in data: approve({'AI_REVIEW_MODEL_HOSTS': [value['api_base_url']]})
@@ -280,6 +280,12 @@ def install_webhook(repository):
 
 
 def ensure_webhook(state, repository, manager_url):
+    # 跨 Gunicorn worker 串行核对创建与清理回执，避免并发生成重复勾子。
+    with state.lock('webhook-install-' + str(repository), blocking=True):
+        return _ensure_webhook(state, repository, manager_url)
+
+
+def _ensure_webhook(state, repository, manager_url):
     repo = state.repo(repository)
     if repo.get('access_archived'):
         raise ReviewError('该接入已停止，不能重新安装事件通知；请重新接入仓库')
@@ -289,22 +295,22 @@ def ensure_webhook(state, repository, manager_url):
     if gitea_address(target.gitea_url) != gitea_address(repo['gitea_url']):
         raise ReviewError('服务器连接已变化，请先更新 Review 仓库配置')
     client = Gitea(target.gitea_url, target.api_token, repo['repo_name'], repo['repo_id'])
-    path = client.prefix+'/hooks'
     try:
-        client.repository()
-        existing = [r for r in client.pages(path) if r.get('config', {}).get('url') == callback]
-        if len(existing) > 1:
-            raise ReviewError('存在重复 Webhook，请先在 Gitea 中核对')
-        value = {'type': 'gitea', 'active': True, 'events': ['pull_request', 'pull_request_sync', 'pull_request_comment',
-                 'pull_request_review'],
-                 'config': {'url': callback, 'content_type': 'json', 'secret': state.unseal(repo['webhook_secret'])}}
-        if existing:
-            hook = client.request('PATCH', path+'/'+str(existing[0]['id']), value)
-        else:
-            hook = client.request('POST', path, value)
-        actual = client.request('GET', path+'/'+str(hook['id']))
-        if not actual.get('active') or actual.get('config', {}).get('url') != callback or not set(value['events']).issubset(actual.get('events', [])):
-            raise ReviewError('Webhook 回读验证失败')
+        actual = client.repository()
+        from ai_review.webhook_binding import ensure_binding
+        from ai_review.setup_service import verify_delivery
+        def verify(hook_id):
+            if actual.get('empty') or not actual.get('default_branch'):
+                raise ReviewError('空仓库尚无提交，无法验证 Webhook；已有勾子已保留，请有首个提交后继续接入')
+            try:
+                verify_delivery(state, client, client.prefix, repository, hook_id, actual['default_branch'])
+                return True
+            except ReviewError as exc:
+                if getattr(exc, 'error_code', None) == 'WEBHOOK_DELIVERY_UNCONFIRMED':
+                    return False
+                raise
+        events = ['pull_request', 'pull_request_sync', 'pull_request_comment', 'pull_request_review']
+        hook = ensure_binding(state, repo, client, callback, events, verify)
         state.repo_status(repository, hook_id=hook['id'], hook_status='已安装并回读验证', webhook_url=callback,
                           feedback_since=repo.get('feedback_since',time.time()))
         return state.repo(repository, public=True)

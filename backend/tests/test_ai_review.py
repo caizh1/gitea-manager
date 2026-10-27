@@ -167,6 +167,14 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(sum(v is not None for v in results), 1)
         self.assertEqual(self.store.jobs()['total'], 1)
 
+    def test_distinct_hooks_same_pr_version_enqueue_only_once(self):
+        # 两个勾子的 Delivery ID 不同，仍按相同 PR 版本原子去重。
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda i: self.store.enqueue(
+                self.repo, 1, {'head': 'a', 'base': 'b'}, delivery='不同勾子投递-' + str(i)), range(16)))
+        self.assertEqual(sum(v is not None for v in results), 1)
+        self.assertEqual(self.store.jobs()['total'], 1)
+
     def test_new_generation_fences_old_owner(self):
         self.enqueue(); old = self.store.claim(); self.enqueue('c')
         with self.assertRaises(Stale): self.store.update(old['id'], old['owner'], stage='错误复活')

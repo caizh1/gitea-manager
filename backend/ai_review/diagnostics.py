@@ -17,6 +17,7 @@ _TEXT_ENUMS = {
     'event_type', 'error_type', 'transfer_phase', 'tls_exception_type',
     'upstream_error_type', 'upstream_error_code', 'upstream_request_id', 'upstream_trace_id',
     'error_sha256', 'captured_sha256', 'secondary_exception_type', 'thinking_protocol',
+    'output_field', 'evidence_id',
 }
 _INTEGERS = {
     'json_line', 'json_column', 'json_offset', 'response_bytes', 'exit_code',
@@ -26,6 +27,7 @@ _INTEGERS = {
     'response_limit_bytes', 'model_context_tokens', 'upstream_output_tokens', 'errno',
     'input_bytes', 'input_limit_bytes', 'body_limit_bytes', 'configured_output_tokens',
     'error_bytes', 'captured_bytes', 'declared_error_bytes', 'thinking_token_budget', 'reasoning_chars', 'content_chars',
+    'finding_index',
 }
 _BOOLEANS = {'completion_complete', 'done_seen', 'stream_closed', 'normalized_response',
              'error_truncated', 'thinking_enabled'}
@@ -131,6 +133,12 @@ def message_for(code, reason=None):
         'upstream_sse_error': '模型服务在响应流中返回错误，审查未完成',
         'upstream_json_error': '模型服务在响应中返回错误，审查未完成',
         'empty_result': '模型没有返回结果，审查未完成',
+        'batch_result_not_text': '单元报告不是文本，审查未完成',
+        'batch_thinking_unclosed': '单元输出的思考标签未闭合，审查未完成',
+        'batch_fence_invalid': '单元报告的 JSON 代码围栏不完整或格式无效，审查未完成',
+        'batch_evidence_shape': '单元证据引用必须为非空编号列表，审查未完成',
+        'batch_evidence_unknown': '单元引用了当前批次不存在的证据编号，审查未完成',
+        'batch_evidence_ambiguous': '单元证据编号对应多个位置，无法唯一核对，审查未完成',
         'json_syntax': '模型输出存在 JSON 语法错误，审查未完成',
         'result_not_object': '模型输出 JSON 顶层不是对象，审查未完成',
         'parts_not_list': '模型响应内容结构无效，审查未完成',

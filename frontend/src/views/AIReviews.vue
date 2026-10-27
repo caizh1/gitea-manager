@@ -60,7 +60,7 @@
             </div>
             <el-collapse><el-collapse-item title="审查资源预算" name="limits"><div class="review-grid">
               <el-form-item label="Token 计数方式"><el-select v-model="config.tokenizer_profile"><el-option label="自动匹配具体型号" value="auto" /><el-option label="Qwen3.8-27B" value="qwen38" /><el-option label="DeepSeek-V4.1-Flash" value="deepseek41" /><el-option label="通用保守估算" value="conservative" /></el-select><span class="secondary">计数资源离线运行，不修改模型名或思考参数；实际资源版本在任务计划中显示。</span></el-form-item>
-              <el-form-item label="单批输入目标（Token）"><el-input-number v-model="config.batch_input_tokens" :min="4096" :max="1048576" /></el-form-item>
+              <el-form-item label="单批输入目标（Token）"><el-input-number v-model="config.batch_input_tokens" :min="4096" :max="1048576" /><span class="secondary">新安装默认 65536；实际额度还会扣除输出预留和安全余量。</span></el-form-item>
               <el-form-item label="自动执行调用上限"><el-input-number v-model="config.batch_auto_calls" :min="1" :max="10000" /><span class="secondary">最大计划调用数超出时等待确认，包含反证与历史复核。</span></el-form-item>
               <el-form-item label="分批有效执行预算（秒）"><el-input-number v-model="config.batch_execution_seconds" :min="60" :max="604800" /></el-form-item>
               <el-form-item label="预处理超时（秒）"><el-input-number v-model="config.batch_preprocess_seconds" :min="10" :max="3600" /></el-form-item>
@@ -70,7 +70,7 @@
               <el-form-item label="模型上下文窗口（Token）"><el-input-number v-model="config.model_context_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">默认 262,144，请填写模型服务实际开放的窗口大小。</span></el-form-item>
               <el-form-item label="历史会话压缩阈值（Token）"><el-input-number v-model="config.compaction_threshold_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">新任务按固定 diff 分批处理；此项只用于历史会话，并需与窗口配置兼容。</span></el-form-item>
               <el-form-item label="单次模型请求超时（秒）"><el-input-number v-model="config.model_request_timeout_seconds" :min="60" :max="3600" :precision="0" /></el-form-item>
-              <el-form-item label="模型输出额度（Token）"><el-input-number v-model="config.model_max_output_tokens" :min="0" :max="1048576" :precision="0" /><span class="secondary">新分批任务为 0 时使用 8192；非零额度可能同时包含思考与正文，不能替代独立思考预算。</span></el-form-item>
+              <el-form-item label="模型输出额度（Token）"><el-input-number v-model="config.model_max_output_tokens" :min="0" :max="1048576" :precision="0" /><span class="secondary">新安装默认 32768；设为 0 时分批任务使用 8192。非零额度可能同时包含思考与正文，不能替代独立思考预算。</span></el-form-item>
               <el-form-item label="正文大小上限（MiB）"><el-input-number v-model="config.model_response_max_mib" :min="1" :max="64" :precision="0" /><span class="secondary">限制审查报告正文，不累计心跳和进度事件。</span></el-form-item>
             </div><p class="muted" data-testid="time-budget-help">初始单次等待上限：{{ effectiveModelTimeout }} 秒，即单次模型请求上限与整次审查剩余期限减去 40 秒收尾时间中的较小值。实际可用时间会随准备耗时和后续调用递减。资源配置仅对新创建的任务生效，已排队和运行中的任务沿用原预算。</p></el-collapse-item></el-collapse>
             <div class="review-actions footer"><el-button type="primary" :loading="busy" native-type="submit">保存设置</el-button><el-button :loading="testing" @click="testConnection">检查已保存的连接</el-button><el-button :loading="testing" @click="testTokens">核对 Token 计数（4 次请求）</el-button></div>
