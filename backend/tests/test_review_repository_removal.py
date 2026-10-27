@@ -74,6 +74,22 @@ class RemovalTests(unittest.TestCase):
                 self.assertTrue(self.state.repo(self.repo['id'])['enabled'])
                 self.client.request.assert_not_called()
 
+    def test_pending_webhook_binding_blocks_before_archival_or_remote_delete(self):
+        for phase in ('planned', 'creating', 'verifying', 'cleanup'):
+            with self.subTest(阶段=phase):
+                self.state.repo_status(self.repo['id'], webhook_binding={'phase': phase})
+                with self.assertRaisesRegex(ReviewError, '通知创建或清理尚待核对'):
+                    self.remove()
+                current = self.state.repo(self.repo['id'])
+                self.assertTrue(current['enabled'])
+                self.assertFalse(current.get('access_archived'))
+                self.client_class.assert_not_called()
+
+    def test_verified_webhook_binding_does_not_block_removal(self):
+        self.state.repo_status(self.repo['id'], webhook_binding={'phase': 'ready', 'id': 11})
+        self.assertTrue(self.remove()['removal_complete'])
+        self.assertNotIn('webhook_binding', self.state.repo(self.repo['id'], public=True))
+
     def test_old_worker_lease_still_blocks_after_superseded(self):
         job = self.state.enqueue(self.repo['id'], 1, {'head': 'a', 'base': 'b'})
         with self.state.tx() as connection:

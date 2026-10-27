@@ -22,6 +22,9 @@ def remove_repository(state, repository, revision, target):
                 raise ReviewError('原组织归属已失效，不能操作该仓库的事件通知')
             if revision != old['revision']:
                 raise ReviewError('仓库配置已变化，请刷新后重试')
+            binding = old.get('webhook_binding') or {}
+            if binding and binding.get('phase') != 'ready':
+                raise ReviewError('事件通知创建或清理尚待核对，请先完成通知检查再移除接入')
             active = connection.execute("""SELECT 1 FROM jobs WHERE repository=? AND
                 (status IN ('running','publishing','recovering','publish_unknown','cancelling')
                  OR (owner!='' AND lease>?)) LIMIT 1""", (repository, time.time())).fetchone()
