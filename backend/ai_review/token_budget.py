@@ -22,6 +22,13 @@ def failure(code, message):
     return error
 
 
+def input_failure(tokens, limit, message):
+    error = failure('MODEL_INPUT_BUDGET', f'{message}（完整输入 {tokens}，可用额度 {limit}）')
+    error.diagnostic = {'source': 'local_limit', 'reason': 'input_budget_exceeded',
+                        'input_tokens': tokens, 'input_limit': limit}
+    return error
+
+
 def validate(config):
     if type(config.get('batch_splitting_enabled', False)) is not bool:
         raise ReviewError('拆分审查开关必须为布尔值')
@@ -130,6 +137,6 @@ def check(messages, config, profile=None):
     tokens = count(messages, config, profile)
     limit = capacity(config)
     if tokens > limit:
-        raise failure('MODEL_INPUT_BUDGET', f'本次完整消息为 {tokens} Token／估算单位，超过输入额度 {limit}；未发送模型')
+        raise input_failure(tokens, limit, '本次完整消息超过输入额度；未发送模型')
     return {'input_tokens': tokens, 'limit': limit, 'input_sha256': digest(messages),
             'profile': (profile or resolve(config))['digest']}

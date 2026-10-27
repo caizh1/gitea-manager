@@ -78,7 +78,10 @@ def run(operation, payload, config, guard=None, lock_dir=None):
                 raise token_budget.failure('PREPROCESS_RESOURCE', '计数进程异常退出或超过内存预算，未调用模型')
             result = json.loads(out)
             if 'error' in result:
-                raise token_budget.failure(result['code'], result['error'])
+                error = token_budget.failure(result['code'], result['error'])
+                from .diagnostics import safe_remote
+                error.diagnostic = safe_remote(result.get('diagnostic'))
+                raise error
             if cache_path is not None:
                 temporary = cache_path.with_suffix('.tmp')
                 temporary.write_text(json.dumps(result['value'], ensure_ascii=False))
@@ -137,7 +140,9 @@ def main():
             value = token_budget.check(request['payload']['messages'], config, request['payload'].get('profile'))
         print(json.dumps({'value': value}, ensure_ascii=False))
     except Exception as exc:
+        from .diagnostics import safe_remote
         print(json.dumps({'code': getattr(exc, 'error_code', 'PREPROCESS_RESOURCE'),
+                          'diagnostic': safe_remote(getattr(exc, 'diagnostic', {})),
                           'error': str(exc) if not isinstance(exc, MemoryError) else '预处理超过内存预算'}, ensure_ascii=False))
 
 

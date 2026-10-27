@@ -75,8 +75,13 @@ def analyze(store, job, diagnostic):
                 check('input_allocation', 'confirmed' if capacity < 1024 or primary < 1024 else 'unknown',
                       '固定输入与输出额度',
                       f'上下文 {context}，单批目标 {target}，输出预留 {output}，完整请求可用 {capacity}，主审单元额度 {primary}。')
-                check('input_count', 'unknown', '完整消息计数',
-                      '此检查未重新调用计数器；额度为正不能证明实际请求一定能装入，需结合原失败计数。')
+                actual, limit = diagnostic.get('input_tokens'), diagnostic.get('input_limit')
+                if type(actual) is int and type(limit) is int and actual >= 0 and limit > 0:
+                    check('input_count', 'confirmed' if actual > limit else 'clear', '完整消息计数',
+                          f'原失败请求完整输入 {actual}，当次可用额度 {limit}；来自计数记录，未重新计数或发送模型。')
+                else:
+                    check('input_count', 'unknown', '完整消息计数',
+                          '此检查未重新调用计数器；额度为正不能证明实际请求一定能装入，需结合原失败计数。')
                 return report
 
             session = diagnostic.get('session_id') or job.get('session_id')

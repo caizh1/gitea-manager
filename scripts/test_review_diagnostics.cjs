@@ -50,3 +50,10 @@ test('损坏或过大的自动报告保持有界', async () => {
   assert.equal(report.checks.length, 12)
   assert.equal(report.summary.length, 500)
 })
+
+test('输入超额保留实际计数与当次额度', async () => {
+  const { safeDiagnostic, diagnosticRows } = await loaded
+  const value = { source: 'local_limit', input_tokens: 321906, input_limit: 65024 }
+  assert.deepEqual(safeDiagnostic(value), value)
+  assert.ok(JSON.stringify(diagnosticRows(value)).includes('完整输入计数'))
+})

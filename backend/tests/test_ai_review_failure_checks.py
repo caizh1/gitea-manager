@@ -148,6 +148,16 @@ class FailureChecksTests(unittest.TestCase):
         self.assertEqual(result['automatic_checks']['status'], 'partial')
         self.assertNotIn('automatic_checks', original)
 
+    def test_actual_failed_input_count_is_reported_without_recounting(self):
+        diagnostic = {'error_code': 'MODEL_INPUT_BUDGET', 'input_tokens': 321906, 'input_limit': 65024}
+        result = analyze(self.store, self.job, diagnostic)
+        measured = self.check(result, 'input_count')
+        self.assertEqual(measured['state'], 'confirmed')
+        self.assertIn('321906', measured['detail'])
+        self.assertIn('65024', measured['detail'])
+        legacy = analyze(self.store, self.job, {'error_code': 'MODEL_INPUT_BUDGET'})
+        self.assertEqual(self.check(legacy, 'input_count')['state'], 'unknown')
+
     def test_input_budget_uses_frozen_configuration(self):
         self.job['batch_flow_version'] = 2
         with self.store.tx() as c:

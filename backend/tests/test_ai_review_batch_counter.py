@@ -2,8 +2,10 @@
 import subprocess
 import sys
 from unittest.mock import patch
+import pytest
 
 from ai_review import batch_counter
+from ai_review.common import ReviewError
 
 
 def test_large_request_survives_delayed_reader_and_poll_timeout(tmp_path):
@@ -19,3 +21,15 @@ def test_large_request_survives_delayed_reader_and_poll_timeout(tmp_path):
     assert result['input_tokens'] > 400000
     assert result['input_tokens'] <= result['limit']
     assert not list(tmp_path.glob('batch-input-*'))
+
+
+def test_actual_input_counts_survive_counter_process_boundary(tmp_path):
+    config = {'tokenizer_profile': 'conservative', 'batch_input_tokens': 4096,
+              'model_context_tokens': 262144, 'model_max_output_tokens': 32768}
+    with pytest.raises(ReviewError) as error:
+        batch_counter.run('count', {'messages': [{'role': 'user', 'content': '证据' * 2000}]},
+                          config, lock_dir=tmp_path)
+    assert error.value.error_code == 'MODEL_INPUT_BUDGET'
+    diagnostic = error.value.diagnostic
+    assert diagnostic['input_tokens'] > diagnostic['input_limit'] == 4096
+    assert diagnostic['reason'] == 'input_budget_exceeded'

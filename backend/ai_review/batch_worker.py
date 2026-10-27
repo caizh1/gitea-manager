@@ -239,6 +239,8 @@ def process(store, job):
                 validate_single_size(snapshot, net_limit=version == 5)
             if job.get('batch_flow_version', 2) >= 4:
                 snapshot = dict(snapshot, batch_reference_protocol=batch_locations.PROTOCOL)
+                if version >= 7:
+                    snapshot['batch_evidence_encoding'] = batch_locations.FILE_LINES_ENCODING
                 store.update(job['id'], job['owner'], snapshot=snapshot)
             if job.get('batch_flow_version', 2) >= 3 and 'analysis_sources' not in snapshot:
                 from .batch_graph import capture_sources

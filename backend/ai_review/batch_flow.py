@@ -29,6 +29,8 @@ def make_unit(snapshot, kind, evidence, *, core=None, connections=None, candidat
             'evidence': list({r['id']: r for r in evidence}.values()), 'core': core or []}
     if snapshot.get('review_mode') == 'single':
         unit['review_mode'] = 'single'
+    if snapshot.get('batch_evidence_encoding'):
+        unit['evidence_encoding'] = snapshot['batch_evidence_encoding']
     if connections:
         unit['connections'] = connections
     if candidates is not None:
@@ -122,8 +124,9 @@ def build(snapshot, config, history=0, *, single_request=False, net_limit=False)
         evidence.extend(r for key in sorted(k for k in affected_scopes if isinstance(k, str))
                         if key in scopes for r in scopes[key]['evidence'])
         unit = make_unit(snapshot, 'primary', evidence, core=expected)
-        if count(snapshot, unit, config, profile) > limit:
-            raise token_budget.failure('MODEL_INPUT_BUDGET', 'PR 完整变更及相关上下文超过一次审查输入额度；拆分未启用，未发送模型')
+        tokens = count(snapshot, unit, config, profile)
+        if tokens > limit:
+            raise token_budget.input_failure(tokens, limit, 'PR 完整变更及相关上下文超过一次审查输入额度；拆分未启用，未发送模型')
         primary = [unit]
     for unit in ([] if single_request else parts):
         combined = make_unit(snapshot, 'primary', (pending['evidence'] if pending else []) + unit['evidence'],
@@ -271,7 +274,8 @@ def refutations(snapshot, plan, config):
         unit = make_unit(dict(snapshot, review_mode='single'), 'refutation', evidence, candidates=selected)
         unit['input_tokens'] = count(snapshot, unit, config, value['profile'])
         if unit['input_tokens'] > token_budget.capacity(config) - 512:
-            raise token_budget.failure('MODEL_INPUT_BUDGET', '全部候选和保护上下文超过一次反证额度；拆分未启用，未删减候选')
+            raise token_budget.input_failure(unit['input_tokens'], token_budget.capacity(config) - 512,
+                                            '全部候选和保护上下文超过一次反证额度；拆分未启用，未删减候选')
         return [unit]
     groups = []
     for candidate in candidates(plan):

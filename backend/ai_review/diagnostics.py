@@ -27,7 +27,7 @@ _INTEGERS = {
     'response_limit_bytes', 'model_context_tokens', 'upstream_output_tokens', 'errno',
     'input_bytes', 'input_limit_bytes', 'body_limit_bytes', 'configured_output_tokens',
     'error_bytes', 'captured_bytes', 'declared_error_bytes', 'thinking_token_budget', 'reasoning_chars', 'content_chars',
-    'finding_index',
+    'finding_index', 'input_tokens', 'input_limit',
 }
 _BOOLEANS = {'completion_complete', 'done_seen', 'stream_closed', 'normalized_response',
              'error_truncated', 'thinking_enabled'}

@@ -30,9 +30,17 @@ def messages(snapshot, unit, candidates=None, correction=False):
     if unit.get('reference_protocol') == batch_locations.PROTOCOL:
         rows, candidates = batch_locations.payload(unit, candidates)
         system = batch_locations.SYSTEM
+        if unit.get('evidence_encoding') == batch_locations.FILE_LINES_ENCODING:
+            rows = batch_locations.file_lines(rows)
+            system += batch_locations.FILE_LINES_SYSTEM
         if correction:
             system += batch_locations.CORRECTION
             data['previous_report'] = correction
+            if unit.get('evidence_encoding') == batch_locations.FILE_LINES_ENCODING:
+                data['position_errors'] = batch_locations.correction_errors(correction, unit)
+                system += ('\nposition_errors 是程序逐项校验得到的错误清单，item_index 从 1 开始。'
+                           'source_location_uncommentable 表示位置不是可评论行，不能原样重复。'
+                           '逐项重新核对完整证据，仅在确有同一问题的可评论位置时修正，禁止自动选择最近行。')
     if unit.get('reference_protocol') == batch_references.PROTOCOL:
         rows, candidates = batch_references.payload(unit, candidates)
         data['files'] = list({row['path']: {key: row.get(key) for key in ('path', 'old_path', 'new_path')}
