@@ -271,6 +271,7 @@ class Store:
             from .host_policy import gitea_address
             result['gitea_url'] = gitea_address(result['gitea_url'])
         if public:
+            result.pop('webhook_binding', None)
             for key in ('bot_token', 'webhook_secret'):
                 result[key + '_configured'] = bool(result.pop(key, ''))
         return result
@@ -280,6 +281,9 @@ class Store:
             return [self.repo(row[0], c, public) for row in c.execute('SELECT id FROM repositories ORDER BY id')]
 
     def save_repo(self, server_id, repo_id, data, repository=None, required_config_revision=None):
+        data = dict(data)
+        # 创建回执仅由安装流程写入，客户端不能伪造或清空它。
+        data.pop('webhook_binding', None)
         with self.tx() as c:
             if required_config_revision is not None and self.config(connection=c)['revision'] != required_config_revision:
                 raise ReviewError('模型配置在接入期间发生变化，未自动启用仓库，请继续检查')

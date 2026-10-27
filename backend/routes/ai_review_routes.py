@@ -270,6 +270,12 @@ def install_webhook(repository):
 
 
 def ensure_webhook(state, repository, manager_url):
+    # 跨 Gunicorn worker 串行核对创建与清理回执，避免并发生成重复勾子。
+    with state.lock('webhook-install-' + str(repository), blocking=True):
+        return _ensure_webhook(state, repository, manager_url)
+
+
+def _ensure_webhook(state, repository, manager_url):
     repo = state.repo(repository)
     manager = endpoint(manager_url, 'AI_REVIEW_WEBHOOK_HOSTS')
     callback = manager + f'/api/ai-review/webhooks/{repository}'
@@ -277,22 +283,11 @@ def ensure_webhook(state, repository, manager_url):
     if gitea_address(target.gitea_url) != gitea_address(repo['gitea_url']):
         raise ReviewError('服务器连接已变化，请先更新 Review 仓库配置')
     client = Gitea(target.gitea_url, target.api_token, repo['repo_name'], repo['repo_id'])
-    path = client.prefix+'/hooks'
     try:
         client.repository()
-        existing = [r for r in client.pages(path) if r.get('config', {}).get('url') == callback]
-        if len(existing) > 1:
-            raise ReviewError('存在重复 Webhook，请先在 Gitea 中核对')
-        value = {'type': 'gitea', 'active': True, 'events': ['pull_request', 'pull_request_sync', 'pull_request_comment',
-                 'pull_request_review'],
-                 'config': {'url': callback, 'content_type': 'json', 'secret': state.unseal(repo['webhook_secret'])}}
-        if existing:
-            hook = client.request('PATCH', path+'/'+str(existing[0]['id']), value)
-        else:
-            hook = client.request('POST', path, value)
-        actual = client.request('GET', path+'/'+str(hook['id']))
-        if not actual.get('active') or actual.get('config', {}).get('url') != callback or not set(value['events']).issubset(actual.get('events', [])):
-            raise ReviewError('Webhook 回读验证失败')
+        from ai_review.webhook_binding import ensure_binding
+        events = ['pull_request', 'pull_request_sync', 'pull_request_comment', 'pull_request_review']
+        hook = ensure_binding(state, repo, client, callback, events)
         state.repo_status(repository, hook_id=hook['id'], hook_status='已安装并回读验证', webhook_url=callback,
                           feedback_since=repo.get('feedback_since',time.time()))
         return state.repo(repository, public=True)
