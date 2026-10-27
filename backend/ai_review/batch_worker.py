@@ -233,9 +233,10 @@ def process(store, job):
             store.update(job['id'], job['owner'], snapshot=snapshot, stage='计算单次审查计划' if single_mode else '计算分批计划')
         plan = state.get(store, job['id'], private=True)
         if not plan:
-            if job.get('batch_flow_version', 2) >= 5 and not config.get('batch_splitting_enabled', False):
+            version = job.get('batch_flow_version', 2)
+            if version >= 6 or version == 5 and single_mode:
                 from .batch_flow import validate_single_size
-                validate_single_size(snapshot)
+                validate_single_size(snapshot, net_limit=version == 5)
             if job.get('batch_flow_version', 2) >= 4:
                 snapshot = dict(snapshot, batch_reference_protocol=batch_locations.PROTOCOL)
                 store.update(job['id'], job['owner'], snapshot=snapshot)

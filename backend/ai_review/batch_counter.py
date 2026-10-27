@@ -109,7 +109,11 @@ def main():
                 from .batch_flow import build
             else:
                 from .batch_plan import build
-            options = ({'single_request': flow_version >= 5 and not config.get('batch_splitting_enabled', False)}
+            if flow_version >= 6:
+                from .batch_flow import validate_single_size
+                validate_single_size(request['payload']['snapshot'])
+            options = ({'single_request': flow_version >= 5 and not config.get('batch_splitting_enabled', False),
+                        'net_limit': flow_version == 5}
                        if flow_version >= 3 else {})
             value = build(request['payload']['snapshot'], config, request['payload']['history'], **options)
         elif request['operation'] == 'refutations':

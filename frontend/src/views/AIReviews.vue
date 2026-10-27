@@ -58,7 +58,7 @@
     <section v-else-if="tab === 'config' && isPlatformAdmin">
         <div class="glass-card panel">
           <el-alert v-if="configError" :title="configError" type="error" show-icon :closable="false" /><el-form label-position="top" @submit.prevent="saveConfig">
-            <el-alert title="新任务默认单次审查，最多净增加 1000 行" description="直接提供 PR 标题、描述与完整 diff，关闭工程检索，以文字报告结束并发布到 PR。未读取完整工程，未验证 diff 外依赖。" type="info" :closable="false" />
+            <el-alert title="新任务单次审查，新增与删除合计最多 1200 行" description="所有新增和删除均纳入审查，不启用拆分。完整输入超出 Token 额度时明确停止；P0/P1 保留独立反证。" type="info" :closable="false" />
             <div class="review-grid">
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
               <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎"><el-option label="原生 OpenCode 会话" value="opencode_native" /></el-select></el-form-item>

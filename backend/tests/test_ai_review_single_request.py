@@ -18,18 +18,18 @@ def test_thousand_lines_are_one_complete_request():
     snap = snapshot(thousand_lines())
     value = batch_flow.build(snap, dict(config(200000), model_context_tokens=1048576), single_request=True)
     assert value['review_mode'] == 'single'
-    assert value['net_added_lines'] == 1000 and value['max_net_added_lines'] == 1000
+    assert value['net_added_lines'] == 1000 and value['max_changed_lines'] == 1200
     assert value['primary'] == 1 and value['association'] == 0
     assert value['changed_lines'] == 1000 and len(value['units'][0]['core']) == 1000
     assert not value['gaps']
     assert '一次审查完整 PR' in batch_plan.messages(snap, value['units'][0])[0]['content']
 
 
-def test_thousand_and_one_lines_fail_before_analysis_or_model():
+def test_twelve_hundred_and_one_lines_fail_before_analysis_or_model():
     with patch('ai_review.batch_graph.analyze') as analyze:
         with pytest.raises(ReviewError) as error:
-            batch_flow.build(snapshot(thousand_lines(1001)), dict(config(200000), model_context_tokens=1048576), single_request=True)
-    assert error.value.error_code == 'PR_CHANGE_LIMIT'
+            batch_flow.build(snapshot(thousand_lines(1201)), dict(config(200000), model_context_tokens=1048576), single_request=True)
+    assert error.value.error_code == 'PR_TOTAL_CHANGE_LIMIT'
     analyze.assert_not_called()
 
 
@@ -80,14 +80,14 @@ def test_single_request_never_uses_automatic_output_splitting(state):
     assert not batch_store.adjust_output(store, job, record, {'finish_reason': 'length'}, {}, {})
 
 
-@pytest.mark.parametrize('version,enabled,expected_single', [(5, False, True), (5, True, False), (4, False, False)])
+@pytest.mark.parametrize('version,enabled,expected_single', [(6, False, True), (6, True, False), (5, False, True), (5, True, False), (4, False, False)])
 def test_counter_selects_new_default_and_keeps_legacy_plan(version, enabled, expected_single):
     request = {'operation': 'plan', 'config': {'batch_splitting_enabled': enabled},
-               'payload': {'flow_version': version, 'snapshot': {}, 'history': []}}
+               'payload': {'flow_version': version, 'snapshot': snapshot('int value;\n'), 'history': []}}
     import io
     with patch('sys.stdin', io.StringIO(json.dumps(request))), patch('ai_review.batch_flow.build', return_value={}) as build, patch('builtins.print'):
         batch_counter.main()
-    assert build.call_args.kwargs == {'single_request': expected_single}
+    assert build.call_args.kwargs == {'single_request': expected_single, 'net_limit': version == 5}
 
 
 def test_split_switch_is_false_by_default_and_frozen_per_job(state):
@@ -100,7 +100,7 @@ def test_split_switch_is_false_by_default_and_frozen_per_job(state):
     assert store.job_config(first)['batch_splitting_enabled'] is False
     second = store.enqueue(repo['id'], 22, {'head': 'd'*40, 'base': 'b'*40})
     assert store.job_config(second)['batch_splitting_enabled'] is True
-    assert store.job(first)['batch_flow_version'] == 5
+    assert store.job(first)['batch_flow_version'] == 6
 
 
 def test_split_switch_rejects_non_boolean():
@@ -111,8 +111,9 @@ def test_split_switch_rejects_non_boolean():
 def test_net_limit_does_not_limit_total_review_coverage():
     snap = snapshot('int a;\n' * 1500)
     snap['diff'] += 'diff --git a/old.c b/old.c\n--- a/old.c\n+++ /dev/null\n@@ -1,500 +0,0 @@\n' + '-int b;\n' * 500
-    value = batch_flow.build(snap, dict(config(1000000), model_context_tokens=1048576), single_request=True)
+    value = batch_flow.build(snap, dict(config(1000000), model_context_tokens=1048576), single_request=True, net_limit=True)
     assert value['net_added_lines'] == 1000
+    assert value['max_net_added_lines'] == 1000
     assert value['added_lines'] == 1500 and value['deleted_lines'] == 500
     assert value['changed_lines'] == 2000 and len(value['units'][0]['core']) == 2000
     assert value['primary'] == 1 and value['association'] == 0
@@ -124,3 +125,28 @@ def test_single_request_keeps_unmodified_diff_context():
     value = batch_flow.build(snap, config(50000), single_request=True)
     assert any('int unrelated(void)' in r['text'] for r in value['units'][0]['evidence'])
     assert value['changed_lines'] == 2
+
+
+def test_twelve_hundred_total_lines_are_allowed():
+    value = batch_flow.build(snapshot(thousand_lines(1200)),
+                             dict(config(250000), model_context_tokens=1048576), single_request=True)
+    assert value['changed_lines'] == 1200 and value['primary'] == 1
+    assert value['max_changed_lines'] == 1200
+
+
+def test_net_small_but_total_large_is_rejected():
+    snap = snapshot('int a;\n' * 701)
+    snap['diff'] += 'diff --git a/old.c b/old.c\n--- a/old.c\n+++ /dev/null\n@@ -1,500 +0,0 @@\n' + '-int b;\n' * 500
+    with pytest.raises(ReviewError) as error:
+        batch_flow.validate_single_size(snap)
+    assert error.value.error_code == 'PR_TOTAL_CHANGE_LIMIT'
+
+
+def test_current_hard_limit_cannot_be_bypassed_by_split_switch():
+    import io
+    request = {'operation': 'plan', 'config': {'batch_splitting_enabled': True},
+               'payload': {'flow_version': 6, 'snapshot': snapshot(thousand_lines(1201)), 'history': []}}
+    with patch('sys.stdin', io.StringIO(json.dumps(request))), patch('ai_review.batch_flow.build') as build, patch('builtins.print') as emit:
+        batch_counter.main()
+    build.assert_not_called()
+    assert json.loads(emit.call_args.args[0])['code'] == 'PR_TOTAL_CHANGE_LIMIT'

@@ -7,7 +7,8 @@ from .common import digest
 from . import batch_plan, batch_graph, batch_references, batch_locations, token_budget
 
 VERSION = 'diff-batches-v3'
-MAX_SINGLE_NET_ADDED_LINES = 1000
+MAX_SINGLE_NET_ADDED_LINES = 1000  # 仅用于已冻结的第五版任务
+MAX_SINGLE_CHANGED_LINES = 1200
 # 历史分批模式的装箱目标；默认单次模式使用独立的千行与完整 Token 门槛。
 PRIMARY_WORK_LINES = 320
 ASSOCIATION_WORK_LINES = 320
@@ -40,22 +41,25 @@ def count(snapshot, unit, config, profile):
     return token_budget.count(batch_plan.messages(snapshot, unit, unit.get('candidates')), config, profile)
 
 
-def validate_single_size(snapshot):
-    """净增加用于准入，新增与删除仍全部进入审查和 Token 预算。"""
+def validate_single_size(snapshot, *, net_limit=False):
+    """新任务按新增加删除准入；第五版冻结任务仍沿用净增加门槛。"""
     from .diff import parse_diff
     kinds = [kind for patch in parse_diff(snapshot['diff'].encode())
              for hunk in patch.hunks for kind, _ in hunk.rows]
     added, deleted = kinds.count('+'), kinds.count('-')
     net = max(0, added - deleted)
-    if net > MAX_SINGLE_NET_ADDED_LINES:
+    if not net_limit and added + deleted > MAX_SINGLE_CHANGED_LINES:
+        raise token_budget.failure('PR_TOTAL_CHANGE_LIMIT',
+            f'PR 新增 {added} 行、删除 {deleted} 行，合计 {added + deleted} 行，超过当前 {MAX_SINGLE_CHANGED_LINES} 行上限；未发送模型')
+    if net_limit and net > MAX_SINGLE_NET_ADDED_LINES:
         raise token_budget.failure('PR_CHANGE_LIMIT',
             f'PR 新增 {added} 行、删除 {deleted} 行，净增加 {net} 行，超过当前 {MAX_SINGLE_NET_ADDED_LINES} 行上限；未发送模型')
     return {'added_lines': added, 'deleted_lines': deleted, 'net_added_lines': net}
 
 
-def build(snapshot, config, history=0, *, single_request=False):
+def build(snapshot, config, history=0, *, single_request=False, net_limit=False):
     if single_request:
-        line_counts = validate_single_size(snapshot)
+        line_counts = validate_single_size(snapshot, net_limit=net_limit)
         snapshot = dict(snapshot, review_mode='single')
     profile = token_budget.resolve(config)
     limit = token_budget.capacity(config) - 512
@@ -228,7 +232,9 @@ def build(snapshot, config, history=0, *, single_request=False):
     if single_request:
         if associations:
             raise token_budget.failure('DIFF_COVERAGE', '一次主审未包含全部关联上下文，未发送模型')
-        plan.update(review_mode='single', max_net_added_lines=MAX_SINGLE_NET_ADDED_LINES, **line_counts)
+        plan.update(review_mode='single', **line_counts)
+        plan['max_net_added_lines' if net_limit else 'max_changed_lines'] = (
+            MAX_SINGLE_NET_ADDED_LINES if net_limit else MAX_SINGLE_CHANGED_LINES)
     if units:
         plan['prompt_hash'] = digest(batch_plan.messages(snapshot, units[0])[0]['content'])
         plan['correction_prompt_hash'] = digest(batch_plan.messages(snapshot, units[0], correction={'findings': []})[0]['content'])

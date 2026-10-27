@@ -151,6 +151,7 @@ def message_for(code, reason=None):
     known = {
         'TOKENIZER_RESOURCE': '计数资源缺失或校验失败，请核对离线资源包',
         'TOKENIZER_ENCODING': '消息编码失败，请核对计数型号与参数',
+        'PR_TOTAL_CHANGE_LIMIT': 'PR 新增与删除合计超过 1200 行，未发送模型',
         'PR_CHANGE_LIMIT': 'PR 净增加超过 1000 行，当前单次审查不支持，未发送模型',
         'DIFF_UNSPLITTABLE': '输入包含无法安全拆分的超长行或元信息',
         'DIFF_COVERAGE': '分批文本覆盖校验失败，未调用模型',

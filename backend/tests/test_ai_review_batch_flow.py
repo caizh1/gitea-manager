@@ -332,7 +332,7 @@ def test_cancelled_owner_cannot_install_groups(state):
 def test_new_jobs_are_versioned_and_existing_rows_not_upgraded(state):
     store, job, repo = state
     created = store.enqueue(repo['id'], 99, {'head': 'c' * 40, 'base': 'b' * 40})
-    assert store.job(created)['batch_flow_version'] == 5
+    assert store.job(created)['batch_flow_version'] == 6
     with store.tx() as db:
         db.execute('UPDATE jobs SET batch_flow_version=2 WHERE id=?', (job['id'],))
         batch_store.migrate(db)
