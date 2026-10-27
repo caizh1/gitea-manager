@@ -61,13 +61,18 @@ def install(app):
     @app.before_request
     def protect_instance():
         endpoint = request.endpoint
+        # 全局钩子只处理实际互斥的接口，不能预先消耗 Webhook 等接口的原始正文。
+        if endpoint not in ('servers.update_server', 'servers.delete_server',
+                            'backups.create_backup', 'restore.execute_restore', 'restore.recover_restore'):
+            return None
         ids = []
-        data = request.get_json(silent=True) or {}
         if endpoint in ('servers.update_server', 'servers.delete_server'):
             ids = [request.view_args['sid']]
         elif endpoint == 'backups.create_backup':
+            data = request.get_json(silent=True) or {}
             ids = [data.get('source_server_id')]
         elif endpoint == 'restore.execute_restore':
+            data = request.get_json(silent=True) or {}
             ids = [data.get('target_server_id')]
         elif endpoint == 'restore.recover_restore':
             task = db.session.get(RestoreTask, request.view_args['task_id'])

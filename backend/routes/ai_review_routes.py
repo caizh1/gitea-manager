@@ -11,6 +11,8 @@ from urllib.parse import urlsplit, unquote
 from flask import Blueprint, current_app, jsonify, request, session, send_file, g, Response, stream_with_context, make_response
 from flask_login import current_user
 import requests
+from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.wsgi import LimitedStream
 
 from models import db, GiteaServer
 from ai_review.common import ReviewError, endpoint, valid_sha
@@ -614,8 +616,16 @@ def reconcile(job):
 
 @ai_review_bp.post('/webhooks/<int:repository>')
 def webhook(repository):
-    raw = request.stream.read(1024*1024+1)
-    if len(raw) > 1024*1024:
+    limit = 1024 * 1024
+    if request.content_length is not None and request.content_length > limit:
+        return jsonify(error='事件超过 1 MB'), 413
+    # 保留已缓存的原始字节，兼容前置组件解析 JSON；未缓存的流仍限制最多读取 1 MiB + 1。
+    request.stream = LimitedStream(request.stream, limit + 1, is_max=True)
+    try:
+        raw = request.get_data(cache=True)
+    except RequestEntityTooLarge:
+        return jsonify(error='事件超过 1 MB'), 413
+    if len(raw) > limit:
         return jsonify(error='事件超过 1 MB'), 413
     state = store(); repo = state.repo(repository)
     supplied = request.headers.get('X-Gitea-Signature', '')
