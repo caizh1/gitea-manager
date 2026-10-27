@@ -1,4 +1,5 @@
 """有界、只读的失败检查；不调用模型、不修改结果、不猜测源码证据。"""
+import contextlib
 import hashlib
 import json
 import math
@@ -54,7 +55,7 @@ def analyze(store, job, diagnostic):
 
     try:
         path = store.path.resolve().as_uri() + '?mode=ro'
-        with sqlite3.connect(path, uri=True, timeout=.1) as db:
+        with contextlib.closing(sqlite3.connect(path, uri=True, timeout=.1)) as db:
             db.execute('PRAGMA query_only=ON')
             db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
             db.execute('BEGIN')

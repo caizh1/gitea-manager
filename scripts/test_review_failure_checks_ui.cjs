@@ -61,6 +61,12 @@ async function main() {
   fail=false;await panel.getByRole('button',{name:'重新检查'}).click()
   await panel.getByRole('alert').waitFor({state:'hidden'})
   await page.setViewportSize({width:390,height:1000})
+  const bounds = () => ({宽度:innerWidth,文档宽度:document.documentElement.scrollWidth,节点:[...document.querySelectorAll('body *')].map(n=>({标签:n.tagName,类名:n.className,右边界:n.getBoundingClientRect().right,宽度:n.getBoundingClientRect().width})).filter(n=>n.右边界>innerWidth+1).slice(0,30)})
+  const beforeResize = await page.evaluate(bounds)
+  // 等浏览器分发 resize 并完成 Vue 响应式布局，不用截图关闭动画来掩盖溢出。
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+  const afterResize = await page.evaluate(bounds)
+  fs.writeFileSync(path.join(output,'overflow.json'),JSON.stringify({布局更新前:beforeResize,两帧后:afterResize},null,2))
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'窄屏页面不能横向溢出')
   await page.screenshot({path:path.join(output,'mobile.png'),fullPage:true,animations:'disabled'})
   assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);assert.deepEqual(unknown,[])

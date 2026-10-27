@@ -505,10 +505,11 @@ export default {
 .is-collapsed .el-menu-item > .el-menu-tooltip__trigger { position: static; padding: 0; display: flex; justify-content: center; width: 100%; }
 .is-collapsed .el-menu-item .el-icon { margin: 0; flex-shrink: 0; }
 @media (max-width: 760px) {
+  .app-aside { transition: none; }
   .app-header { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
   .app-header .header-left { flex: 1 1 140px; }
   .app-header .breadcrumb { max-width: 100%; flex-wrap: wrap; }
-  .app-header .header-right { margin-left: auto; gap: 8px; }
+  .app-header .header-right { margin-left: auto; gap: 8px; min-width: 0; max-width: 100%; flex-shrink: 1; flex-wrap: wrap; }
   .app-main { padding: 16px 12px; }
   .app-main::before, .app-main::after { display: none; }
 }
