@@ -394,7 +394,7 @@ class Store:
                          VALUES (?,?,?,?,'queued','等待执行',?,?,?,?,?,?,?,1)''',
                       (job, repository, number, generation, now, now + (0 if manual else config['debounce_seconds']), now,
                        config['revision'], repo['revision'], int(manual), target_head))
-            c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=7 WHERE id=?',
+            c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=8 WHERE id=?',
                       (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
             return job
 

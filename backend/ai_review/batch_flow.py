@@ -31,6 +31,8 @@ def make_unit(snapshot, kind, evidence, *, core=None, connections=None, candidat
         unit['review_mode'] = 'single'
     if snapshot.get('batch_evidence_encoding'):
         unit['evidence_encoding'] = snapshot['batch_evidence_encoding']
+    if snapshot.get('batch_output_protocol'):
+        unit['output_protocol'] = snapshot['batch_output_protocol']
     if connections:
         unit['connections'] = connections
     if candidates is not None:

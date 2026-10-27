@@ -150,8 +150,14 @@ def analyze(store, job, diagnostic):
                               'source_location_ambiguous': '同一位置对应多条不同证据，不能猜选。',
                               'source_location_uncommentable': '位置可读取但不支持作为行内评论位置。',
                               'source_candidate_coverage': '反证没有恰好覆盖所有候选。'}
+                    if reason == 'source_phase_mismatch':
+                        expected = getattr(error, 'diagnostic', {}).get('expected_output')
+                        received = getattr(error, 'diagnostic', {}).get('received_output')
+                        check('output_phase', 'confirmed', '模型输出阶段',
+                              f'当前阶段要求 {expected}，模型返回 {received}；没有将其他阶段结果转换成审查通过。')
                     check('source_locations', 'confirmed', '源码位置与报告复验',
-                          labels.get(reason, '正文、字段、完成状态或位置格式不符合约定，原错误保留。'))
+                          labels.get(reason, '输出属于其他审查阶段，尚未进入逐条位置校验。' if reason == 'source_phase_mismatch' else
+                                     '正文、字段、完成状态或位置格式不符合约定，原错误保留。'))
                 else:
                     check('source_locations', 'clear', '源码位置与报告复验', '当前解析器接受保存结果；不会因此自动改写原任务状态。')
                 return report

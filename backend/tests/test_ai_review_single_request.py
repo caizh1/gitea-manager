@@ -80,7 +80,7 @@ def test_single_request_never_uses_automatic_output_splitting(state):
     assert not batch_store.adjust_output(store, job, record, {'finish_reason': 'length'}, {}, {})
 
 
-@pytest.mark.parametrize('version,enabled,expected_single', [(7, False, True), (7, True, False), (6, False, True), (6, True, False), (5, False, True), (5, True, False), (4, False, False)])
+@pytest.mark.parametrize('version,enabled,expected_single', [(8, False, True), (8, True, False), (7, False, True), (7, True, False), (6, False, True), (6, True, False), (5, False, True), (5, True, False), (4, False, False)])
 def test_counter_selects_new_default_and_keeps_legacy_plan(version, enabled, expected_single):
     request = {'operation': 'plan', 'config': {'batch_splitting_enabled': enabled},
                'payload': {'flow_version': version, 'snapshot': snapshot('int value;\n'), 'history': []}}
@@ -100,7 +100,7 @@ def test_split_switch_is_false_by_default_and_frozen_per_job(state):
     assert store.job_config(first)['batch_splitting_enabled'] is False
     second = store.enqueue(repo['id'], 22, {'head': 'd'*40, 'base': 'b'*40})
     assert store.job_config(second)['batch_splitting_enabled'] is True
-    assert store.job(first)['batch_flow_version'] == 7
+    assert store.job(first)['batch_flow_version'] == 8
 
 
 def test_split_switch_rejects_non_boolean():

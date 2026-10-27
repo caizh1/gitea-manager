@@ -60,7 +60,7 @@ def test_new_encoding_keeps_all_evidence_and_old_messages_unchanged():
     assert batch_plan.messages(changed_snapshot, original) == old_messages
 
 
-@pytest.mark.parametrize('version,encoding', [(6, None), (7, batch_locations.FILE_LINES_ENCODING)])
+@pytest.mark.parametrize('version,encoding', [(6, None), (7, batch_locations.FILE_LINES_ENCODING), (8, batch_locations.FILE_LINES_ENCODING)])
 def test_worker_freezes_encoding_only_for_new_job_versions(state, version, encoding):
     store, job, _ = state
     job['batch_flow_version'] = version
@@ -75,6 +75,7 @@ def test_worker_freezes_encoding_only_for_new_job_versions(state, version, encod
     payload = counter.call_args.args[1]
     assert payload['flow_version'] == version
     assert payload['snapshot'].get('batch_evidence_encoding') == encoding
+    assert payload['snapshot'].get('batch_output_protocol') == (batch_locations.PHASE_PROTOCOL if version >= 8 else None)
     assert store.job(job['id'])['snapshot'].get('batch_evidence_encoding') == encoding
     model.assert_not_called()
 

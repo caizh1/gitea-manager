@@ -17,7 +17,7 @@ _TEXT_ENUMS = {
     'event_type', 'error_type', 'transfer_phase', 'tls_exception_type',
     'upstream_error_type', 'upstream_error_code', 'upstream_request_id', 'upstream_trace_id',
     'error_sha256', 'captured_sha256', 'secondary_exception_type', 'thinking_protocol',
-    'output_field', 'evidence_id',
+    'output_field', 'evidence_id', 'expected_output', 'received_output',
 }
 _INTEGERS = {
     'json_line', 'json_column', 'json_offset', 'response_bytes', 'exit_code',
@@ -124,6 +124,7 @@ def safe_frames(exc):
 
 def message_for(code, reason=None):
     by_reason = {
+        'source_phase_mismatch': '模型返回了其他审查阶段的格式，审查未完成',
         'missing_structured_output': '模型未通过结构化结果工具提交审查结果，审查未完成',
         'structured_output_error': '模型提交的结构化审查结果不符合固定格式，审查未完成',
         'structured_result_not_object': '模型提交的结构化审查结果不是对象，审查未完成',
@@ -159,6 +160,7 @@ def message_for(code, reason=None):
         'PREPROCESS_RESOURCE': '分批预处理异常退出或超过内存预算',
         'BATCH_OUTPUT_INCOMPLETE': '单元输出被截断，审查未完成',
         'BATCH_OUTPUT_INVALID': '单元报告格式或证据引用无效，审查未完成',
+        'BATCH_PHASE_INVALID': '执行单元与候选输入不一致，未发送模型',
         'BATCH_RECEIPT_UNKNOWN': '单元事件或结果回执尚未完整核对',
         'HISTORY_INCOMPLETE': '历史问题复核失败或回执未知，未正式发布',
         'MODEL_INPUT_BUDGET': '完整消息超过本单元输入额度，未发送模型',

@@ -57,3 +57,10 @@ test('输入超额保留实际计数与当次额度', async () => {
   assert.deepEqual(safeDiagnostic(value), value)
   assert.ok(JSON.stringify(diagnosticRows(value)).includes('完整输入计数'))
 })
+
+test('模型阶段混用显示期望与实际格式', async () => {
+  const { safeDiagnostic, diagnosticRows } = await loaded
+  const value = { reason: 'source_phase_mismatch', output_field: 'findings', expected_output: 'findings', received_output: 'checks' }
+  assert.deepEqual(safeDiagnostic(value), value)
+  assert.ok(JSON.stringify(diagnosticRows(value)).includes('当前阶段要求'))
+})

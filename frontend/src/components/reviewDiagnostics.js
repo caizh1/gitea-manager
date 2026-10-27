@@ -1,7 +1,7 @@
 const scalarFields = ['thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'reasoning_chars', 'content_chars', 'task_remaining_seconds', 
   'diagnostic_version', 'status', 'error_code', 'message', 'source', 'stage', 'phase', 'branch', 'cause_stage',
   'rejection_branch', 'category', 'job', 'job_id', 'unit', 'model_phase', 'session_id', 'call_id', 'request_id', 'time_utc',
-  'native_session_id', 'exception_type', 'reason', 'extraction_path', 'parser_reason', 'parser_message',
+  'native_session_id', 'exception_type', 'reason', 'expected_output', 'received_output', 'extraction_path', 'parser_reason', 'parser_message',
   'native_error_type', 'done_seen', 'completion_complete',
   'json_line', 'json_column', 'json_offset', 'response_bytes', 'received_bytes', 'response_chars',
   'text_part_count', 'part_count', 'parts_count', 'result_type', 'limit_bytes', 'response_limit_bytes', 'reserved_bytes',
@@ -24,6 +24,7 @@ const labels = {
   native_session_id: '原生会话标识', reason: '失败原因', extraction_path: '结果提取路径', parser_reason: '解析错误类型', parser_message: '解析说明',
   output_field: '失败字段', finding_index: '意见序号', evidence_id: '无法核对的证据编号',
   input_tokens: '完整输入计数', input_limit: '当次可用额度',
+  expected_output: '当前阶段要求', received_output: '模型实际返回',
   native_error_type: '原生错误类型', done_seen: '结束标记已收到', completion_complete: '响应完整',
   json_line: '解析文本行', json_column: '解析文本列', json_offset: '解析文本偏移', response_bytes: '响应长度',
   received_bytes: '已接收长度', response_chars: '响应字符数', text_part_count: '文本分段数', part_count: '响应分段数', parts_count: '响应分段数',
@@ -63,7 +64,7 @@ export function safeDiagnostic(value) {
   const checks = safeAutomaticChecks(value.automatic_checks)
   if (checks) safe.automatic_checks = checks
   // 只展示后端允许的定位元数据，不把任意模型文本当成证据编号复制出来。
-  if (value.output_field === 'evidence_ids') safe.output_field = value.output_field
+  if (['evidence_ids', 'findings', 'checks', 'summary', 'limitations', 'line'].includes(value.output_field)) safe.output_field = value.output_field
   if (Number.isSafeInteger(value.finding_index) && value.finding_index > 0) safe.finding_index = value.finding_index
   if (typeof value.evidence_id === 'string' && value.evidence_id.length <= 180 && /^(?:E[0-9a-f]{1,16}|R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)$/.test(value.evidence_id)) safe.evidence_id = value.evidence_id
   for (const key of ['finish_reasons', 'completion_warnings']) if (Array.isArray(value[key])) safe[key] = value[key].filter(item => ['string', 'number', 'boolean'].includes(typeof item)).slice(0, 20)

@@ -241,6 +241,8 @@ def process(store, job):
                 snapshot = dict(snapshot, batch_reference_protocol=batch_locations.PROTOCOL)
                 if version >= 7:
                     snapshot['batch_evidence_encoding'] = batch_locations.FILE_LINES_ENCODING
+                if version >= 8:
+                    snapshot['batch_output_protocol'] = batch_locations.PHASE_PROTOCOL
                 store.update(job['id'], job['owner'], snapshot=snapshot)
             if job.get('batch_flow_version', 2) >= 3 and 'analysis_sources' not in snapshot:
                 from .batch_graph import capture_sources

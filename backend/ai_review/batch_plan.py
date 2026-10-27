@@ -27,9 +27,10 @@ def messages(snapshot, unit, candidates=None, correction=False):
     data = {k: snapshot[k] for k in ('id', 'number', 'title', 'description', 'head', 'base', 'merge_base')}
     system = SYSTEM
     rows = unit['evidence']
+    scoped_phase = unit.get('output_protocol') == batch_locations.PHASE_PROTOCOL
     if unit.get('reference_protocol') == batch_locations.PROTOCOL:
         rows, candidates = batch_locations.payload(unit, candidates)
-        system = batch_locations.SYSTEM
+        system = batch_locations.phase_system(unit, candidates) if scoped_phase else batch_locations.SYSTEM
         if unit.get('evidence_encoding') == batch_locations.FILE_LINES_ENCODING:
             rows = batch_locations.file_lines(rows)
             system += batch_locations.FILE_LINES_SYSTEM
@@ -50,11 +51,15 @@ def messages(snapshot, unit, candidates=None, correction=False):
             system += CORRECTION_SYSTEM
             data['previous_report'] = correction
     data.update(task='候选反证' if candidates is not None else unit['kind'], evidence=rows)
+    if scoped_phase:
+        data['expected_output'] = 'checks' if candidates is not None else 'findings'
+        data['task'] = '候选反证' if candidates is not None else '关联审查' if unit['kind'] == 'association' else '主审'
     if candidates is not None:
         data['candidates'] = candidates
     if unit.get('flow_version') == 'diff-batches-v3':
         from .batch_flow import SYSTEM as FLOW_SYSTEM, SINGLE_SYSTEM
-        system += SINGLE_SYSTEM if unit.get('review_mode') == 'single' else FLOW_SYSTEM
+        if not scoped_phase:
+            system += SINGLE_SYSTEM if unit.get('review_mode') == 'single' else FLOW_SYSTEM
         if unit.get('connections'):
             data['connections'] = unit['connections']
     return [{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(data, ensure_ascii=False,
