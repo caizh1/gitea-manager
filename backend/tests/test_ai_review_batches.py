@@ -201,7 +201,8 @@ def test_successful_unit_is_not_replayed_and_publication_waits(state):
 
 
 @pytest.mark.parametrize('wrapped', [False, True])
-def test_candidate_requires_independent_refutation_before_publication(state, wrapped):
+@pytest.mark.parametrize('anchor_references', [False, True])
+def test_candidate_requires_independent_refutation_before_publication(state, wrapped, anchor_references):
     store, job, _ = state
     def respond(_store, _job, _config, workspace, token, diff_snapshot):
         payload = json.loads(diff_snapshot['_batch_messages'][1]['content'])
@@ -213,6 +214,9 @@ def test_candidate_requires_independent_refutation_before_publication(state, wra
             answer = {'summary': '检查完成', 'limitations': [], 'findings': [{'severity':'P1','title':'测试候选',
                 'evidence_ids':[row['id']], 'anchor_id':row['anchor_id'], 'trigger':'测试条件',
                 'explanation':'测试因果链', 'impact':'测试影响', 'recommendation':'测试建议'}]}
+        if anchor_references:
+            for item in answer.get('findings', answer.get('checks', [])):
+                item['evidence_ids'] = [row['anchor_id']]
         text = json.dumps(answer)
         if wrapped:
             text = '<think>固定思考片段</think>\n```json\n' + text + '\n```'

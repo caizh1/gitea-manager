@@ -191,6 +191,41 @@ def _decode_output(raw):
     return result
 
 
+def _evidence_aliases(evidence):
+    """编号只在当前单元内解析；多个位置共用别名时不得猜测。"""
+    aliases = defaultdict(set)
+    for row in evidence:
+        aliases[row['id']].add(row['id'])
+        if row.get('anchor_id'):
+            aliases[row['anchor_id']].add(row['id'])
+    return aliases
+
+
+def _resolve_evidence_ids(values, aliases, finding_index):
+    def reject(reason, reference=None):
+        error = token_budget.failure('BATCH_OUTPUT_INVALID', '单元证据编号无法在当前批次唯一核对')
+        error.diagnostic = {'source': 'batch_result', 'reason': reason,
+                            'output_field': 'evidence_ids', 'finding_index': finding_index}
+        # 只允许生成规则内的编号进入诊断，任意模型文本不能进入日志。
+        if isinstance(reference, str) and re.fullmatch(r'(?:R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)', reference):
+            error.diagnostic['evidence_id'] = reference
+        raise error from None
+
+    if not isinstance(values, list) or not values:
+        reject('batch_evidence_shape')
+    result = []
+    for reference in values:
+        if not isinstance(reference, str):
+            reject('batch_evidence_shape')
+        matches = aliases.get(reference, set())
+        if not matches:
+            reject('batch_evidence_unknown', reference)
+        if len(matches) != 1:
+            reject('batch_evidence_ambiguous', reference)
+        result.append(next(iter(matches)))
+    return result
+
+
 def parse_report(raw, snapshot, unit):
     if raw.get('_review_completion', {}).get('complete') is not True:
         raise token_budget.failure('BATCH_OUTPUT_INCOMPLETE', '单元输出未完整结束')
@@ -200,13 +235,14 @@ def parse_report(raw, snapshot, unit):
             raise ValueError()
         rows = {r['id']: r for r in unit['evidence']}
         permitted = {r['anchor_id'] for r in unit['evidence'] if r['anchor_id']}
+        aliases = _evidence_aliases(unit['evidence'])
         for index, finding in enumerate(value['findings']):
             if finding['severity'] not in ('P0', 'P1', 'P2', 'P3') or not all(isinstance(finding[k], str) and finding[k].strip() for k in ('title', 'trigger', 'explanation', 'impact', 'recommendation')):
                 raise ValueError()
-            if not finding['evidence_ids'] or any(i not in rows for i in finding['evidence_ids']):
+            references = _resolve_evidence_ids(finding['evidence_ids'], aliases, index + 1)
+            if finding['anchor_id'] is not None and (finding['anchor_id'] not in permitted or finding['anchor_id'] not in {rows[i]['anchor_id'] for i in references}):
                 raise ValueError()
-            if finding['anchor_id'] is not None and (finding['anchor_id'] not in permitted or finding['anchor_id'] not in {rows[i]['anchor_id'] for i in finding['evidence_ids']}):
-                raise ValueError()
+            finding['evidence_ids'] = references
             finding['id'] = unit['id'] + ':' + str(index+1)
         return value
     except (KeyError, ValueError, TypeError):
@@ -220,12 +256,11 @@ def parse_refutation(raw, unit, candidates):
         checks = _decode_output(raw)['checks']
         if len(checks) != len(candidates) or {r['id'] for r in checks} != {f['id'] for f in candidates}:
             raise ValueError()
-        rows = {r['id'] for r in unit['evidence']}
-        for check in checks:
+        aliases = _evidence_aliases(unit['evidence'])
+        for index, check in enumerate(checks):
             if check['decision'] not in ('confirmed', 'rejected', 'uncertain') or not isinstance(check['reason'], str) or not check['reason'].strip():
                 raise ValueError()
-            if not check['evidence_ids'] or any(i not in rows for i in check['evidence_ids']):
-                raise ValueError()
+            check['evidence_ids'] = _resolve_evidence_ids(check['evidence_ids'], aliases, index + 1)
         return checks
     except (KeyError, ValueError, TypeError):
         raise token_budget.failure('BATCH_OUTPUT_INVALID', '反证未完整核对候选与证据') from None
