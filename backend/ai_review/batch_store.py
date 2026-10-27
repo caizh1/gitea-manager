@@ -1,10 +1,14 @@
 """分批计划、执行单元和尝试的事务边界；不复用旧函数审查表。"""
+from collections import OrderedDict
 import json
+import threading
 import time
 from .common import ReviewError, Stale, encode
 from . import token_budget
 
 WAITING = ('awaiting_cost', 'budget_paused', 'incomplete')
+_COST_SUMMARY_CACHE = OrderedDict()
+_COST_SUMMARY_LOCK = threading.Lock()
 SESSION_FIELDS = ('session_id', 'session_status', 'current_action', 'deadline_at', 'last_heartbeat',
                   'log_synced_at', 'event_token_hash', 'event_count', 'final_event_seq', 'event_acked_seq',
                   'log_stream_closed', 'native_result_sha256', 'native_result_released',
@@ -79,8 +83,68 @@ def get(store, job, private=False):
             unit.pop('value')
     result['units'], result['attempts'] = units, attempts
     if not private:
+        if result['value'].get('adjustments'):
+            result['value']['input_tokens'] = sum(unit['input_tokens'] or 0 for unit in units
+                                                  if unit['kind'] in ('primary', 'association') and unit['state'] != 'replaced')
         result['value'].pop('units', None)
         result['value']['config'].pop('api_base_url', None)
+    return result
+
+
+def cost_summaries(connection, jobs):
+    """只返回成本字段；同一计划摘要在轮询时避免重复解析大型证据。"""
+    if not jobs:
+        return {}
+    paths = ('$.primary', '$.association', '$.history', '$.base_calls', '$.max_calls',
+             '$.input_tokens', '$.changed_lines', '$.config.model_max_output_tokens',
+             '$.profile.basis', '$.profile.model', '$.profile.revision', '$.config.model')
+    fields = ('primary', 'association', 'history', 'base_calls', 'max_calls', 'input_tokens',
+              'changed_lines', 'output_tokens', 'basis', 'tokenizer_model', 'revision', 'model')
+    placeholders = ','.join('?' for _ in jobs)
+    paths_sql = ','.join('?' for _ in paths)
+    rows = connection.execute(f'''SELECT job,hash,authorized_calls,budget_seconds
+                                  FROM review_batch_plans WHERE job IN ({placeholders})''', jobs).fetchall()
+    database = connection.execute('PRAGMA database_list').fetchone()[2]
+    result = {}
+    for row in rows:
+        key = (database, row['job'], row['hash'])
+        with _COST_SUMMARY_LOCK:
+            cached = _COST_SUMMARY_CACHE.get(key)
+            if cached is not None:
+                _COST_SUMMARY_CACHE.move_to_end(key)
+        if cached is None:
+            detail = connection.execute(
+                f'''SELECT json_extract(value,{paths_sql}) AS summary,
+                           json_array_length(value,'$.gaps') AS gap_count,
+                           json_array_length(value,'$.unsupported') AS unsupported_count,
+                           json_array_length(value,'$.adjustments') AS adjustment_count
+                    FROM review_batch_plans WHERE job=? AND hash=? AND json_valid(value)''',
+                (*paths, row['job'], row['hash'])).fetchone()
+            if not detail:
+                continue
+            values = json.loads(detail['summary'])
+            if values[7] is None:
+                values[7] = 0  # 兼容沿用默认输出额度的历史计划。
+            if (any(type(value) is not int or value < 0 for value in values[:7])
+                    or values[4] == 0 or type(values[7]) is not int or values[7] < 0):
+                continue
+            cached = dict(zip(fields, values))
+            if detail['adjustment_count']:
+                cached['input_tokens'] = connection.execute(
+                    '''SELECT COALESCE(SUM(json_extract(value,'$.input_tokens')),0)
+                       FROM review_batch_units WHERE job=? AND state!='replaced' AND kind IN ('primary','association')''',
+                    (row['job'],)).fetchone()[0]
+            cached.update(gap_count=detail['gap_count'] or 0, unsupported_count=detail['unsupported_count'] or 0)
+            cached['output_tokens'] = cached['output_tokens'] or 8192
+            with _COST_SUMMARY_LOCK:
+                _COST_SUMMARY_CACHE[key] = cached
+                _COST_SUMMARY_CACHE.move_to_end(key)
+                if len(_COST_SUMMARY_CACHE) > 128:
+                    _COST_SUMMARY_CACHE.popitem(last=False)
+        summary = dict(cached)
+        summary.update(plan_hash=row['hash'], authorized_calls=row['authorized_calls'],
+                       budget_seconds=row['budget_seconds'])
+        result[row['job']] = summary
     return result
 
 
@@ -211,6 +275,7 @@ def adjust_context(store, job, record, diagnostic, config, snapshot):
         saved = c.execute('SELECT value FROM review_batch_plans WHERE job=?', (job['id'],)).fetchone()
         plan = json.loads(saved[0])
         plan['units'] = [u for u in plan['units'] if u['id'] != unit['id']] + parts
+        plan['input_tokens'] = sum(u['input_tokens'] for u in plan['units'])
         plan.setdefault('adjustments', []).append({'unit': unit['id'], 'reason': '服务明确拒绝上下文长度'})
         plan['primary'] += 1; plan['association'] += 1
         plan['base_calls'] += 3; plan['max_calls'] += 5

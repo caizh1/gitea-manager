@@ -471,6 +471,9 @@ class Store:
             total = c.execute('SELECT count(*) FROM jobs' + where, args).fetchone()[0]
             values = [dict(r) for r in c.execute('SELECT ' + columns + ' FROM jobs' + where +
                       ' ORDER BY created DESC,id DESC LIMIT 20 OFFSET ?', args + [(page-1)*20])]
+            from .batch_store import cost_summaries
+            costs = cost_summaries(c, [value['id'] for value in values
+                                       if value.get('batch_protocol') and value['status'] == 'awaiting_cost'])
         from .progress_state import job_progress
         for value in values:
             value['result']={'coverage':{'complete':value.pop('coverage_complete') != 0},'units_failed':value.pop('units_failed') or 0,'units_processed':value.pop('units_processed') or value.get('units_completed',0)}
@@ -479,6 +482,8 @@ class Store:
             if value.get('batch_protocol'):
                 from .batch_store import timing
                 value['timing'] = timing(self, value['id'])
+            if value['status'] == 'awaiting_cost':
+                value['cost_summary'] = costs.get(value['id'])
             from .session_events import project
             project(value)
         return {'items': values, 'total': total}

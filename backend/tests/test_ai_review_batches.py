@@ -158,6 +158,88 @@ def test_cost_threshold_and_stale_confirmation(state):
     assert batch_store.get(store, job['id'])['authorized_calls'] == 9
 
 
+def test_cost_summary_list_is_scoped_and_confirms_only_displayed_plan(state):
+    store, job, repo = state; cfg = store.job_config(job['id'])
+    plan = batch_plan.build(snapshot(cfg), cfg)
+    plan['max_calls'] = 9
+    plan['config']['api_base_url'] = '私有地址不能出现在列表中'
+    plan['units'][0]['evidence'][0]['text'] = '代码证据不能出现在列表中'
+    batch_store.save(store, job, plan, cfg)
+    batch_store.transition(store, job, 'awaiting_cost', '等待确认')
+    listing = store.jobs(allowed_jobs=[job['id']], allowed_repositories=[repo['id']])
+    summary = listing['items'][0]['cost_summary']
+    assert summary['plan_hash'] == plan['hash']
+    assert summary['max_calls'] == 9 and summary['base_calls'] == plan['base_calls']
+    assert summary['input_tokens'] == plan['input_tokens']
+    assert summary['model'] == cfg['model']
+    assert summary['output_tokens'] == (plan['config']['model_max_output_tokens'] or 8192)
+    assert summary['gap_count'] == len(plan['gaps'])
+    assert summary['unsupported_count'] == len(plan['unsupported'])
+    assert '私有地址不能出现在列表中' not in json.dumps(listing, ensure_ascii=False)
+    assert '代码证据不能出现在列表中' not in json.dumps(listing, ensure_ascii=False)
+    assert store.jobs(allowed_jobs=[], allowed_repositories=[repo['id']])['items'] == []
+    assert store.jobs(allowed_jobs=[job['id']], allowed_repositories=[])['items'] == []
+    with store.tx() as connection:
+        connection.execute('UPDATE review_batch_plans SET hash=? WHERE job=?', ('新摘要', job['id']))
+    with pytest.raises(ReviewError, match='摘要已经变化'):
+        batch_store.control(store, job['id'], {'plan_hash': summary['plan_hash']}, '测试', True)
+    assert store.job(job['id'])['status'] == 'awaiting_cost'
+    updated = store.jobs()['items'][0]['cost_summary']
+    assert updated['plan_hash'] == '新摘要'
+    batch_store.control(store, job['id'], {'plan_hash': updated['plan_hash']}, '测试', True)
+    row = store.jobs()['items'][0]
+    assert row['status'] == 'queued' and 'cost_summary' not in row
+
+
+def test_waiting_task_without_usable_plan_has_no_confirmable_summary(state):
+    store, job, _ = state
+    batch_store.transition(store, job, 'awaiting_cost', '等待确认')
+    assert store.jobs()['items'][0]['cost_summary'] is None
+    with store.tx() as connection:
+        connection.execute('INSERT INTO review_batch_plans(job,hash,value,budget_seconds) VALUES(?,?,?,?)',
+                           (job['id'], '缺失字段', '{}', 3600))
+    assert store.jobs()['items'][0]['cost_summary'] is None
+
+
+def test_cost_summary_cache_reuses_plan_but_refreshes_budget_and_authorization(state):
+    store, job, _ = state; cfg = store.job_config(job['id'])
+    plan = batch_plan.build(snapshot(cfg), cfg); plan['max_calls'] = 9
+    batch_store.save(store, job, plan, cfg)
+    batch_store.transition(store, job, 'awaiting_cost', '等待确认')
+    queries = []
+    with store.connect() as connection:
+        connection.set_trace_callback(queries.append)
+        first = batch_store.cost_summaries(connection, [job['id']])[job['id']]
+        with store.tx() as writer:
+            writer.execute('UPDATE review_batch_plans SET budget_seconds=7200,authorized_calls=3 WHERE job=?', (job['id'],))
+        second = batch_store.cost_summaries(connection, [job['id']])[job['id']]
+    assert first['max_calls'] == second['max_calls'] == 9
+    assert second['budget_seconds'] == 7200 and second['authorized_calls'] == 3
+    assert sum('json_extract(value' in query for query in queries) == 1
+
+
+def test_adjusted_legacy_plan_recalculates_initial_input_in_list_and_detail(state):
+    store, job, _ = state; cfg = store.job_config(job['id'])
+    plan = batch_plan.build(snapshot(cfg), cfg); plan['max_calls'] = 9
+    batch_store.save(store, job, plan, cfg)
+    batch_store.transition(store, job, 'awaiting_cost', '等待确认')
+    old_unit = plan['units'][0]
+    plan['adjustments'] = [{'unit': old_unit['id'], 'reason': '测试上下文拒绝'}]
+    plan['hash'] = '调整后的摘要'
+    with store.tx() as connection:
+        connection.execute('UPDATE review_batch_plans SET hash=?,value=? WHERE job=?',
+                           (plan['hash'], json.dumps(plan, ensure_ascii=False), job['id']))
+        connection.execute("UPDATE review_batch_units SET state='replaced' WHERE job=? AND id=?", (job['id'], old_unit['id']))
+        for position, tokens in enumerate((17, 23, 31), 100):
+            unit = {'input_tokens': tokens, 'core': []}
+            connection.execute('INSERT INTO review_batch_units(job,id,position,kind,value) VALUES(?,?,?,?,?)',
+                               (job['id'], '新单元' + str(position), position,
+                                'association' if tokens == 31 else 'primary', json.dumps(unit)))
+    expected = plan['input_tokens'] - old_unit['input_tokens'] + 17 + 23 + 31
+    assert store.jobs()['items'][0]['cost_summary']['input_tokens'] == expected
+    assert batch_store.get(store, job['id'])['value']['input_tokens'] == expected
+
+
 def test_two_sessions_each_start_at_one(state):
     store, job, _ = state
     first = []

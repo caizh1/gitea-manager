@@ -30,7 +30,19 @@
             <el-table-column label="仓库 / PR" min-width="230"><template #default="{ row }">{{ repoName(row.repository) }} #{{ row.number }}</template></el-table-column>
             <el-table-column label="代码版本" min-width="135"><template #default="{ row }"><code>{{ row.progress?.head?.slice(0, 12) || '等待读取' }}</code></template></el-table-column>
             <el-table-column label="状态" min-width="135"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.progress?.label || statusLabel(row.status) }}</el-tag></template></el-table-column>
-            <el-table-column label="当前阶段" min-width="230"><template #default="{ row }">{{ row.stage }}<div v-if="row.progress?.units_total != null" class="muted">完成单元 {{ row.progress.units_completed }}/{{ row.progress.units_total }}</div><div v-if="row.progress?.sync_error" class="failure">状态同步：{{ row.progress.sync_error }}</div></template></el-table-column>
+            <el-table-column label="当前阶段 / 成本确认" min-width="330"><template #default="{ row }">
+              <div>{{ row.stage }}</div><div v-if="row.progress?.units_total != null" class="muted">完成单元 {{ row.progress.units_completed }}/{{ row.progress.units_total }}</div><div v-if="row.progress?.sync_error" class="failure">状态同步：{{ row.progress.sync_error }}</div>
+              <div v-if="row.status === 'awaiting_cost' && row.cost_summary" class="cost-summary" data-testid="cost-summary">
+                <strong>基础调用 {{ row.cost_summary.base_calls }} 次，最多 {{ row.cost_summary.max_calls }} 次</strong>
+                <span>主审 {{ row.cost_summary.primary }} 批 · 关联复核 {{ row.cost_summary.association }} 批 · 历史问题 {{ row.cost_summary.history }} 项 · 已授权 {{ row.cost_summary.authorized_calls }} 次</span>
+                <span>主审及关联初始输入 {{ row.cost_summary.input_tokens }} Token／估算单位；每次输出额度 {{ row.cost_summary.output_tokens }} Token</span>
+                <span>模型 {{ row.cost_summary.model || '未记录' }} · {{ row.cost_summary.basis || '保守计数' }}{{ row.cost_summary.tokenizer_model ? '（' + row.cost_summary.tokenizer_model + '）' : '' }} · 资源版本 {{ row.cost_summary.revision || '未知' }}</span>
+                <span>文本变更 {{ row.cost_summary.changed_lines }} 行 · 有效执行预算 {{ Math.round(row.cost_summary.budget_seconds) }} 秒 · 未提供单价，无法估算金额</span>
+                <span v-if="row.cost_summary.gap_count || row.cost_summary.unsupported_count" class="failure">覆盖缺口 {{ row.cost_summary.gap_count }} 项 · 未支持内容 {{ row.cost_summary.unsupported_count }} 项，请查看详情</span>
+                <div><el-button type="primary" size="small" :loading="confirmingIds.has(row.id)" :disabled="!config.enabled || repoArchived(row.repository)" :aria-label="`确认 ${repoName(row.repository)} PR #${row.number} 的成本计划`" @click="confirmCost(row)">确认此计划（最多 {{ row.cost_summary.max_calls }} 次）</el-button></div>
+              </div>
+              <div v-else-if="row.status === 'awaiting_cost'" class="failure">成本摘要暂不可用，请刷新或查看详情。</div>
+            </template></el-table-column>
             <el-table-column label="执行耗时 / 批次" min-width="150"><template #default="{ row }">{{ row.timing ? Math.round(row.timing.execution_seconds) + ' 秒' : '历史记录' }}<div class="muted" v-if="row.batch_protocol">{{ row.progress?.units_completed || 0 }} / {{ row.progress?.units_total ?? '预检中' }}</div></template></el-table-column>
             <el-table-column label="创建时间 ↓" min-width="195"><template #default="{ row }">{{ fmt(row.created) }}<div class="muted">更新：{{ fmt(row.updated) }}</div></template></el-table-column>
             <el-table-column label="操作" min-width="250"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-button v-if="!repoArchived(row.repository) && ['queued', 'running'].includes(row.status)" link type="danger" :loading="cancellingId === row.id" :disabled="Boolean(cancellingId)" @click="cancelTask(row)">强制取消</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><template v-else-if="row.status === 'publish_unknown'"><el-button link type="warning" @click="reconcile(row)">核对发布</el-button><el-button link type="warning" @click="confirmUnpublished(row)">确认未发布</el-button></template><el-button v-else link :disabled="!config.enabled || row.status === 'cancelling'" @click="rerun(row.repository, row.number)">重新审查</el-button></div></template></el-table-column>
@@ -168,6 +180,7 @@ const manualVisible = ref(false), manualRepo = ref(null), manualNumber = ref(1)
 const connectionMessage = ref(''), connectionOk = ref(false), connectionDiagnostic = ref(null)
 const repoError = ref(''), hookError = ref(''), manualError = ref(''), configError = ref('')
 const detailError = ref(''), detailLoading = ref(false), rerunning = ref(false), cancellingId = ref('')
+const confirmingIds = ref(new Set())
 let taskGeneration = 0, detailGeneration = 0, repoGeneration = 0, listScrollTop = 0, detailController
 watch(repoVisible, visible => { if (!visible) { repoGeneration++; catalogGeneration++; repoForm.value.bot_token = ''; repoError.value = '' } })
 let hookGeneration = 0
@@ -180,12 +193,20 @@ const progressStale = computed(() => config.value.enabled && (!health.value.find
 const fmt = value => value ? new Date(value*1000).toLocaleString('zh-CN') : '尚无'
 const repoName = id => { const r = repositories.value.find(r => r.id === id); return r ? `${r.server_name} / ${r.repo_name}${r.access_archived ? '（已归档）' : ''}` : `仓库 ${id ?? ''}` }
 const repoArchived = id => Boolean(repositories.value.find(row => row.id === id)?.access_archived)
-const statusLabel = s => ({ cancelling: '取消中', cancelled: '已取消', queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '发布待核对', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
+const statusLabel = s => ({ awaiting_cost: '等待成本确认', budget_paused: '预算暂停', incomplete: '审查未完成', cancelling: '取消中', cancelled: '已取消', queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '发布待核对', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
 
 const effectiveModelTimeout = computed(() => Math.max(0, Math.min(config.value.model_request_timeout_seconds ?? 600, (config.value.review_timeout_seconds ?? 600) - 40)))
 const showError = e => { if (e.code === 'ERR_CANCELED') return; error.value = errorMessage(e); if (detailVisible.value) detailError.value = error.value }
 async function downloadProgress(serverId) { try { const response = await api.get(`/ai-review/servers/${serverId}/progress-assets`, { responseType: 'blob' }); const url = URL.createObjectURL(response.data); const a = document.createElement('a'); a.href = url; a.download = `gitea-review-progress-${serverId}.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ElMessage.success('组件已下载；解压后按安装说明接入已有 Gitea 容器') } catch (e) { showError(e) } }
-async function write(method, path, data) { error.value = ''; detailError.value = ''; if (!csrf.value) csrf.value = (await api.get('/ai-review/csrf')).data.token; return api.request({ method, url: '/ai-review'+path, data, headers: { 'X-Review-CSRF': csrf.value } }) }
+let csrfPromise
+async function write(method, path, data) {
+  error.value = ''; detailError.value = ''
+  if (!csrf.value) {
+    if (!csrfPromise) csrfPromise = api.get('/ai-review/csrf').then(response => { csrf.value = response.data.token }).finally(() => { csrfPromise = null })
+    await csrfPromise
+  }
+  return api.request({ method, url: '/ai-review'+path, data, headers: { 'X-Review-CSRF': csrf.value } })
+}
 async function loadTasks(silent = false) { lastTasksPoll = Date.now(); const current = ++taskGeneration; tasksController?.abort(); tasksController = new AbortController(); try { const r = await api.get('/ai-review/tasks', { params: { ...scopeParams(), page: page.value, status: filterStatus.value || undefined }, signal: tasksController.signal, notifyError: !silent }); if (!disposed && current === taskGeneration) { tasks.value = r.data.items; total.value = r.data.total; tasksError.value = '' } } catch (e) { if (!disposed && current === taskGeneration && e.code !== 'ERR_CANCELED') tasksError.value = errorMessage(e) } }
 async function refresh() { if (refreshing.value) return; refreshing.value = true; try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } finally { refreshing.value = false } }
 async function saveConfig() { if (busy.value) return; configError.value = ''; busy.value = true; try { const { api_key_configured, ...payload } = config.value; payload.engine = 'opencode_native'; if (apiKey.value) payload.api_key = apiKey.value; config.value = (await write('put', '/config', payload)).data; apiKey.value = ''; ElMessage.success('设置已保存；资源预算与压缩阈值仅对后续新任务生效') } catch (e) { configError.value = errorMessage(e) } finally { busy.value = false } }
@@ -204,6 +225,22 @@ async function saveRepo() {
 }
 async function installHook() { if (busy.value) return; busy.value = true; hookError.value = ''; const request = hookGeneration; const target = hookRepo.value.id; try { await write('post', `/repositories/${target}/webhook`, { manager_url: managerURL.value }); if (request !== hookGeneration) return; hookVisible.value = false; ElMessage.success('事件通知已安装并验证'); await reloadRepositories() } catch (e) { if (request === hookGeneration) hookError.value = errorMessage(e) } finally { busy.value = false } }
 async function rerun(repository, number) { if (rerunning.value) return; rerunning.value = true; manualError.value = ''; try { await write('post', `/repositories/${repository}/rerun`, { number }); manualVisible.value = false; page.value = 1; if (tab.value !== 'tasks') await router.push({ path: '/ai-reviews', query: listQuery() }); else await loadTasks(); ElMessage.success('审查任务已排队') } catch (e) { if (manualVisible.value) manualError.value = errorMessage(e); else showError(e) } finally { rerunning.value = false } }
+
+async function confirmCost(row) {
+  if (!row?.cost_summary?.plan_hash || confirmingIds.value.has(row.id)) return
+  const id = row.id, planHash = row.cost_summary.plan_hash
+  confirmingIds.value = new Set([...confirmingIds.value, id])
+  try {
+    const response = await write('post', `/tasks/${id}/confirm-plan`, { plan_hash: planHash })
+    tasks.value = tasks.value.map(item => item.id === id ? { ...item, ...response.data, cost_summary: null } : item)
+    ElMessage.success('成本计划确认请求已处理，任务状态已更新')
+  } catch (e) {
+    showError(e)
+  } finally {
+    await loadTasks(true)
+    const next = new Set(confirmingIds.value); next.delete(id); confirmingIds.value = next
+  }
+}
 
 async function cancelTask(row) {
   if (!row || cancellingId.value) return
@@ -275,6 +312,7 @@ onUnmounted(() => { disposed = true; statisticsGeneration++; statisticsControlle
 
 <style scoped>
 .task-table-panel :deep(.last-selected td.el-table__cell) { background: #eaf2fe; }
+.cost-summary { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin-top: 8px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .review-page { min-width: 0; container-type: inline-size; container-name: review-page; }
 .review-filters { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 18px; margin: 0 0 18px; }.period-selector { width: 140px; }.review-filters :deep(.el-date-editor) { max-width: 100%; width: 280px; flex-grow: 0; }
 .review-workspace { min-width: 0; scroll-margin-top: 12px; }.review-workspace.with-detail { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 18px; align-items: start; }.task-rail { padding: 16px; min-width: 0; position: sticky; top: 0; }.rail-heading { display: flex; justify-content: space-between; margin-bottom: 14px; }.task-rail>.el-select { width: 100%; margin-bottom: 12px; }.rail-rows { max-height: 62vh; overflow-y: auto; }.task-choice { width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 14px 12px; text-align: left; background: transparent; border: 1px solid transparent; border-bottom-color: #e8edf3; border-radius: 10px; cursor: pointer; font: inherit; color: inherit; }.task-choice:hover { background: #f1f6fc; }.task-choice.selected { background: #eaf2fe; border-color: #a6c4ef; }.task-choice:focus-visible { outline: 2px solid #3976c4; outline-offset: -2px; }.task-choice-title { font-size: 12px; overflow-wrap: anywhere; color: #52637b; }.task-choice-meta { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }.task-rail .el-pagination { margin-top: 14px; }.task-table-panel h4 { margin: 0; }.empty-guide { padding: 24px; margin-bottom: 16px; }
