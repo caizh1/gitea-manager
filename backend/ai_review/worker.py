@@ -71,7 +71,7 @@ def _cleanup_owned(store, job):
     return True
 
 
-def _failure_diagnostic(actual, exc, job):
+def _failure_diagnostic(actual, exc, job, store=None):
     """保留同会话最先落库的模型失败；执行器随后退出是因果链的末端，
     不能覆盖上游 HTTP/超时根因。
     """
@@ -106,6 +106,9 @@ def _failure_diagnostic(actual, exc, job):
                 diagnostic['secondary'] = secondary
         from .diagnostics import message_for
         diagnostic['message'] = stored_message or message_for(diagnostic.get('error_code'),diagnostic.get('reason'))
+        if store is not None:
+            from .failure_checks import attach
+            diagnostic = attach(store, actual, diagnostic)
         return diagnostic, diagnostic['message']
     if incoming:
         diagnostic.update(incoming)
@@ -120,13 +123,16 @@ def _failure_diagnostic(actual, exc, job):
     if not diagnostic.get('frames'):
         from .diagnostics import safe_frames
         diagnostic['frames'] = safe_frames(exc)
+    if store is not None:
+        from .failure_checks import attach
+        diagnostic = attach(store, actual, diagnostic)
     return diagnostic, diagnostic['message']
 
 
 def _finish_failure(store, actual, exc, job, state):
     if actual['status'] in ('cancelling', 'cancelled'):
         return actual.get('diagnostic') or {}
-    diagnostic, message = _failure_diagnostic(actual, exc, job)
+    diagnostic, message = _failure_diagnostic(actual, exc, job, store=store)
     logging.error('AI 执行诊断 %s', encode(diagnostic))
     try:
         store.update(job['id'], job['owner'], diagnostic=diagnostic)
@@ -141,7 +147,7 @@ def _read_failure_actual(store, job, exc):
     try:
         return store.job(job['id'], evidence=False)
     except Exception as recording:
-        diagnostic, _ = _failure_diagnostic(dict(job, stage='执行审查'), exc, job)
+        diagnostic, _ = _failure_diagnostic(dict(job, stage='执行审查'), exc, job, store=store)
         logging.error('AI 执行诊断 %s', encode(diagnostic))
         from .diagnostics import describe
         describe(recording, job, '读取失败任务诊断上下文失败，首次诊断已记录')

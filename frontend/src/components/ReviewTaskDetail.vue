@@ -34,6 +34,7 @@
         <el-button v-if="rawDiagnostic?.available && !rawExpired" type="primary" plain :icon="Download" :loading="rawDownloading" @click="downloadRawDiagnostics">下载原始诊断包</el-button>
       </details>
 
+      <ReviewFailureChecks :task="task" />
       <ReviewBatchPlan v-if="task.batch_protocol" :task="task" @refresh="$emit('refresh')" />
       <details class="execution-summary" :open="continuing"><summary>{{ continuing ? '执行进度与资源用量' : '执行摘要 · 查看耗时与资源用量' }}</summary>
       <section class="action-card">
@@ -122,6 +123,7 @@ import { ArrowDown, ArrowUp, ArrowLeft, Check, CircleCheckFilled, Close, Downloa
 import { api } from '../api'
 import ReviewIssueLedger from './ReviewIssueLedger.vue'
 import ReviewBatchPlan from './ReviewBatchPlan.vue'
+import ReviewFailureChecks from './ReviewFailureChecks.vue'
 import { isPlatformAdmin } from '../composables/accessState.js'
 import { coverageGroups, statusType } from './reviewDisplay'
 import { diagnosticLocation, diagnosticRows as toDiagnosticRows, diagnosticText as toDiagnosticText, safeDiagnostic as toSafeDiagnostic } from './reviewDiagnostics'

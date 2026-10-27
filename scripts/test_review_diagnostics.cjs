@@ -29,3 +29,22 @@ test('合法锚点和原有诊断继续显示', async () => {
   assert.deepEqual(safeDiagnostic({ source: 'model_transport', http_status: 502 }), { source: 'model_transport', http_status: 502 })
   assert.equal(diagnosticLocation({ source: 'model_transport', phase: 'response_stream' }), '模型响应传输')
 })
+
+test('自动检查报告进入可复制诊断且丢弃未知字段', async () => {
+  const { safeDiagnostic } = await loaded
+  const value = safeDiagnostic({ error_code: 'BATCH_OUTPUT_INVALID', automatic_checks: {
+    version: 1, status: 'complete', summary: '固定检查', secret: '不应保留',
+    checks: [{ code: 'reference', state: 'confirmed', title: '证据', detail: '编号不在当前单元', raw: '不应保留' }]
+  } })
+  assert.equal(value.automatic_checks.checks.length, 1)
+  assert.ok(!JSON.stringify(value).includes('不应保留'))
+})
+
+test('损坏或过大的自动报告保持有界', async () => {
+  const { safeAutomaticChecks } = await loaded
+  assert.equal(safeAutomaticChecks({ version: 99, status: 'complete', checks: [] }), null)
+  const report = safeAutomaticChecks({ version: 1, status: 'partial', summary: '字'.repeat(900),
+    checks: Array.from({ length: 30 }, () => ({ code: 'fixed', state: 'unknown', title: '标题', detail: '说明' })) })
+  assert.equal(report.checks.length, 12)
+  assert.equal(report.summary.length, 500)
+})

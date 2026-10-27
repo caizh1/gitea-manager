@@ -438,6 +438,14 @@ def task(job):
     return jsonify(store().job(job, public=True, evidence=request.args.get('evidence', '1') != '0'))
 
 
+@ai_review_bp.get('/tasks/<job>/failure-checks')
+def task_failure_checks(job):
+    from ai_review.failure_checks import analyze
+    state = store()
+    current = state.job(job, public=True, evidence=False)
+    return jsonify(analyze(state, current, current.get('diagnostic') or {}))
+
+
 @ai_review_bp.get('/tokenizers')
 def tokenizers():
     from ai_review.token_budget import catalog

@@ -29,7 +29,7 @@ ORGANIZATION = {
     'access_context': 'context',
     'repository_policies': 'csrf schema servers organizations candidate_users candidate_teams repositories repository_rules templates create_template update_template delete_template verify_template_identities preview_batch apply_batch batches batch_detail',
     'commit_gate': 'list_rules create_rule update_rule delete_rule list_repos apply_gate remove_gate_route test_rule',
-    'ai_review': 'csrf config servers catalog repositories update_repository tasks statistics issue_list task_issues dataset_list dataset_disable dataset_export dataset_history task task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention task_plan confirm_plan continue_plan tokenizers',
+    'ai_review': 'csrf config servers catalog repositories update_repository tasks statistics issue_list task_issues dataset_list dataset_disable dataset_export dataset_history task task_failure_checks task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention task_plan confirm_plan continue_plan tokenizers',
     'approval': 'csrf policies create_policy update_policy preview delete_policy enable disable admin_status audits',
     'statistics': 'overview commit_trend repo_ranking author_ranking author_detail author_repos author_trend refresh_statistics',
     'alert': 'list_alerts alert_summary clear_alert clear_resolved',

@@ -398,6 +398,7 @@ bash deploy.sh
 - 升级入口 `upgrade.sh`；控制器 `scripts/upgrade_runtime.py`，卷助手 `scripts/upgrade_volume.py`。保留同一 Compose 项目、实际挂载、端口、数据库、原 Review 主密钥和账号；已有 Review 数据不得生成新密钥代替。
 - `.gitea-manager-upgrades/` 与 `compose.managed.json` 仅在部署机保存，含秘密，不得打包或提交。升级验证期间必须保留共享维护标记，同时阻止 Web 请求、策略/备份调度、审查、进度、反馈与初始化后台写入；健康和历史核对后才能解除。
 - 自动接入在 `backend/ai_review/setup_service.py`、`setup_transport.py`、`host_policy.py` 与 `AIReviewSetup.vue`。管理端凭据只用于初始化；Worker/执行器不能新增 Docker socket、SSH 或管理凭据挂载。
+- 分批失败的自动检查位于 `backend/ai_review/failure_checks.py`，结果附在原诊断中；历史任务通过 `GET /api/ai-review/tasks/<job>/failure-checks` 只读补查。只使用当前任务、会话与冻结配置，不调用模型、不跨单元放行证据、不自动重试或覆盖首因；读取上限和权限边界见 `docs/review-failure-checks.md`。
 - Gitea 1.26.4 的 Webhook 测试只发 Push 且受订阅过滤；临时订阅必须恢复并回读。机器人身份和不确定的令牌回执必须先核对，不能盲目重建。
 - AI 完整交付使用当前 Linux amd64 构建镜像及 `scripts/review-package.py --export-images --source-image-tag <固定标签>`。不得用只含前后端的旧通用 tar 命令代替。打包器会拒绝并发打包及归档期间内容变化。
 - 使用独立标记实例验收，不操作用户现有环境。工程链路、实际内网模型效果、真实宿主机验收和人工精力指标分别报告，依据 `docs/一键升级验收报告.md`，不能互相替代。

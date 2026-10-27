@@ -39,6 +39,13 @@ const labels = {
 }
 
 const hasValue = value => value !== undefined && value !== null && value !== ''
+export function safeAutomaticChecks(value) {
+  if (!value || value.version !== 1 || !['complete', 'partial', 'unavailable', 'unsupported'].includes(value.status) || !Array.isArray(value.checks)) return null
+  const text = item => typeof item === 'string' ? item.slice(0, 500) : ''
+  return { version: 1, status: value.status, summary: text(value.summary),
+    checks: value.checks.slice(0, 12).filter(row => row && ['confirmed', 'clear', 'unknown'].includes(row.state))
+      .map(row => ({ code: text(row.code), state: row.state, title: text(row.title), detail: text(row.detail) })) }
+}
 const secondaryFields = new Set(['error_code', 'source', 'phase', 'reason', 'exception_type', 'native_error_type', 'status', 'call_id', 'session_id'])
 
 function safeSecondary(value) {
@@ -52,6 +59,8 @@ export function safeDiagnostic(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const safe = {}
   for (const key of scalarFields) if (hasValue(value[key]) && ['string', 'number', 'boolean'].includes(typeof value[key])) safe[key] = value[key]
+  const checks = safeAutomaticChecks(value.automatic_checks)
+  if (checks) safe.automatic_checks = checks
   // 只展示后端允许的定位元数据，不把任意模型文本当成证据编号复制出来。
   if (value.output_field === 'evidence_ids') safe.output_field = value.output_field
   if (Number.isSafeInteger(value.finding_index) && value.finding_index > 0) safe.finding_index = value.finding_index

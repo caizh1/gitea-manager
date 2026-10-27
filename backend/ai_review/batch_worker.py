@@ -278,7 +278,7 @@ def process(store, job):
                 _finish_failure(store, actual, exc, job, 'publish_unknown')
             else:
                 from .worker import _failure_diagnostic
-                diagnostic, message = _failure_diagnostic(actual, exc, job)
+                diagnostic, message = _failure_diagnostic(actual, exc, job, store=store)
                 store.update(job['id'], job['owner'], diagnostic=diagnostic)
                 state.transition(store, job, 'incomplete', message)
     finally:
