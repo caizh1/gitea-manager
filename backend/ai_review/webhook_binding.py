@@ -13,7 +13,7 @@ def _identity(hook):
             'branch_filter': hook.get('branch_filter', '')}
 
 
-def ensure_binding(state, repo, client, callback, events):
+def ensure_binding(state, repo, client, callback, events, verify):
     """调用者持有仓库锁；先验证新勾子，再清理本次记录的旧勾子。"""
     path = client.prefix + '/hooks'
     secret = state.unseal(repo['webhook_secret'])
@@ -23,6 +23,12 @@ def ensure_binding(state, repo, client, callback, events):
     matches = [h for h in client.pages(path) if (h.get('config') or {}).get('url') == callback]
     if any(h.get('type') != 'gitea' for h in matches):
         raise ReviewError('回调地址已有其他类型的 Webhook，未自动替换')
+
+    if not binding and len(matches) == 1 and verify(matches[0]['id']):
+        # 旧版没有绑定记录时，真实验签通过即可保留原勾子，不因升级强制重建。
+        binding = {'fingerprint': fingerprint, 'name': matches[0].get('name', ''),
+                   'id': matches[0]['id'], 'phase': 'ready', 'previous': []}
+        state.repo_status(repo['id'], webhook_binding=binding)
 
     if binding.get('fingerprint') != fingerprint:
         if binding and binding.get('phase') != 'ready':
@@ -77,6 +83,8 @@ def ensure_binding(state, repo, client, callback, events):
             (actual.get('config') or {}).get('content_type') != 'json' or
             not set(events).issubset(actual.get('events') or [])):
         raise ReviewError('新 Webhook 回读验证失败，旧勾子已保留')
+    if binding['phase'] not in ('cleanup', 'ready') and not verify(hook['id']):
+        raise ReviewError('新 Webhook 尚未通过实际签名投递验证，旧勾子已保留；请检查回调连通性后继续检查')
     binding.update(id=hook['id'], phase='cleanup')
     state.repo_status(repo['id'], webhook_binding=binding, hook_id=hook['id'])
     for before in binding['previous']:

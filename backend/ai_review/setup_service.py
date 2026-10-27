@@ -313,7 +313,9 @@ def verify_delivery(store, admin, path, repository, hook_id, ref):
                 row = c.execute('SELECT received FROM setup_hook_receipts WHERE repository=?', (repository,)).fetchone()
             if row and row[0] >= started: return
             time.sleep(1)
-        raise ReviewError('Gitea 未成功投递验证事件，请检查 Gitea Webhook 主机限制与回调地址')
+        error = ReviewError('Gitea 未成功投递验证事件，请检查 Gitea Webhook 主机限制与回调地址')
+        error.error_code = 'WEBHOOK_DELIVERY_UNCONFIRMED'
+        raise error
     finally:
         if changed:
             admin.request('PATCH', hook_path, {'events': original})

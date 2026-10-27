@@ -284,10 +284,21 @@ def _ensure_webhook(state, repository, manager_url):
         raise ReviewError('服务器连接已变化，请先更新 Review 仓库配置')
     client = Gitea(target.gitea_url, target.api_token, repo['repo_name'], repo['repo_id'])
     try:
-        client.repository()
+        actual = client.repository()
         from ai_review.webhook_binding import ensure_binding
+        from ai_review.setup_service import verify_delivery
+        def verify(hook_id):
+            if actual.get('empty') or not actual.get('default_branch'):
+                raise ReviewError('空仓库尚无提交，无法验证 Webhook；已有勾子已保留，请有首个提交后继续接入')
+            try:
+                verify_delivery(state, client, client.prefix, repository, hook_id, actual['default_branch'])
+                return True
+            except ReviewError as exc:
+                if getattr(exc, 'error_code', None) == 'WEBHOOK_DELIVERY_UNCONFIRMED':
+                    return False
+                raise
         events = ['pull_request', 'pull_request_sync', 'pull_request_comment', 'pull_request_review']
-        hook = ensure_binding(state, repo, client, callback, events)
+        hook = ensure_binding(state, repo, client, callback, events, verify)
         state.repo_status(repository, hook_id=hook['id'], hook_status='已安装并回读验证', webhook_url=callback,
                           feedback_since=repo.get('feedback_since',time.time()))
         return state.repo(repository, public=True)

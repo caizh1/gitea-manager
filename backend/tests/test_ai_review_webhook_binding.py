@@ -82,9 +82,19 @@ class WebhookBindingTests(unittest.TestCase):
         self.store.save_repo(1, 12, {'gitea_url': 'http://gitea.invalid', 'repo_name': 'test/code',
                                    'webhook_secret': self.store.seal('新测试密钥')})
         self.client = GiteaFixture()
+        self.failed_delivery = False
+        self.verification_error = False
+        self.verifications = []
+
+    def verify(self, hook_id):
+        self.verifications.append(hook_id)
+        if self.verification_error:
+            raise ReviewError('测试权限或投递请求被拒绝')
+        secret = self.store.unseal(self.store.repo(1)['webhook_secret'])
+        return not self.failed_delivery and self.client.hooks[hook_id]['secret'] == secret
 
     def ensure(self):
-        return ensure_binding(self.store, self.store.repo(1), self.client, URL, EVENTS)
+        return ensure_binding(self.store, self.store.repo(1), self.client, URL, EVENTS, self.verify)
 
     def posts(self):
         return sum(method == 'POST' for method, *_ in self.client.calls)
@@ -111,6 +121,29 @@ class WebhookBindingTests(unittest.TestCase):
         self.ensure()
         self.assertEqual(self.posts(), 1)
         self.assertNotIn(3, self.client.hooks)
+
+    def test_working_legacy_hook_is_verified_and_preserved(self):
+        self.client.hooks[3]['secret'] = '新测试密钥'
+        self.assertEqual(self.ensure()['id'], 3)
+        self.assertEqual(self.ensure()['id'], 3)
+        self.assertEqual(self.posts(), 0)
+        self.assertEqual(self.verifications, [3])
+
+    def test_failed_real_delivery_preserves_old_and_reuses_new_on_retry(self):
+        self.failed_delivery = True
+        with self.assertRaisesRegex(ReviewError, '实际签名投递验证'): self.ensure()
+        self.assertIn(3, self.client.hooks)
+        self.assertFalse(any(method == 'DELETE' for method, *_ in self.client.calls))
+        self.failed_delivery = False
+        self.ensure()
+        self.assertEqual(self.posts(), 1)
+        self.assertNotIn(3, self.client.hooks)
+
+    def test_rejected_verification_does_not_replace_existing_hook(self):
+        self.verification_error = True
+        with self.assertRaisesRegex(ReviewError, '请求被拒绝'): self.ensure()
+        self.assertEqual(self.posts(), 0)
+        self.assertIn(3, self.client.hooks)
 
     def test_unseen_unknown_create_is_not_replayed(self):
         self.client.fail_create = 'before'
