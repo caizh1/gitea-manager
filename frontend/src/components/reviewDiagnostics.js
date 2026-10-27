@@ -22,6 +22,7 @@ const labels = {
   branch: '具体分支', cause_stage: '原因阶段', rejection_branch: '拒绝分支', category: '错误类别',
   session_id: '会话标识', call_id: '调用标识', request_id: '请求标识', time_utc: '发生时间', exception_type: '异常类型',
   native_session_id: '原生会话标识', reason: '失败原因', extraction_path: '结果提取路径', parser_reason: '解析错误类型', parser_message: '解析说明',
+  output_field: '失败字段', finding_index: '意见序号', evidence_id: '无法核对的证据编号',
   native_error_type: '原生错误类型', done_seen: '结束标记已收到', completion_complete: '响应完整',
   json_line: '解析文本行', json_column: '解析文本列', json_offset: '解析文本偏移', response_bytes: '响应长度',
   received_bytes: '已接收长度', response_chars: '响应字符数', text_part_count: '文本分段数', part_count: '响应分段数', parts_count: '响应分段数',
@@ -51,6 +52,10 @@ export function safeDiagnostic(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const safe = {}
   for (const key of scalarFields) if (hasValue(value[key]) && ['string', 'number', 'boolean'].includes(typeof value[key])) safe[key] = value[key]
+  // 只展示后端允许的定位元数据，不把任意模型文本当成证据编号复制出来。
+  if (value.output_field === 'evidence_ids') safe.output_field = value.output_field
+  if (Number.isSafeInteger(value.finding_index) && value.finding_index > 0) safe.finding_index = value.finding_index
+  if (typeof value.evidence_id === 'string' && value.evidence_id.length <= 180 && /^(?:R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)$/.test(value.evidence_id)) safe.evidence_id = value.evidence_id
   for (const key of ['finish_reasons', 'completion_warnings']) if (Array.isArray(value[key])) safe[key] = value[key].filter(item => ['string', 'number', 'boolean'].includes(typeof item)).slice(0, 20)
   if (Array.isArray(value.frames)) safe.frames = value.frames.slice(0, 6).map(frame => ({
     ...(hasValue(frame?.file) ? { file: String(frame.file) } : {}),
@@ -88,6 +93,7 @@ export function diagnosticLocation(value) {
   const safe = safeDiagnostic(value)
   if (!safe) return ''
   const source = String(safe.source || '')
+  if (source === 'batch_result') return '分批结果校验'
   if (source === 'native_result') return '模型结果解析'
   if (source === 'model_upstream') return safe.phase === 'response_headers' ? '模型服务响应头' : '模型服务响应流'
   if (source === 'model_transport') return safe.phase === 'response_stream' || safe.phase === 'broker_stream' ? '模型响应传输' : '模型连接与传输'
