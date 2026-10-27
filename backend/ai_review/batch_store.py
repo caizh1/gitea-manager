@@ -329,7 +329,7 @@ def adjust_context(store, job, record, diagnostic, config, snapshot):
 def adjust_output(store, job, record, diagnostic, config, snapshot):
     """已确认输出用尽时拆分关系或候选，保留失败记录，最多递归两层。"""
     unit = record['value']
-    if (job.get('batch_flow_version', 2) < 4 or unit.get('flow_version') != 'diff-batches-v3'
+    if (unit.get('review_mode') == 'single' or job.get('batch_flow_version', 2) < 4 or unit.get('flow_version') != 'diff-batches-v3'
             or unit.get('output_split_depth', 0) >= 2):
         return False
     from . import batch_flow

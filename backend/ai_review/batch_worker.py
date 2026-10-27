@@ -202,6 +202,7 @@ def process(store, job):
     from .authorization import authorize
     repo, config = store.repo(job['repository']), store.job_config(job['id'])
     config = dict(config, model_max_output_tokens=config.get('model_max_output_tokens') or 8192)
+    single_mode = job.get('batch_flow_version', 2) >= 5 and not config.get('batch_splitting_enabled', False)
     client = client_for(store, repo, job)
     stop = threading.Event()
     started = time.monotonic()
@@ -229,9 +230,12 @@ def process(store, job):
         snapshot = job.get('snapshot') or capture(client, job['number'], config, batched=True)
         assert_version(client, job['number'], snapshot)
         if not job.get('snapshot'):
-            store.update(job['id'], job['owner'], snapshot=snapshot, stage='计算分批计划')
+            store.update(job['id'], job['owner'], snapshot=snapshot, stage='计算单次审查计划' if single_mode else '计算分批计划')
         plan = state.get(store, job['id'], private=True)
         if not plan:
+            if job.get('batch_flow_version', 2) >= 5 and not config.get('batch_splitting_enabled', False):
+                from .batch_flow import validate_single_size
+                validate_single_size(snapshot)
             if job.get('batch_flow_version', 2) >= 4:
                 snapshot = dict(snapshot, batch_reference_protocol=batch_locations.PROTOCOL)
                 store.update(job['id'], job['owner'], snapshot=snapshot)
@@ -264,7 +268,7 @@ def process(store, job):
             state.transition(store, job, 'incomplete', '预检存在未覆盖范围：' + plan['value']['gaps'][0]['reason'])
             return
         if plan['authorized_calls'] < plan['value']['max_calls']:
-            state.transition(store, job, 'awaiting_cost', '等待确认分批调用上限')
+            state.transition(store, job, 'awaiting_cost', '等待确认调用上限' if single_mode else '等待确认分批调用上限')
             return
         remaining = plan['budget_seconds'] - plan['active_seconds'] - (time.monotonic()-started)
         if remaining < 60:
@@ -280,7 +284,8 @@ def process(store, job):
                     return
                 state.transition(store, job, 'incomplete', '单元已确认失败，需选择该单元重试')
                 return
-            store.update(job['id'], job['owner'], stage='执行分批单元 '+unit['id'])
+            label = ('执行一次完整主审' if unit['kind'] == 'primary' else '执行独立反证') if unit['value'].get('review_mode') == 'single' else '执行分批单元 '+unit['id']
+            store.update(job['id'], job['owner'], stage=label)
             try:
                 completed = _execute_unit(store, job, config, snapshot, unit, remaining, plan['value']['profile'])
             except ReviewError:

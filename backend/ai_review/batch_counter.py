@@ -104,11 +104,14 @@ def main():
     # 不能把虚拟地址空间限制误当作实际内存预算。
     try:
         if request['operation'] == 'plan':
-            if request['payload'].get('flow_version', 2) >= 3:
+            flow_version = request['payload'].get('flow_version', 2)
+            if flow_version >= 3:
                 from .batch_flow import build
             else:
                 from .batch_plan import build
-            value = build(request['payload']['snapshot'], config, request['payload']['history'])
+            options = ({'single_request': flow_version >= 5 and not config.get('batch_splitting_enabled', False)}
+                       if flow_version >= 3 else {})
+            value = build(request['payload']['snapshot'], config, request['payload']['history'], **options)
         elif request['operation'] == 'refutations':
             from .batch_flow import refutations
             value = refutations(request['payload']['snapshot'], request['payload']['plan'], config)

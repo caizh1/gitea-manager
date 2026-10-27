@@ -9,6 +9,7 @@ from .common import ReviewError, digest
 
 ROOT = Path(__file__).with_name('assets') / 'tokenizers'
 DEFAULTS = {'tokenizer_profile': 'auto', 'batch_input_tokens': 65536,
+            'batch_splitting_enabled': False,
             'batch_auto_calls': 8, 'batch_execution_seconds': 3600,
             'batch_preprocess_seconds': 120, 'batch_memory_mib': 512}
 ALIASES = {'qwen3.8-27b': 'qwen38', 'qwen/qwen3.8-27b': 'qwen38',
@@ -22,6 +23,8 @@ def failure(code, message):
 
 
 def validate(config):
+    if type(config.get('batch_splitting_enabled', False)) is not bool:
+        raise ReviewError('拆分审查开关必须为布尔值')
     if config.get('tokenizer_profile', 'auto') not in ('auto', 'qwen38', 'deepseek41', 'conservative'):
         raise ReviewError('不支持的 Token 计数方式')
     for key, low, high in [('batch_input_tokens', 4096, 1048576), ('batch_auto_calls', 1, 10000),

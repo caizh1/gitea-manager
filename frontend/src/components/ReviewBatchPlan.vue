@@ -1,11 +1,12 @@
 <template>
-  <section class="batch-plan" aria-label="分批审查计划">
-    <h3>分批审查计划</h3>
+  <section class="batch-plan" :aria-label="single ? '审查计划' : '分批审查计划'">
+    <h3>{{ single ? '审查计划' : '分批审查计划' }}</h3>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="task.batch">
-      <p>主审 {{ plan.primary }} 批 · 关联复核 {{ plan.association }} 批 · 历史问题 {{ plan.history }} 项</p>
+      <p v-if="!single">主审 {{ plan.primary }} 批 · 关联复核 {{ plan.association }} 批 · 历史问题 {{ plan.history }} 项</p>
       <p>基础调用 {{ plan.base_calls }} 次，含候选反证{{ ['diff-batches-v2', 'diff-batches-v3'].includes(plan.version) ? '与引用纠正' : '' }}最多 {{ plan.max_calls }} 次；已授权 {{ task.batch.authorized_calls }} 次。</p>
-      <p v-if="plan.version === 'diff-batches-v3'">按源码关系关联复核；主审完成后汇总候选并分组反证。{{ plan.refutation_planned ? `已生成 ${plan.refutation_groups} 个反证组。` : '反证分组待候选汇总。' }}</p>
+      <p v-if="!single && plan.version === 'diff-batches-v3'">按源码关系关联复核；主审完成后汇总候选并分组反证。{{ plan.refutation_planned ? `已生成 ${plan.refutation_groups} 个反证组。` : '反证分组待候选汇总。' }}</p>
+      <p v-if="single">单次主审，最多净增加 {{ plan.max_net_added_lines }} 行。新增 {{ plan.added_lines }} 行、删除 {{ plan.deleted_lines }} 行，全部纳入审查。拆分未启用；P0/P1 汇总后独立反证，超出输入额度时明确停止。</p>
       <p v-if="plan.reference_protocol === 'source-locations-v3'">使用源码位置与自然语言正文；评论位置由系统核对，P0/P1 仍逐项反证。</p>
       <p v-if="plan.output_adjustments?.length">已按原有关系或候选拆分 {{ plan.output_adjustments.length }} 个输出超限单元，历史记录保留。</p>
       <p>{{ plan.profile.basis }} · {{ plan.profile.model || '未知型号保守计数' }} · 资源版本 <code>{{ plan.profile.revision }}</code></p>
@@ -49,6 +50,7 @@ import { errorMessage } from './reviewDisplay'
 const emit = defineEmits(['refresh'])
 const props = defineProps({ task: { type: Object, required: true } })
 const plan = computed(() => props.task.batch?.value)
+const single = computed(() => plan.value?.review_mode === 'single')
 const busy = ref(false), error = ref(''), extra = ref(3600)
 const kinds = { primary: '主审', association: '关联复核', refutation: '候选反证', history: '历史复核' }
 const states = { pending: '待执行', running: '执行中', done: '已完成', failed: '已确认失败', unknown: '结果待核对', replaced: '已拆分' }

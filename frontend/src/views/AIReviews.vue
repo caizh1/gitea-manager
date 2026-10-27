@@ -58,7 +58,7 @@
     <section v-else-if="tab === 'config' && isPlatformAdmin">
         <div class="glass-card panel">
           <el-alert v-if="configError" :title="configError" type="error" show-icon :closable="false" /><el-form label-position="top" @submit.prevent="saveConfig">
-            <el-alert title="新任务仅审查 PR diff" description="直接提供 PR 标题、描述与完整 diff，关闭工程检索，以文字报告结束并发布到 PR。未读取完整工程，未验证 diff 外依赖。" type="info" :closable="false" />
+            <el-alert title="新任务默认单次审查，最多净增加 1000 行" description="直接提供 PR 标题、描述与完整 diff，关闭工程检索，以文字报告结束并发布到 PR。未读取完整工程，未验证 diff 外依赖。" type="info" :closable="false" />
             <div class="review-grid">
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
               <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎"><el-option label="原生 OpenCode 会话" value="opencode_native" /></el-select></el-form-item>
@@ -72,9 +72,9 @@
             </div>
             <el-collapse><el-collapse-item title="审查资源预算" name="limits"><div class="review-grid">
               <el-form-item label="Token 计数方式"><el-select v-model="config.tokenizer_profile"><el-option label="自动匹配具体型号" value="auto" /><el-option label="Qwen3.8-27B" value="qwen38" /><el-option label="DeepSeek-V4.1-Flash" value="deepseek41" /><el-option label="通用保守估算" value="conservative" /></el-select><span class="secondary">计数资源离线运行，不修改模型名或思考参数；实际资源版本在任务计划中显示。</span></el-form-item>
-              <el-form-item label="单批输入目标（Token）"><el-input-number v-model="config.batch_input_tokens" :min="4096" :max="1048576" /><span class="secondary">新安装默认 65536；实际额度还会扣除输出预留和安全余量。</span></el-form-item>
+              <el-form-item label="单次请求输入目标（Token）"><el-input-number v-model="config.batch_input_tokens" :min="4096" :max="1048576" /><span class="secondary">新安装默认 65536；实际额度还会扣除输出预留和安全余量。</span></el-form-item>
               <el-form-item label="自动执行调用上限"><el-input-number v-model="config.batch_auto_calls" :min="1" :max="10000" /><span class="secondary">最大计划调用数超出时等待确认，包含反证与历史复核。</span></el-form-item>
-              <el-form-item label="分批有效执行预算（秒）"><el-input-number v-model="config.batch_execution_seconds" :min="60" :max="604800" /></el-form-item>
+              <el-form-item label="审查有效执行预算（秒）"><el-input-number v-model="config.batch_execution_seconds" :min="60" :max="604800" /></el-form-item>
               <el-form-item label="预处理超时（秒）"><el-input-number v-model="config.batch_preprocess_seconds" :min="10" :max="3600" /></el-form-item>
               <el-form-item label="计数进程内存上限（MiB）"><el-input-number v-model="config.batch_memory_mib" :min="256" :max="8192" /></el-form-item>
               <el-form-item label="历史单会话审查上限（秒）"><el-input-number v-model="config.review_timeout_seconds" :min="60" :max="3600" :precision="0" /><span class="secondary">首次默认 600 秒；旧配置沿用原任务预算。仅对保存后创建的新任务生效。</span></el-form-item>

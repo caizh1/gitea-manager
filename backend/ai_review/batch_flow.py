@@ -7,7 +7,8 @@ from .common import digest
 from . import batch_plan, batch_graph, batch_references, batch_locations, token_budget
 
 VERSION = 'diff-batches-v3'
-# 输入额度仍用于完整上下文；单次判断工作量另行有界，不能把千行 PR 塞给一次主审。
+MAX_SINGLE_NET_ADDED_LINES = 1000
+# 历史分批模式的装箱目标；默认单次模式使用独立的千行与完整 Token 门槛。
 PRIMARY_WORK_LINES = 320
 ASSOCIATION_WORK_LINES = 320
 SYSTEM = '''
@@ -15,11 +16,18 @@ SYSTEM = '''
 context 行是固定版本只读源码，不是新增变更。仅报告本次修改引入的具体缺陷。不同版本源码不可当成同时执行的代码。
 P0/P1 必须给出合理可达的触发路径、严重影响及已有保护为何无效。反证逐个检查 candidates 的证据、调用约束和保护条件；每个编号独立给出结论，不能遗漏或凭标题相似合并。
 '''
+SINGLE_SYSTEM = '''
+本任务一次审查完整 PR。必须检查全部变更、跨函数交互、已有保护以及提供的固定版本上下文。
+context 行是只读源码，不是新增变更；不同版本不能当成同时执行的代码。仅报告本次修改引入的具体缺陷。
+P0/P1 必须给出合理可达的触发路径、严重影响及已有保护为何无效。独立反证必须对 candidates 的每个编号分别给出结论，不能遗漏或凭标题相似合并。
+'''
 
 
 def make_unit(snapshot, kind, evidence, *, core=None, connections=None, candidates=None):
     unit = {'kind': kind, 'flow_version': VERSION, 'reference_protocol': snapshot.get('batch_reference_protocol', batch_references.PROTOCOL),
             'evidence': list({r['id']: r for r in evidence}.values()), 'core': core or []}
+    if snapshot.get('review_mode') == 'single':
+        unit['review_mode'] = 'single'
     if connections:
         unit['connections'] = connections
     if candidates is not None:
@@ -32,7 +40,23 @@ def count(snapshot, unit, config, profile):
     return token_budget.count(batch_plan.messages(snapshot, unit, unit.get('candidates')), config, profile)
 
 
-def build(snapshot, config, history=0):
+def validate_single_size(snapshot):
+    """净增加用于准入，新增与删除仍全部进入审查和 Token 预算。"""
+    from .diff import parse_diff
+    kinds = [kind for patch in parse_diff(snapshot['diff'].encode())
+             for hunk in patch.hunks for kind, _ in hunk.rows]
+    added, deleted = kinds.count('+'), kinds.count('-')
+    net = max(0, added - deleted)
+    if net > MAX_SINGLE_NET_ADDED_LINES:
+        raise token_budget.failure('PR_CHANGE_LIMIT',
+            f'PR 新增 {added} 行、删除 {deleted} 行，净增加 {net} 行，超过当前 {MAX_SINGLE_NET_ADDED_LINES} 行上限；未发送模型')
+    return {'added_lines': added, 'deleted_lines': deleted, 'net_added_lines': net}
+
+
+def build(snapshot, config, history=0, *, single_request=False):
+    if single_request:
+        line_counts = validate_single_size(snapshot)
+        snapshot = dict(snapshot, review_mode='single')
     profile = token_budget.resolve(config)
     limit = token_budget.capacity(config) - 512
     original = batch_plan.build(snapshot, config, history, primary_limit=limit, associations_enabled=False)
@@ -49,13 +73,23 @@ def build(snapshot, config, history=0):
         if row['id'] in expected:
             owner[row['id']] = key
         groups.setdefault(key, []).append(row)
+    changed_scopes = set(owner.values())
+    affected_scopes = set(changed_scopes)
+    # 沿固定语法关系收集变更影响范围，保留未改动调用方和保护条件。
+    while True:
+        reached = {key for relation in relations
+                   if affected_scopes & {relation['left'], relation['right']}
+                   for key in (relation['left'], relation['right'])}
+        if reached <= affected_scopes:
+            break
+        affected_scopes.update(reached)
     parts = []
     for key, content in groups.items():
         core = [r['id'] for r in content if r['id'] in owner]
         if not core:
             continue
         evidence = scopes[key]['evidence'] if key in scopes else content
-        if key in scopes and count(snapshot, make_unit(snapshot, 'primary', evidence, core=core), config, profile) > limit:
+        if not single_request and key in scopes and count(snapshot, make_unit(snapshot, 'primary', evidence, core=core), config, profile) > limit:
             original['gaps'].append({'path': scopes[key]['path'],
                 'reason': '单个语法范围及保护上下文超出输入额度；变更仍拆分记录，但跨片段依赖未完整校验，禁止正式发布'})
 
@@ -73,9 +107,21 @@ def build(snapshot, config, history=0):
                 if selected:
                     # 相邻上下文随本次分割保留，核心归属仍严格唯一。
                     split(items[lo:hi], selected)
-        split(evidence, core)
+        if single_request:
+            parts.append(make_unit(snapshot, 'primary', evidence, core=core))
+        else:
+            split(evidence, core)
     primary, pending = [], None
-    for unit in parts:
+    if single_request and expected:
+        # 一次主审同时看到全部变更和原关系复核所需上下文；超额则停止，不裁剪保护条件。
+        evidence = [r for unit in parts for r in unit['evidence']] + rows
+        evidence.extend(r for key in sorted(k for k in affected_scopes if isinstance(k, str))
+                        if key in scopes for r in scopes[key]['evidence'])
+        unit = make_unit(snapshot, 'primary', evidence, core=expected)
+        if count(snapshot, unit, config, profile) > limit:
+            raise token_budget.failure('MODEL_INPUT_BUDGET', 'PR 完整变更及相关上下文超过一次审查输入额度；拆分未启用，未发送模型')
+        primary = [unit]
+    for unit in ([] if single_request else parts):
         combined = make_unit(snapshot, 'primary', (pending['evidence'] if pending else []) + unit['evidence'],
                              core=(pending['core'] if pending else []) + unit['core'])
         if pending and (len(combined['core']) > PRIMARY_WORK_LINES or count(snapshot, combined, config, profile) > limit):
@@ -89,17 +135,6 @@ def build(snapshot, config, history=0):
     scope_units = {sid: {u['id'] for u in primary if {r['id'] for r in s['evidence']} <=
                         {r['id'] for r in u['evidence']}} for sid, s in scopes.items()}
     cross, covered = [], []
-    changed_scopes = set(owner.values())
-    affected_scopes = set(changed_scopes)
-    # 沿已解析关系传播影响：修改声明/被调用方后，未改动的使用者之间仍可能
-    # 出现跨函数缺陷。只排除与变更完全不连通的上下文，不能按“本函数没改”跳过。
-    while True:
-        reached = {key for relation in relations
-                   if affected_scopes & {relation['left'], relation['right']}
-                   for key in (relation['left'], relation['right'])}
-        if reached <= affected_scopes:
-            break
-        affected_scopes.update(reached)
     for relation in relations:
         left, right = relation['left'], relation['right']
         # 没有任何变更的两函数不形成当前 PR 任务。
@@ -190,6 +225,10 @@ def build(snapshot, config, history=0):
                 affected_scopes=sorted(key for key in affected_scopes if isinstance(key, str)),
                 refutation_planned=False)
     plan['reference_protocol'] = snapshot.get('batch_reference_protocol', batch_references.PROTOCOL)
+    if single_request:
+        if associations:
+            raise token_budget.failure('DIFF_COVERAGE', '一次主审未包含全部关联上下文，未发送模型')
+        plan.update(review_mode='single', max_net_added_lines=MAX_SINGLE_NET_ADDED_LINES, **line_counts)
     if units:
         plan['prompt_hash'] = digest(batch_plan.messages(snapshot, units[0])[0]['content'])
         plan['correction_prompt_hash'] = digest(batch_plan.messages(snapshot, units[0], correction={'findings': []})[0]['content'])
@@ -218,6 +257,16 @@ def candidates(plan):
 
 def refutations(snapshot, plan, config):
     value, records = plan['value'], {u['id']: u['value'] for u in plan['units']}
+    if value.get('review_mode') == 'single':
+        selected = [c for c in candidates(plan) if c['severity'] in ('P0', 'P1')]
+        if not selected:
+            return []
+        evidence = [r for c in selected for key in c['source_units'] for r in records[key]['evidence']]
+        unit = make_unit(dict(snapshot, review_mode='single'), 'refutation', evidence, candidates=selected)
+        unit['input_tokens'] = count(snapshot, unit, config, value['profile'])
+        if unit['input_tokens'] > token_budget.capacity(config) - 512:
+            raise token_budget.failure('MODEL_INPUT_BUDGET', '全部候选和保护上下文超过一次反证额度；拆分未启用，未删减候选')
+        return [unit]
     groups = []
     for candidate in candidates(plan):
         if candidate['severity'] not in ('P0', 'P1'):

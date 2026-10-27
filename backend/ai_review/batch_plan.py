@@ -45,8 +45,8 @@ def messages(snapshot, unit, candidates=None, correction=False):
     if candidates is not None:
         data['candidates'] = candidates
     if unit.get('flow_version') == 'diff-batches-v3':
-        from .batch_flow import SYSTEM as FLOW_SYSTEM
-        system += FLOW_SYSTEM
+        from .batch_flow import SYSTEM as FLOW_SYSTEM, SINGLE_SYSTEM
+        system += SINGLE_SYSTEM if unit.get('review_mode') == 'single' else FLOW_SYSTEM
         if unit.get('connections'):
             data['connections'] = unit['connections']
     return [{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(data, ensure_ascii=False,
