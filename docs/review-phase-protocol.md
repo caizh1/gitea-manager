@@ -37,3 +37,5 @@ P0/P1 BLOCKERS: 无。已检查阶段错配被当作无问题放行、候选漏�
 UNVERIFIED RISKS: 任意模型或所有生产输入的输出稳定性、真实缺陷质量指标均未证明。
 
 NON-BLOCKING FINDINGS: 保留既有依赖弃用和前端分块大小提示。
+
+已发布包含本修复的 `manager-review-phase-20261027-r1` 一键安装包，构建、成品回归及安装验收见 `review-phase-release.md`。
