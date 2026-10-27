@@ -119,7 +119,6 @@ def save_config():
         raise ReviewError('配置包含不支持的字段')
     old = state.config()
     value = dict(old, **data)
-    validate_batch(value)
     if not isinstance(value['enabled'], bool) or value['engine'] != 'opencode_native':
         raise ReviewError('开关或执行引擎无效')
     for key, low, high in [('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
@@ -132,6 +131,7 @@ def save_config():
     validate_thinking(value)
     from ai_review.budgets import validate_context
     validate_context(value)
+    validate_batch(value)
     if value['api_base_url']:
         from ai_review.host_policy import path, approve
         if path() and 'api_base_url' in data: approve({'AI_REVIEW_MODEL_HOSTS': [value['api_base_url']]})

@@ -8,7 +8,7 @@ from pathlib import Path
 from .common import ReviewError, digest
 
 ROOT = Path(__file__).with_name('assets') / 'tokenizers'
-DEFAULTS = {'tokenizer_profile': 'auto', 'batch_input_tokens': 32768,
+DEFAULTS = {'tokenizer_profile': 'auto', 'batch_input_tokens': 65536,
             'batch_auto_calls': 8, 'batch_execution_seconds': 3600,
             'batch_preprocess_seconds': 120, 'batch_memory_mib': 512}
 ALIASES = {'qwen3.8-27b': 'qwen38', 'qwen/qwen3.8-27b': 'qwen38',

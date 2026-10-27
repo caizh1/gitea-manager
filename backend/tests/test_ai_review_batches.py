@@ -32,6 +32,63 @@ def snapshot(config):
     return diff_review.capture(Client(), 1, config, batched=True)
 
 
+def test_fresh_budget_defaults_are_persisted_and_can_plan(state):
+    from ai_review.budgets import validate_context
+    store, job, _ = state
+    config = store.job_config(job['id'])
+    assert config['batch_input_tokens'] == 65536
+    assert config['model_max_output_tokens'] == 32768
+    validate_context(config)
+    plan = batch_plan.build(snapshot(config), config)
+    assert plan['primary'] > 0
+    assert not plan['gaps']
+    assert all(unit['input_tokens'] <= token_budget.capacity(config) for unit in plan['units'])
+    with store.connect() as conn:
+        saved = json.loads(conn.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+    assert saved['batch_input_tokens'] == 65536
+    assert saved['model_max_output_tokens'] == 32768
+
+
+@pytest.mark.parametrize('input_tokens,output_tokens', [(32768, 0), (32768, 8192), (98304, 24576)])
+def test_saved_budgets_and_frozen_jobs_survive_reopen(state, input_tokens, output_tokens):
+    store, _, repo = state
+    store.save_config({'revision': store.config()['revision'], 'batch_input_tokens': input_tokens,
+                       'model_max_output_tokens': output_tokens})
+    ident = store.enqueue(repo['id'], 2, {'head': 'c'*40, 'base': 'b'*40})
+    reopened = Store(store.path)
+    assert reopened.config()['batch_input_tokens'] == input_tokens
+    assert reopened.config()['model_max_output_tokens'] == output_tokens
+    reopened.save_config({'revision': reopened.config()['revision'], 'batch_input_tokens': 65536,
+                          'model_max_output_tokens': 32768})
+    frozen = reopened.job_config(ident)
+    assert frozen['batch_input_tokens'] == input_tokens
+    assert frozen['model_max_output_tokens'] == output_tokens
+
+
+def test_missing_legacy_budget_fields_keep_original_limits(state):
+    store, job, _ = state
+    with store.tx() as conn:
+        saved = json.loads(conn.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+        saved.pop('batch_input_tokens')
+        saved.pop('model_max_output_tokens')
+        encoded = json.dumps(saved)
+        conn.execute('UPDATE settings SET value=? WHERE id=1', (encoded,))
+        conn.execute('UPDATE configuration_history SET value=? WHERE revision=?',
+                     (encoded, job['config_revision']))
+    reopened = Store(store.path)
+    config = reopened.config()
+    assert config['batch_input_tokens'] == 32768
+    assert config['model_max_output_tokens'] == 0
+    frozen = reopened.job_config(job['id'])
+    assert frozen['model_max_output_tokens'] == 0
+    assert token_budget.capacity(frozen) == 32768
+    assert batch_plan.build(snapshot(frozen), frozen)['primary'] > 0
+    with reopened.connect() as conn:
+        assert conn.execute('SELECT value FROM settings WHERE id=1').fetchone()[0] == encoded
+        assert conn.execute('SELECT value FROM configuration_history WHERE revision=?',
+                            (job['config_revision'],)).fetchone()[0] == encoded
+
+
 def test_exact_aliases_and_manual_binding():
     assert token_budget.resolve({'model': 'deepseek-v4.1-flash'})['key'] == 'deepseek41'
     assert token_budget.resolve({'model': 'deepseek-v4-flash'})['key'] == 'conservative'
@@ -143,7 +200,8 @@ def test_successful_unit_is_not_replayed_and_publication_waits(state):
         assert publish.call_count == 1
 
 
-def test_candidate_requires_independent_refutation_before_publication(state):
+@pytest.mark.parametrize('wrapped', [False, True])
+def test_candidate_requires_independent_refutation_before_publication(state, wrapped):
     store, job, _ = state
     def respond(_store, _job, _config, workspace, token, diff_snapshot):
         payload = json.loads(diff_snapshot['_batch_messages'][1]['content'])
@@ -155,7 +213,10 @@ def test_candidate_requires_independent_refutation_before_publication(state):
             answer = {'summary': '检查完成', 'limitations': [], 'findings': [{'severity':'P1','title':'测试候选',
                 'evidence_ids':[row['id']], 'anchor_id':row['anchor_id'], 'trigger':'测试条件',
                 'explanation':'测试因果链', 'impact':'测试影响', 'recommendation':'测试建议'}]}
-        return {'review_scope':'diff','report_markdown':json.dumps(answer), '_review_completion':{'complete':True},
+        text = json.dumps(answer)
+        if wrapped:
+            text = '<think>固定思考片段</think>\n```json\n' + text + '\n```'
+        return {'review_scope':'diff','report_markdown':text, '_review_completion':{'complete':True},
                 '_native_result_sha256':'a'*64, '_native_final_event_seq':1}
     with patch('ai_review.worker.client_for', side_effect=lambda *a: Client()), patch('ai_review.issue_lifecycle.adopt_history'), \
          patch('ai_review.native_review.execute', side_effect=respond) as model, patch('ai_review.native_review.acknowledge_result'), \
@@ -169,6 +230,25 @@ def test_candidate_requires_independent_refutation_before_publication(state):
         assert model.call_count == 2
         assert publish.call_count == 1
         assert len(store.job(job['id'])['result']['findings']) == 1
+
+
+def test_invalid_wrapped_report_keeps_safe_diagnostic_and_never_publishes(state):
+    store, job, _ = state
+    secret = '不可进入公开诊断的固定思考片段'
+    raw = {'review_scope': 'diff', 'report_markdown': '<think>'+secret+'</think>\n无法解析的报告',
+           '_review_completion': {'complete': True}, '_native_result_sha256': 'f'*64,
+           '_native_final_event_seq': 1}
+    with patch('ai_review.worker.client_for', side_effect=lambda *a: Client()), patch('ai_review.issue_lifecycle.adopt_history'), \
+         patch('ai_review.native_review.execute', return_value=raw), patch('ai_review.native_review.acknowledge_result'), \
+         patch('ai_review.publish.Publisher.publish') as publish:
+        batch_worker.process(store, job)
+    failed = store.job(job['id'])
+    assert failed['status'] == 'incomplete'
+    assert failed['diagnostic']['status'] == 'failed'
+    assert failed['diagnostic']['reason'] == 'json_syntax'
+    assert failed['diagnostic']['json_line'] == 1
+    assert secret not in json.dumps(failed['diagnostic'], ensure_ascii=False)
+    publish.assert_not_called()
 
 
 def test_ack_loss_reuses_persisted_result_without_replaying_model(state):

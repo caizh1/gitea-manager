@@ -19,7 +19,7 @@ DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CONTEXT_DEFAULTS, 'enabled'
             'api_key': '', 'revision': 1, 'debounce_seconds': 20, 'max_files': 40,
             'max_calls': 32, 'task_timeout_seconds': 1200, 'review_timeout_seconds': REVIEW_TIMEOUT_DEFAULT,
             'model_request_timeout_seconds': MODEL_TIMEOUT_DEFAULT,
-            'execution_revision': 1, 'model_max_output_tokens': 0, 'model_response_max_mib': 8, 'max_findings': 20}
+            'execution_revision': 1, 'model_max_output_tokens': 32768, 'model_response_max_mib': 8, 'max_findings': 20}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
 
 
@@ -185,6 +185,8 @@ class Store:
         result.setdefault('model_request_timeout_seconds', MODEL_TIMEOUT_DEFAULT)
         result.setdefault('review_timeout_seconds', result.get('task_timeout_seconds', REVIEW_TIMEOUT_DEFAULT))
         result.setdefault('model_max_output_tokens', 0)
+        # 新安装已完整写入 DEFAULTS；旧配置缺字段时保留原来的隐含预算。
+        result.setdefault('batch_input_tokens', 32768)
         result.setdefault('model_response_max_mib', 8)
         result.setdefault('execution_revision', result['revision'])
         if 'thinking_protocol' not in result and result.get('model', '').lower().startswith('deepseek'):

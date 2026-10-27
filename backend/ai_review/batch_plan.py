@@ -154,11 +154,48 @@ def build(snapshot, config, history=0):
     return plan
 
 
+def _decode_output(raw):
+    """只移除完整的思考前缀和外围代码围栏，不从任意文字中搜索报告。"""
+    text = raw.get('report_markdown')
+
+    def reject(reason, cause=None):
+        error = token_budget.failure('BATCH_OUTPUT_INVALID', '单元输出不是完整的 JSON 报告')
+        error.diagnostic = {'source': 'batch_result', 'reason': reason,
+                            'response_chars': len(text) if isinstance(text, str) else 0}
+        if isinstance(cause, json.JSONDecodeError):
+            error.diagnostic.update(json_line=cause.lineno, json_column=cause.colno,
+                                    json_offset=cause.pos)
+        raise error from None
+
+    if not isinstance(text, str):
+        reject('batch_result_not_text')
+    value = text.strip().removeprefix('\ufeff').lstrip()
+    if value.startswith('<think>'):
+        end = value.find('</think>', len('<think>'))
+        if end < 0:
+            reject('batch_thinking_unclosed')
+        value = value[end + len('</think>'):].strip()
+    if value.startswith('```'):
+        fenced = re.fullmatch(r'```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```', value, re.IGNORECASE)
+        if not fenced:
+            reject('batch_fence_invalid')
+        value = fenced.group(1).strip()
+    if not value:
+        reject('empty_result')
+    try:
+        result = json.loads(value)
+    except json.JSONDecodeError as exc:
+        reject('json_syntax', exc)
+    if not isinstance(result, dict):
+        reject('result_not_object')
+    return result
+
+
 def parse_report(raw, snapshot, unit):
     if raw.get('_review_completion', {}).get('complete') is not True:
         raise token_budget.failure('BATCH_OUTPUT_INCOMPLETE', '单元输出未完整结束')
     try:
-        value = json.loads(raw['report_markdown'])
+        value = _decode_output(raw)
         if not isinstance(value['summary'], str) or not isinstance(value['limitations'], list) or not isinstance(value['findings'], list):
             raise ValueError()
         rows = {r['id']: r for r in unit['evidence']}
@@ -180,7 +217,7 @@ def parse_refutation(raw, unit, candidates):
     if raw.get('_review_completion', {}).get('complete') is not True:
         raise token_budget.failure('BATCH_OUTPUT_INCOMPLETE', '反证输出未完整结束')
     try:
-        checks = json.loads(raw['report_markdown'])['checks']
+        checks = _decode_output(raw)['checks']
         if len(checks) != len(candidates) or {r['id'] for r in checks} != {f['id'] for f in candidates}:
             raise ValueError()
         rows = {r['id'] for r in unit['evidence']}

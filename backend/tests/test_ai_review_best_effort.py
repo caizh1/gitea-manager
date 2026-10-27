@@ -114,10 +114,11 @@ class RuntimeTests(unittest.TestCase):
         self.store.save_config({'revision':old['revision'],'model_max_output_tokens':32000,'model_response_max_mib':16})
         self.store.active(job['id'],job['owner'])
         frozen=self.store.job_config(job['id'])
-        self.assertEqual(frozen['model_max_output_tokens'],0);self.assertEqual(frozen['model_response_max_mib'],8)
+        self.assertEqual(frozen['model_max_output_tokens'],old['model_max_output_tokens']);self.assertEqual(frozen['model_response_max_mib'],8)
         self.assertEqual(self.store.config()['execution_revision'],old['execution_revision'])
 
     def test_broker_does_not_send_fixed_output_limit_and_preserves_reason(self):
+        self.store.save_config({'revision': self.store.config()['revision'], 'model_max_output_tokens': 0})
         job,_,_,_,_=self.fixture();token=capability(self.store,job,'测试模型')
         client=create_broker(self.store).test_client();sent=[]
         def upstream(url,body,key,**kwargs):
