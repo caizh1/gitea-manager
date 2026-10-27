@@ -1,9 +1,9 @@
 <template>
-  <section class="glass-card setup-panel" aria-labelledby="setup-title">
-    <div class="setup-heading"><div><h4 id="setup-title">快速接入 AI 审查</h4><p>选择一个 Gitea 实例及其仓库，系统准备机器人、事件通知和 PR 进度。</p></div><el-button v-if="configured" text @click="expanded = !expanded">{{ expanded ? '收起配置' : '接入更多仓库' }}</el-button></div>
+  <section class="setup-panel" :class="embedded ? 'setup-embedded' : 'glass-card'" aria-labelledby="setup-title">
+    <div class="setup-heading"><div><h4 id="setup-title">快速接入 AI 审查</h4><p>选择一个 Gitea 实例及其仓库，系统准备机器人、事件通知和 PR 进度。</p></div><el-button v-if="configured && !embedded" text @click="expanded = !expanded">{{ expanded ? '收起配置' : '接入更多仓库' }}</el-button></div>
     <el-alert v-if="error || catalogError || pollError" :title="error || catalogError || pollError" type="error" :closable="false" show-icon />
     <el-alert v-if="!available" title="当前部署尚未启用自动接入，请先运行一键升级脚本。" type="info" :closable="false" />
-    <el-form v-if="expanded || !configured || job?.detail?.needs_callback" label-position="top" @submit.prevent="submit">
+    <el-form v-if="embedded || expanded || !configured || job?.detail?.needs_callback" label-position="top" @submit.prevent="submit">
       <div v-if="savedModel" class="model-summary"><strong>使用已保存的模型</strong><span>{{ config.model }}</span><span>{{ config.api_base_url }}</span><small>修改模型请到“模型与设置”；继续检查会使用最新保存配置。</small></div>
       <div v-else class="setup-grid">
         <el-form-item label="内网模型地址"><el-input v-model="form.api_base_url" aria-label="内网模型地址" placeholder="包含 API 前缀，例如 https://模型服务/v1" :disabled="locked" /></el-form-item>
@@ -32,7 +32,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { errorMessage } from './reviewDisplay'
-const props = defineProps({ servers: { type: Array, default: () => [] }, config: { type: Object, default: () => ({}) }, repositories: { type: Array, default: () => [] } })
+const props = defineProps({ servers: { type: Array, default: () => [] }, config: { type: Object, default: () => ({}) }, repositories: { type: Array, default: () => [] }, embedded: Boolean })
 const emit = defineEmits(['changed'])
 const form = ref({ api_base_url: '', api_key: '', model: 'deepseek-v4-flash', manager_url: '' })
 const serverId = ref(null), selected = ref([]), options = ref([]), available = ref(true), job = ref(null), error = ref('')
@@ -107,6 +107,8 @@ onUnmounted(() => { stopped = true; generation++; statusGeneration++; clearTimeo
 
 <style scoped>
 .setup-panel { padding: 22px; margin-bottom: 20px; min-width: 0; }
+.setup-panel.setup-embedded { padding: 0; }
+.setup-embedded .setup-grid { grid-template-columns: minmax(0, 1fr); }
 .setup-heading, .setup-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
 .setup-heading { justify-content: space-between; margin-bottom: 16px; }
 h4 { margin: 0 0 8px; font-size: 17px; }

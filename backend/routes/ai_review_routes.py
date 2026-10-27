@@ -224,7 +224,7 @@ def repository_values(state, data, old=None):
             raise ReviewError('仓库身份不一致')
         client.verify_review_scopes()
         return target.id, repository['id'], {
-            'repo_name': name, 'server_name': target.name, 'gitea_url': gitea_address(target.gitea_url),'gitea_version':gitea_version,
+            'repo_name': name, 'private': bool(repository.get('private')), 'server_name': target.name, 'gitea_url': gitea_address(target.gitea_url),'gitea_version':gitea_version,
             'bot_token': state.seal(token), 'bot_id': user['id'], 'bot_name': user['login'],
             'webhook_secret': old['webhook_secret'] if old else state.seal(secrets.token_urlsafe(32)),
             'enabled': data.get('enabled', False), 'hook_status': old.get('hook_status', '未安装') if old else '未安装',
@@ -260,6 +260,16 @@ def update_repository(repository):
     return jsonify(state.save_repo(target, repo_id, data, repository))
 
 
+@ai_review_bp.delete('/repositories/<int:repository>')
+def remove_repository(repository):
+    from ai_review.repository_removal import remove_repository as remove
+    state, data = store(), body()
+    if set(data) != {'revision'}:
+        raise ReviewError('移除接入仅接受当前配置版本')
+    repo = state.repo(repository)
+    return jsonify(remove(state, repository, data['revision'], server(repo['server_id'])))
+
+
 @ai_review_bp.post('/repositories/<int:repository>/webhook')
 def install_webhook(repository):
     state = store()
@@ -271,6 +281,8 @@ def install_webhook(repository):
 
 def ensure_webhook(state, repository, manager_url):
     repo = state.repo(repository)
+    if repo.get('access_archived'):
+        raise ReviewError('该接入已停止，不能重新安装事件通知；请重新接入仓库')
     manager = endpoint(manager_url, 'AI_REVIEW_WEBHOOK_HOSTS')
     callback = manager + f'/api/ai-review/webhooks/{repository}'
     target = server(repo['server_id'])
@@ -628,6 +640,8 @@ def webhook(repository):
     if len(raw) > limit:
         return jsonify(error='事件超过 1 MB'), 413
     state = store(); repo = state.repo(repository)
+    if repo.get('access_archived'):
+        return jsonify(ignored=True), 202
     supplied = request.headers.get('X-Gitea-Signature', '')
     expected = hmac.new(state.unseal(repo['webhook_secret']).encode(), raw, hashlib.sha256).hexdigest()
     if not re.fullmatch(r'[0-9a-f]{64}', supplied) or not hmac.compare_digest(expected, supplied):

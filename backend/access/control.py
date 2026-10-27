@@ -22,7 +22,7 @@ PLATFORM = {
     'mirror': 'list_mirrors create_mirror update_mirror delete_mirror setup_mirror sync_mirror mirror_status mirror_audit_logs sync_repo',
     'settings': 'get_settings update_settings',
     'management': 'status public_key fingerprint trust discovery connect reports download_report report_steps',
-    'ai_review': 'save_config connection_test progress_assets create_repository install_webhook setup_status setup_submit setup_detail setup_resume raw_diagnostics_download',
+    'ai_review': 'save_config connection_test progress_assets create_repository remove_repository install_webhook setup_status setup_submit setup_detail setup_resume raw_diagnostics_download',
     'approval': 'native_governance native_governance_server bundle native_import_preview native_import_apply native_uninstall_bundle',
 }
 ORGANIZATION = {
