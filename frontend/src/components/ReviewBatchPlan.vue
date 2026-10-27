@@ -4,7 +4,10 @@
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="task.batch">
       <p>主审 {{ plan.primary }} 批 · 关联复核 {{ plan.association }} 批 · 历史问题 {{ plan.history }} 项</p>
-      <p>基础调用 {{ plan.base_calls }} 次，含候选反证最多 {{ plan.max_calls }} 次；已授权 {{ task.batch.authorized_calls }} 次。</p>
+      <p>基础调用 {{ plan.base_calls }} 次，含候选反证{{ ['diff-batches-v2', 'diff-batches-v3'].includes(plan.version) ? '与引用纠正' : '' }}最多 {{ plan.max_calls }} 次；已授权 {{ task.batch.authorized_calls }} 次。</p>
+      <p v-if="plan.version === 'diff-batches-v3'">按源码关系关联复核；主审完成后汇总候选并分组反证。{{ plan.refutation_planned ? `已生成 ${plan.refutation_groups} 个反证组。` : '反证分组待候选汇总。' }}</p>
+      <p v-if="plan.reference_protocol === 'source-locations-v3'">使用源码位置与自然语言正文；评论位置由系统核对，P0/P1 仍逐项反证。</p>
+      <p v-if="plan.output_adjustments?.length">已按原有关系或候选拆分 {{ plan.output_adjustments.length }} 个输出超限单元，历史记录保留。</p>
       <p>{{ plan.profile.basis }} · {{ plan.profile.model || '未知型号保守计数' }} · 资源版本 <code>{{ plan.profile.revision }}</code></p>
       <p>主审及关联初始输入合计 {{ plan.input_tokens }} Token／估算单位；每次输出额度 {{ plan.config.model_max_output_tokens || 8192 }} Token；文本变更 {{ plan.changed_lines }} 行。预计耗时：样本不足，累计有效执行预算 {{ Math.round(task.batch.budget_seconds) }} 秒。</p>
       <div v-if="task.timing" class="batch-times">
@@ -21,6 +24,14 @@
       </div>
       <el-alert v-for="gap in plan.gaps" :key="gap.path" :title="gap.path + '：' + gap.reason" type="warning" :closable="false" />
       <details v-if="plan.unsupported.length"><summary>未支持内容（{{ plan.unsupported.length }}）</summary><p v-for="item in plan.unsupported" :key="item.path">{{ item.path }}：{{ item.reason }}</p></details>
+      <details v-if="plan.relations?.length">
+        <summary>源码关系与检查依据（{{ plan.relations.length }}）</summary>
+        <p v-for="(relation, index) in plan.relations" :key="index">
+          {{ relation.code.map(code => `${code.path} · ${code.name} (${code.side === 'old' ? '基线' : '修改后'} ${code.start}–${code.end})`).join(' ↔ ') }}：
+          {{ relation.reason }}。{{ relation.covered_by ? '已由同一主审批次联合检查。' : '纳入跨批关联复核。' }}
+        </p>
+      </details>
+      <details v-if="plan.limitations?.length"><summary>关系分析边界（{{ plan.limitations.length }}）</summary><p v-for="(item, index) in plan.limitations" :key="index">{{ item.path || '工程范围' }}：{{ item.reason }}</p></details>
       <el-table :data="task.batch.units" max-height="400">
         <el-table-column label="单元" prop="id" min-width="170" /><el-table-column label="类型" min-width="100"><template #default="{ row }">{{ kinds[row.kind] || row.kind }}</template></el-table-column>
         <el-table-column label="初始输入" prop="input_tokens" min-width="110" /><el-table-column label="状态" min-width="110"><template #default="{ row }">{{ states[row.state] || row.state }}</template></el-table-column>
@@ -40,7 +51,7 @@ const props = defineProps({ task: { type: Object, required: true } })
 const plan = computed(() => props.task.batch?.value)
 const busy = ref(false), error = ref(''), extra = ref(3600)
 const kinds = { primary: '主审', association: '关联复核', refutation: '候选反证', history: '历史复核' }
-const states = { pending: '待执行', running: '执行中', done: '已完成', failed: '已确认失败', unknown: '结果待核对' }
+const states = { pending: '待执行', running: '执行中', done: '已完成', failed: '已确认失败', unknown: '结果待核对', replaced: '已拆分' }
 const seconds = value => value == null ? '未记录' : Math.round(value) + ' 秒'
 async function act(action, unit) {
   if (busy.value) return

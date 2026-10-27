@@ -8,7 +8,7 @@ import threading
 import time
 
 from .common import ReviewError, Stale, PublishUnknown, encode, digest
-from . import batch_store as state, batch_plan as planner, batch_counter, diff_inline, token_budget
+from . import batch_store as state, batch_plan as planner, batch_counter, diff_inline, token_budget, batch_references, batch_locations
 from .gitea import assert_version
 
 
@@ -43,7 +43,13 @@ def _execute_unit(store, job, config, snapshot, record, budget, profile):
     from .diff_review import prepare
     unit = json.loads(record['value']) if isinstance(record['value'], str) else record['value']
     candidates = unit.get('candidates')
-    messages = planner.messages(snapshot, unit, candidates)
+    with store.connect() as c:
+        previous = c.execute("SELECT session,raw FROM review_batch_attempts WHERE job=? AND unit=? AND state='failed' "
+                             "AND json_extract(session,'$.reference_validation') IS NOT NULL ORDER BY attempt DESC LIMIT 1",
+                             (job['id'], unit['id'])).fetchone()
+    correction = (planner._decode_output(json.loads(previous['raw']))
+                  if previous and json.loads(previous['session']).get('reference_validation') else None)
+    messages = planner.messages(snapshot, unit, candidates, correction=correction)
     batch_counter.run('count', {'messages': messages, 'profile': profile}, config,
                       lambda: store.active(job['id'], job['owner']), store.path.parent)
     attempt, token = _new_attempt(store, job, unit, config, budget)
@@ -67,12 +73,17 @@ def _execute_unit(store, job, config, snapshot, record, budget, profile):
                           (encode(raw), encode({k: session[k] for k in state.SESSION_FIELDS}), attempt['session_id']))
         acknowledge_result(store, job, raw['_native_result_sha256'], raw['_native_final_event_seq'])
         result = planner.parse_refutation(raw, unit, candidates) if candidates is not None else planner.parse_report(raw, snapshot, unit)
+        if correction and not batch_references.unchanged_report(correction, planner._decode_output(raw),
+                field='checks' if candidates is not None else 'findings', locations=unit.get('reference_protocol') == batch_locations.PROTOCOL):
+            error = token_budget.failure('BATCH_OUTPUT_INVALID', '引用纠正改变了意见内容或数量，未接受结果')
+            error.diagnostic = {'source': 'batch_result', 'reason': 'batch_repair_changed_report'}
+            raise error
         with store.tx() as c:
             store._active(c, job['id'], job['owner'])
             c.execute("UPDATE review_batch_attempts SET state='done',finished=? WHERE session_id=?", (time.time(), attempt['session_id']))
             c.execute("UPDATE jobs SET session_status='completed' WHERE id=?", (job['id'],))
             c.execute("UPDATE review_batch_units SET state='done',result=?,error='' WHERE job=? AND id=?", (encode(result), job['id'], unit['id']))
-            if candidates is None and result['findings']:
+            if candidates is None and result['findings'] and unit.get('flow_version') != 'diff-batches-v3':
                 refutation = dict(unit, id=unit['id']+'-check', kind='refutation', candidates=result['findings'], core=[], parent=unit['id'])
                 position = c.execute('SELECT max(position)+1 FROM review_batch_units WHERE job=?', (job['id'],)).fetchone()[0]
                 c.execute('INSERT OR IGNORE INTO review_batch_units(job,id,position,kind,value) VALUES(?,?,?,?,?)',
@@ -86,15 +97,56 @@ def _execute_unit(store, job, config, snapshot, record, budget, profile):
                  and not getattr(exc, 'error_code', '').startswith('EXECUTOR_RESULT_ACK'))
         with store.tx() as c:
             store._active(c, job['id'], job['owner'])
+            saved_session = {k: current[k] for k in state.SESSION_FIELDS}
+            saved_session['failure_diagnostic'] = dict(getattr(exc, 'diagnostic', {}), session_id=attempt['session_id'])
+            reason = getattr(exc, 'diagnostic', {}).get('reason')
+            if reason in batch_references.RETRY_REASONS | batch_locations.RETRY_REASONS:
+                saved_session['reference_validation'] = dict(exc.diagnostic, error_code=exc.error_code)
+            retry = (known and current['session_status'] == 'completed' and attempt['attempt'] == 1
+                     and unit.get('reference_protocol') in (batch_references.PROTOCOL, batch_locations.PROTOCOL)
+                     and reason in batch_references.RETRY_REASONS | batch_locations.RETRY_REASONS)
             c.execute('UPDATE review_batch_attempts SET state=?,session=?,finished=? WHERE session_id=?',
-                      ('failed' if known else 'unknown', encode({k: current[k] for k in state.SESSION_FIELDS}), time.time(), attempt['session_id']))
+                      ('failed' if known else 'unknown', encode(saved_session), time.time(), attempt['session_id']))
             c.execute('UPDATE review_batch_units SET state=?,error=? WHERE job=? AND id=?',
-                      ('failed' if known else 'unknown', str(exc), job['id'], unit['id']))
+                      ('pending' if retry else 'failed' if known else 'unknown', str(exc), job['id'], unit['id']))
+        if retry:
+            return False
         raise
 
 
 def aggregate(snapshot, plan):
     findings, sections, limitations = [], [], []
+    if plan['value']['version'] == 'diff-batches-v3':
+        from .batch_flow import candidates
+        original = {c['id']: c for u in plan['units'] if u['kind'] in ('primary', 'association') and u['state'] != 'replaced'
+                    for c in u['result']['findings']}
+        # 反证候选编号以已保存的分组为准，恢复时不按当前代码重新编号。
+        collected = [c for u in plan['units'] if u['kind'] == 'refutation' and u['state'] != 'replaced' for c in u['value']['candidates']]
+        origins = [ident for c in collected for ident in c['origins']]
+        expected_origins = {ident for ident, c in original.items() if c['severity'] in ('P0', 'P1')}
+        if set(origins) != expected_origins or len(origins) != len(expected_origins):
+            raise token_budget.failure('BATCH_OUTPUT_INVALID', '反证分组遗漏或重复原始候选，禁止发布')
+        for candidate in collected:
+            content = {k: v for k, v in candidate.items() if k not in ('id', 'origins', 'source_units')}
+            if any(content != {k: v for k, v in original[ident].items() if k != 'id'} for ident in candidate['origins']):
+                raise token_budget.failure('BATCH_OUTPUT_INVALID', '保存的反证候选与原始意见不一致')
+        collected += [c for c in candidates(plan) if c['severity'] not in ('P0', 'P1')]
+        checks = [check for unit in plan['units'] if unit['kind'] == 'refutation' and unit['state'] == 'done'
+                  for check in unit['result']]
+        expected = {c['id'] for c in collected if c['severity'] in ('P0', 'P1')}
+        if {c['id'] for c in checks} != expected or len(checks) != len(expected):
+            raise token_budget.failure('BATCH_OUTPUT_INVALID', '反证阶段遗漏或重复候选，禁止发布')
+        checks += [{'id': c['id'], 'decision': 'confirmed', 'reason': '非阻塞意见，未单独反证，不影响 PASS/FAIL'}
+                   for c in collected if c['severity'] not in ('P0', 'P1')]
+        for unit in plan['units']:
+            if unit['kind'] in ('primary', 'association') and unit['state'] == 'done':
+                limitations.extend(str(s) for s in unit['result'].get('limitations', []))
+                sections.append(unit['result']['summary'])
+        limitations.extend(str(s.get('reason', '')) for s in plan['value'].get('limitations', []))
+        rows = list({r['id']: r for u in plan['units'] for r in u['value'].get('evidence', [])}.values())
+        plan = dict(plan, units=[{'id': 'collected', 'kind': 'primary', 'state': 'done',
+                                 'value': {'evidence': rows}, 'result': {'summary': '', 'findings': collected}},
+                                {'kind': 'refutation', 'state': 'done', 'value': {'parent': 'collected'}, 'result': checks}])
     by_parent = {u['value'].get('parent'): u for u in plan['units'] if u['kind'] == 'refutation'}
     anchors = snapshot['anchors']
     for u in plan['units']:
@@ -113,11 +165,13 @@ def aggregate(snapshot, plan):
                     limitations.append(candidate['title'] + '：' + check['reason'])
                 continue
             anchor = anchors.get(candidate['anchor_id'])
-            body = '\n\n'.join(candidate[k] for k in ('trigger', 'explanation', 'impact', 'recommendation'))
+            body = candidate['body'] if 'body' in candidate else '\n\n'.join(candidate[k] for k in ('trigger', 'explanation', 'impact', 'recommendation'))
             body += '\n\n反证核对：' + check['reason']
             finding = {'kind': 'diff_inline', 'severity': candidate['severity'], 'title': candidate['title'],
                        'comment_markdown': body, 'anchor': anchor, 'quote': anchor['quote'] if anchor else '',
                        'path': anchor['path'] if anchor else '', 'scope': 'PR diff'}
+            if candidate.get('origins'):
+                finding['origins'] = candidate['origins']
             finding['fingerprint'] = digest(finding)
             # 仅合并逐字段完全相同的结论，不根据标题近似删除意见。
             if not any(f['fingerprint'] == finding['fingerprint'] for f in findings):
@@ -127,7 +181,12 @@ def aggregate(snapshot, plan):
         report += f"\n\n### [{f['severity']}] {f['title']}\n\n{f['comment_markdown']}"
     if limitations:
         report += '\n\n## 待确认与范围限制\n\n' + '\n\n'.join(limitations)
-    report += '\n\n仅覆盖固定 PR diff；文本覆盖率不代表缺陷识别率，未检查 diff 外工程依赖。'
+    if plan['value']['version'] == 'diff-batches-v3':
+        verdict = 'FAIL' if any(f['severity'] in ('P0', 'P1') for f in findings) else 'PASS'
+        report = 'VERDICT: ' + verdict + '\n\n' + report
+        report += '\n\n覆盖固定 PR 变更及记录范围内的两版源码；文本覆盖率不代表缺陷识别率，工程关系限制见上文。'
+    else:
+        report += '\n\n仅覆盖固定 PR diff；文本覆盖率不代表缺陷识别率，未检查 diff 外工程依赖。'
     coverage = dict(snapshot['coverage'], complete=True, files_reviewed=len({r['path'] for u in plan['units'] if u['kind'] == 'primary' and u['state'] == 'done' for r in u['value']['evidence']}),
                     changed_lines=plan['value']['changed_lines'], reviewed_lines=plan['value']['changed_lines'],
                     unsupported=plan['value']['unsupported'])
@@ -173,10 +232,18 @@ def process(store, job):
             store.update(job['id'], job['owner'], snapshot=snapshot, stage='计算分批计划')
         plan = state.get(store, job['id'], private=True)
         if not plan:
+            if job.get('batch_flow_version', 2) >= 4:
+                snapshot = dict(snapshot, batch_reference_protocol=batch_locations.PROTOCOL)
+                store.update(job['id'], job['owner'], snapshot=snapshot)
+            if job.get('batch_flow_version', 2) >= 3 and 'analysis_sources' not in snapshot:
+                from .batch_graph import capture_sources
+                sources, limits = capture_sources(client, snapshot, lambda: store.active(job['id'], job['owner']))
+                snapshot = dict(snapshot, analysis_sources=sources, analysis_limitations=limits)
+                store.update(job['id'], job['owner'], snapshot=snapshot)
             adopt_history(store, client, job, repo)
             with store.connect() as c:
                 history = [r[0] for r in c.execute('SELECT id FROM review_issues WHERE repository=? AND number=? ORDER BY created,id', (job['repository'], job['number']))]
-            value = batch_counter.run('plan', {'snapshot': snapshot, 'history': history}, config,
+            value = batch_counter.run('plan', {'snapshot': snapshot, 'history': history, 'flow_version': job.get('batch_flow_version', 2)}, config,
                                       lambda: store.active(job['id'], job['owner']), store.path.parent)
             state.save(store, job, value, config)
             plan = state.get(store, job['id'], private=True)
@@ -208,13 +275,19 @@ def process(store, job):
         if pending:
             unit = pending[0]
             if unit['state'] == 'failed':
+                if state.adjust_output(store, job, unit, store.job(job['id'], evidence=False).get('diagnostic') or {}, config, snapshot):
+                    state.transition(store, job, 'queued', '已保留输出超限记录，等待确认更小的关系或反证任务')
+                    return
                 state.transition(store, job, 'incomplete', '单元已确认失败，需选择该单元重试')
                 return
             store.update(job['id'], job['owner'], stage='执行分批单元 '+unit['id'])
             try:
-                _execute_unit(store, job, config, snapshot, unit, remaining, plan['value']['profile'])
+                completed = _execute_unit(store, job, config, snapshot, unit, remaining, plan['value']['profile'])
             except ReviewError:
                 actual = store.job(job['id'], evidence=False)
+                if state.adjust_output(store, job, unit, actual.get('diagnostic') or {}, config, snapshot):
+                    state.transition(store, job, 'queued', '已保留输出超限记录，等待确认更小的关系或反证任务')
+                    return
                 if state.adjust_context(store, job, unit, actual.get('diagnostic') or {}, config, snapshot):
                     state.transition(store, job, 'queued', '服务拒绝上下文长度，已生成一次缩小计划')
                     return
@@ -226,7 +299,13 @@ def process(store, job):
                             changed_lines=plan['value']['changed_lines'], files_reviewed=0)
             store.update(job['id'], job['owner'], result={'coverage': coverage, 'findings': [], 'review_scope': 'diff'},
                          units_completed=sum(u['state']=='done' for u in fresh['units']), units_total=len(fresh['units']))
-            state.transition(store, job, 'queued', '本单元完成，等待下一执行位置')
+            state.transition(store, job, 'queued', '本单元完成，等待下一执行位置' if completed else '引用校验失败，保留首次结果并执行一次纠正')
+            return
+        if plan['value']['version'] == 'diff-batches-v3' and not plan['value'].get('refutation_planned'):
+            groups = batch_counter.run('refutations', {'snapshot': snapshot, 'plan': plan}, config,
+                                       lambda: store.active(job['id'], job['owner']), store.path.parent)
+            state.save_refutations(store, job, plan, groups)
+            state.transition(store, job, 'queued', '候选汇总完成，已按证据与保护条件分组反证')
             return
         saved_result = store.job(job['id']).get('result') or {}
         result = saved_result if saved_result.get('lifecycle', {}).get('snapshot_id') == snapshot['id'] else aggregate(snapshot, plan)

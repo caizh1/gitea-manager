@@ -25,6 +25,8 @@ test('新增诊断字段不接受任意文本和非法序号', async () => {
 test('合法锚点和原有诊断继续显示', async () => {
   const { safeDiagnostic, diagnosticLocation } = await loaded
   assert.equal(safeDiagnostic({ evidence_id: 'R123' }).evidence_id, 'R123')
+  assert.equal(safeDiagnostic({ evidence_id: 'E123456abcd' }).evidence_id, 'E123456abcd')
+  assert.equal(safeDiagnostic({ evidence_id: 'Eed719850711' }).evidence_id, 'Eed719850711')
   assert.equal(safeDiagnostic({ finding_index: '2' }), null)
   assert.deepEqual(safeDiagnostic({ source: 'model_transport', http_status: 502 }), { source: 'model_transport', http_status: 502 })
   assert.equal(diagnosticLocation({ source: 'model_transport', phase: 'response_stream' }), '模型响应传输')

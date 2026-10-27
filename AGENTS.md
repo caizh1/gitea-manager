@@ -399,6 +399,9 @@ bash deploy.sh
 - `.gitea-manager-upgrades/` 与 `compose.managed.json` 仅在部署机保存，含秘密，不得打包或提交。升级验证期间必须保留共享维护标记，同时阻止 Web 请求、策略/备份调度、审查、进度、反馈与初始化后台写入；健康和历史核对后才能解除。
 - 自动接入在 `backend/ai_review/setup_service.py`、`setup_transport.py`、`host_policy.py` 与 `AIReviewSetup.vue`。管理端凭据只用于初始化；Worker/执行器不能新增 Docker socket、SSH 或管理凭据挂载。
 - 分批失败的自动检查位于 `backend/ai_review/failure_checks.py`，结果附在原诊断中；历史任务通过 `GET /api/ai-review/tasks/<job>/failure-checks` 只读补查。只使用当前任务、会话与冻结配置，不调用模型、不跨单元放行证据、不自动重试或覆盖首因；读取上限和权限边界见 `docs/review-failure-checks.md`。
+- 新分批计划使用 `batch_references.py` 的本单元短编号协议；持久化证据与全局定位不重编号。仅对完整响应且回执已确认的引用错误允许一次独立纠正，首次记录保留并计入成本上限；历史计划、未知结果、截断和格式错误不能因此自动重放。边界及真实模型样本见 `docs/review-evidence-references.md`。
+- 第三版分批流程由 `batch_graph.py` 收集固定版本语法关系、`batch_flow.py` 生成主审与关联并汇总分组反证；不是按相同标识符配对。新任务固定 `batch_flow_version=4` 并使用 `batch_locations.py` 的源码位置协议，已存在的 2/3 任务保留原流程与编号协议；不得替换运行中的旧计划。全部主审与关联完成后事务性创建反证组，候选逐项校验且保留来源。验收见 `docs/review-flow-optimization.md`。
+- 版本 4 的任务在已有原生回执确认 `finish_reason=length` 时，可将关联按原函数关系、反证按候选拆分，最多两层；不能接受截断报告，不能用于未知回执或普通格式错误。保留原失败、重算可见成本计划，仍需满足调用授权。此机制不同于一次引用纠正，不改动历史版本任务。
 - Gitea 1.26.4 的 Webhook 测试只发 Push 且受订阅过滤；临时订阅必须恢复并回读。机器人身份和不确定的令牌回执必须先核对，不能盲目重建。
 - AI 完整交付使用当前 Linux amd64 构建镜像及 `scripts/review-package.py --export-images --source-image-tag <固定标签>`。不得用只含前后端的旧通用 tar 命令代替。打包器会拒绝并发打包及归档期间内容变化。
 - 使用独立标记实例验收，不操作用户现有环境。工程链路、实际内网模型效果、真实宿主机验收和人工精力指标分别报告，依据 `docs/一键升级验收报告.md`，不能互相替代。

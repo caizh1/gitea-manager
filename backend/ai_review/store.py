@@ -28,10 +28,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 17:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 18:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 17:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 18:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -100,7 +100,7 @@ class Store:
             c.execute("CREATE INDEX IF NOT EXISTS finding_archive_job ON review_finding_archive(json_extract(value,'$.job'))")
             from .batch_store import migrate as migrate_batches
             migrate_batches(c)
-            c.execute('PRAGMA user_version=17')
+            c.execute('PRAGMA user_version=18')
             c.commit()
         os.chmod(self.path, 0o600)
 
@@ -393,7 +393,7 @@ class Store:
                          VALUES (?,?,?,?,'queued','等待执行',?,?,?,?,?,?,?,1)''',
                       (job, repository, number, generation, now, now + (0 if manual else config['debounce_seconds']), now,
                        config['revision'], repo['revision'], int(manual), target_head))
-            c.execute('UPDATE jobs SET access_scope=?,access_actor=? WHERE id=?',
+            c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=4 WHERE id=?',
                       (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
             return job
 

@@ -18,6 +18,9 @@ SESSION_FIELDS = ('session_id', 'session_status', 'current_action', 'deadline_at
 def migrate(c):
     if 'batch_protocol' not in {r[1] for r in c.execute('PRAGMA table_info(jobs)')}:
         c.execute('ALTER TABLE jobs ADD COLUMN batch_protocol INTEGER NOT NULL DEFAULT 0')
+    if 'batch_flow_version' not in {r[1] for r in c.execute('PRAGMA table_info(jobs)')}:
+        # 升级前已排队但尚未生成计划的任务，也必须继续旧流程。
+        c.execute('ALTER TABLE jobs ADD COLUMN batch_flow_version INTEGER NOT NULL DEFAULT 2')
     c.executescript('''
     CREATE TABLE IF NOT EXISTS review_batch_plans (
       job TEXT PRIMARY KEY, hash TEXT NOT NULL, value TEXT NOT NULL,
@@ -87,6 +90,7 @@ def get(store, job, private=False):
             result['value']['input_tokens'] = sum(unit['input_tokens'] or 0 for unit in units
                                                   if unit['kind'] in ('primary', 'association') and unit['state'] != 'replaced')
         result['value'].pop('units', None)
+        result['value'].pop('scopes', None)
         result['value']['config'].pop('api_base_url', None)
     return result
 
@@ -174,6 +178,30 @@ def transition(store, job, state, reason):
                   (state, reason, reason if state == 'incomplete' else '', time.time(), time.time(), job['id']))
 
 
+def save_refutations(store, job, plan, units):
+    """只在所有主审完成后一次性安装反证阶段；恢复不重新生成或调用模型。"""
+    from .common import digest
+    with store.tx() as c:
+        store._active(c, job['id'], job['owner'])
+        row = c.execute('SELECT value FROM review_batch_plans WHERE job=?', (job['id'],)).fetchone()
+        current = json.loads(row[0])
+        if current.get('refutation_planned'):
+            return
+        if current['hash'] != plan['hash']:
+            raise Stale('生成反证分组期间计划已经变化')
+        position = c.execute('SELECT COALESCE(max(position),-1)+1 FROM review_batch_units WHERE job=?', (job['id'],)).fetchone()[0]
+        for i, unit in enumerate(units):
+            c.execute('INSERT INTO review_batch_units(job,id,position,kind,value) VALUES(?,?,?,?,?)',
+                      (job['id'], unit['id'], position + i, 'refutation', encode(unit)))
+        current['refutation_planned'] = True
+        current['refutation_groups'] = len(units)
+        # 真实分组超出预留时扩大可见计划并重新取得授权；不使用目标次数截断。
+        current['max_calls'] = max(current['max_calls'], 2 * (current['base_calls'] - current['history'] + len(units)) + current['history'])
+        current['hash'] = digest({k: v for k, v in current.items() if k != 'hash'})
+        c.execute('UPDATE review_batch_plans SET value=?,hash=? WHERE job=?',
+                  (encode(current), current['hash'], job['id']))
+
+
 def control(store, job_id, data, actor, confirm=False):
     with store.tx() as c:
         row = c.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
@@ -248,6 +276,10 @@ def adjust_context(store, job, record, diagnostic, config, snapshot):
     if diagnostic.get('upstream_error_code') not in ('context_length_exceeded', 'context_window_exceeded'):
         return False
     unit = record['value']
+    if unit.get('flow_version') == 'diff-batches-v3':
+        # 新版关系图包含完整保护上下文。供应商拒绝已计数的请求时，不能沿用旧版
+        # 中点裁剪偷偷改变关系范围；保留失败以便核对实际模型窗口后显式重建任务。
+        return False
     if unit['kind'] != 'primary' or unit.get('context_adjusted') or len(unit['evidence']) < 2:
         return False
     from .batch_plan import messages
@@ -278,7 +310,10 @@ def adjust_context(store, job, record, diagnostic, config, snapshot):
         plan['input_tokens'] = sum(u['input_tokens'] for u in plan['units'])
         plan.setdefault('adjustments', []).append({'unit': unit['id'], 'reason': '服务明确拒绝上下文长度'})
         plan['primary'] += 1; plan['association'] += 1
-        plan['base_calls'] += 3; plan['max_calls'] += 5
+        # 新协议每个审查及反证单元均最多一次引用纠正；旧计划保持原额度算法。
+        from .batch_references import PROTOCOL
+        plan['base_calls'] += 3
+        plan['max_calls'] += 11 if unit.get('reference_protocol') == PROTOCOL else 5
         plan['hash'] = digest({k: v for k, v in plan.items() if k != 'hash'})
         authorization = plan['max_calls'] if plan['max_calls'] <= config.get('batch_auto_calls', 8) else 0
         c.execute('UPDATE review_batch_plans SET hash=?,value=?,authorized_calls=? WHERE job=?',
@@ -288,4 +323,94 @@ def adjust_context(store, job, record, diagnostic, config, snapshot):
         for i, part in enumerate(parts):
             c.execute('INSERT INTO review_batch_units(job,id,position,kind,value) VALUES(?,?,?,?,?)',
                       (job['id'], part['id'], position+i, part['kind'], encode(part)))
+    return True
+
+
+def adjust_output(store, job, record, diagnostic, config, snapshot):
+    """已确认输出用尽时拆分关系或候选，保留失败记录，最多递归两层。"""
+    unit = record['value']
+    if (job.get('batch_flow_version', 2) < 4 or unit.get('flow_version') != 'diff-batches-v3'
+            or unit.get('output_split_depth', 0) >= 2):
+        return False
+    from . import batch_flow
+    from .common import digest
+    with store.connect() as c:
+        row = c.execute('SELECT value FROM review_batch_plans WHERE job=?', (job['id'],)).fetchone()
+        previous = c.execute('SELECT state,session,raw,session_id FROM review_batch_attempts WHERE job=? AND unit=? ORDER BY attempt DESC LIMIT 1',
+                             (job['id'], unit['id'])).fetchone()
+    if not row:
+        return False
+    def exhausted(attempt):
+        if not attempt or attempt['state'] != 'failed':
+            return False
+        session = json.loads(attempt['session'])
+        saved = session.get('diagnostic') or {}
+        if isinstance(saved, str):
+            saved = json.loads(saved)
+        raw = json.loads(attempt['raw']) if attempt['raw'] else {}
+        failure = session.get('failure_diagnostic') or {}
+        # 兼容修复前已保存的失败；仅接受与该次尝试会话严格绑定的任务诊断。
+        bound = diagnostic if diagnostic.get('session_id') == attempt['session_id'] else {}
+        return any(value.get('finish_reason') == 'length' for value in
+                   (saved, failure, bound, raw.get('_review_completion', {})))
+    if not exhausted(previous):
+        return False
+    plan = json.loads(row[0])
+    if unit['kind'] == 'association':
+        connections = unit.get('connections', [])
+        if len(connections) < 2:
+            return False
+        groups = OrderedDict()
+        for relation in connections:
+            groups.setdefault(tuple(sorted((relation['left'], relation['right']))), []).append(relation)
+        parts = list(groups.values())
+        if len(parts) == 1:
+            middle = len(connections) // 2
+            parts = [connections[:middle], connections[middle:]]
+        children = []
+        for relations in parts:
+            evidence = [r for relation in relations for key in (relation['left'], relation['right'])
+                        for r in plan['scopes'][key]['evidence']]
+            children.append(batch_flow.make_unit(snapshot, 'association', evidence, connections=relations))
+    elif unit['kind'] == 'refutation' and len(unit.get('candidates', [])) > 1:
+        middle = len(unit['candidates']) // 2
+        children = [batch_flow.make_unit(snapshot, 'refutation', unit['evidence'], candidates=items)
+                    for items in (unit['candidates'][:middle], unit['candidates'][middle:])]
+    else:
+        return False
+    for index, child in enumerate(children):
+        child['output_split_depth'] = unit.get('output_split_depth', 0) + 1
+        child['output_parent'] = unit['id']
+        child['id'] = digest([unit['id'], index, child['id']])[:24]
+        child['input_tokens'] = batch_flow.count(snapshot, child, config, plan['profile'])
+        if child['input_tokens'] > token_budget.capacity(config):
+            return False
+    with store.tx() as c:
+        store._active(c, job['id'], job['owner'])
+        state_row = c.execute('SELECT state FROM review_batch_units WHERE job=? AND id=?', (job['id'], unit['id'])).fetchone()
+        attempt = c.execute('SELECT state,session,raw,session_id FROM review_batch_attempts WHERE job=? AND unit=? ORDER BY attempt DESC LIMIT 1',
+                            (job['id'], unit['id'])).fetchone()
+        if not state_row or state_row['state'] != 'failed' or not exhausted(attempt):
+            return False
+        current = json.loads(c.execute('SELECT value FROM review_batch_plans WHERE job=?', (job['id'],)).fetchone()[0])
+        if current['hash'] != plan['hash']:
+            raise Stale('拆分期间计划已变更')
+        position = c.execute('SELECT COALESCE(max(position),-1)+1 FROM review_batch_units WHERE job=?', (job['id'],)).fetchone()[0]
+        c.execute("UPDATE review_batch_units SET state='replaced' WHERE job=? AND id=?", (job['id'], unit['id']))
+        for index, child in enumerate(children):
+            c.execute('INSERT INTO review_batch_units(job,id,position,kind,value) VALUES(?,?,?,?,?)',
+                      (job['id'], child['id'], position + index, child['kind'], encode(child)))
+        if unit['kind'] == 'association':
+            current['units'] = [u for u in current['units'] if u['id'] != unit['id']] + children
+            current['association'] += len(children) - 1
+            current['base_calls'] += len(children) - 1
+            current['input_tokens'] = sum(u['input_tokens'] for u in current['units'])
+        else:
+            current['refutation_groups'] = current.get('refutation_groups', 1) + len(children) - 1
+        current.setdefault('output_adjustments', []).append({'unit': unit['id'], 'reason': '输出额度耗尽',
+                                                            'children': [u['id'] for u in children]})
+        current['max_calls'] += 2 * len(children)
+        current['hash'] = digest({k: v for k, v in current.items() if k != 'hash'})
+        c.execute('UPDATE review_batch_plans SET hash=?,value=? WHERE job=?', (current['hash'], encode(current), job['id']))
+        c.execute("UPDATE jobs SET diagnostic='{}' WHERE id=?", (job['id'],))
     return True

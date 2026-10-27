@@ -91,7 +91,7 @@ class PerformanceTests(unittest.TestCase):
             self.assertEqual({k:v for k,v in store.job(job['id']).items() if k!='progress'},
                              {k:v for k,v in before.items() if k!='progress'})
             self.assertIsNone(store.job(job['id'],public=True)['performance'])
-            with contextlib.closing(store.connect()) as c:self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],14)
+            with contextlib.closing(store.connect()) as c:self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],18)
 
     def test_nested_durations_are_not_added_and_survive_restart(self):
         job,*_=self.fixture();key=job['id']

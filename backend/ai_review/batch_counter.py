@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -42,9 +43,18 @@ def run(operation, payload, config, guard=None, lock_dir=None):
                     pass
         env = dict(os.environ, TOKENIZERS_PARALLELISM='false', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                    PYTHONPATH=str(Path(__file__).resolve().parents[1]))
-        process = subprocess.Popen([sys.executable, '-m', 'ai_review.batch_counter'], stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         data = json.dumps({'operation': operation, 'payload': payload, 'config': config}, ensure_ascii=False).encode()
+        # 大请求可能尚未写完管道就触发 communicate 的短超时；后续无 input 的
+        # communicate 不会继续注册 stdin 写事件。匿名文件提供确定 EOF，避免死等。
+        source = tempfile.TemporaryFile(prefix='batch-input-', dir=root)
+        try:
+            source.write(data)
+            source.seek(0)
+            process = subprocess.Popen([sys.executable, '-m', 'ai_review.batch_counter'], stdin=source,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        except BaseException:
+            source.close()
+            raise
         try:
             while True:
                 if guard:
@@ -60,10 +70,10 @@ def run(operation, payload, config, guard=None, lock_dir=None):
                 if time.monotonic() >= deadline:
                     raise token_budget.failure('PREPROCESS_TIMEOUT', '分批预处理超过时间预算，未调用模型')
                 try:
-                    out, err = process.communicate(data, timeout=.2)
+                    out, err = process.communicate(timeout=.2)
                     break
                 except subprocess.TimeoutExpired:
-                    data = None
+                    pass
             if process.returncode:
                 raise token_budget.failure('PREPROCESS_RESOURCE', '计数进程异常退出或超过内存预算，未调用模型')
             result = json.loads(out)
@@ -79,9 +89,12 @@ def run(operation, payload, config, guard=None, lock_dir=None):
                     old.unlink(missing_ok=True)
             return result['value']
         finally:
-            if process.poll() is None:
-                process.kill()
-            process.communicate()
+            try:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+            finally:
+                source.close()
 
 
 def main():
@@ -91,8 +104,14 @@ def main():
     # 不能把虚拟地址空间限制误当作实际内存预算。
     try:
         if request['operation'] == 'plan':
-            from .batch_plan import build
+            if request['payload'].get('flow_version', 2) >= 3:
+                from .batch_flow import build
+            else:
+                from .batch_plan import build
             value = build(request['payload']['snapshot'], config, request['payload']['history'])
+        elif request['operation'] == 'refutations':
+            from .batch_flow import refutations
+            value = refutations(request['payload']['snapshot'], request['payload']['plan'], config)
         elif request['operation'] == 'benchmark':
             import resource
             sample = 'int value = 123; // 中文代码\n'

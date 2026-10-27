@@ -25,6 +25,9 @@ def state():
             store.save_config({'revision': 1, 'enabled': True, 'model': '测试模型', 'debounce_seconds': 0})
             repo = store.save_repo(1, 7, {'enabled': True, 'bot_token': store.seal('测试'), 'webhook_secret': store.seal('测试'), 'repo_name': 'test/code', 'bot_id': 9})
             job_id = store.enqueue(repo['id'], 1, {'head': 'a'*40, 'base': 'b'*40})
+            # 本文件锁定旧版计划恢复语义；新建任务默认版本在第三版测试中单独验证。
+            with store.tx() as conn:
+                conn.execute('UPDATE jobs SET batch_flow_version=2 WHERE id=?', (job_id,))
             yield store, store.claim(), repo
 
 

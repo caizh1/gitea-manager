@@ -30,7 +30,7 @@ class ConvergenceTests(unittest.TestCase):
             self.assertEqual(self.store.config(),config)
             with contextlib.closing(self.store.connect()) as c:
                 self.assertIn('created',[r[1] for r in c.execute('PRAGMA table_info(review_turns)')])
-                self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],14)
+                self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0],18)
         result=review(self.store,job,config,snap,[item],caller=lambda *args:{'findings':[]},client=client)
         self.assertTrue(result['coverage']['complete'])
 

@@ -64,7 +64,7 @@ export function safeDiagnostic(value) {
   // 只展示后端允许的定位元数据，不把任意模型文本当成证据编号复制出来。
   if (value.output_field === 'evidence_ids') safe.output_field = value.output_field
   if (Number.isSafeInteger(value.finding_index) && value.finding_index > 0) safe.finding_index = value.finding_index
-  if (typeof value.evidence_id === 'string' && value.evidence_id.length <= 180 && /^(?:R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)$/.test(value.evidence_id)) safe.evidence_id = value.evidence_id
+  if (typeof value.evidence_id === 'string' && value.evidence_id.length <= 180 && /^(?:E[0-9a-f]{1,16}|R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)$/.test(value.evidence_id)) safe.evidence_id = value.evidence_id
   for (const key of ['finish_reasons', 'completion_warnings']) if (Array.isArray(value[key])) safe[key] = value[key].filter(item => ['string', 'number', 'boolean'].includes(typeof item)).slice(0, 20)
   if (Array.isArray(value.frames)) safe.frames = value.frames.slice(0, 6).map(frame => ({
     ...(hasValue(frame?.file) ? { file: String(frame.file) } : {}),

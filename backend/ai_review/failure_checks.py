@@ -13,7 +13,7 @@ from .common import ReviewError
 SUPPORTED = {'BATCH_OUTPUT_INVALID', 'BATCH_OUTPUT_INCOMPLETE', 'MODEL_INPUT_BUDGET'}
 MAX_BYTES = 8 * 1024 * 1024
 MAX_UNITS = 64
-REFERENCE = re.compile(r'(?:R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)\Z')
+REFERENCE = re.compile(r'(?:E[0-9a-f]{1,16}|R[1-9][0-9]*|F[1-9][0-9]*H[1-9][0-9]*L[1-9][0-9]*)\Z')
 
 
 class CheckLimit(Exception):
@@ -71,7 +71,7 @@ def analyze(store, job, diagnostic):
                 output = number(config, 'model_max_output_tokens', 0) or 8192
                 target = number(config, 'batch_input_tokens', 32768)
                 capacity = min(target, context - output - max(2048, math.ceil(context * .05)))
-                primary = (capacity - output - 512) // 2
+                primary = capacity - 512 if job.get('batch_flow_version', 2) >= 3 else (capacity - output - 512) // 2
                 check('input_allocation', 'confirmed' if capacity < 1024 or primary < 1024 else 'unknown',
                       '固定输入与输出额度',
                       f'上下文 {context}，单批目标 {target}，输出预留 {output}，完整请求可用 {capacity}，主审单元额度 {primary}。')
@@ -130,7 +130,29 @@ def analyze(store, job, diagnostic):
                 check('json_format', 'confirmed', '结果格式', descriptions.get(kind, '当前解析器拒绝该输出，未提取任意中间片段。'))
                 return report
             check('json_format', 'clear', '结果格式', '当前解析器能够读取完整 JSON 对象。')
-            aliases = _evidence_aliases(unit['evidence'])
+            from .batch_locations import PROTOCOL as LOCATION_PROTOCOL
+            if unit.get('reference_protocol') == LOCATION_PROTOCOL:
+                check('provided_evidence', 'clear', '本单元源码范围',
+                      f"共 {len(unit['evidence'])} 条固定源码证据；位置只在本单元解析，不查找最近行。")
+                try:
+                    if unit.get('candidates') is not None:
+                        parse_refutation(raw, unit, unit['candidates'])
+                    else:
+                        parse_report(raw, {}, unit)
+                except ReviewError as error:
+                    reason = getattr(error, 'diagnostic', {}).get('reason')
+                    labels = {'source_location_unknown': '位置不在本单元证据中。',
+                              'source_location_ambiguous': '同一位置对应多条不同证据，不能猜选。',
+                              'source_location_uncommentable': '位置可读取但不支持作为行内评论位置。',
+                              'source_candidate_coverage': '反证没有恰好覆盖所有候选。'}
+                    check('source_locations', 'confirmed', '源码位置与报告复验',
+                          labels.get(reason, '正文、字段、完成状态或位置格式不符合约定，原错误保留。'))
+                else:
+                    check('source_locations', 'clear', '源码位置与报告复验', '当前解析器接受保存结果；不会因此自动改写原任务状态。')
+                return report
+            from .batch_references import PROTOCOL, mapping
+            local = mapping(unit) if unit.get('reference_protocol') == PROTOCOL else {}
+            aliases = {key: {row['id']} for key, row in local.items()} if local else _evidence_aliases(unit['evidence'])
             supplied = [entry.get('id') for entry in unit['evidence']]
             ends = [value for value in supplied[:1] + supplied[-1:]
                     if isinstance(value, str) and len(value) <= 180 and REFERENCE.fullmatch(value)]
@@ -159,6 +181,8 @@ def analyze(store, job, diagnostic):
                         if item.get('severity') not in ('P0', 'P1', 'P2', 'P3') or any(not isinstance(item.get(key), str) or not item[key].strip() for key in required):
                             malformed += 1
                         anchor = item.get('anchor_id')
+                        if local and isinstance(anchor, str):
+                            anchor = local.get(anchor, {}).get('anchor_id', '__invalid__')
                         referenced = {ident for ref in refs if isinstance(ref, str) for ident in aliases.get(ref, ())}
                         if 'anchor_id' not in item or (anchor is not None and (not isinstance(anchor, str) or not any(e.get('anchor_id') == anchor and e['id'] in referenced for e in unit['evidence']))):
                             bad_anchor += 1
@@ -186,7 +210,8 @@ def analyze(store, job, diagnostic):
                     if scanned >= MAX_UNITS or consumed + (size or 0) > MAX_BYTES or time.monotonic() > deadline:
                         limited = True; break
                     other = decode(db.execute('SELECT value FROM review_batch_units WHERE job=? AND id=?', (job['id'], ident)).fetchone()[0])
-                    matched = set()
+                    matched = (unknown.intersection(mapping(other))
+                               if other.get('reference_protocol') == PROTOCOL else set())
                     for index, evidence in enumerate(other.get('evidence', [])):
                         if index % 256 == 0 and time.monotonic() > deadline: raise CheckLimit()
                         matched.update(unknown.intersection((evidence.get('id'), evidence.get('anchor_id'))))
@@ -200,7 +225,8 @@ def analyze(store, job, diagnostic):
             elif ambiguous:
                 check('current_unit_reference', 'confirmed', '当前单元证据', f'{len(ambiguous)} 个引用在本单元存在多个对应位置，不能猜选。')
             else:
-                check('current_unit_reference', 'clear', '当前单元证据', f'未发现字符串引用越界；识别了 {aliases_used} 个本单元定位别名。')
+                label = '编号映射' if local else '定位别名'
+                check('current_unit_reference', 'clear', '当前单元证据', f'未发现字符串引用越界；识别了 {aliases_used} 个本单元{label}。')
             try:
                 if unit.get('candidates') is not None: parse_refutation(raw, unit, unit['candidates'])
                 else: parse_report(raw, {}, unit)

@@ -266,6 +266,16 @@ class Gitea:
     def pages(self, path, limit=50, max_pages=100):
         if path.endswith('/timeline'):
             raise ReviewError('Gitea 时间线分页会过滤原始记录，不能作为完整定位依据')
+        if re.search(r'/pulls/[1-9][0-9]*/reviews/[1-9][0-9]*/comments$', path):
+            # 1.26.4 的 Review 评论接口直接返回完整数组，既不使用分页参数，
+            # 也不设置 X-Total-Count。不能按每页 50 条循环读取同一个集合。
+            rows = self.request('GET', path)
+            if (not isinstance(rows, list)
+                    or any(not isinstance(row, dict) or type(row.get('id')) is not int or row['id'] <= 0 for row in rows)
+                    or len({row['id'] for row in rows}) != len(rows)
+                    or self.response_total is not None and self.response_total != len(rows)):
+                raise ReviewError('Gitea Review 评论集合未通过完整性校验')
+            return rows
         if re.search(r'/issues/[1-9][0-9]*/comments$',path):
             # 1.26.4 普通评论接口忽略分页参数，直接返回完整集合。
             rows = self.request('GET',path)

@@ -67,6 +67,17 @@ class FailureChecksTests(unittest.TestCase):
         result = analyze(self.store, self.job, self.diagnostic)
         self.assertIn('0 个引用可找到', self.check(result, 'other_unit_reference')['detail'])
 
+    def test_local_protocol_is_checked_with_its_own_mapping(self):
+        from ai_review.batch_references import PROTOCOL, mapping
+        self.unit['reference_protocol'] = PROTOCOL
+        reference = next(iter(mapping(self.unit)))
+        self.report['findings'][0].update(evidence_ids=[reference], anchor_id=reference)
+        self.raw['report_markdown'] = json.dumps(self.report); self.seed()
+        result = analyze(self.store, self.job, self.diagnostic)
+        self.assertEqual(self.check(result, 'current_unit_reference')['state'], 'clear')
+        self.assertEqual(self.check(result, 'current_parser')['state'], 'clear')
+        self.assertFalse(any(row['code'] == 'anchor_binding' for row in result['checks']))
+
     def test_observed_f4h1l308_is_outside_154_rows_and_matches_ten_units(self):
         self.unit['evidence'] = [{'id': f'F4H1L{i}', 'anchor_id': None} for i in range(95, 249)]
         self.report['findings'][0].update(evidence_ids=['F4H1L308'], anchor_id=None)
@@ -138,6 +149,7 @@ class FailureChecksTests(unittest.TestCase):
         self.assertNotIn('automatic_checks', original)
 
     def test_input_budget_uses_frozen_configuration(self):
+        self.job['batch_flow_version'] = 2
         with self.store.tx() as c:
             config = self.store.job_config(self.job['id'])
             config.update(batch_input_tokens=32768, model_max_output_tokens=32768)
@@ -145,6 +157,16 @@ class FailureChecksTests(unittest.TestCase):
         result = analyze(self.store, self.job, {'error_code': 'MODEL_INPUT_BUDGET'})
         self.assertEqual(self.check(result, 'input_allocation')['state'], 'confirmed')
         self.assertIn('主审单元额度 -256', self.check(result, 'input_allocation')['detail'])
+
+    def test_new_flow_budget_does_not_reserve_output_twice(self):
+        self.job['batch_flow_version'] = 4
+        with self.store.tx() as c:
+            config = self.store.job_config(self.job['id'])
+            config.update(batch_input_tokens=32768, model_max_output_tokens=32768)
+            c.execute('UPDATE configuration_history SET value=? WHERE revision=?', (json.dumps(config), self.job['config_revision']))
+        result = analyze(self.store, self.job, {'error_code': 'MODEL_INPUT_BUDGET'})
+        self.assertEqual(self.check(result, 'input_allocation')['state'], 'unknown')
+        self.assertIn('主审单元额度 32256', self.check(result, 'input_allocation')['detail'])
 
     def test_failure_handler_attaches_checks_and_keeps_original_cause(self):
         self.seed(); before = self.store.job(self.job['id'], evidence=False)
