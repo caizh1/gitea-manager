@@ -1,6 +1,6 @@
 <template>
   <div class="review-page">
-    <div class="section-header review-toolbar">
+    <div v-if="tab !== 'repositories'" class="section-header review-toolbar">
       <div><h3 class="section-title">{{ sectionTitle }}</h3><p class="muted">{{ tab === 'tasks' ? '从审查结果到问题反馈，一处查看。' : 'AI Code Review · 管理与配置' }}</p></div>
       <div class="review-actions"><el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? '已启用' : '全局关闭' }}</el-tag><el-button :icon="Refresh" @click="refresh">刷新</el-button><el-button v-if="tab === 'tasks'" type="primary" :icon="Plus" :disabled="!config.enabled || !availableRepos.length" @click="startManual">发起审查</el-button></div>
     </div>
@@ -41,21 +41,7 @@
     <ReviewTaskDetail v-if="detailVisible" :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :cancelling="cancellingId === detail?.id" :can-cancel="!repoArchived(detail?.repository)" @cancel="cancelTask(detail)" @refresh="fetchDetail(selectedTask)" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail"><template #actions><template v-if="detail && !repoArchived(detail.repository)"><template v-if="detail.status === 'publish_unknown'"><el-button size="small" type="warning" plain @click="reconcile(detail)">核对发布</el-button><el-button size="small" @click="confirmUnpublished(detail)">确认未发布</el-button></template><el-button v-else size="small" :disabled="!config.enabled || detail.status === 'cancelling'" :loading="rerunning" @click="rerun(detail.repository, detail.number)">重新审查</el-button></template></template></ReviewTaskDetail>
       </div>
     </section>
-    <section v-else-if="tab === 'repositories'">
-    <AIReviewSetup v-if="isPlatformAdmin" :servers="servers" :config="config" :repositories="repositories.filter(row => !row.access_archived)" @changed="refresh" />
-
-        <div class="glass-card panel">
-          <div class="review-toolbar"><span>{{ isPlatformAdmin ? '为仓库配置只读机器人，并安装 PR 事件通知。' : '管理当前组织已接入仓库的审查状态。新增接入请联系平台管理员。' }}</span><el-button v-if="isPlatformAdmin" type="primary" :icon="Plus" @click="editRepo()">添加仓库</el-button></div>
-          <el-table :data="repositories" stripe max-height="var(--table-max-height)">
-            <el-table-column label="Gitea 实例" min-width="180"><template #default="{ row }">{{ row.server_name }}<div class="muted">{{ row.gitea_version || '请刷新仓库配置以核对版本' }}</div></template></el-table-column>
-            <el-table-column prop="repo_name" label="仓库" min-width="220" />
-            <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.access_archived ? 'warning' : row.enabled ? 'success' : 'info'">{{ row.access_archived ? '已归档' : row.enabled ? '启用' : '关闭' }}</el-tag></template></el-table-column>
-            <el-table-column prop="bot_name" label="审查机器人" min-width="150" />
-            <el-table-column label="事件通知" min-width="230"><template #default="{ row }"><div>{{ row.hook_status }}</div><small class="muted">最近收到：{{ fmt(row.last_event) }}</small><div v-if="row.reconcile_error" class="failure">{{ row.reconcile_error }}</div></template></el-table-column>
-            <el-table-column label="操作" min-width="200"><template #default="{ row }"><span v-if="row.access_archived" class="muted">历史仅供核对；新归属请添加仓库重新接入。</span><div v-else class="review-actions"><el-button link type="primary" @click="editRepo(row)">配置</el-button><el-button v-if="isPlatformAdmin" link @click="downloadProgress(row.server_id)">下载 PR 进度组件</el-button><el-button v-if="isPlatformAdmin" link @click="hookRepo = row; hookVisible = true">事件通知</el-button><el-button link :disabled="!row.enabled || !config.enabled" @click="manualRepo = row; manualVisible = true">审查 PR</el-button></div></template></el-table-column>
-          </el-table>
-        </div>
-    </section>
+    <ReviewRepositories v-else-if="tab === 'repositories'" :repositories="repositories" :servers="servers" :config="config" :refreshing="refreshing" @refresh="refresh" @configure="editRepo" @webhook="row => { hookRepo = row; hookVisible = true }" @review="row => { manualRepo = row; manualVisible = true }" @download="row => downloadProgress(row.server_id)" />
     <section v-else-if="tab === 'dataset'"><AIReviewDataset :repositories="repositories" /></section>
     <section v-else-if="tab === 'config' && isPlatformAdmin">
         <div class="glass-card panel">
@@ -130,13 +116,14 @@ import { useRoute, useRouter } from 'vue-router'
 import ReviewStatistics from '../components/ReviewStatistics.vue'
 import { isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 import AIReviewDataset from '../components/AIReviewDataset.vue'
-import AIReviewSetup from '../components/AIReviewSetup.vue'
+import ReviewRepositories from '../components/ReviewRepositories.vue'
 import ReviewTaskDetail from '../components/ReviewTaskDetail.vue'
 import { errorMessage, statusType } from '../components/reviewDisplay'
 
 const route = useRoute(), router = useRouter()
 const tab = computed(() => route.meta.reviewSection || 'tasks')
 const sectionTitle = computed(() => ({ tasks:'AI Code Review', repositories:'审查仓库', dataset:'审查经验数据集', config:'模型与设置' })[tab.value])
+const refreshing = ref(false)
 const error = ref(''), tasksError = ref(''), busy = ref(false), testing = ref(false), csrf = ref('')
 const config = ref({ enabled: false }), apiKey = ref(''), health = ref([]), servers = ref([]), repositories = ref([])
 const tasks = ref([]), total = ref(0), page = ref(Math.max(1, Number(route.query.page) || 1)), filterRepo = ref(Number(route.query.repository) || null), detail = ref(null), detailVisible = ref(false)
@@ -200,7 +187,7 @@ const showError = e => { if (e.code === 'ERR_CANCELED') return; error.value = er
 async function downloadProgress(serverId) { try { const response = await api.get(`/ai-review/servers/${serverId}/progress-assets`, { responseType: 'blob' }); const url = URL.createObjectURL(response.data); const a = document.createElement('a'); a.href = url; a.download = `gitea-review-progress-${serverId}.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ElMessage.success('组件已下载；解压后按安装说明接入已有 Gitea 容器') } catch (e) { showError(e) } }
 async function write(method, path, data) { error.value = ''; detailError.value = ''; if (!csrf.value) csrf.value = (await api.get('/ai-review/csrf')).data.token; return api.request({ method, url: '/ai-review'+path, data, headers: { 'X-Review-CSRF': csrf.value } }) }
 async function loadTasks(silent = false) { lastTasksPoll = Date.now(); const current = ++taskGeneration; tasksController?.abort(); tasksController = new AbortController(); try { const r = await api.get('/ai-review/tasks', { params: { ...scopeParams(), page: page.value, status: filterStatus.value || undefined }, signal: tasksController.signal, notifyError: !silent }); if (!disposed && current === taskGeneration) { tasks.value = r.data.items; total.value = r.data.total; tasksError.value = '' } } catch (e) { if (!disposed && current === taskGeneration && e.code !== 'ERR_CANCELED') tasksError.value = errorMessage(e) } }
-async function refresh() { try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } }
+async function refresh() { if (refreshing.value) return; refreshing.value = true; try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } finally { refreshing.value = false } }
 async function saveConfig() { if (busy.value) return; configError.value = ''; busy.value = true; try { const { api_key_configured, ...payload } = config.value; payload.engine = 'opencode_native'; if (apiKey.value) payload.api_key = apiKey.value; config.value = (await write('put', '/config', payload)).data; apiKey.value = ''; ElMessage.success('设置已保存；资源预算与压缩阈值仅对后续新任务生效') } catch (e) { configError.value = errorMessage(e) } finally { busy.value = false } }
 async function testTokens() { testing.value = true; connectionMessage.value = ''; try { const r = await write('post', '/connection-test', { token_samples: 4 }); connectionMessage.value = r.data.calibration.message + ' ' + r.data.calibration.samples.map((v, i) => `样本 ${i+1}：本地 ${v.local} / 服务 ${v.server ?? '未提供'}，差值 ${v.difference ?? '未知'}`).join('；'); connectionOk.value = r.data.calibration.samples.every(v => v.difference === 0) } catch(e) { connectionOk.value = false; connectionMessage.value = errorMessage(e) } finally { testing.value = false } }
 async function testConnection() { testing.value = true; connectionMessage.value = ''; connectionDiagnostic.value = null; try { const r = await write('post', '/connection-test', {}); connectionMessage.value = r.data.message; connectionOk.value = r.data.ok } catch (e) { connectionOk.value = false; connectionMessage.value = errorMessage(e); connectionDiagnostic.value = e.response?.data?.diagnostic || null } finally { testing.value = false } }

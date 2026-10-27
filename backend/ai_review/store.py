@@ -298,6 +298,8 @@ class Store:
             else:
                 previous = c.execute('SELECT id,value FROM repositories WHERE server_id=? AND repo_id=?',
                                      (server_id, repo_id)).fetchone()
+                if previous and json.loads(previous['value']).get('removal_pending'):
+                    raise ReviewError('旧接入的事件通知尚未清理，请先完成移除后再重新接入')
                 if previous and json.loads(previous['value']).get('access_archived'):
                     # 旧记录仍由原内部主键关联历史，腾出当前仓库唯一键供明确的新接入。
                     c.execute('UPDATE repositories SET repo_id=? WHERE id=?', (-previous['id'], previous['id']))
