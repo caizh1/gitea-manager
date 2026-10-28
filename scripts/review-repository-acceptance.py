@@ -68,9 +68,30 @@ def inside():
         assert state.job(job)['repository'] == saved['id'] and state.job(job)['status'] == 'superseded'
         fresh = state.save_repo(1, repo['id'], config)
         assert fresh['id'] != saved['id']
+
+        # 空仓库无需先提交代码；真实通知创建后验证失败也可以安全移除。
+        empty = api('POST', '/user/repos', {'name': 'empty-removal-test', 'private': True, 'auto_init': False})
+        empty_prefix = '/repos/' + empty['full_name']
+        empty_saved = state.save_repo(1, empty['id'], dict(config, enabled=False, repo_name=empty['full_name']))
+        unrelated = api('POST', empty_prefix + '/hooks', {'type': 'gitea', 'active': True,
+                        'events': ['pull_request'], 'config': {'url': 'http://another-service.invalid/empty',
+                                                             'content_type': 'json'}})
+        with patch.dict(os.environ, AI_REVIEW_WEBHOOK_HOSTS='manager.invalid'), \
+                patch('routes.ai_review_routes.server', return_value=target):
+            failed = web.post('/api/ai-review/repositories/' + str(empty_saved['id']) + '/webhook',
+                              json={'manager_url': 'http://manager.invalid'}, headers={'X-CSRF-Token': csrf})
+            assert failed.status_code == 400 and '空仓库' in failed.json['error'], failed.json
+            assert state.repo(empty_saved['id'])['webhook_binding']['phase'] == 'verifying'
+            assert len(api('GET', empty_prefix + '/hooks')) == 2
+            removed = web.delete('/api/ai-review/repositories/' + str(empty_saved['id']),
+                                 json={'revision': empty_saved['revision']}, headers={'X-CSRF-Token': csrf})
+        assert removed.status_code == 200 and removed.json['removal_complete'], removed.json
+        assert [item['id'] for item in api('GET', empty_prefix + '/hooks')] == [unrelated['id']]
+        assert api('GET', empty_prefix)['empty'] is True
         print(json.dumps({'说明': '独立官方 Gitea 1.26.4 与实际 Flask 删除接口验收；无模型调用、无用户现有环境操作',
                           '结果': ['只删除本接入 Webhook，其他服务通知保留', '实际 Gitea 仓库保留',
-                                   '排队任务停止且历史保留', '相同仓库重新接入使用新记录，旧任务不迁移']}, ensure_ascii=False))
+                                   '排队任务停止且历史保留', '相同仓库重新接入使用新记录，旧任务不迁移',
+                                   '空仓库接入验证失败后可移除，不需首个提交且其他通知保留']}, ensure_ascii=False))
 
 
 def main():

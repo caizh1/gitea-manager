@@ -477,6 +477,8 @@ class Store:
                                        if value.get('batch_protocol') and value['status'] == 'awaiting_cost'])
         from .progress_state import job_progress
         for value in values:
+            # 与详情投影一致，保留数据库中的历史阶段作为原始执行记录。
+            if value['status'] == 'superseded': value['stage'] = '版本已过期'
             value['result']={'coverage':{'complete':value.pop('coverage_complete') != 0},'units_failed':value.pop('units_failed') or 0,'units_processed':value.pop('units_processed') or value.get('units_completed',0)}
             value['progress'] = job_progress(value)
             value.pop('result',None)

@@ -1,8 +1,11 @@
 """接入移除的状态、历史、并发与远端身份边界回归。"""
 import json
 import os
+import concurrent.futures
+import copy
 from pathlib import Path
 import tempfile
+import threading
 import time
 from types import SimpleNamespace
 import unittest
@@ -15,6 +18,7 @@ from ai_review.repository_removal import remove_repository
 from ai_review.store import Store
 from routes.ai_review_routes import ai_review_bp
 from tests.access_helpers import init_test_auth, login_platform
+from tests.test_ai_review_webhook_binding import GiteaFixture
 
 
 class RemovalTests(unittest.TestCase):
@@ -84,6 +88,151 @@ class RemovalTests(unittest.TestCase):
                 self.assertTrue(current['enabled'])
                 self.assertFalse(current.get('access_archived'))
                 self.client_class.assert_not_called()
+
+    def failed_empty_onboarding(self, fail_create=None):
+        from routes.ai_review_routes import ensure_webhook
+        self.state.repo_status(self.repo['id'], hook_id=None, webhook_url=None, hook_status='未安装')
+        client = GiteaFixture()
+        client.prefix = '/repos/team/project'
+        client.hooks[3]['config']['url'] = 'http://unrelated.invalid/hook'
+        client.fail_create = fail_create
+        client.repository = lambda: {'id': 7, 'full_name': 'team/project', 'empty': True, 'default_branch': ''}
+        client.close = lambda: None
+        with patch.dict(os.environ, AI_REVIEW_WEBHOOK_HOSTS='127.0.0.1'), \
+                patch('routes.ai_review_routes.Gitea', return_value=client), \
+                patch('routes.ai_review_routes.server', return_value=self.target):
+            with self.assertRaisesRegex(ReviewError, '空仓库|创建响应未知'):
+                ensure_webhook(self.state, self.repo['id'], 'http://127.0.0.1:5000')
+        self.client_class.return_value = client
+        return client
+
+    def test_empty_repository_can_remove_failed_onboarding_without_a_commit(self):
+        client = self.failed_empty_onboarding()
+        self.assertEqual(self.state.repo(self.repo['id'])['webhook_binding']['phase'], 'verifying')
+        old = copy.deepcopy(client.hooks[3])
+        removed = self.remove()
+        self.assertTrue(removed['removal_complete'])
+        self.assertFalse(removed['enabled'])
+        self.assertFalse(removed['webhook_secret_configured'])
+        self.assertEqual(client.hooks, {3: old})
+        self.assertEqual([call[0] for call in client.calls].count('POST'), 1)
+        self.assertEqual([call[0] for call in client.calls].count('DELETE'), 1)
+        self.remove()
+        self.assertEqual([call[0] for call in client.calls].count('DELETE'), 1)
+
+    def test_lost_create_receipt_can_be_found_by_its_saved_unique_name(self):
+        client = self.failed_empty_onboarding('after')
+        self.assertEqual(self.state.repo(self.repo['id'])['webhook_binding']['phase'], 'creating')
+        self.assertTrue(self.remove()['removal_complete'])
+        self.assertEqual(set(client.hooks), {3})
+        self.assertEqual([call[0] for call in client.calls].count('POST'), 1)
+
+    def test_unknown_create_without_receipt_remains_pending_without_new_writes(self):
+        client = self.failed_empty_onboarding('before')
+        with self.assertRaisesRegex(ReviewError, '待核对'):
+            self.remove()
+        self.assertTrue(self.state.repo(self.repo['id'])['removal_pending'])
+        self.assertEqual([call[0] for call in client.calls].count('POST'), 1)
+        self.assertFalse(any(call[0] == 'DELETE' for call in client.calls))
+
+    def test_unverified_hook_replaced_by_another_configuration_is_not_deleted(self):
+        client = self.failed_empty_onboarding()
+        own = next(hook for ident, hook in client.hooks.items() if ident != 3)
+        own['config']['url'] = 'http://127.0.0.1:5000/api/ai-review/webhooks/999'
+        with self.assertRaises(ReviewError):
+            self.remove()
+        self.assertEqual(len(client.hooks), 2)
+        self.assertFalse(any(call[0] == 'DELETE' for call in client.calls))
+
+    def test_unverified_hook_name_type_origin_and_secret_must_all_match(self):
+        client = self.failed_empty_onboarding()
+        identifier = next(ident for ident in client.hooks if ident != 3)
+        original = copy.deepcopy(client.hooks[identifier])
+        changes = [dict(name='其他通知'), dict(type='slack'),
+                   dict(config=dict(original['config'], url='http://other.invalid/api/ai-review/webhooks/1'))]
+        for change in changes:
+            with self.subTest(修改字段=list(change)):
+                client.hooks[identifier] = dict(copy.deepcopy(original), **change)
+                with self.assertRaises(ReviewError):
+                    self.remove()
+                self.assertFalse(any(call[0] == 'DELETE' for call in client.calls))
+        client.hooks[identifier] = original
+        self.state.repo_status(self.repo['id'], webhook_secret=self.state.seal('不同的测试密钥'))
+        with self.assertRaises(ReviewError):
+            self.remove()
+        self.assertFalse(any(call[0] == 'DELETE' for call in client.calls))
+
+    def test_interruption_after_deleting_recovered_receipt_can_resume(self):
+        client = self.failed_empty_onboarding('after')
+        original = client.request
+        def interrupted(method, *args, **kwargs):
+            value = original(method, *args, **kwargs)
+            if method == 'DELETE':
+                raise KeyboardInterrupt('模拟删除后进程中断')
+            return value
+        client.request = interrupted
+        with self.assertRaises(KeyboardInterrupt):
+            self.remove()
+        binding = self.state.repo(self.repo['id'])['webhook_binding']
+        self.assertEqual(binding['phase'], 'verifying')
+        self.assertIsInstance(binding['id'], int)
+        client.request = original
+        self.assertTrue(self.remove()['removal_complete'])
+        self.assertEqual([call[0] for call in client.calls].count('POST'), 1)
+        self.assertEqual([call[0] for call in client.calls].count('DELETE'), 1)
+
+    def test_failed_replacement_preserves_preexisting_hook(self):
+        from ai_review.webhook_binding import ensure_binding
+        client = GiteaFixture()
+        client.hooks[3]['config']['url'] = self.callback
+        client.repository = lambda: {'id': 7}
+        client.close = lambda: None
+        before = copy.deepcopy(client.hooks[3])
+        with self.assertRaisesRegex(ReviewError, '实际签名投递验证'):
+            ensure_binding(self.state, self.state.repo(self.repo['id']), client, self.callback,
+                           ['pull_request'], lambda _: False)
+        self.client_class.return_value = client
+        self.assertTrue(self.remove()['removal_complete'])
+        self.assertEqual(client.hooks, {3: before})
+
+    def test_missing_confirmed_create_receipt_is_safe_to_remove(self):
+        client = self.failed_empty_onboarding()
+        client.hooks = {3: client.hooks[3]}
+        self.assertTrue(self.remove()['removal_complete'])
+        self.assertFalse(any(call[0] == 'DELETE' for call in client.calls))
+
+    def test_duplicate_unconfirmed_receipt_is_not_guessed(self):
+        client = self.failed_empty_onboarding('after')
+        own = next(hook for ident, hook in client.hooks.items() if ident != 3)
+        client.hooks[99] = dict(copy.deepcopy(own), id=99)
+        with self.assertRaises(ReviewError):
+            self.remove()
+        self.assertFalse(any(call[0] == 'DELETE' for call in client.calls))
+
+    def test_unverified_delete_response_loss_is_reconciled_without_redeletion(self):
+        client = self.failed_empty_onboarding()
+        client.fail_delete = True
+        self.assertTrue(self.remove()['removal_complete'])
+        self.assertEqual([call[0] for call in client.calls].count('DELETE'), 1)
+
+    def test_removal_waits_for_installer_and_rechecks_the_saved_state(self):
+        entered = threading.Event()
+        self.client.repository.side_effect = lambda: (entered.set(), {'id': 7})[1]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            with self.state.lock('webhook-install-' + str(self.repo['id']), blocking=True):
+                future = pool.submit(self.remove)
+                self.assertFalse(entered.wait(.1), '安装锁释放前不能开始移除通知')
+            self.assertTrue(future.result(timeout=5)['removal_complete'])
+
+    def test_concurrent_removals_delete_the_hook_only_once(self):
+        barrier = threading.Barrier(2)
+        def remove():
+            barrier.wait(timeout=5)
+            return self.remove()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: remove(), range(2)))
+        self.assertTrue(all(result['removal_complete'] for result in results))
+        self.assertEqual([call.args[0] for call in self.client.request.call_args_list].count('DELETE'), 1)
 
     def test_verified_webhook_binding_does_not_block_removal(self):
         self.state.repo_status(self.repo['id'], webhook_binding={'phase': 'ready', 'id': 11})

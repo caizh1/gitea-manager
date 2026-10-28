@@ -97,6 +97,35 @@ class ProgressTests(unittest.TestCase):
         self.assertNotIn('bot_token', payload)
         self.assertEqual(self.client.writes, ['POST'])
 
+    def test_superseded_list_matches_detail_without_rewriting_stored_stage(self):
+        self.store.enqueue(self.repo, 1, {'head': 'c' * 40, 'base': 'b' * 40})
+        detail = self.store.job(self.id, public=True)
+        row = next(item for item in self.store.jobs()['items'] if item['id'] == self.id)
+        self.assertEqual(row['status'], 'superseded')
+        self.assertEqual(row['stage'], detail['stage'])
+        self.assertEqual(row['stage'], '版本已过期')
+        self.assertEqual(row['progress']['detail'], detail['progress']['detail'])
+        with self.store.connect() as connection:
+            raw = connection.execute('SELECT stage FROM jobs WHERE id=?', (self.id,)).fetchone()[0]
+        self.assertEqual(raw, '等待执行')
+
+    def test_live_stage_is_preserved_in_list_and_detail(self):
+        job = self.store.claim()
+        self.store.update(self.id, job['owner'], stage='正在准备审查材料')
+        row = next(item for item in self.store.jobs()['items'] if item['id'] == self.id)
+        self.assertEqual(row['stage'], '正在准备审查材料')
+        self.assertEqual(row['stage'], self.store.job(self.id)['stage'])
+
+    def test_archived_native_job_does_not_display_its_old_running_stage(self):
+        job = self.store.claim()
+        self.store.update(self.id, job['owner'], stage='正在读取代码')
+        with self.store.tx() as connection:
+            connection.execute('UPDATE jobs SET session_id=? WHERE id=?', ('session_archived_test', self.id))
+        self.store.archive_repo(self.repo)
+        row = next(item for item in self.store.jobs()['items'] if item['id'] == self.id)
+        self.assertEqual(row['stage'], '版本已过期')
+        self.assertEqual(row['progress']['label'], '版本已过期')
+
     def test_native_progress_and_restart_refresh_do_not_repeat_review(self):
         job = self.store.claim()
         with self.store.tx() as c:

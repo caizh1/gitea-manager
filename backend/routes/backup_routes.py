@@ -114,6 +114,15 @@ def create_backup():
     if not server:
         return jsonify({'error': 'Server not found'}), 404
 
+    # 全局实例锁串行化本入口；记录先于后台线程提交，封住线程取得执行锁前的空窗。
+    existing = Backup.query.filter(
+        Backup.source_server_id == server.id,
+        db.or_(Backup.status.in_(('running', 'pending')), Backup.recovery_pending.is_(True)),
+    ).order_by(Backup.id.desc()).first()
+    if existing:
+        return jsonify(error='该服务器已有待执行、执行中或等待恢复的备份，请先等待其完成',
+                       code='backup_in_progress', backup_id=existing.id), 409
+
     now = datetime.utcnow()
     import re
     safe_name = re.sub(r'[^A-Za-z0-9]', '', server.name) or 'server'

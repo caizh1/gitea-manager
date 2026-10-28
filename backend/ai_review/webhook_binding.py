@@ -13,12 +13,17 @@ def _identity(hook):
             'branch_filter': hook.get('branch_filter', '')}
 
 
+def binding_fingerprint(repo, callback, secret):
+    """绑定当前实例、仓库、回调和密钥，供安装与失败接入移除共同核对。"""
+    return digest({'url': callback, 'gitea_url': repo['gitea_url'], 'repo_id': repo['repo_id'],
+                   'secret': hashlib.sha256(secret.encode()).hexdigest()})
+
+
 def ensure_binding(state, repo, client, callback, events, verify):
     """调用者持有仓库锁；先验证新勾子，再清理本次记录的旧勾子。"""
     path = client.prefix + '/hooks'
     secret = state.unseal(repo['webhook_secret'])
-    fingerprint = digest({'url': callback, 'gitea_url': repo['gitea_url'], 'repo_id': repo['repo_id'],
-                          'secret': hashlib.sha256(secret.encode()).hexdigest()})
+    fingerprint = binding_fingerprint(repo, callback, secret)
     binding = repo.get('webhook_binding') or {}
     matches = [h for h in client.pages(path) if (h.get('config') or {}).get('url') == callback]
     if any(h.get('type') != 'gitea' for h in matches):
