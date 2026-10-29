@@ -12,15 +12,18 @@
   <div v-else class="layout">
     <el-container>
       <el-aside :width="collapsed ? '64px' : '240px'" class="app-aside" :class="{ 'is-collapsed': collapsed }">
-        <div class="sidebar-logo">
-          <h1 v-if="!collapsed" class="logo-text">Gitea Manager</h1>
-          <span v-else class="logo-icon">G</span>
-          <span v-if="!collapsed" class="logo-sub">Management Console</span>
+        <div class="sidebar-brand">
+          <img class="brand-mark" :src="sidebarBrand" width="34" height="34" alt="" />
+          <div v-if="!collapsed" class="brand-copy">
+            <h1 class="logo-text">Gitea Manager</h1>
+            <span class="logo-sub">管理控制台</span>
+          </div>
+          <button type="button" class="collapse-btn" :aria-label="collapsed ? '展开导航' : '收起导航'" :aria-expanded="!collapsed" aria-controls="app-navigation" :title="collapsed ? '展开导航' : '收起导航'" @click="collapsed = !collapsed">
+            <component :is="collapsed ? 'NavExpand' : 'NavCollapse'" :size="18" :stroke-width="1.7" aria-hidden="true" />
+          </button>
         </div>
-        <button type="button" class="collapse-btn" :aria-label="collapsed ? '展开导航' : '收起导航'" :aria-expanded="!collapsed" @click="collapsed = !collapsed">
-          <el-icon :size="16"><component :is="collapsed ? 'Expand' : 'Fold'" /></el-icon>
-        </button>
         <el-menu
+          id="app-navigation"
           ref="navigationMenu"
           :default-active="activeMenu"
           :collapse="collapsed"
@@ -57,9 +60,9 @@
             <template #title>定时任务</template>
           </el-menu-item>
           <el-sub-menu v-if="hasCapability('svn_migrations')" index="svn-navigation" aria-label="SVN 迁移中心" @click="openSvnMenu" class="review-submenu" popper-class="review-submenu-popup">
-            <template #title><el-icon><NavMigration /></el-icon><span>SVN 迁移中心</span></template>
-            <el-menu-item index="/svn-migrations">迁移工作台</el-menu-item>
-            <el-menu-item index="/svn-migrations/sources">来源与仓库</el-menu-item>
+            <template #title><el-icon><NavMigration /></el-icon><span>迁移中心</span></template>
+            <el-menu-item index="/svn-migrations">SVN 迁移工作台</el-menu-item>
+            <el-menu-item index="/svn-migrations/sources">SVN 来源与仓库</el-menu-item>
             <el-menu-item index="/svn-migrations/runs">执行记录</el-menu-item>
           </el-sub-menu>
           <el-menu-item v-if="hasCapability('mirrors')" index="/mirrors" aria-label="镜像管理">
@@ -92,13 +95,13 @@
         <el-menu-item v-if="hasCapability('access')" index="/access" aria-label="账号与权限"><el-icon><NavUsers /></el-icon><template #title>账号与权限</template></el-menu-item>
         </el-menu>
         <div class="sidebar-footer">
-          <div class="sidebar-user">
+          <button type="button" class="sidebar-user" :class="{ 'is-active': isAccountPage }" :aria-label="`账号与安全：${accessState.user?.display_name || accessState.user?.username}`" :title="`${accessState.user?.display_name || accessState.user?.username} · ${isPlatformAdmin ? '平台管理员' : '组织管理员'}`" @click="$router.push('/account/security')">
               <div class="user-avatar">{{ accessState.user?.display_name === '平台管理员' ? '管' : (accessState.user?.display_name || accessState.user?.username || '').slice(0, 1) }}</div>
             <div v-if="!collapsed" class="user-info">
               <div class="user-name">{{ accessState.user?.display_name || accessState.user?.username }}</div>
-              <div class="user-role">{{ isPlatformAdmin ? '平台管理员' : '组织管理员' }}</div>
+              <div class="user-role">账号与安全</div>
             </div>
-          </div>
+          </button>
         </div>
       </el-aside>
       <el-container>
@@ -163,12 +166,12 @@ import LoginView from './views/Login.vue'
 import AlertBell from './components/AlertBell.vue'
 import ReviewAttentionBanner from './components/ReviewAttentionBanner.vue'
 import PasswordChangeForm from './components/PasswordChangeForm.vue'
-import { Expand, Fold } from '@element-plus/icons-vue'
+import sidebarBrand from './assets/sidebar-brand.png'
 import { House as NavHouse, Server as NavServer, Database as NavDatabase, RotateCcw as NavRestore,
   Settings as NavSettings, Clock as NavClock, ArrowRightLeft as NavMigration, Box as NavBox,
   ShieldCheck as NavShield, ClipboardList as NavReview, Folder as NavFolder, GitBranch as NavBranch,
   FileCheck2 as NavApproval, ChartNoAxesCombined as NavChart, UsersRound as NavUsers,
-  UserRound as NavUser, LogOut as NavLogout } from '@lucide/vue'
+  UserRound as NavUser, LogOut as NavLogout, PanelLeftOpen as NavExpand, PanelLeftClose as NavCollapse } from '@lucide/vue'
 import { api, cancelScopeRequests } from './api'
 import { notifyApiError } from './api/errors.js'
 import { accessState, accessReady, isPlatformAdmin, hasCapability, applySession, setOrganization } from './composables/accessState.js'
@@ -202,7 +205,7 @@ function decodeRouteParam(value) {
 }
 
 export default {
-  components: { LoginView, AlertBell, ReviewAttentionBanner, PasswordChangeForm, Expand, Fold,
+  components: { LoginView, AlertBell, ReviewAttentionBanner, PasswordChangeForm, NavExpand, NavCollapse,
     NavHouse, NavServer, NavDatabase, NavRestore, NavSettings, NavClock, NavMigration, NavBox, NavShield,
     NavReview, NavFolder, NavBranch, NavApproval, NavChart, NavUsers, NavUser, NavLogout },
   setup() {
@@ -327,7 +330,7 @@ export default {
       router.push(item.to)
     }
 
-    return { accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, isAccountPage, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, navigationMenu, openReviewMenu, openSvnMenu, activeMenu, reviewNavigationTarget, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
+    return { sidebarBrand, accessState, accessReady, isPlatformAdmin, hasCapability, routeAllowed, isAccountPage, refreshSession, switchOrganization, authenticated, needsConfig, collapsed, navigationMenu, openReviewMenu, openSvnMenu, activeMenu, reviewNavigationTarget, breadcrumbItems, isSettingsPage, onLogin, logout, goBreadcrumb }
   },
 }
 </script>
@@ -351,79 +354,96 @@ export default {
   overflow: hidden; display: flex; flex-direction: column;
   border-right: 1px solid rgba(15,23,42,0.08);
   box-shadow: inset -1px 0 0 rgba(255,255,255,0.58), 10px 0 26px rgba(15,23,42,0.045);
-  transition: width 0.22s ease;
+  transition: none;
 }
 
-.sidebar-logo {
-  padding: 24px 20px 16px; border-bottom: 1px solid rgba(15,23,42,0.06);
-  text-align: center;
+.sidebar-brand {
+  display: flex; align-items: center; gap: 8px; flex: 0 0 76px;
+  box-sizing: border-box; min-width: 0; padding: 14px 12px;
+  border-bottom: 1px solid rgba(15,23,42,0.06);
 }
+.brand-mark { display: block; width: 34px; height: 34px; flex: 0 0 34px; object-fit: contain; border-radius: 10px; }
+.brand-copy { flex: 1; min-width: 0; }
 .logo-text {
-  font-size: 20px; font-weight: 760; letter-spacing: 0; margin: 0;
-  color: var(--text-primary);
-}
-.logo-icon {
-  font-size: 24px; font-weight: 760;
-  color: var(--color-primary);
+  font-size: 16px; font-weight: 730; letter-spacing: -0.4px; line-height: 22px; margin: 0;
+  color: var(--text-primary); white-space: nowrap;
 }
 .logo-sub {
-  font-size: 11px; color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase;
-  display: block; margin-top: 4px;
+  font-size: 12px; color: var(--text-muted); line-height: 18px;
+  display: block; margin-top: 2px;
 }
 
 .collapse-btn {
-  appearance: none; background: transparent; border: 0; min-height: 36px; flex-shrink: 0;
-  color: var(--text-muted); text-align: center; line-height: 36px; cursor: pointer;
-  font-size: 16px; border-bottom: 1px solid rgba(15,23,42,0.06);
-  user-select: none; transition: background-color 0.18s ease, color 0.18s ease; display: flex; align-items: center;
-  justify-content: center;
+  appearance: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 32px; flex: 0 0 28px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  user-select: none; transition: background-color 0.18s ease, color 0.18s ease;
 }
-.collapse-btn:hover { color: var(--color-primary); background: rgba(255,255,255,0.45); }
+.collapse-btn > svg { flex-shrink: 0; }
+.collapse-btn:hover { color: var(--color-primary); background: rgba(0,122,255,0.08); }
+.collapse-btn:focus-visible, .sidebar-user:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
-.app-menu { border-right: none; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0; }
+.app-menu {
+  border-right: none; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 0;
+  scrollbar-width: thin; scrollbar-color: rgba(95,107,122,0.22) transparent;
+}
+.app-menu::-webkit-scrollbar { width: 5px; }
+.app-menu::-webkit-scrollbar-thumb { border-radius: 5px; background: rgba(95,107,122,0.22); }
+.app-menu::-webkit-scrollbar-track { background: transparent; }
 .app-menu .el-icon { position: static !important; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; font-size: 22px; }
 .app-menu .el-icon > svg { width: 22px; height: 22px; stroke-width: 1.7; }
-.el-menu-item {
-  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; margin: 3px 10px; border-radius: 16px !important;
-  height: 44px !important; line-height: 44px !important;
-  font-weight: 600;
+.app-menu .el-menu-item {
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease; margin: 0 10px; border-radius: 10px !important;
+  height: 40px !important; line-height: 40px !important;
+  font-size: 14px; font-weight: 550;
 }
-.el-menu-item.is-active {
-  background: rgba(0,122,255,0.12) !important;
-  box-shadow: inset 3px 0 0 var(--color-primary), inset 0 0 0 1px rgba(0,122,255,0.10);
+.app-menu > .el-menu-item { display: flex; align-items: center; padding: 0 12px !important; }
+.app-menu > .el-menu-item > .el-icon { margin: 0 10px 0 0; }
+.app-menu .el-menu-item.is-active {
+  background: rgba(0,122,255,0.10) !important; color: var(--color-primary);
+  box-shadow: inset 3px 0 0 var(--color-primary); font-weight: 600;
 }
-.el-menu-item:hover {
+.app-menu .el-menu-item:hover {
   background: rgba(255,255,255,0.48) !important; color: var(--text-primary) !important;
 }
+.app-menu .el-menu-item.is-active:hover { background: rgba(0,122,255,0.14) !important; color: var(--color-primary) !important; }
 
 .review-submenu > .el-sub-menu__title {
-  display: flex; align-items: center; gap: 0; height: 44px; margin: 3px 10px;
-  padding: 0 20px !important; border-radius: 16px; font-weight: 600;
+  display: flex; align-items: center; gap: 0; height: 40px; margin: 0 10px;
+  padding: 0 12px !important; border-radius: 10px; font-size: 14px; font-weight: 550;
 }
-.review-submenu.is-active > .el-sub-menu__title { color: var(--color-primary); background: rgba(0,122,255,0.06); }
+.review-submenu > .el-sub-menu__title > .el-icon { margin: 0 10px 0 0; }
+.review-submenu > .el-sub-menu__title > span { min-width: 0; }
+.review-submenu.is-active > .el-sub-menu__title { color: var(--color-primary); background: transparent; }
 .review-submenu > .el-sub-menu__title:hover { background: rgba(255,255,255,0.48); }
 .review-submenu > .el-sub-menu__title > .el-sub-menu__icon-arrow {
-  position: static; flex: 0 0 12px; margin: 0 0 0 auto; align-self: center;
+  position: static; width: 14px; height: 14px; flex: 0 0 14px; margin: 0 0 0 auto; align-self: center;
 }
-.review-submenu > .el-menu { margin: 4px 12px 8px 24px; padding: 0; border-left: 1px solid rgba(0,122,255,0.15); }
+.review-submenu > .el-menu { margin: 2px 10px 8px 28px; padding: 0; border-left: 1px solid rgba(0,122,255,0.15); }
 .review-submenu > .el-menu > .el-menu-item {
-  margin: 2px 0 2px 8px; padding: 0 14px !important; min-width: 0; height: 36px !important;
-  line-height: 36px !important; font-size: 13px; font-weight: 500; border-radius: 10px !important;
+  display: flex; align-items: center; margin: 0 0 0 8px; padding: 0 14px !important;
+  min-width: 0; height: 34px !important; line-height: 34px !important; font-size: 13px; font-weight: 500;
 }
-.review-submenu .el-menu-item .el-icon { font-size: 17px; flex-shrink: 0; }
-.review-submenu-popup .el-menu-item { height: 36px !important; line-height: 36px !important; font-size: 13px; }
+.review-submenu .el-menu-item .el-icon { width: 20px; height: 20px; flex: 0 0 20px; margin-right: 8px; }
+.review-submenu .el-menu-item .el-icon > svg { width: 18px; height: 18px; }
+.review-submenu-popup .el-menu-item { height: 36px !important; line-height: 36px !important; margin: 2px 6px; border-radius: 8px; font-size: 13px; }
+.review-submenu-popup .el-menu-item.is-active { background: rgba(0,122,255,0.10); }
+.review-submenu-popup .el-icon { position: static; display: inline-flex; align-items: center; justify-content: center; }
 .app-menu.el-menu--collapse .review-submenu > .el-sub-menu__title {
-  margin: 3px 6px; padding: 0 !important; justify-content: center;
+  margin: 0 6px; padding: 0 !important; justify-content: center;
 }
 .app-menu.el-menu--collapse .review-submenu > .el-sub-menu__title > .el-icon { margin: 0; }
 .app-menu.el-menu--collapse .review-submenu > .el-sub-menu__title > .el-sub-menu__icon-arrow { display: none; }
 
 .sidebar-footer {
-  flex-shrink: 0;
-  padding: 16px 20px; border-top: 1px solid rgba(15,23,42,0.06);
+  flex-shrink: 0; padding: 6px 12px; border-top: 1px solid rgba(15,23,42,0.06);
   margin-top: auto;
 }
-.sidebar-user { display: flex; align-items: center; gap: 10px; }
+.sidebar-user {
+  appearance: none; display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0;
+  padding: 6px; border: 0; border-radius: 10px; background: transparent; font: inherit; text-align: left; cursor: pointer;
+}
+.sidebar-user:hover, .sidebar-user.is-active { background: rgba(0,122,255,0.06); }
 .user-avatar {
   width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
   background: rgba(0,122,255,0.12);
@@ -432,8 +452,8 @@ export default {
   color: var(--color-primary); font-size: 14px; font-weight: 700;
 }
 .user-info { flex: 1; min-width: 0; }
-.user-name { color: var(--text-primary); font-size: 13px; font-weight: 600; }
-.user-role { color: var(--text-muted); font-size: 11px; }
+.user-name { color: var(--text-primary); font-size: 13px; font-weight: 600; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-role { color: var(--text-muted); font-size: 11px; line-height: 16px; }
 
 .app-header {
   background: var(--glass-chrome); backdrop-filter: var(--blur-chrome); -webkit-backdrop-filter: var(--blur-chrome);
@@ -496,12 +516,14 @@ export default {
   display: flex; justify-content: center; align-items: center; height: calc(100vh - 120px);
 }
 
-.el-menu--collapse .el-menu-item {
-  margin: 2px 6px !important;
+.app-menu.el-menu--collapse .el-menu-item {
+  margin: 0 6px !important;
 }
-.is-collapsed .sidebar-logo { padding: 18px 8px; }
-.is-collapsed .sidebar-footer { padding: 12px 16px; }
-.is-collapsed .el-menu-item { padding: 0 !important; display: flex; justify-content: center; }
+.is-collapsed .sidebar-brand { flex-direction: column; justify-content: center; gap: 4px; padding: 6px 8px; }
+.is-collapsed .brand-mark { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
+.is-collapsed .sidebar-footer { padding: 6px; }
+.is-collapsed .sidebar-user { justify-content: center; padding: 6px 0; }
+.is-collapsed .app-menu > .el-menu-item { padding: 0 !important; display: flex; justify-content: center; }
 .is-collapsed .el-menu-item > .el-menu-tooltip__trigger { position: static; padding: 0; display: flex; justify-content: center; width: 100%; }
 .is-collapsed .el-menu-item .el-icon { margin: 0; flex-shrink: 0; }
 @media (max-width: 760px) {
