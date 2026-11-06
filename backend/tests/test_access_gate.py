@@ -1,11 +1,15 @@
 """门禁每次外部写入前重新核验，以及个人审计的确定性回归。"""
 import json
+import subprocess
 import unittest
+from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from tests import test_organization_access as fixture
 from access.models import AccessAudit, OrganizationGrant
 from models import db, GiteaServer, CommitGateAssignment
+from services import commit_gate_service as gates
 
 
 class GateAccessTests(unittest.TestCase):
@@ -37,11 +41,16 @@ class GateAccessTests(unittest.TestCase):
         return self.fixture.request('/api/commit-gates/remove', 'post',
             {'server_id': 1, 'repo_names': ['alpha/same']})
 
-    def seed_assignment(self):
+    def seed_assignment(self, repo_id=1001):
         with self.app.app_context():
-            db.session.add(CommitGateAssignment(server_id=1, repo_id=1001, repo_name='alpha/same',
+            db.session.add(CommitGateAssignment(server_id=1, repo_id=repo_id, repo_name='alpha/same',
+                created_at=datetime(2026, 10, 10),
                 rule_id=201, install_status='success', install_log='原始安装输出不得进入审计'))
             db.session.commit()
+
+    def platform_remove(self, **kwargs):
+        return self.fixture.request('/api/commit-gates/remove', 'post',
+            {'server_id': 1, 'repo_names': ['alpha/same'], **kwargs}, client=self.fixture.admin, binding=None)
 
     def audits(self):
         with self.app.app_context():
@@ -143,6 +152,98 @@ class GateAccessTests(unittest.TestCase):
             self.assertEqual(CommitGateAssignment.query.one().repo_id, 1001)
         self.assertEqual([(action, row['status']) for action, row in self.audits()],
                          [('提交门禁移除', 'pending'), ('提交门禁移除结果', 'failed')])
+
+    def test_platform_removes_only_matching_legacy_hook_and_audits_live_id(self):
+        self.seed_assignment(repo_id=0)
+        root = Path(self.fixture.tmp.name) / 'repos'
+        hook = root / 'alpha/same.git/hooks/pre-receive.d' / gates.HOOK_NAME
+        hook.parent.mkdir(parents=True)
+        sibling = hook.with_name('other-hook')
+        sibling.write_text('保留此 Hook')
+        hook.write_text('人工改动的 Hook')
+        with self.app.app_context():
+            content = gates._build_hook(CommitGateAssignment.query.one().rule)
+
+        def run(server, command):
+            result = subprocess.run(['sh', '-c', command], capture_output=True, text=True, timeout=5)
+            return result.returncode, result.stdout, result.stderr
+
+        with patch.object(gates, 'REPO_ROOT', str(root)), patch.object(gates, '_run_in_gitea', side_effect=run), \
+                patch.object(gates.Reader, 'governance_capabilities', return_value=None):
+            mismatch = self.platform_remove(repo_ids={'alpha/same': 1001}).json['results'][0]
+            self.assertEqual(mismatch['status'], 'failed')
+            self.assertIn('现有 Hook 与历史门禁规则不符', mismatch['log'])
+            self.assertEqual(hook.read_text(), '人工改动的 Hook')
+            with self.app.app_context():
+                self.assertEqual(CommitGateAssignment.query.one().repo_id, 0)
+            hook.write_text(content)
+            # 旧客户端只提交仓库全名。
+            self.assertEqual(self.platform_remove().json['results'][0]['status'], 'success')
+        self.assertFalse(hook.exists())
+        self.assertEqual(sibling.read_text(), '保留此 Hook')
+        with self.app.app_context():
+            self.assertEqual(CommitGateAssignment.query.count(), 0)
+            audit = AccessAudit.query.order_by(AccessAudit.id.desc()).first()
+            self.assertEqual(json.loads(audit.detail_json)['repo_id'], 1001)
+
+    def test_missing_record_or_hidden_legacy_record_never_removes_hook(self):
+        with patch.object(gates, '_remove_hook') as remove:
+            self.assertEqual(self.platform_remove().json['results'][0]['status'], 'skipped')
+            self.seed_assignment(repo_id=0)
+            self.assertEqual(self.remove().json['results'][0]['status'], 'skipped')
+            remove.assert_not_called()
+        with self.app.app_context():
+            self.assertEqual(CommitGateAssignment.query.one().install_log, '原始安装输出不得进入审计')
+
+    def test_legacy_same_name_rebuild_is_not_adopted(self):
+        self.seed_assignment(repo_id=0)
+        fixture.DirectoryFixture.repos[1001]['created_at'] = '2026-10-11T00:00:00Z'
+        with patch.object(gates, '_remove_hook') as remove:
+            result = self.platform_remove().json['results'][0]
+            self.assertEqual(result['status'], 'failed')
+            self.assertIn('创建于门禁记录之后', result['log'])
+            remove.assert_not_called()
+        with self.app.app_context():
+            self.assertEqual(CommitGateAssignment.query.one().repo_id, 0)
+
+    def test_stale_selection_or_renamed_repository_never_unlinks_old_path(self):
+        self.seed_assignment()
+        with patch.object(gates, '_remove_hook') as remove:
+            self.assertEqual(self.platform_remove(repo_ids={'alpha/same': 1002}).json['results'][0]['status'], 'failed')
+            remove.assert_not_called()
+        def rename(*args):
+            fixture.DirectoryFixture.repos[1001]['full_name'] = 'alpha/renamed'
+            return '/data/git/repositories/alpha/same.git'
+        with patch.object(gates, '_resolve_repo_dir', side_effect=rename), patch.object(gates, '_run_in_gitea') as execute:
+            result = self.platform_remove().json['results'][0]
+            self.assertEqual(result['status'], 'failed')
+            self.assertIn('名称或 ID 已变化', result['log'])
+            execute.assert_not_called()
+        with self.app.app_context():
+            self.assertEqual(CommitGateAssignment.query.one().repo_id, 1001)
+
+    def test_legacy_record_cannot_remove_another_assignments_hook(self):
+        self.seed_assignment(repo_id=0)
+        with self.app.app_context():
+            db.session.add(CommitGateAssignment(server_id=1, repo_id=1001, repo_name='alpha/previous',
+                rule_id=201, install_status='success'))
+            db.session.commit()
+        with patch.object(gates, '_remove_hook') as remove:
+            result = self.platform_remove().json['results'][0]
+            self.assertEqual(result['status'], 'failed')
+            self.assertIn('已关联其他门禁记录', result['log'])
+            remove.assert_not_called()
+        with self.app.app_context():
+            self.assertEqual(CommitGateAssignment.query.count(), 2)
+
+    def test_missing_ssh_key_does_not_clear_local_record(self):
+        self.seed_assignment()
+        with patch.object(gates, '_resolve_repo_dir', side_effect=FileNotFoundError('SSH 密钥不可用')):
+            result = self.platform_remove().json['results'][0]
+            self.assertEqual(result['status'], 'failed')
+            self.assertIn('SSH 密钥不可用', result['log'])
+        with self.app.app_context():
+            self.assertEqual(CommitGateAssignment.query.one().repo_id, 1001)
 
     def test_apply_remove_persist_real_identity_versions_and_result_status(self):
         with patch('services.commit_gate_service._install_hook'), patch('services.commit_gate_service._remove_hook'):

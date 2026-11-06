@@ -8,6 +8,7 @@ import tarfile
 import tempfile
 from contextlib import closing
 from datetime import datetime
+from urllib.parse import quote
 
 import requests
 
@@ -208,12 +209,20 @@ def _install_hook(server, repo_name, rule, repo_id=0, authorize=None):
         raise RuntimeError(err or out or 'chmod failed')
 
 
-def _remove_hook(server, repo_name, repo_id=0, authorize=None):
+def _remove_hook(server, repo_name, repo_id, authorize, legacy_rule=None):
     repo_dir = _resolve_repo_dir(server, repo_name, repo_id)
-    hook_path = f'{repo_dir}/hooks/pre-receive.d/{HOOK_NAME}'
-    if authorize:
-        authorize()
-    exit_code, out, err = _run_in_gitea(server, f'rm -f {shlex.quote(hook_path)}')
+    hook_path = shlex.quote(f'{repo_dir}/hooks/pre-receive.d/{HOOK_NAME}')
+    command = f'rm -f {hook_path}'
+    if legacy_rule is not None:
+        # 旧记录没有安装时的 ID，只允许清理匹配该规则的 Manager 脚本。
+        content = shlex.quote(_build_hook(legacy_rule))
+        command = (
+            f'p={hook_path}; if [ -e "$p" ] || [ -L "$p" ]; then '
+            f'[ ! -L "$p" ] && [ -f "$p" ] && printf %s {content} | cmp -s - "$p" || '
+            '{ echo "现有 Hook 与历史门禁规则不符，请核对后重试" >&2; exit 1; }; fi; '
+        ) + command
+    authorize()
+    exit_code, out, err = _run_in_gitea(server, command)
     if exit_code != 0:
         raise RuntimeError(err or out or 'remove hook failed')
 
@@ -355,55 +364,83 @@ def apply_rule(server_id, rule_id, repo_names=None, apply_all=False, access_acto
     return results
 
 
-def remove_gate(server_id, repo_names=None, remove_all=False, access_actor=None):
+def _removal_repo_id(server, repo_name, expected_id, assignment):
+    from access.identity import created_value
+    from services.policy_gitea import PolicyGitea
+    path = f'/repositories/{expected_id}' if expected_id else '/repos/' + quote(repo_name, safe='/')
+    repo = PolicyGitea(server).request('GET', path)
+    repo_id = repo.get('id')
+    if (type(repo_id) is not int or repo_id < 1 or repo.get('full_name') != repo_name
+            or (expected_id and repo_id != expected_id)):
+        raise ValueError('仓库名称或 ID 已变化，请刷新列表并核对目标仓库')
+    if not assignment.repo_id:
+        # 绝不能把同名重建的仓库当成旧记录中的仓库。
+        created = datetime.fromisoformat(created_value(repo.get('created_at'))).replace(tzinfo=None)
+        if created > assignment.created_at:
+            raise ValueError('当前仓库创建于门禁记录之后，不能按同名仓库移除旧门禁')
+        if CommitGateAssignment.query.filter_by(server_id=server.id, repo_id=repo_id).first():
+            raise ValueError('当前仓库 ID 已关联其他门禁记录，请核对后再移除')
+    return repo_id
+
+
+def remove_gate(server_id, repo_names=None, remove_all=False, access_actor=None, repo_ids=None):
     server = GiteaServer.query.get(server_id)
     if not server:
         raise ValueError('Server not found')
-    from access.scopes import check_task_actor, repositories_for
+    from access.scopes import check_task_actor, repositories_for, visible_keys
     binding = check_task_actor(access_actor) if access_actor else None
     permitted = repositories_for(binding) if binding else None
+    rules = {int(value) for value in visible_keys('commit_rule')} if binding else None
+    if repo_ids is not None and (not isinstance(repo_ids, dict) or
+            any(type(i) is not int or i < 1 for i in repo_ids.values())):
+        raise ValueError('所选仓库 ID 无效，请刷新列表')
     if remove_all:
         assignments = CommitGateAssignment.query.filter_by(server_id=server_id).all()
         if permitted is not None:
-            assignments = [a for a in assignments if a.repo_id in permitted]
+            assignments = [a for a in assignments if a.repo_id in permitted and a.rule_id in rules
+                           and permitted[a.repo_id]['full_name'] == a.repo_name]
         repo_names = [a.repo_name for a in assignments]
     repo_names = [_normalize_repo_name(r) for r in (repo_names or []) if r]
     if not repo_names:
         raise ValueError('No repositories selected')
 
-    if permitted is not None and any(n not in {r['full_name'] for r in permitted.values()} for n in repo_names):
-        raise ValueError('请求包含无权操作的仓库，整批未执行')
+    if permitted is not None:
+        permitted_names = {r['full_name'] for r in permitted.values()}
+        if not permitted_names.issuperset(repo_names):
+            raise ValueError('请求包含无权操作的仓库，整批未执行')
     results = []
     for repo_name in repo_names:
         assignment = CommitGateAssignment.query.filter_by(
             server_id=server_id,
             repo_name=repo_name,
         ).first()
-        repo_id = assignment.repo_id if assignment else None
-        rule_id = assignment.rule_id if assignment else None
-        record_gate_audit('提交门禁移除', access_actor, server_id, repo_id, rule_id, 'pending')
-        db.session.commit()
+        if not assignment or (binding and (assignment.rule_id not in rules or assignment.repo_id not in permitted
+                or permitted[assignment.repo_id]['full_name'] != repo_name)):
+            results.append({'repo_name': repo_name, 'status': 'skipped', 'log': '当前仓库没有可移除的门禁记录'})
+            continue
+        repo_id = assignment.repo_id or None
+        rule_id = assignment.rule_id
         try:
+            selected_id = repo_ids.get(repo_name) if repo_ids is not None else repo_id
+            if repo_ids is not None and (not selected_id or (repo_id and selected_id != repo_id)):
+                raise ValueError('所选仓库与门禁记录不一致，请刷新列表并核对目标仓库')
+            repo_id = _removal_repo_id(server, repo_name, selected_id, assignment)
             if access_actor:
-                if not assignment or not assignment.repo_id:
-                    raise ValueError('缺少仓库稳定身份，未移除门禁')
-                check_task_actor(access_actor, server_id, assignment.repo_id)
-            _remove_hook(server, repo_name, assignment.repo_id if assignment else 0,
-                         authorize=(lambda: check_task_actor(access_actor, server_id, repo_id)) if access_actor else None)
-            if assignment:
-                db.session.delete(assignment)
-                db.session.commit()
+                check_task_actor(access_actor, server_id, repo_id)
+            record_gate_audit('提交门禁移除', access_actor, server_id, repo_id, rule_id, 'pending')
+            db.session.commit()
+
+            def authorize():
+                _removal_repo_id(server, repo_name, repo_id, assignment)
+                if access_actor:
+                    check_task_actor(access_actor, server_id, repo_id)
+
+            _remove_hook(server, repo_name, repo_id, authorize, legacy_rule=assignment.rule if not assignment.repo_id else None)
+            db.session.delete(assignment)
             results.append({'repo_name': repo_name, 'status': 'success', 'log': 'Hook removed'})
-        except FileNotFoundError as e:
-            if assignment:
-                db.session.delete(assignment)
-                db.session.commit()
-            results.append({'repo_name': repo_name, 'status': 'success', 'log': str(e)})
         except Exception as e:
-            if assignment:
-                assignment.install_status = 'failed'
-                assignment.install_log = str(e)[:500]
-                db.session.commit()
+            assignment.install_status = 'failed'
+            assignment.install_log = str(e)[:500]
             results.append({'repo_name': repo_name, 'status': 'failed', 'log': str(e)[:500]})
         record_gate_audit('提交门禁移除结果', access_actor, server_id, repo_id, rule_id, results[-1]['status'])
         db.session.commit()

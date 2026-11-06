@@ -74,7 +74,7 @@
             </el-select>
             <el-button size="small" type="primary" :icon="Check" :disabled="!canApplySelected" :loading="applying" @click="applySelected">应用所选</el-button>
             <el-button size="small" :icon="SetUp" :disabled="!selectedRuleId" :loading="applying" @click="applyAll">应用全部</el-button>
-            <el-button size="small" type="danger" :icon="Close" :disabled="!selectedRepoNames.length" :loading="removing" @click="removeSelected">移除所选</el-button>
+            <el-button size="small" type="danger" :icon="Close" :disabled="loadingRepos || !removableRepos.length" :loading="removing" @click="removeSelected">移除所选</el-button>
           </div>
         </div>
 
@@ -123,7 +123,8 @@ export default {
     const rules = ref([])
     const repos = ref([])
     const defaultRule = ref(null)
-    const selectedRepoNames = ref([])
+    const selectedRepos = ref([])
+    const removableRepos = computed(() => selectedRepos.value.filter(row => row.assignment_id))
     const selectedRuleId = ref(null)
     const editingRuleId = ref(null)
     const savingRule = ref(false)
@@ -135,7 +136,7 @@ export default {
     const ruleForm = ref({ name: '', pattern: '', reject_message: '', enabled: true })
 
     const enabledRules = computed(() => rules.value.filter(r => r.enabled))
-    const canApplySelected = computed(() => selectedRuleId.value && selectedRepoNames.value.length > 0)
+    const canApplySelected = computed(() => selectedRuleId.value && selectedRepos.value.length > 0)
 
     function loadServers() {
       return api.get('/servers').then(res => {
@@ -161,10 +162,11 @@ export default {
     function loadRepos() {
       if (!selectedServerId.value) return Promise.resolve()
       loadingRepos.value = true
-      return api.get(`/commit-gates/repos?server_id=${selectedServerId.value}`)
-        .then(res => { repos.value = res.data })
+      const serverId = selectedServerId.value
+      return api.get(`/commit-gates/repos?server_id=${serverId}`)
+        .then(res => { if (selectedServerId.value === serverId) repos.value = res.data })
         .catch(e => notifyApiError(e, '仓库加载失败'))
-        .finally(() => { loadingRepos.value = false })
+        .finally(() => { if (selectedServerId.value === serverId) loadingRepos.value = false })
     }
 
     function reloadAll() {
@@ -174,7 +176,8 @@ export default {
     function onServerChange() {
       selectedRuleId.value = null
       editingRuleId.value = null
-      selectedRepoNames.value = []
+      selectedRepos.value = []
+      repos.value = []
       ruleForm.value = { name: '', pattern: '', reject_message: '', enabled: true }
       reloadAll()
     }
@@ -265,11 +268,11 @@ export default {
     }
 
     function onRepoSelection(rows) {
-      selectedRepoNames.value = rows.map(r => r.repo_name)
+      selectedRepos.value = rows
     }
 
     function applySelected() {
-      applyGate({ repo_names: selectedRepoNames.value })
+      applyGate({ repo_names: selectedRepos.value.map(row => row.repo_name) })
     }
 
     function applyAll() {
@@ -285,7 +288,7 @@ export default {
         rule_id: selectedRuleId.value,
         ...extra,
       }).then(res => {
-        const failed = (res.data.results || []).filter(r => r.install_status === 'failed')
+        const failed = (res.data.results || []).filter(r => r.install_status === 'failed' || r.status === 'failed')
         if (failed.length) ElMessage.warning(`${failed.length} 个仓库应用失败`)
         else ElMessage.success('门禁已应用')
         loadRepos()
@@ -295,12 +298,28 @@ export default {
     }
 
     function removeSelected() {
+      const targets = removableRepos.value
+      if (!targets.length) return
+      const unassigned = selectedRepos.value.length - targets.length
       removing.value = true
       api.post('/commit-gates/remove', {
         server_id: selectedServerId.value,
-        repo_names: selectedRepoNames.value,
-      }).then(() => {
-        ElMessage.success('门禁已移除')
+        repo_names: targets.map(row => row.repo_name),
+        repo_ids: Object.fromEntries(targets.map(row => [row.repo_name, row.repo_id])),
+      }).then(({ data }) => {
+        const results = data.results || []
+        const failed = results.filter(row => row.status === 'failed')
+        const removed = results.filter(row => row.status === 'success').length
+        const skipped = results.filter(row => row.status === 'skipped').length
+        if (failed.length) {
+          ElMessage.warning(`已移除 ${removed} 个，失败 ${failed.length} 个。${failed[0].repo_name}：${failed[0].log}`)
+        } else if (removed + skipped !== targets.length) {
+          ElMessage.warning('未收到完整移除结果，请刷新列表核对')
+        } else if (unassigned + skipped) {
+          ElMessage.info(`已移除 ${removed} 个，${unassigned + skipped} 个仓库没有可移除的门禁`)
+        } else {
+          ElMessage.success(`已移除 ${removed} 个仓库的门禁`)
+        }
         loadRepos()
         loadRules()
       }).catch(e => notifyApiError(e, '移除失败'))
@@ -314,7 +333,7 @@ export default {
     })
 
     return {
-      isPlatformAdmin, servers, selectedServerId, rules, repos, selectedRepoNames, selectedRuleId,
+      isPlatformAdmin, servers, selectedServerId, rules, repos, removableRepos, selectedRuleId,
       enabledRules, canApplySelected, ruleForm, editingRuleId, savingRule,
       loadingRepos, applying, removing, testMessage, testResult,
       loadDefaultRule, newRule, editRule, saveRule, deleteRule, testRule,

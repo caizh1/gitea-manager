@@ -22,6 +22,8 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from image_identity import archive_image_ids
 sys.path.insert(0, str(ROOT / 'backend/services'))
 from diagnostics import Report, register_secret, CommandFailure
 REPORT = None
@@ -394,13 +396,14 @@ class Installer:
                         raise RuntimeError(f'端口 {port} 已占用，未停止或替换其他服务') from None
 
     def load_images(self):
+        identities = archive_image_ids(self.root / 'images/runtime.tar', self.manifest['images'])
         available = set(run(['docker', 'image', 'ls', '--format', '{{.Repository}}:{{.Tag}}']).splitlines())
         def matches():
-            for item in self.manifest['images'].values():
+            for key, item in self.manifest['images'].items():
                 if item['tag'] not in available:
                     return False
                 info = json.loads(run(['docker', 'image', 'inspect', item['tag']]))[0]
-                if info['Architecture'] != 'amd64' or info['Os'] != 'linux' or info['Id'] not in item['ids']:
+                if info['Architecture'] != 'amd64' or info['Os'] != 'linux' or info['Id'] not in identities[key]:
                     return False
             return True
         if matches():
@@ -408,10 +411,12 @@ class Installer:
             return
         print('正在导入并核对离线镜像，不拉取网络镜像。')
         run(['docker', 'load', '-i', str(self.root / 'images/runtime.tar')], timeout=900)
-        for item in self.manifest['images'].values():
+        for key, item in self.manifest['images'].items():
             info = json.loads(run(['docker', 'image', 'inspect', item['tag']]))[0]
-            if info['Architecture'] != 'amd64' or info['Os'] != 'linux' or info['Id'] not in item['ids']:
-                raise RuntimeError('镜像身份或架构与交付清单不一致：' + item['tag'])
+            if info['Architecture'] != 'amd64' or info['Os'] != 'linux' or info['Id'] not in identities[key]:
+                raise RuntimeError('镜像身份或架构与交付清单不一致：' + item['tag']
+                                   + '；实际=' + str(info.get('Id')) + ' ' + str(info.get('Os')) + '/' + str(info.get('Architecture'))
+                                   + '；允许=' + ','.join(identities[key]))
 
     def health(self):
         state = self.state

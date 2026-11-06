@@ -42,6 +42,10 @@ class DirectoryFixture:
     def __init__(self, server):
         self.server_id = server.id
     def request(self, method, path, **kwargs):
+        if method == 'GET' and path.startswith('/repositories/'):
+            return dict(self.repos[int(path.rsplit('/', 1)[1])])
+        if method == 'GET' and path.startswith('/repos/'):
+            return next(dict(row) for row in self.repos.values() if row['full_name'] == path[len('/repos/'):])
         if method == 'GET' and path in ('/orgs/alpha', '/orgs/beta', '/users/alpha', '/users/beta'):
             name = path.rsplit('/', 1)[-1]
             return dict(self.organizations[name])

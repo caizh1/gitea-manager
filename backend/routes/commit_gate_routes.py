@@ -176,11 +176,15 @@ def remove_gate_route():
             repo_names=data.get('repo_names') or [],
             remove_all=bool(data.get('remove_all')),
             access_actor=actor_snapshot(current_binding()),
+            repo_ids=data.get('repo_ids'),
         )
         from access.scopes import is_platform
         if not is_platform():
             for row in results:
-                row['log'] = '门禁已移除' if row.get('status') == 'success' else '门禁操作未完成，请平台管理员查看安装诊断'
+                if row.get('status') == 'failed':
+                    row['log'] = '门禁操作未完成，请平台管理员查看安装诊断'
+                elif row.get('status') == 'success':
+                    row['log'] = '门禁已移除'
         return jsonify({'results': results})
     except AccessError:
         raise

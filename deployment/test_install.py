@@ -172,11 +172,13 @@ class InstallTests(unittest.TestCase):
         self.manifest['images'] = {'backend': {'tag': 'sample:fixed', 'ids': ['sha256:expected']}}
         installer = MODULE.Installer(self.root, self.manifest)
         correct = json.dumps([{'Id': 'sha256:expected', 'Architecture': 'amd64', 'Os': 'linux'}])
-        with patch.object(MODULE, 'run', side_effect=['sample:fixed\n', correct]) as command:
+        with patch.object(MODULE, 'archive_image_ids', return_value={'backend': ['sha256:expected']}), \
+                patch.object(MODULE, 'run', side_effect=['sample:fixed\n', correct]) as command:
             installer.load_images()
         self.assertFalse(any('load' in call.args[0] for call in command.call_args_list))
         wrong = json.dumps([{'Id': 'sha256:unexpected', 'Architecture': 'amd64', 'Os': 'linux'}])
-        with patch.object(MODULE, 'run', side_effect=['sample:fixed\n', wrong, '', wrong]), self.assertRaisesRegex(RuntimeError, '镜像身份'):
+        with patch.object(MODULE, 'archive_image_ids', return_value={'backend': ['sha256:expected']}), \
+                patch.object(MODULE, 'run', side_effect=['sample:fixed\n', wrong, '', wrong]), self.assertRaisesRegex(RuntimeError, '镜像身份'):
             installer.load_images()
 
 

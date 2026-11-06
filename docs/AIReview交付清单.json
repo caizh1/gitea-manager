@@ -1,6 +1,6 @@
 {
   "说明": "文件级固定交付清单，排除本清单自身。",
-  "生成时间UTC": "2026-10-29T01:16:37Z",
+  "生成时间UTC": "2026-10-30T06:31:14Z",
   "文件": [
     {
       "文件": ".dockerignore",
@@ -14,8 +14,8 @@
     },
     {
       "文件": "AGENTS.md",
-      "字节": 31155,
-      "SHA256": "a38065335f73649dfb63c91b73ce8531ccf4b28eb2d0b70dc99e8c04227b5561"
+      "字节": 33234,
+      "SHA256": "9c3d0dec25649a75996a6f8277984ee47696bcbcae054ea6d7905f0b7d9eda0c"
     },
     {
       "文件": "README.md",
@@ -1719,8 +1719,8 @@
     },
     {
       "文件": "deployment/build-installers.py",
-      "字节": 7161,
-      "SHA256": "7d92b92c7ff9cfa098dae94f747a22a246dccb663296657fa5a989e6383db1e0"
+      "字节": 6535,
+      "SHA256": "6ddf78642ff29ea9b488fe5016e471aae8d5dcbeeaf0c11e26425ed362ca4b71"
     },
     {
       "文件": "deployment/build-v2.py",
@@ -1733,9 +1733,14 @@
       "SHA256": "557c2c3b8ecb01b3eda507d6e2c15ab8e936c47dd0995de7298c40e7ac4b16f3"
     },
     {
+      "文件": "deployment/image_identity.py",
+      "字节": 4627,
+      "SHA256": "e23d038b19bf54fc06a1888cf956322d8a3e46842178d0dbe356fcc7f5e2052c"
+    },
+    {
       "文件": "deployment/install.py",
-      "字节": 42570,
-      "SHA256": "badabc76ac9a279e9199f2a6ae0ba86c3e31fc187fc0825e4c88a6314e1243e3"
+      "字节": 43002,
+      "SHA256": "27a1e30e3e7d4f6f80be5de31d0be686fb16fb8a466b6058d3919be96716e982"
     },
     {
       "文件": "deployment/manager_uninstall.py",
@@ -1773,6 +1778,11 @@
       "SHA256": "6bb2ada010f102bd9390d6aa56f02737b9f853234e75f4386055fc1c9fb07f73"
     },
     {
+      "文件": "deployment/repair_image_identity.py",
+      "字节": 3429,
+      "SHA256": "68994a3f448658ad406cc74a152e7f2f421392279039ad6d4cd79b85f402f0d9"
+    },
+    {
       "文件": "deployment/test_batch_review_binary.py",
       "字节": 4551,
       "SHA256": "e1eb288e7fd029319f245b46946ab0a85ed52d373b22692f7c850bccc638b016"
@@ -1808,9 +1818,14 @@
       "SHA256": "12ac7bca57c485f224bcbc0612048a5fbc291832969aa22a82f2d6d5d644aa35"
     },
     {
+      "文件": "deployment/test_image_identity.py",
+      "字节": 6672,
+      "SHA256": "f55e394cbe26c80cbc4ebabd615fcce0e0a8589345311fb23e698643b571b714"
+    },
+    {
       "文件": "deployment/test_install.py",
-      "字节": 10278,
-      "SHA256": "3ce51a1428a2c32260903c03a0802c267c03e8b384b2e9212b8c6676a1a1abd2"
+      "字节": 10494,
+      "SHA256": "2c9c13ebd1e334c7f01d5ba753ac3b3fec504ea908c9d9f8e16437731197051a"
     },
     {
       "文件": "deployment/test_issue_lifecycle_gitea.py",
@@ -1821,6 +1836,11 @@
       "文件": "deployment/test_manager_uninstall.py",
       "字节": 2810,
       "SHA256": "5c1fb5e844c4a70487e0dafce3fedab9997438e8430f055e4351afe3a6229f21"
+    },
+    {
+      "文件": "deployment/test_repair_image_identity.py",
+      "字节": 3875,
+      "SHA256": "7d1bd465cdbe5488a36a6ce7444c10ef81089c9426a62007c6cd08964e04e91b"
     },
     {
       "文件": "deployment/test_runtime_lifecycle.py",
@@ -2861,6 +2881,11 @@
       "文件": "docs/executor-image-fix.md",
       "字节": 1582,
       "SHA256": "98b0b1fa6bd4a347f447c8db86cee00bf17edfe8dc825b6dc022c2ca9a8053b2"
+    },
+    {
+      "文件": "docs/installer-image-identity-fix.md",
+      "字节": 3828,
+      "SHA256": "47f0dbf7c8e0a6c8e8272e6f83ff0b7261b5f961acd4f5406557e4c13cb23daf"
     },
     {
       "文件": "docs/legacy-manager-upgrade.md",

@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tarfile
+from image_identity import archive_image_ids
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +52,7 @@ def main():
         shutil.copy2(ROOT / 'deployment/uninstall.py', directory / 'deployment/uninstall.py')
         shutil.copy2(ROOT / 'deployment/manager_uninstall.py', directory / 'deployment/manager_uninstall.py')
         shutil.copy2(ROOT / 'deployment/install.py', directory / 'deployment/install.py')
+        shutil.copy2(ROOT / 'deployment/image_identity.py', directory / 'deployment/image_identity.py')
         shutil.copy2(ROOT / 'backend/services/diagnostics.py', directory / 'deployment/diagnostics.py')
         shutil.copytree(deps, directory / 'runtime/debs', dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('partial', 'lock'))
@@ -66,16 +68,9 @@ def main():
                 raise RuntimeError('镜像架构不匹配：' + tag)
             images[key] = {'tag': tag, 'ids': [info['Id']]}
         subprocess.run(['docker', 'image', 'save', '--platform', 'linux/amd64', '-o', str(directory / 'images/runtime.tar'), *tags.values()], check=True)
-        with tarfile.open(directory / 'images/runtime.tar') as archive:
-            records = json.load(archive.extractfile('manifest.json'))
-            index = json.load(archive.extractfile('index.json')) if 'index.json' in archive.getnames() else {'manifests': []}
-            for item in images.values():
-                row = next(row for row in records if item['tag'] in row.get('RepoTags', []))
-                config_id = 'sha256:' + hashlib.sha256(archive.extractfile(row['Config']).read()).hexdigest()
-                descriptor = next((row for row in index['manifests'] if row.get('annotations', {}).get('io.containerd.image.name', '').endswith('/' + item['tag'])), {})
-                if item['ids'][0] not in (config_id, descriptor.get('digest')):
-                    raise RuntimeError('导出期间镜像身份发生变化，拒绝生成混合版本安装包：' + item['tag'])
-                item['ids'].append(config_id)
+        identities = archive_image_ids(directory / 'images/runtime.tar', images)
+        for key, item in images.items():
+            item['ids'] = identities[key]
         if product=='manager':
             provenance=directory/'build-provenance';provenance.mkdir(exist_ok=True)
             for filename in ('base-images.json','source-manifest.json'):
