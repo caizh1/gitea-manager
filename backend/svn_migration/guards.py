@@ -11,16 +11,24 @@ from .models import SvnMigrationRun
 
 
 @contextlib.contextmanager
-def target_guard(server_id, migration=False, git_run_id=None):
+def target_guard(server_id, migration=False, git_run_id=None, git_preflight_id=None):
     if not migration and db.engine.url.database == ':memory:':
         yield
         return
     with file_lock(data_root() / '.instance-operations' / (str(server_id) + '.lock')):
+        from git_migration.models import GitMigrationPreflight
+        trials = GitMigrationPreflight.query.filter(GitMigrationPreflight.server_id == server_id,
+            GitMigrationPreflight.status.in_(('queued', 'running', 'ready', 'blocked', 'interrupted')))
+        if git_preflight_id is not None:
+            trials = trials.filter(GitMigrationPreflight.id != git_preflight_id)
+        if trials.first():
+            raise MigrationError('该实例存在预迁移，请先正式启动或结束预迁移', 'busy', 409)
         if migration:
             from git_migration.models import GitMigrationRun
             conflicts = GitMigrationRun.query.filter(GitMigrationRun.server_id == server_id, GitMigrationRun.status.in_(('queued', 'running', 'interrupted', 'uncertain', 'quarantined')))
-            if git_run_id is not None:
-                conflicts = conflicts.filter(GitMigrationRun.id != git_run_id)
+            if git_run_id is not None or git_preflight_id is not None:
+                if git_run_id is not None:
+                    conflicts = conflicts.filter(GitMigrationRun.id != git_run_id)
                 if SvnMigrationRun.query.filter(SvnMigrationRun.server_id == server_id, SvnMigrationRun.status.in_(('running', 'paused', 'uncertain'))).first():
                     raise MigrationError('目标存在未完成 SVN 迁移', 'busy', 409)
             if conflicts.first():

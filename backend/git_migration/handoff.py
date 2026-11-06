@@ -33,11 +33,14 @@ def child_group(receiver, parent, segment, key, checkpoint, save):
     require(found['full_path'] == path and found.get('parent_id') == parent['id'] and not found.get('archived'),
             '目标子群组身份已变化')
     state['id'] = found['id']
+    access=receiver.selected_scope(found['id'])['access_fingerprint']
+    require(not state.get('access') or state['access']==access,'已登记子群组授权发生变化，不接管原群组')
+    state['access']=access
     save()
     return receiver.api('GET', '/governance/groups/' + str(found['id']))
 
 
-def finish(receiver, selection, project, progress, checkpoint, save):
+def finish(receiver, selection, project, progress, checkpoint, save, prepare_only=False):
     require(not progress.get('pending') and not progress.get('gaps'), '仍有未完成的迁移资料，禁止最终交接')
     require(progress.get('code_verified') and progress.get('objects_verified'), '代码或原生对象尚未核验')
     receiver.verify_selected_scope(selection)
@@ -53,11 +56,17 @@ def finish(receiver, selection, project, progress, checkpoint, save):
     save()
     existing = receiver.repository(group['full_path'], name, missing=True)
     require(existing is None or existing['id'] == progress['repo_id'], '目标业务路径已占用，不覆盖现有仓库')
+    from .manifest import summary, verify
     if not progress.get('sealed'):
+        expected = summary(progress)
+        require(not progress.get('seal_intent') or progress['seal_intent'] == expected, '封存意图与本地清单不符')
+        progress['seal_intent'] = expected
+        save()
         receiver.api('POST', '/governance/migration-sessions/' + progress['key'] + '/seal',
-                     {'objects': len(progress.get('objects', {})), 'assets': len(progress.get('assets', {}))})
+                     {'objects': len(progress.get('objects', {})), 'assets': len(progress.get('assets', {})), 'manifest': progress['seal_intent']})
         progress['sealed'] = True
         save()
+    verify(receiver, progress)
     staging = progress['repo_name']
     source = receiver.repository(receiver.actor['login'], staging, missing=True)
     moved = receiver.repository(group['full_path'], staging, missing=True)
@@ -72,6 +81,13 @@ def finish(receiver, selection, project, progress, checkpoint, save):
                              {'owner_id': group['id'], 'name': name})
         require(reply.get('repo_id') == progress['repo_id'] and reply.get('archived') is True,
                 '封存交接回执与预期不一致')
+    actual_manifest = verify(receiver, progress)
+    native = {key: actual_manifest.get(key) for key in ('native_version', 'native_digest', 'native_count')}
+    require(native['native_version'] == 1 and isinstance(native['native_digest'], str) and len(native['native_digest']) == 64
+            and isinstance(native['native_count'], int), '目标原生制品清单尚未封存', 'manifest')
+    require(not progress.get('native_manifest') or progress['native_manifest'] == native, '目标原生制品清单已变化', 'manifest')
+    progress['native_manifest'] = native
+    save()
     repo = receiver.repository(group['full_path'], name)
     require(repo['id'] == progress['repo_id'] and repo['private'] and not repo.get('has_actions'), '交接后的仓库身份或运行状态不符')
     receiver.verify_selected_scope(selection)
@@ -82,11 +98,29 @@ def finish(receiver, selection, project, progress, checkpoint, save):
         expected['HEAD'] = progress['snapshot']['refs']['HEAD']
     require(actual == expected and default == progress['snapshot']['default_ref'], '群组转移后的代码引用不一致')
     from .rules import apply
-    apply(receiver, repo, progress.get('rule_plan', []), progress.get('principal_map', {}), progress, save)
+    receiver.session.headers['X-Gitea-Migration-Key'] = progress['key']
+    try:
+        apply(receiver, repo, progress.get('rule_plan', []), progress.get('principal_map', {}), progress, save)
+    finally:
+        receiver.session.headers.pop('X-Gitea-Migration-Key',None)
     from .packages import verify_published
     verify_published(receiver, repo, progress.get('package_files', []))
     # 先完成所有读回核对，最后解除归档，允许目标业务正常使用。
     desired_archive = bool(project.get('archived'))
+    if prepare_only:
+        description=project.get('description') or ''
+        if progress.get('prepared'):
+            require(repo.get('description','')==description,'最终仓库描述在预演后发生变化','stale')
+        elif repo.get('description','') != description:
+            receiver.api('PATCH','/repos/'+quote(group['full_path'],safe='/')+'/'+quote(name,safe=''),{'description':description})
+            require(receiver.repository(group['full_path'],name).get('description','')==description,'最终仓库描述回读不一致')
+        current_group=receiver.api('GET','/governance/groups/'+str(group['id']))
+        expected=checkpoint['groups'][group['full_path']]['access']
+        require(receiver.selected_scope(group['id'])['access_fingerprint']==expected,'子群组授权发生变化，不能确认最终形态')
+        progress['group_revision']=current_group['revision']
+        progress['final_path'], progress['prepared'] = final_path, True
+        save()
+        return
     progress['unarchive_intent'] = not desired_archive
     save()
     receiver.api('PATCH', '/repos/' + quote(group['full_path'], safe='/') + '/' + quote(name, safe=''),

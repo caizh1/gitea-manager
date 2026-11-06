@@ -4,6 +4,7 @@ import argparse, base64, hashlib, io, json, os, re, secrets, subprocess, time, z
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 import requests
+from git_migration_acceptance_helpers import target_rows
 
 
 def docker(*args): return subprocess.check_output(['docker', *args], text=True).strip()
@@ -35,7 +36,7 @@ def main():
         r=client.get(url,timeout=60);assert r.status_code==200, '读取失败 '+urlsplit(url).path+' HTTP '+str(r.status_code)
         return r.content if binary else r.json()
     def api(path):return get('/api/v1'+path)
-    report={'说明':'固定真实来源的全部盘点项目、对象和文件验收，不代表生产或人工节省指标','来源':fixture['kind'],'执行':a.run_id,'项目':[],'制品协议':[],'历史文件':[],'C产物执行':[]}
+    report={'说明':'固定真实来源的全部盘点项目、对象和文件验收，不代表生产或人工节省指标','来源':fixture['kind'],'执行':a.run_id,'项目':[],'制品协议':[],'历史文件':[],'C产物执行':[],'业务字段':[]}
     for row in projects:
         assert row['handed_off'] and row['code_verified'] and row['objects_verified'] and row['source_verified'] and not row['pending'] and not row['gaps']
         manifest=manifests[row['snapshot']['project_id']] if 'project_id' in row['snapshot'] else next(value for ident,value in manifests.items() if checkpoint[str(ident)] is row)
@@ -46,6 +47,35 @@ def main():
         repo=api('/repos/'+row['final_path']);assert repo['id']==row['repo_id'] and not repo['archived'] and not repo['has_actions']
         assert repo['default_branch']==row['snapshot']['default_ref'].removeprefix('refs/heads/')
         report['项目'].append({'路径':row['final_path'],'编号':repo['id'],'对象数':len(row['objects']),'来源对象数':len(expected_objects),'来源规则数':len(manifest['rules']),'文件数':len(row.get('assets',{})),'代码重新克隆核验':True,'Wiki核验':row.get('wiki_verified',False)})
+        if manifest.get('fields'):
+            native={}
+            for page in range(1,1002):
+                batch=api('/repos/'+row['final_path']+'/issues?state=all&type=all&limit=100&page='+str(page))
+                for issue in batch:
+                    assert issue['id'] not in native, '原生议题分页重复'
+                    native[issue['id']]=issue
+                if len(batch)<100:break
+            else:raise AssertionError('原生议题分页超限')
+            from datetime import datetime
+            historical=target_rows(target,'SELECT id,data FROM governance_migration_history WHERE repo_id='+str(row['repo_id']))
+            historical={h['id']:json.loads(h['data']) for h in historical}
+            for key,expected in manifest['fields'].items():
+                if key.startswith(('discussion_snapshot:', 'merge_policy:')):
+                    target_id=row['objects'][key]['target_id']
+                    assert target_id in historical, '来源历史对象缺失'
+                    value={'history':historical[target_id]}
+                    for field,expected_value in expected.items():
+                        actual_value=value
+                        for part in field.split('.'):
+                            assert part in actual_value, '历史字段缺失：'+field
+                            actual_value=actual_value[part]
+                        assert actual_value==expected_value, '来源历史字段发生变化：'+field
+                    report['业务字段'].append({'来源对象':key,'目标编号':target_id,'历史字段核验':'逐字段一致'})
+                    continue
+                actual=native[row['objects'][key]['target_id']]
+                deadline=int(datetime.fromisoformat(actual['due_date'].replace('Z','+00:00')).timestamp()) if actual.get('due_date') else 0
+                assert deadline==expected['deadline'] and bool(actual['is_locked'])==expected['locked'], '截止日期或讨论锁定状态丢失'
+                report['业务字段'].append({'来源对象':key,'目标编号':actual['id'],'截止时间':deadline,'讨论锁定':expected['locked']})
         assert row.get('wiki_verified'), '依赖仓库 Wiki 未逐个核验'
         for ident, receipt in row.get('assets',{}).items():
             source=row['downloads'][ident]

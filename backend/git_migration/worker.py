@@ -11,7 +11,7 @@ import time
 from models import db
 from services.upgrade_maintenance import active
 from svn_migration.common import MigrationError, encode, file_lock, require
-from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationWorkerHealth, GitMigrationInventory, GitMigrationRun
+from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationWorkerHealth, GitMigrationInventory, GitMigrationRun, GitMigrationAccountMapping, GitMigrationPreflight
 from .providers import Provider
 from .store import root, decrypt
 from .transport import Transport
@@ -39,7 +39,7 @@ def health():
 def recover_interrupted():
     if active():
         return False
-    for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun):
+    for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationAccountMapping, GitMigrationPreflight, GitMigrationRun):
         model.query.filter_by(status='running').update({
             'status': 'interrupted', 'error': '执行器已重启，结果未完成；迁移执行可从检查点继续，发现或盘点需重新发起',
             'error_code': 'interrupted', 'completed_at': datetime.utcnow()}, synchronize_session=False)
@@ -55,6 +55,12 @@ def step():
     row = model.query.filter_by(status='queued').order_by(model.id).first()
     if row is None:
         model = GitMigrationInventory
+        row = model.query.filter_by(status='queued').order_by(model.id).first()
+    if row is None:
+        model = GitMigrationAccountMapping
+        row = model.query.filter_by(status='queued').order_by(model.id).first()
+    if row is None:
+        model = GitMigrationPreflight
         row = model.query.filter_by(status='queued').order_by(model.id).first()
     if row is None:
         model = GitMigrationRun
@@ -91,14 +97,23 @@ def step():
                 path.chmod(0o600)
                 verify = str(path)
             transport = Transport(source.url, verify=verify, tick=tick,
-                                  deadline_seconds=86400 if model is GitMigrationRun else 1800)
+                                  deadline_seconds=86400 if model in (GitMigrationRun, GitMigrationPreflight) else 1800)
             provider = Provider(transport, source.kind, source.username,
                                 decrypt(source.secret_ciphertext), source.auth_method)
             if model is GitMigrationRun:
                 from .runs import execute
                 execute(row, provider, tick)
                 return True
-            if model is GitMigrationDiscovery:
+            if model is GitMigrationPreflight:
+                from .preflights import execute
+                execute(row, provider, tick)
+                return True
+            if model is GitMigrationAccountMapping:
+                from .account_mapping import scan
+                result = scan(row, provider, tick)
+                # 下方重新载入前先保存扫描过程中核对的上下文。
+                db.session.flush()
+            elif model is GitMigrationDiscovery:
                 result = provider.discover()
             else:
                 identity = provider.authenticate()
@@ -130,16 +145,23 @@ def step():
         db.session.rollback()
         row = db.session.get(model, ident)
         row.status = ('interrupted' if error.code in ('maintenance', 'interrupted') else
-                      'uncertain' if model is GitMigrationRun else 'failed')
+                      'uncertain' if model is GitMigrationRun else 'blocked' if model is GitMigrationPreflight else 'failed')
         row.error, row.error_code = str(error), error.code
     except Exception:
         db.session.rollback()
         row = db.session.get(model, ident)
-        row.status, row.error_code = ('uncertain' if model is GitMigrationRun else 'failed'), 'internal'
+        row.status, row.error_code = ('uncertain' if model is GitMigrationRun else 'blocked' if model is GitMigrationPreflight else 'failed'), 'internal'
         row.error = '执行遇到内部异常，未生成完整结果；已保留现场和检查点，请检查执行环境'
     finally:
         if transport:
             transport.close()
+        if model is GitMigrationPreflight:
+            row = db.session.get(model, ident)
+            if row.error:
+                from .preflights import record_failure
+                record_failure(row, row.error, row.error_code)
+            row.completed_at = datetime.utcnow()
+            db.session.commit()
     row.completed_at = datetime.utcnow()
     db.session.commit()
     return True

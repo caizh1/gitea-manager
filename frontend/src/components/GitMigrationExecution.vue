@@ -18,18 +18,23 @@
       <div v-if="chosen" class="paths"><strong>目标路径</strong><div v-for="item in inventory.result.projects" :key="item.project.id">{{ chosen.full_path }}/{{ item.project.path }}</div></div>
       <div v-if="principals.length" class="principal-map">
         <strong>人员与规则主体映射</strong>
-        <p>填写目标已有账号。单个人员对应一个账号，团队或规则角色可用逗号分隔多个账号。目标权限需提前配置。</p>
+        <p>先自动匹配目标已有账号，再集中检查与确认。目标权限需提前配置。</p>
         <p v-if="principals.includes('gitlab:ci:issuer')">强制 CI 需指定专用的可信回执账号。目标只接受该账号对当前提交发出的流水线成功状态，历史成功记录不会解除门禁。</p>
-        <el-form label-position="top">
-          <el-form-item v-for="key in principals" :key="key" :label="principalLabel(key)">
-            <el-input v-model="principalInputs[key]" placeholder="目标用户登录名" />
-          </el-form-item>
-        </el-form>
+        <p v-if="mapping">已确认 {{ mapping.stats.confirmed }} / {{ mapping.stats.total }} 项{{ mapping.ready ? '，可以继续' : '，全部确认后才能继续' }}</p>
+        <el-button :disabled="!groupId || busy" :loading="busy" @click="openMapping">{{ mapping ? '检查人员匹配' : '自动匹配并确认人员' }}</el-button>
       </div>
-      <el-checkbox v-model="frozen">已确认所列项目及依赖均已停止写入，并授权按当前盘点内容执行迁移</el-checkbox>
-      <el-button type="primary" :disabled="!serverId || !groupId || !frozen || activeRun || principals.some(key => !principalInputs[key]?.trim())" :loading="busy" @click="start">执行迁移</el-button>
+      <p>正式迁移前必须完成隔离预迁移和完整性检查；全部通过后再确认停写并正式启动。</p>
+      <el-button type="primary" :disabled="!serverId || !groupId || activeRun || (principals.length > 0 && !mapping?.ready)" :loading="busy" @click="start">预迁移与检查</el-button>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
+    <h4>预迁移记录</h4>
+    <el-table :data="preflights" empty-text="尚未进行预迁移">
+      <el-table-column prop="id" label="编号" width="75" />
+      <el-table-column label="状态" min-width="120"><template #default="{ row }">{{ preflightStatus(row.status) }}</template></el-table-column>
+      <el-table-column prop="stage" label="检查进度" min-width="240" />
+      <el-table-column label="操作" width="130"><template #default="{ row }"><el-button link @click="router.push(`/git-migrations/preflights/${row.id}`)">查看检查结果</el-button></template></el-table-column>
+    </el-table>
+    <h4>正式迁移记录</h4>
     <el-table :data="runs" empty-text="尚未执行迁移">
       <el-table-column prop="id" label="编号" width="75" />
       <el-table-column label="状态" min-width="120"><template #default="{ row }">{{ statusLabel(row.status) }}</template></el-table-column>
@@ -39,6 +44,7 @@
     <el-dialog v-model="showDetail" title="迁移执行详情" width="min(800px, 96vw)">
       <template v-if="detail">
         <p>任务 #{{ detail.id }} · {{ statusLabel(detail.status) }}</p>
+        <el-alert v-if="detail.status === 'succeeded' && !detail.discussion_history_verified" title="旧协议迁移：讨论历史状态未核验，本次升级不自动补录或修改已有规则。" type="warning" :closable="false" />
         <el-alert v-if="detail.error" :title="detail.error" type="error" :closable="false" />
         <div v-if="['interrupted', 'uncertain', 'quarantined'].includes(detail.status)" class="actions"><el-button @click="rotateTarget(detail)">更新目标令牌</el-button><span>需属于原目标管理员，核对身份后可继续同一任务。</span></div>
         <div v-for="[id, project] in projectCheckpoints" :key="id" class="checkpoint">
@@ -55,29 +61,34 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import { useOperationPolling } from '../composables/useOperationPolling'
 const props = defineProps({ inventory: Object, sourceId: Number })
+const router = useRouter(), mapping = ref(null)
 const servers = ref([]), serverId = ref(null), groupId = ref(null), groups = ref([]), parents = ref([]), chosen = ref(null), nextGroup = ref(0)
-const frozen = ref(false), busy = ref(false), runs = ref([]), detail = ref(null)
+const frozen = ref(false), busy = ref(false), runs = ref([]), preflights = ref([]), detail = ref(null)
 const principals = ref([]), principalInputs = ref({})
 const principalDetails = ref({})
 const principalLabel = key => key === 'gitlab:ci:issuer' ? '可信 CI 回执账号（目标已有专用账号）' : principalDetails.value[key] ? `${principalDetails.value[key].username} · ${principalDetails.value[key].roles.join('、')} · 来源编号 ${key.split(':').at(-1)}` : key.startsWith('gitlab:access:') ? `GitLab ${({ 30: '开发者', 40: '维护者', 50: '所有者' })[key.split(':').at(-1)] || '角色'}及更高权限` : `${key.startsWith('gitea:') ? 'Gitea' : 'GitLab'} ${key.includes(':group:') || key.includes(':team:') || key.includes(':review-team:') ? '群组或团队' : '用户编号'} ${key.split(':').at(-1)}`
 let principalRequest = 0, groupRequest = 0
 const statusLabel = status => ({ queued: '等待执行', running: '正在迁移', succeeded: '交接完成', interrupted: '已中断', uncertain: '待核对', quarantined: '隔离待处理', abandoned: '已终止，保留现场' }[status] || status)
 const activeRun = computed(() => runs.value.some(row => ['queued', 'running'].includes(row.status)))
+const preflightStatus = status => ({ queued:'排队检查', running:'正在检查', ready:'检查通过', blocked:'存在阻断', interrupted:'检查中断', cancelled:'已结束', consumed:'已启动正式迁移' }[status] || status)
 const showDetail = computed({ get: () => !!detail.value, set: value => { if (!value) detail.value = null } })
 const projectCheckpoints = computed(() => Object.entries(detail.value?.checkpoint || {}).filter(([id]) => /^\d+$/.test(id)))
 const { refresh, error } = useOperationPolling(async config => {
   const rows = (await api.get('/git-migrations/runs', config)).data
+  const trials = (await api.get('/git-migrations/preflights', config)).data
   const selectedId = detail.value?.id
   const selected = selectedId ? (await api.get(`/git-migrations/runs/${selectedId}`, config)).data : null
-  return { rows, selected }
-}, ({ rows, selected }) => {
+  return { rows, trials, selected }
+}, ({ rows, trials, selected }) => {
   runs.value = rows.filter(row => row.source_id === props.sourceId)
+  preflights.value = trials.filter(row => row.source_id === props.sourceId)
   if (detail.value && selected?.id === detail.value.id) detail.value = selected
-}, () => activeRun.value)
+}, () => activeRun.value || preflights.value.some(row => ['queued','running'].includes(row.status)))
 function openDetail(row) { detail.value = row; refresh() }
 onMounted(async () => { servers.value = (await api.get('/servers')).data.filter(row => row.role !== 'archive') })
 watch(() => props.sourceId, () => { frozen.value = false; refresh() })
@@ -95,16 +106,35 @@ async function loadGroups(append = false) {
   groups.value = append ? [...groups.value, ...reply.data.groups] : reply.data.groups
   nextGroup.value = reply.data.next_id
 }
-function resetGroups() { groupId.value = null; chosen.value = null; parents.value = []; principalInputs.value = {}; frozen.value = false; loadGroups() }
+function resetGroups() { groupId.value = null; chosen.value = null; parents.value = []; principalInputs.value = {}; frozen.value = false; mapping.value = null; loadGroups() }
+watch(groupId, async () => {
+  mapping.value = null
+  const group = groupId.value, server = serverId.value, inventory = props.inventory?.id
+  if (!group || !inventory) return
+  const result = await api.get('/git-migrations/account-mappings', { params: { inventory_id: inventory, server_id: server, group_id: group } })
+  if (group === groupId.value && server === serverId.value && inventory === props.inventory?.id) mapping.value = result.data.find(row => !row.stale) || null
+})
+async function openMapping() {
+  busy.value = true
+  try {
+    let row = mapping.value
+    if (!row || row.stale) {
+      const result = await api.post('/git-migrations/account-mappings', { inventory_id: props.inventory.id, server_id: serverId.value, group_id: groupId.value, request_key: crypto.randomUUID().replaceAll('-', '') })
+      row = result.data
+    }
+    await router.push(`/git-migrations/account-mappings/${row.id}`)
+  } finally { busy.value = false }
+}
 function enterGroup(group) { parents.value.push(group); loadGroups() }
 function goBack() { parents.value.pop(); loadGroups() }
 async function start() {
   busy.value = true
   try {
+    const existing = preflights.value.find(row => ['queued','running','ready','blocked','interrupted'].includes(row.status))
+    if (existing) { await router.push(`/git-migrations/preflights/${existing.id}`); return }
     const requestKey = Array.from(crypto.getRandomValues(new Uint8Array(20)), value => value.toString(16).padStart(2, '0')).join('')
-    const principalMap = Object.fromEntries(principals.value.map(key => [key, principalInputs.value[key].split(/[,，]/).map(value => value.trim()).filter(Boolean)]))
-    const reply = await api.post('/git-migrations/runs', { inventory_id: props.inventory.id, server_id: serverId.value, group_id: groupId.value, source_frozen: frozen.value, request_key: requestKey, principal_map: principalMap })
-    detail.value = reply.data
+    const reply = await api.post('/git-migrations/preflights', { inventory_id: props.inventory.id, server_id: serverId.value, group_id: groupId.value, request_key: requestKey, ...(mapping.value ? { mapping_id: mapping.value.id } : {}) })
+    await router.push(`/git-migrations/preflights/${reply.data.id}`)
   } finally { busy.value = false; refresh() }
 }
 async function resume(row) {

@@ -37,7 +37,7 @@ def main():
     if a.load_images:docker('image','load','--input',str((a.output/'offline/运行镜像.tar').resolve()))
     actual=[]
     for image in images:
-        info=json.loads(docker('image','inspect','--platform','linux/amd64',image['镜像']))[0]
+        info=json.loads(docker('image','inspect',image['镜像']))[0]
         assert info['Architecture']=='amd64' and info['Os']=='linux'
         assert info['Id'] in (image['ID'],image['配置ID']), '装载镜像身份与导出清单不一致'
         actual.append({'名称':image['镜像'],'身份':info['Id'],'架构':'Linux amd64'})

@@ -38,7 +38,7 @@ def unique_target(server):
 
 
 def validate_connection_change(data, server_id=None):
-    from .models import GitMigrationRun
+    from .models import GitMigrationRun, GitMigrationPreflight
     current = GiteaServer.query.get(server_id) if server_id else None
     candidate = {name: data.get(name, getattr(current, name, default)) for name, default in
                  (('gitea_url', ''), ('host', ''), ('ssh_port', 22), ('gitea_container', 'gitea'))}
@@ -46,3 +46,7 @@ def validate_connection_change(data, server_id=None):
         target = GiteaServer.query.get(run.server_id)
         require(target is None or run.server_id == server_id or not same_instance(candidate, target),
                 '该实例存在未完成的 Git 迁移，不能新增或修改为它的连接别名', 'instance_alias', 409)
+    for trial in GitMigrationPreflight.query.filter(GitMigrationPreflight.status.in_(('queued','running','ready','blocked','interrupted'))).all():
+        target = GiteaServer.query.get(trial.server_id)
+        require(target is None or trial.server_id == server_id or not same_instance(candidate, target),
+                '该实例存在预迁移，不能通过连接别名绕过互斥', 'instance_alias', 409)

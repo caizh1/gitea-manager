@@ -9,7 +9,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 from models import db
 from svn_migration.common import MigrationError, data_root, file_lock, require, source_url, string
-from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun
+from .models import GitMigrationSource, GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun, GitMigrationAccountMapping, GitMigrationPreflight
 
 
 def root():
@@ -83,10 +83,13 @@ def public_discovery(row, detail=True):
     return result
 
 
-def busy(source_id):
-    return any(model.query.filter_by(source_id=source_id).filter(
+def busy(source_id, allow_preflight_id=None):
+    trials = GitMigrationPreflight.query.filter_by(source_id=source_id).filter(GitMigrationPreflight.status.in_(('queued','running','ready','blocked','interrupted')))
+    if allow_preflight_id is not None:
+        trials = trials.filter(GitMigrationPreflight.id != allow_preflight_id)
+    return trials.first() is not None or any(model.query.filter_by(source_id=source_id).filter(
         model.status.in_(('queued', 'running', 'interrupted', 'uncertain', 'quarantined')) if model is GitMigrationRun else model.status.in_(('queued', 'running'))).first() is not None
-        for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun))
+        for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationAccountMapping, GitMigrationRun))
 
 
 def save_source(data, ident=None):
@@ -134,7 +137,7 @@ def rotate_credentials(ident, data):
         db.session.expire_all()
         row = get(GitMigrationSource, ident)
         require(type(data.get('version')) is int and data['version'] == row.version, '来源已变化，请刷新', 'stale', 409)
-        for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationRun):
+        for model in (GitMigrationDiscovery, GitMigrationInventory, GitMigrationAccountMapping, GitMigrationRun, GitMigrationPreflight):
             require(not model.query.filter_by(source_id=ident).filter(model.status.in_(('queued', 'running'))).first(),
                     '来源仍有排队或执行中的任务，请等到安全检查点后更新凭据', 'busy', 409)
         secret = data.get('secret')

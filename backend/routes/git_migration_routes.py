@@ -198,3 +198,99 @@ def principal_details(inventory_id):
     row = store.get(GitMigrationInventory, inventory_id)
     require(row.status == 'succeeded', '盘点尚未完成')
     return jsonify(details(json.loads(row.result_json)))
+
+
+@git_migration_bp.route('/account-mappings', methods=['GET', 'POST'])
+def account_mappings():
+    from git_migration import account_mapping as service
+    from git_migration.models import GitMigrationAccountMapping
+    if request.method == 'POST':
+        require(health()['online'], '人员匹配执行器未在线', 'worker', 503)
+        return jsonify(service.public(service.enqueue(body(), current_user.id))), 202
+    rows = GitMigrationAccountMapping.query
+    for name in ('inventory_id', 'server_id', 'group_id'):
+        value = request.args.get(name, type=int)
+        if value is not None:
+            rows = rows.filter(getattr(GitMigrationAccountMapping, name) == value)
+    return jsonify([service.public(row, size=1) for row in rows.order_by(GitMigrationAccountMapping.id.desc()).limit(50)])
+
+
+@git_migration_bp.route('/account-mappings/<int:mapping_id>', methods=['GET', 'PATCH'])
+def account_mapping(mapping_id):
+    from git_migration import account_mapping as service
+    from git_migration.models import GitMigrationAccountMapping
+    row = service.mutate(mapping_id, body()) if request.method == 'PATCH' else store.get(GitMigrationAccountMapping, mapping_id)
+    return jsonify(service.public(row, request.args.get('q', ''), request.args.get('status', 'all'),
+                                  request.args.get('page', 1, type=int), request.args.get('page_size', 50, type=int)))
+
+
+@git_migration_bp.get('/account-mappings/<int:mapping_id>/accounts')
+def mapping_accounts(mapping_id):
+    import json
+    from git_migration import account_mapping as service
+    from git_migration.models import GitMigrationAccountMapping
+    row = store.get(GitMigrationAccountMapping, mapping_id)
+    require(not service.stale(row), '人员匹配已失效，请重新核对', 'stale', 409)
+    state = json.loads(row.result_json)
+    needle = service.normalized(request.args.get('q', ''))
+    require(len(needle) <= 200, '账号查询过长')
+    item = next((r for r in state.get('rows', []) if r['key'] == request.args.get('key')), None)
+    require(item is not None, '请选择来源人员')
+    rights = {int(k): v for k, v in state.get('rights', {}).items()}
+    found = [dict(user, eligible=service.eligible(user, item, rights)) for user in state.get('accounts', [])
+             if not needle or any(needle in service.normalized(user[k]) for k in ('login','name','email'))]
+    return jsonify(accounts=found[:100], total=len(found))
+
+
+@git_migration_bp.route('/preflights', methods=['GET','POST'])
+def preflights():
+    from git_migration import preflights as service
+    from git_migration.models import GitMigrationPreflight
+    if request.method == 'POST':
+        require(health()['online'], '预迁移执行器未在线', 'worker', 503)
+        return jsonify(service.public(service.enqueue(body(), current_user.id))), 202
+    return jsonify([service.public(row, False) for row in GitMigrationPreflight.query.order_by(GitMigrationPreflight.id.desc()).limit(100)])
+
+
+@git_migration_bp.get('/preflights/<int:preflight_id>')
+def preflight_detail(preflight_id):
+    from git_migration import preflights as service
+    from git_migration.models import GitMigrationPreflight
+    return jsonify(service.public(store.get(GitMigrationPreflight, preflight_id)))
+
+
+@git_migration_bp.post('/preflights/<int:preflight_id>/start')
+def start_preflight(preflight_id):
+    from git_migration import preflights as service
+    require(health()['online'], '正式启动前复检执行器未在线', 'worker', 503)
+    return jsonify(service.public(service.request_start(preflight_id, body(), current_user.id))), 202
+
+
+@git_migration_bp.post('/preflights/<int:preflight_id>/compatibility-acknowledgements')
+def acknowledge_preflight_compatibility(preflight_id):
+    from git_migration import preflights as service
+    require(health()['online'], '预迁移执行器未在线', 'worker', 503)
+    return jsonify(service.public(service.acknowledge_compatibility(preflight_id, body(), current_user.id))), 202
+
+
+@git_migration_bp.post('/preflights/<int:preflight_id>/cancel')
+def cancel_preflight(preflight_id):
+    from git_migration import preflights as service
+    require(not body(), '结束预迁移无需修改输入')
+    require(health()['online'], '预迁移执行器未在线', 'worker', 503)
+    return jsonify(service.public(service.request_cancel(preflight_id))), 202
+
+
+@git_migration_bp.post('/preflights/<int:preflight_id>/target-credentials')
+def preflight_target_credentials(preflight_id):
+    from git_migration import preflights as service
+    data=body()
+    require(set(data)=={'token'}, '只允许更新目标令牌')
+    return jsonify(service.public(service.rotate_target_credentials(preflight_id,data['token'])))
+
+@git_migration_bp.post('/preflights/<int:preflight_id>/resume')
+def resume_preflight(preflight_id):
+    from git_migration import preflights as service
+    require(not body(), '继续预迁移不能修改原计划')
+    require(health()['online'], '预迁移执行器未在线', 'worker',503)
+    return jsonify(service.public(service.resume(preflight_id))),202

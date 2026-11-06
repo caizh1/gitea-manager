@@ -2,12 +2,47 @@
 from pathlib import Path
 import tempfile,unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
-from git_migration.target import Receiver
+from unittest.mock import Mock,patch
+from git_migration.target import Receiver,MonitoredUpload
 from svn_migration.common import MigrationError
 
 
 class TargetTests(unittest.TestCase):
+    def test_fixed_length_upload_and_empty_log_http_framing(self):
+        import io,requests
+        tick=Mock();stream=MonitoredUpload(io.BytesIO(b'abc'),3,tick)
+        request=requests.Request('POST','https://target.test/upload',data=stream).prepare()
+        self.assertEqual(request.headers['Content-Length'],'3')
+        self.assertNotIn('Transfer-Encoding',request.headers)
+        self.assertEqual(request.body.read(2),b'ab');tick.assert_called_once()
+        empty=requests.Request('POST','https://target.test/upload',data=b'',headers={'Content-Length':'0'}).prepare()
+        self.assertEqual(empty.headers['Content-Length'],'0')
+        self.assertNotIn('Transfer-Encoding',empty.headers)
+    def test_final_subgroup_rechecks_use_canonical_path(self):
+        receiver=object.__new__(Receiver);receiver.base='https://target.test';receiver.verify=True
+        receiver.actor={'login':'admin'};receiver.token='固定验收令牌'
+        receiver.process=SimpleNamespace(tick=lambda:None)
+        snapshot={'refs':{},'default_ref':'','lfs_objects':[]}
+        repo={'id':7,'name':'repo','full_name':'internal-group/repo','full_path':'root/team/repo'}
+        with patch('git_migration.target.Transport'),patch('git_migration.target.Provider'),patch('git_migration.target.GitSnapshot') as capture:
+            capture.return_value.capture.return_value=snapshot
+            receiver.verify_code(snapshot,repo,Path('/unused'),{},lambda _:None)
+            self.assertEqual(capture.call_args.args[1]['path'],'root/team/repo')
+            receiver.verify_wiki({'wiki_snapshot':snapshot},repo,Path('/unused-wiki'))
+            self.assertEqual(capture.call_args.args[1]['path'],'root/team/repo')
+
+    def test_sealed_asset_recheck_detects_content_change(self):
+        import hashlib
+        receiver=object.__new__(Receiver);receiver.base='https://target.test';receiver.verify=True
+        receiver.process=SimpleNamespace(tick=lambda:None)
+        reply=Mock(status_code=200);reply.__enter__=Mock(return_value=reply);reply.__exit__=Mock(return_value=False)
+        reply.iter_content.return_value=[b'changed']
+        receiver.session=SimpleNamespace(get=Mock(return_value=reply))
+        checkpoint={'key':'a'*32,'assets':{'asset':{'id':1,'size':7,'sha256':hashlib.sha256(b'correct').hexdigest()}}}
+        with self.assertRaisesRegex(MigrationError,'内容变化'):receiver.verify_assets(checkpoint)
+        reply.iter_content.return_value=[b'correct']
+        receiver.verify_assets(checkpoint)
+
     def test_temporary_head_is_switched_before_its_deletion(self):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder)/'repository.git').mkdir()

@@ -10,11 +10,28 @@ from .providers import Provider
 from .transport import Transport
 
 
+class MonitoredUpload:
+    """保留固定 HTTP 长度，并在传输读取期间更新心跳和容量。"""
+    def __init__(self, stream, size, tick):
+        self.stream,self.size,self.tick=stream,size,tick
+    def __len__(self):return self.size
+    def tell(self):return self.stream.tell()
+    def seek(self,*args):return self.stream.seek(*args)
+    def read(self,size=-1):
+        self.tick()
+        return self.stream.read(size)
+    def __iter__(self):return self
+    def __next__(self):
+        data=self.read(64*1024)
+        if not data:raise StopIteration
+        return data
+
+
 class Receiver(Gitea):
     def check(self):
         super().check()
         capability = self.api('GET', '/governance/migration-capabilities', missing=True)
-        require(isinstance(capability, dict) and capability.get('protocol') == 3 and capability.get('npm_registry_metadata') is True,
+        require(isinstance(capability, dict) and capability.get('protocol') == 8 and capability.get('package_isolation') is True and capability.get('native_package_manifest') is True and capability.get('receipt_manifest') is True and capability.get('discussion_snapshots') is True and capability.get('batch_publish') is True and capability.get('capacity_probe') is True and capability.get('npm_registry_metadata') is True,
                 '目标尚未安装兼容的迁移接收端，请先部署配套增强版；未创建目标仓库', 'capability')
         return capability
 
@@ -62,10 +79,11 @@ class Receiver(Gitea):
         repo = self.repository(owner, name)
         require(repo.get('has_actions') is False, '隔离仓库必须关闭 Actions，避免迁入工作流自动运行')
         reply = self.api('POST', '/governance/migration-sessions',
-                         {'key': key, 'repo_id': repo['id'], 'source_digest': source_digest, 'batch_key': batch_key or key})
+                         {'protocol': 8, 'key': key, 'repo_id': repo['id'], 'source_digest': source_digest, 'batch_key': batch_key or key, 'batch_size':checkpoint.get('batch_size',0)})
         require(reply.get('repo_id') == repo['id'] and reply.get('source_digest') == source_digest,
                 '接收端会话回执与固定快照不一致')
         checkpoint['session_id'] = reply['id']
+        checkpoint['source_digest'] = source_digest
         checkpoint['repo_name'] = name
         save(checkpoint)
         return repo
@@ -159,9 +177,21 @@ class Receiver(Gitea):
                         '原生对象写入回执身份不符')
                 receipts[receipt['kind'] + ':' + receipt['source_id']] = receipt
             save(checkpoint)
-        actual, after = {}, 0
+        self.verify_objects(key, checkpoint, save)
+
+    def verify_objects(self, key, checkpoint, save):
+        """正式启动前只回读封存对象，不重复写入试迁移资料。"""
+        receipts = checkpoint.get('objects', {})
+        actual, after, session_identity = {}, 0, None
         while True:
             page = self.api('GET', '/governance/migration-sessions/' + key + '?after_id=' + str(after))
+            session = page.get('session') or {}
+            identity = tuple(session.get(k) for k in ('id','key','repo_id','source_digest','revision','state'))
+            require(session.get('id') == checkpoint.get('session_id') and session.get('key') == key
+                    and session.get('repo_id') == checkpoint.get('repo_id')
+                    and session.get('source_digest') == checkpoint.get('source_digest'), '回执分页会话身份不符')
+            require(session_identity is None or session_identity == identity, '回执读取期间会话发生变化')
+            session_identity = identity
             for row in page['objects']:
                 receipt = row['receipt']
                 ident = receipt['kind'] + ':' + receipt['source_id']
@@ -174,6 +204,9 @@ class Receiver(Gitea):
                 break
             require(next_id > after, '目标回执分页没有前进')
             after = next_id
+        status = self.api('GET', '/governance/migration-sessions/' + key + '/status')
+        require(tuple(status.get(k) for k in ('id','key','repo_id','source_digest','revision','state')) == session_identity,
+                '回执读取结束时会话发生变化')
         require(set(actual) == set(receipts), '目标原生对象回执不完整')
         checkpoint['objects_verified'] = True
         save(checkpoint)
@@ -183,7 +216,7 @@ class Receiver(Gitea):
         try:
             provider = Provider(transport, 'gitea', self.actor['login'], self.token, 'token')
             provider.authenticate()
-            project = {'id': repo['id'], 'path': self.actor['login'] + '/' + repo['name']}
+            project = {'id': repo['id'], 'path': repo.get('full_path') or repo.get('full_name') or self.actor['login'] + '/' + repo['name']}
             actual = GitSnapshot(provider, project, directory, tick=self.process.tick).capture()
             expected_refs = dict(checkpoint.get('code_refs', snapshot['refs']))
             if 'HEAD' in snapshot['refs']:
@@ -193,6 +226,32 @@ class Receiver(Gitea):
             require(actual['lfs_objects'] == snapshot['lfs_objects'], '目标重新下载的 LFS 对象不一致')
             checkpoint['code_verified'] = True
             save(checkpoint)
+        finally:
+            transport.close()
+
+    def verify_assets(self, checkpoint):
+        """启动前重新核对已封存的每份文件，避免只相信历史回执。"""
+        import hashlib
+        for receipt in checkpoint.get('assets', {}).values():
+            count, sha = 0, hashlib.sha256()
+            url = self.base + '/api/v1/governance/migration-sessions/' + checkpoint['key'] + '/assets/' + str(receipt['id'])
+            with self.session.get(url, stream=True, timeout=(10,60), allow_redirects=False, verify=self.verify) as response:
+                require(response.status_code == 200, '封存附件无法回读')
+                for chunk in response.iter_content(1024*1024):
+                    self.process.tick(); count += len(chunk)
+                    require(count <= receipt['size'], '封存附件大小变化')
+                    sha.update(chunk)
+            require(count == receipt['size'] and sha.hexdigest() == receipt['sha256'], '封存附件内容变化')
+
+    def verify_wiki(self, checkpoint, repo, directory):
+        if not checkpoint.get('wiki_snapshot'):
+            return
+        transport = Transport(self.base, verify=self.verify, tick=self.process.tick)
+        try:
+            provider = Provider(transport, 'gitea', self.actor['login'], self.token, 'token')
+            provider.authenticate()
+            actual = GitSnapshot(provider, {'id':repo['id'], 'path':repo.get('full_path') or repo.get('full_name') or self.actor['login']+'/'+repo['name']}, directory, tick=self.process.tick, wiki=True).capture()
+            require(actual['refs'] == checkpoint['wiki_snapshot']['refs'] and actual['default_ref'] == checkpoint['wiki_snapshot']['default_ref'], '封存 Wiki 内容变化')
         finally:
             transport.close()
 
@@ -214,7 +273,7 @@ class Receiver(Gitea):
         header = base64.b64encode(json.dumps(metadata, ensure_ascii=False, separators=(',', ':')).encode()).decode()
         require(len(header) <= 16000, '附件元数据过大')
         try:
-            with path.open('rb') as stream, self.session.post(url, data=stream, headers={
+            with path.open('rb') as stream, self.session.post(url, data=MonitoredUpload(stream,metadata['size'],self.process.tick) if metadata['size'] else b'', headers={
                     'X-Migration-Metadata': header, 'Content-Type': 'application/octet-stream',
                     'Content-Length': str(metadata['size'])}, timeout=(10, 7200),
                     allow_redirects=False, verify=self.verify) as response:
@@ -222,6 +281,8 @@ class Receiver(Gitea):
                     raise Uncertain('附件上传回执不确定，保留现场后重试核对')
                 require(response.status_code == 200, '附件上传失败，HTTP ' + str(response.status_code))
                 receipt = response.json()
+            from .manifest import metadata_digest
+            require(receipt.get('metadata_digest') == metadata_digest(metadata), '附件元数据回执摘要不符')
             require(receipt.get('source_id') == metadata['source_id'] and receipt.get('sha256') == metadata['sha256']
                     and receipt.get('size') == metadata['size'] and receipt.get('attachment_id', 0) > 0, '附件回执不符')
             sha, count = hashlib.sha256(), 0
@@ -277,7 +338,7 @@ class Receiver(Gitea):
         try:
             target = Provider(http, 'gitea', self.actor['login'], self.token, 'token')
             target.authenticate()
-            actual = GitSnapshot(target, {'id': repo['id'], 'path': self.actor['login'] + '/' + repo['name']},
+            actual = GitSnapshot(target, {'id': repo['id'], 'path': repo.get('full_path') or repo.get('full_name') or self.actor['login'] + '/' + repo['name']},
                                  directory / ('verify-' + secrets.token_hex(8)), tick=self.process.tick, wiki=True).capture()
             require(actual['refs'] == snapshot['refs'] and actual['default_ref'] == snapshot['default_ref'], 'Wiki 重新克隆核验失败')
         finally:

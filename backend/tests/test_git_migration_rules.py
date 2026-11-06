@@ -7,6 +7,24 @@ from svn_migration.common import MigrationError
 
 
 class RuleTests(unittest.TestCase):
+    def test_group_unit_permission_is_valid_without_native_overall_write(self):
+        from git_migration.rules import verify_rule_members
+        receiver=Mock()
+        receiver.api.side_effect=lambda method,path: {'permission':'none'} if path.endswith('/permission') else {'id':7,'login':'member','active':True}
+        receiver.members.return_value=[{'user_id':7,'active':True,'grants':[{'abilities':{'push_code':True,'read_pulls':True}}]}]
+        verify_rule_members(receiver,{'id':3,'full_name':'group/repo'},[{'push_whitelist_usernames':['member']}],{'gitea:user:member':[{'id':7,'login':'member'}]})
+        receiver.members.return_value=[]
+        with self.assertRaisesRegex(MigrationError,'有效权限'):
+            verify_rule_members(receiver,{'id':3,'full_name':'group/repo'},[{'push_whitelist_usernames':['member']}],{'gitea:user:member':[{'id':7,'login':'member'}]})
+
+    def test_approval_member_only_requires_pull_read_permission(self):
+        from git_migration.rules import principal_rights, verify_rule_members
+        required=principal_rights({'kind':'gitea','projects':[{'datasets':[{'category':'分支保护','rows':[{'approvals_whitelist_username':['reader']}]}]}]})
+        self.assertEqual(required['gitea:user:reader'],{'read_pulls'})
+        receiver=Mock()
+        receiver.api.side_effect=lambda method,path: {'permission':'read'} if path.endswith('/permission') else {'id':7,'login':'reader','active':True}
+        verify_rule_members(receiver,{'id':3,'full_name':'group/repo'},[{'approvals_whitelist_username':['reader']}],{'gitea:user:reader':[{'id':7,'login':'reader'}]})
+
     def setUp(self):
         self.source = {'name': 'main', 'allow_force_push': False,
                        'push_access_levels': [{'access_level': 40}],

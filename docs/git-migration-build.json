@@ -1,31 +1,30 @@
 {
-  "说明": "固定构建镜像与来源摘要，包含注册表元数据、合并前置条件和重复连接门禁",
+  "说明": "协议八：原生制品隔离、完整目标回执及可恢复终止；证据边界见验收报告",
   "组件": {
     "backend": {
-      "固定标签": "gitea-review-backend:git-migration-final-20261025-r13",
-      "镜像身份": "sha256:198000fe25ae889603e63f2f76f76fe9c6d7d426d975f18e5a3b373db4743a38"
+      "固定标签": "gitea-review-backend:abort-status-20261030",
+      "镜像身份": "sha256:595e85e7c24507976976b95674c79651c0bd172d26e8c552cb06973cb07ad765"
     },
     "frontend": {
-      "固定标签": "gitea-review-frontend:git-migration-final-20261025-r13",
-      "镜像身份": "sha256:67b4b22527e50d83f256db82bc9308eff02ba3e9752d938ee9a7891d510bb1f7"
+      "固定标签": "gitea-review-frontend:abort-status-20261030",
+      "镜像身份": "sha256:9a772236dda1307d8cd40a2fc964e1a861f572a796cbbca614250f8b497d50ea"
     },
     "git": {
-      "固定标签": "gitea-review-git:git-migration-final-20261025-r13",
-      "镜像身份": "sha256:3e23217cefb22a2bfbbff2feb8cde3f9ac927d342bd07a2086fab0f9bdb8ae74"
+      "固定标签": "gitea-review-git:abort-status-20261030",
+      "镜像身份": "sha256:950503d1145fd5f5cb582e519cf78f7edc9ddafbf2fc4cd13b63de57471128a9"
     },
     "svn": {
-      "固定标签": "gitea-review-svn:git-migration-final-20261025-r13",
-      "镜像身份": "sha256:00049ce3c7b6369e0fd4f76830f01c697219172516eac68441ea00533e18315e"
+      "固定标签": "gitea-review-svn:abort-status-20261030",
+      "镜像身份": "sha256:16d71009b1d7753c0cb577dfc8683a13cb22fbbd3af6d5f32e5655b326444049"
     },
     "executor": {
-      "固定标签": "gitea-review-executor:git-migration-final-20261025-r13",
-      "镜像身份": "sha256:9d135e7e9be7b268d0924d91c7ff8bc01b91b24c85926865be3900df1ed62f4a"
+      "固定标签": "gitea-review-executor:abort-status-20261030",
+      "镜像身份": "sha256:be69694a5a0a42199df2b33da4fb021ea9053ed6324e5353832d117d72128013"
     },
     "接收端": {
-      "固定标签": "gm-migration-receiver:20261025-r24",
-      "镜像身份": "sha256:02cca5b0bffae62d2cebda573b79b1a376bb16acfc6198ec38cc637a6cbf9b30",
-      "源码提交": "e89eacf0e649bfe809bf8ab1b2c9e3fb84f5bf29",
-      "源码包SHA256": "e42a98778f7af7a58bd74582ce6ed9ca66f2eaf10c62b8471e4ecadcf64b72cd"
+      "固定标签": "gm-migration-receiver:abort-status-20261030",
+      "镜像身份": "sha256:bcd006f7244de97cc3069f359d08f806663534842743d310be9c2ad5190e0404",
+      "源码提交": "41b5bdaa83ba6ce6e3252e2728b21229958440d6"
     }
   }
 }

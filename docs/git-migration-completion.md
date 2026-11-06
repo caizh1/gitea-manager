@@ -1,3 +1,7 @@
+> 当前协议七增加完整回执清单和封存中断恢复，见 [封存与清单说明](git-migration-manifest.md)。以下旧版验收记录保留其原有范围。
+
+> 当前第六版讨论行为以 [讨论历史说明](git-migration-discussion-history.md) 为准：来源状态只读保存，确认差异后采用 Gitea 原生合并规则。下文旧讨论门禁验收保留为历史证据。
+
 # 迁移完整性与合并条件补齐说明
 
 本轮面向平台迁移管理员，将 GitLab CE 与开源 Gitea 的固定项目及其依赖迁入当前增强版独立快照。Manager 分支为 `codex/gitlab-gitea-migration`，接收端协议为第三版；源码提交、镜像及二进制摘要见 `offline/git-migration-receiver.json`。

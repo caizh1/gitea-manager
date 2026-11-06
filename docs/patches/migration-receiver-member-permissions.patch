@@ -1,0 +1,138 @@
+diff --git a/models/git/migration_members_test.go b/models/git/migration_members_test.go
+new file mode 100644
+index 0000000..01d8aa2
+--- /dev/null
++++ b/models/git/migration_members_test.go
+@@ -0,0 +1,34 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package git
++
++import (
++	"testing"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	repo_model "gitea.dev/models/repo"
++	"gitea.dev/models/unit"
++	"gitea.dev/models/unittest"
++	"github.com/stretchr/testify/require"
++)
++
++func TestMigrationApprovalWhitelistUsesEffectiveReadPermission(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	require.NoError(t, governance.InitializeLegacyNamespaces(ctx))
++	repo := &repo_model.Repository{OwnerID: 3, Name: "migration-approval", LowerName: "migration-approval", IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	require.NoError(t, db.Insert(ctx, &repo_model.RepoUnit{RepoID: repo.ID, Type: unit.TypeCode}, &repo_model.RepoUnit{RepoID: repo.ID, Type: unit.TypePullRequests}))
++	require.NoError(t, db.Insert(ctx, &governance.Membership{ScopeType: "group", ScopeID: 3, UserID: 4, Role: governance.Reporter}))
++	ids, err := updateApprovalWhitelist(ctx, repo, nil, []int64{4})
++	require.NoError(t, err)
++	require.Equal(t, []int64{4}, ids)
++	// 回收真实授权后，不能因为旧名单中出现过该人员而重新加入。
++	_, err = db.GetEngine(ctx).Where("scope_type = ? AND scope_id = ? AND user_id = ?", "group", 3, 4).Delete(new(governance.Membership))
++	require.NoError(t, err)
++	ids, err = updateApprovalWhitelist(ctx, repo, nil, []int64{4})
++	require.NoError(t, err)
++	require.Empty(t, ids)
++}
+diff --git a/models/git/protected_branch.go b/models/git/protected_branch.go
+index 8c09537..ad00c1c 100644
+--- a/models/git/protected_branch.go
++++ b/models/git/protected_branch.go
+@@ -597,13 +597,18 @@ func updateApprovalWhitelist(ctx context.Context, repo *repo_model.Repository, c
+ 		return currentWhitelist, nil
+ 	}
+ 
+-	prUserIDs, err := access_model.GetUserIDsWithAnyUnitAccess(ctx, repo, perm.AccessModeRead, unit.TypePullRequests)
+-	if err != nil {
+-		return nil, err
+-	}
+ 	whitelist = make([]int64, 0, len(newWhitelist))
+ 	for _, userID := range newWhitelist {
+-		if !prUserIDs.Contains(userID) {
++		user, err := user_model.GetUserByID(ctx, userID)
++		if err != nil {
++			return nil, err
++		}
++		permission, err := access_model.GetIndividualUserRepoPermission(ctx, repo, user)
++		if err != nil {
++			return nil, err
++		}
++		actual := permission.ForMutation()
++		if !user.IsActive || user.ProhibitLogin || !actual.CanRead(unit.TypePullRequests) {
+ 			continue
+ 		}
+ 		whitelist = append(whitelist, userID)
+diff --git a/services/convert/convert.go b/services/convert/convert.go
+index 683b99c..fe82f7c 100644
+--- a/services/convert/convert.go
++++ b/services/convert/convert.go
+@@ -160,9 +160,27 @@ func getWhitelistEntities[T *user_model.User | *organization.Team](entities []T,
+ 
+ // ToBranchProtection convert a ProtectedBranch to api.BranchProtection
+ func ToBranchProtection(ctx context.Context, bp *git_model.ProtectedBranch, repo *repo_model.Repository) *api.BranchProtection {
+-	readers, err := access_model.GetUsersWithAnyUnitAccess(ctx, repo, perm.AccessModeRead, unit.TypeCode, unit.TypePullRequests)
++	ids := make([]int64, 0)
++	ids = append(ids, bp.WhitelistUserIDs...)
++	ids = append(ids, bp.ForcePushAllowlistUserIDs...)
++	ids = append(ids, bp.MergeWhitelistUserIDs...)
++	ids = append(ids, bp.ApprovalsWhitelistUserIDs...)
++	ids = append(ids, bp.BypassAllowlistUserIDs...)
++	users, err := user_model.GetUsersByIDs(ctx, ids)
+ 	if err != nil {
+-		log.Error("GetRepoReaders: %v", err)
++		log.Error("读取规则人员失败: %v", err)
++	}
++	readers := make(user_model.UserList, 0, len(users))
++	for _, user := range users {
++		permission, err := access_model.GetIndividualUserRepoPermission(ctx, repo, user)
++		if err != nil {
++			log.Error("核对规则人员权限失败: %v", err)
++			continue
++		}
++		actual := permission.ForMutation()
++		if user.IsActive && !user.ProhibitLogin && actual.CanReadAny(unit.TypeCode, unit.TypePullRequests) {
++			readers = append(readers, user)
++		}
+ 	}
+ 
+ 	pushWhitelistUsernames := getWhitelistEntities(readers, bp.WhitelistUserIDs)
+diff --git a/services/convert/migration_members_test.go b/services/convert/migration_members_test.go
+new file mode 100644
+index 0000000..68a370c
+--- /dev/null
++++ b/services/convert/migration_members_test.go
+@@ -0,0 +1,30 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package convert
++
++import (
++	"testing"
++
++	"gitea.dev/models/db"
++	git_model "gitea.dev/models/git"
++	governance "gitea.dev/models/governance"
++	repo_model "gitea.dev/models/repo"
++	"gitea.dev/models/unit"
++	"gitea.dev/models/unittest"
++	"github.com/stretchr/testify/require"
++)
++
++func TestMigrationWhitelistIncludesInheritedMembers(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	require.NoError(t, governance.InitializeLegacyNamespaces(ctx))
++	repo := &repo_model.Repository{OwnerID: 3, Name: "migration-whitelist", LowerName: "migration-whitelist", IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	require.NoError(t, db.Insert(ctx, &repo_model.RepoUnit{RepoID: repo.ID, Type: unit.TypeCode}, &repo_model.RepoUnit{RepoID: repo.ID, Type: unit.TypePullRequests}))
++	// 仅通过治理群组获得权限，没有原生仓库协作者记录。
++	require.NoError(t, db.Insert(ctx, &governance.Membership{ScopeType: "group", ScopeID: 3, UserID: 4, Role: governance.Reporter}))
++	require.NoError(t, repo.LoadOwner(ctx))
++	result := ToBranchProtection(ctx, &git_model.ProtectedBranch{RepoID: repo.ID, RuleName: "main", ApprovalsWhitelistUserIDs: []int64{4}}, repo)
++	require.Equal(t, []string{"user4"}, result.ApprovalsWhitelistUsernames)
++}

@@ -62,6 +62,8 @@
             <el-menu-item index="/svn-migrations/sources">SVN 来源与仓库</el-menu-item>
             <el-menu-item index="/svn-migrations/runs">SVN 执行记录</el-menu-item>
             <el-menu-item v-if="hasCapability('git_migrations')" index="/git-migrations">GitLab / Gitea 来源</el-menu-item>
+            <el-menu-item v-if="hasCapability('git_migrations') && $route.path.startsWith('/git-migrations/account-mappings/')" :index="$route.path">人员匹配确认</el-menu-item>
+            <el-menu-item v-if="hasCapability('git_migrations') && $route.path.startsWith('/git-migrations/preflights/')" :index="$route.path">预迁移与检查</el-menu-item>
           </el-sub-menu>
           <el-menu-item v-if="hasCapability('mirrors')" index="/mirrors" aria-label="镜像管理">
             <el-icon><NavBox /></el-icon>
@@ -268,6 +270,12 @@ export default {
     const breadcrumbItems = computed(() => {
       const path = route.path
       const serverQuery = route.query.server_id ? { server_id: route.query.server_id } : {}
+      if (path.startsWith('/git-migrations/account-mappings/')) {
+        return [{ label: '首页' }, { label: '迁移中心', to: { path: '/git-migrations' } }, { label: '人员匹配确认' }]
+      }
+      if (path.startsWith('/git-migrations/preflights/')) {
+        return [{ label: '首页' }, { label: '迁移中心', to: { path: '/git-migrations' } }, { label: '预迁移与检查' }]
+      }
       if (path.startsWith('/svn-migrations')) {
         const pages = { workbench: '迁移工作台', sources: '来源与仓库', plan: route.params.planId ? '编辑迁移计划' : '创建迁移计划', runs: '执行记录', run: '任务 #' + route.params.runId, preflight: '预检 #' + route.params.preflightId }
         return [{ label: '首页' }, { label: 'SVN 迁移中心', to: { path: '/svn-migrations' } },

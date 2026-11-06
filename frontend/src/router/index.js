@@ -3,6 +3,8 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/account/security', meta: { account: true }, component: () => import('../views/AccountSecurity.vue') },
   { path: '/git-migrations', meta: { capability: 'git_migrations', platformOnly: true }, component: () => import('../views/GitMigrations.vue') },
+  { path: '/git-migrations/account-mappings/:mappingId', meta: { capability: 'git_migrations', platformOnly: true }, component: () => import('../views/GitMigrationAccounts.vue') },
+  { path: '/git-migrations/preflights/:preflightId', meta: { capability: 'git_migrations', platformOnly: true }, component: () => import('../views/GitMigrationPreflight.vue') },
   ...[
     ['', 'workbench'], ['/sources', 'sources'], ['/runs', 'runs'],
     ['/plans/new', 'plan'], ['/plans/:planId/edit', 'plan'],

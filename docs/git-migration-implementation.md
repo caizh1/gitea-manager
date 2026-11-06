@@ -1,6 +1,6 @@
 # GitLab 与 Gitea 迁移实施记录
 
-最新实现与完整最终包验收以 [迁移补齐说明](git-migration-completion.md) 为准。下文早期镜像、计数和待处理项保留为历史证据，不替代本轮结论。
+完整迁移范围以 [迁移补齐说明](git-migration-completion.md) 为准；新增自动匹配、整批确认和百分之百确认门槛见 [人员匹配说明](git-migration-account-matching.md)。下文早期镜像、计数和待处理项保留为历史证据，不替代本轮结论。
 
 ## 目标与当前边界
 

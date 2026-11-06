@@ -121,3 +121,26 @@ class ProjectPrerequisiteTests(unittest.TestCase):
             result=objects(item,'gitlab');self.assertTrue(result['pending'])
         item={'project':{'id':1},'datasets':[{'category':'项目合并前置条件','path':'/projects/1','rows':[{'merge_method':'merge','squash_option':'default_off','only_allow_merge_if_pipeline_succeeds':False}]}]}
         self.assertFalse(objects(item,'gitlab')['pending'])
+
+
+class RetainedIdentityTests(unittest.TestCase):
+    def test_unbound_assignee_has_visible_source_identity_without_native_assignment(self):
+        actor={'id':9,'login':'author'}
+        row={'id':1,'number':1,'title':'原始问题','body':'原始正文','state':'open','user':actor,
+             'assignees':[{'id':7,'login':'departed'}], 'created_at':'2020-01-01T00:00:00Z','updated_at':'2020-01-01T00:00:00Z'}
+        key='gitea:person:7'
+        retained={key:{'source_id':3,'source':{'id':7,'login':'departed','name':'离职人员<script>'}}}
+        value=objects({'datasets':[{'category':'议题','rows':[row]}]},'gitea',principal_map={key:[]},retained_principals=retained)
+        self.assertEqual(value['pending'],[])
+        issue=value['objects'][0]
+        self.assertEqual(issue['assignee_ids'],[])
+        self.assertTrue(issue['content'].startswith('原始正文'))
+        self.assertIn('来源：gitea/3',issue['content'])
+        self.assertIn('离职人员&lt;script&gt;',issue['content'])
+        self.assertEqual((issue['author'],issue['author_id']),('author',9))
+
+    def test_empty_mapping_without_explicit_retention_remains_pending(self):
+        from git_migration.people import mapped
+        pending=[]
+        mapped({'id':1,'assignees':[{'id':7}]},'gitea',{'gitea:person:7':[]},pending)
+        self.assertEqual(len(pending),1)

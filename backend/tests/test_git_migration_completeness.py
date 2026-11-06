@@ -122,7 +122,9 @@ class HierarchyAndPeopleTests(unittest.TestCase):
                     policy = normalized['objects'][0]['history']
                     self.assertEqual((policy['method'], policy['squash']), (method,squash))
                     self.assertEqual(policy['ci_user_id'],90)
-                    self.assertTrue(policy['require_discussions'])
+                    self.assertFalse(policy['require_discussions'])
+                    self.assertTrue(policy['source_require_discussions'])
+                    self.assertEqual(policy['discussion_mode'], 'gitea_native')
                     self.assertEqual('squash' in policy['allowed_styles'],squash!='never')
                     if squash=='always': self.assertEqual(policy['allowed_styles'],['squash'])
 

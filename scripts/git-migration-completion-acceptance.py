@@ -68,7 +68,7 @@ def main():
         save()
 
     def db(sql):
-        return json.loads(advanced.docker('exec', target['name'], 'sqlite3', '-json', '/data/gitea/gitea.db', sql) or '[]')
+        return advanced.target_rows(target,sql)
 
     def merge(path, style, allowed, name, allow_ff_denial=False):
         # 等待原生异步可合并性计算，拒绝断言不能把暂时的 checking 状态算作门禁通过。
@@ -158,11 +158,11 @@ def main():
                 assert jobs <= actual
                 assert sum(k.startswith('ci_trigger:') for v in checkpoint.values() if isinstance(v, dict) for k in v.get('objects', {})) >= 3
                 record('全部三级及跨项目流水线、触发作业、五个真实 C 作业与下游目标仓库关系完整')
-                # 先解决讨论，以便每个 CI 拒绝都有独立可达因果链；最后重新打开讨论单独验证。
-                comments = [c for r in reviews for c in api('GET', path + '/pulls/' + str(numbers[path]) + '/reviews/' + str(r['id']) + '/comments')]
-                assert comments, '缺少迁入的未解决讨论'
-                for comment in comments:
-                    api('POST', path + '/pulls/comments/' + str(comment['id']) + '/resolve')
+                # 新协议保留只读历史，确认差异后不增加讨论合并门禁。
+                discussion_before=db('SELECT id,data FROM governance_migration_history WHERE repo_id='+str(root['repo_id'])+" AND kind='discussion_snapshot'")
+                assert discussion_before, '缺少独立讨论快照'
+                policy=json.loads(db("SELECT data FROM governance_migration_history WHERE kind='merge_policy' AND repo_id="+str(root['repo_id']))[0]['data'])
+                assert policy['discussion_mode']=='gitea_native' and policy['source_require_discussions'] and not policy['require_discussions']
                 head = pull['head']['sha']
                 ci_auth = ('migration-ci', target['test_users']['migration-ci']['password'])
                 other_auth = ('migration-assignee', target['test_users']['migration-assignee']['password'])
@@ -183,11 +183,10 @@ def main():
                 status(head, 'pending', ci_auth)
                 merge(path, 'merge', False, '重新运行的等待状态不能复用此前成功')
                 status(head, 'success', ci_auth)
-                api('POST', path + '/pulls/comments/' + str(comments[0]['id']) + '/unresolve')
-                merge(path, 'merge', False, '当前 CI 成功但仍有未解决讨论时阻断合并')
-                for comment in comments:
-                    api('POST', path + '/pulls/comments/' + str(comment['id']) + '/resolve')
             merge(path, 'merge', True, '跨仓库请求满足迁入约束后真实合并')
+            if fixture['kind']=='gitlab':
+                assert discussion_before==db('SELECT id,data FROM governance_migration_history WHERE repo_id='+str(root['repo_id'])+" AND kind='discussion_snapshot'")
+                record('确认原生合并行为后合并成功，来源讨论快照保持不变')
             record('跨仓库请求满足迁入约束后真实合并')
         for case in fixture['completeness']['merge_cases']:
             row = checkpoint[str(case['project_id'])]

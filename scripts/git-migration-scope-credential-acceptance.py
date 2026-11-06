@@ -54,7 +54,14 @@ def main():
     group_id = original_plan['selection']['id']
     group = api('GET', '/governance/groups/' + str(group_id))
     reviewer = target['test_users']['migration-reviewer']['id']
-    api('DELETE', '/governance/groups/' + str(group_id) + '/members/' + str(reviewer) + '?revision=' + str(group['revision']))
+    members = api('GET', '/governance/groups/' + str(group_id) + '/members')
+    member = next(row for row in members if row['user_id'] == reviewer)
+    grants = [grant for grant in member['grants'] if grant.get('membership_id') and grant['scope_type'] == 'group']
+    assert len(grants) == 1, '必须唯一核对实际直接或继承授权，不能按子群组猜测'
+    grant_group_id = grants[0]['scope_id']
+    grant_group = api('GET', '/governance/groups/' + str(grant_group_id))
+    api('DELETE', '/governance/groups/' + str(grant_group_id) + '/members/' + str(reviewer) + '?revision=' + str(grant_group['revision']))
+    assert not any(row['user_id'] == reviewer for row in api('GET', '/governance/groups/' + str(group_id) + '/members'))
     tokens = [t for t in api('GET', '/users/migration-admin/tokens') if t.get('token_last_eight') == target['token'][-8:]]
     assert len(tokens) == 1, '不能唯一核对被撤销的旧令牌'
     token = api('POST', '/users/migration-admin/tokens', {'name': '授权变化恢复-' + secrets.token_hex(4), 'scopes': ['all']})['sha1']
@@ -68,7 +75,8 @@ def main():
     assert '401' in rejected['error'], '必须证明原目标令牌确已失效'
     replacement = client.post(base + path + '/target-credentials', json={'token': token}, timeout=60)
     report = {'说明': '真实群组成员移除与原令牌撤销，不修改任务数据库或原执行授权', '任务': args.run_id,
-              '旧令牌真实失效': True, '目标授权已变化': True, '更新凭据响应': replacement.status_code}
+              '旧令牌真实失效': True, '目标授权已变化': True, '已撤销授权来源群组': grant_group_id,
+              '更新凭据响应': replacement.status_code}
     output = args.manager_state.parent / ('scope-credential-' + str(args.run_id) + '.json')
     if args.expect_rejection:
         assert replacement.status_code == 409, '未复现预期的修复前缺陷'

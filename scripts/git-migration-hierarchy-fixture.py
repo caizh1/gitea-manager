@@ -66,12 +66,35 @@ tree-cross-trigger:
                 assert response.status_code==200 and __import__('base64').b64decode(response.json()['content']).decode()==content, '来源配置已改变，不能恢复此夹具'
             actions.append({'action':'update' if response.status_code==200 else 'create','file_path':name,'content':content})
         if not a.resume: api('POST',route+'/repository/commits',json={'branch':'main','commit_message':'完整层级流水线验收','actions':actions})
+    if not a.resume:
+        # 显式触发固定分支，避免来源实例的 Push CI 策略跳过夹具。
+        pipeline=api('POST','/projects/'+str(root['id'])+'/pipeline',json={'ref':'main'})
+        (folder/'pipeline.json').write_text(json.dumps({'说明':'真实层级流水线入口','id':pipeline['id']},ensure_ascii=False))
     reports=[];deadline=time.monotonic()+480;idle=0
+    if a.resume:
+        for project in (root,fork):
+            route='/projects/'+str(project['id'])
+            for previous in api('GET',route+'/jobs'):
+                if previous['name'] not in ('tree-root','tree-child','tree-grandchild','tree-downstream'):continue
+                if previous['status']=='success':
+                    built=folder/('build-'+str(previous['id']))/'fixture-app'
+                    response=client.get(base+'/api/v4'+route+'/jobs/'+str(previous['id'])+'/artifacts',timeout=60)
+                    response.raise_for_status()
+                    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                        assert built.is_file() and archive.read('fixture-app')==built.read_bytes(), '历史 C 产物与本地编译结果不符'
+                    reports.append({'作业编号':previous['id'],'名称':previous['name'],'归档SHA256':hashlib.sha256(response.content).hexdigest()})
+                elif previous['status']=='running' and not (folder/('build-'+str(previous['id']))).exists():
+                    # 上次领取后来源断线，未执行任何构建；只重试本夹具的这一个作业。
+                    api('POST',route+'/jobs/'+str(previous['id'])+'/cancel')
+                    api('POST',route+'/jobs/'+str(previous['id'])+'/retry')
     while time.monotonic()<deadline:
         received=False
         for runner in runners:
             r=client.post(base+'/api/v4/jobs/request',json={'token':runner['token'],'info':{'name':'层级迁移验收','version':'16.1.0','platform':'linux','architecture':'amd64','executor':'shell','features':{'artifacts':True,'upload_multiple_artifacts':True,'trace_reset':True}}},timeout=40)
             if r.status_code==204:continue
+            if r.status_code in (502,503,504):
+                time.sleep(2)
+                continue
             r.raise_for_status();job_data=r.json();received=True
             assert job_data['job_info']['name'] in ('tree-root','tree-child','tree-grandchild','tree-downstream'), '不能执行夹具以外的作业'
             ident,token=job_data['id'],job_data['token']
@@ -92,6 +115,13 @@ tree-cross-trigger:
             active=[]
             for project in (root,fork):
                 active += [row for row in api('GET','/projects/'+str(project['id'])+'/pipelines') if row['status'] in ('created','waiting_for_resource','pending','running')]
+            if {'tree-root','tree-child','tree-grandchild','tree-downstream'} <= {r['名称'] for r in reports}:
+                for pipeline in active:
+                    route='/projects/'+str(pipeline['project_id'])+'/pipelines/'+str(pipeline['id'])
+                    jobs=api('GET',route+'/jobs')+api('GET',route+'/bridges')
+                    assert jobs and all(j['name'].startswith('tree-') for j in jobs), '不能取消夹具之外的流水线'
+                    api('POST',route+'/cancel')
+                if active:print('叶子作业均真实成功；取消来源重启后仍等待的父流水线，保留真实取消历史',flush=True)
             if not active:break
         time.sleep(1)
     else:raise RuntimeError('真实层级流水线未全部完成')

@@ -11,7 +11,18 @@ from svn_migration.common import MigrationError
 from svn_migration.guards import target_guard
 from git_migration.models import GitMigrationInventory, GitMigrationRun
 from git_migration.store import save_source, enqueue_discovery
-from git_migration.runs import enqueue, resume
+from git_migration.runs import enqueue as enqueue_run, resume
+from git_migration.models import GitMigrationPreflight
+
+def enqueue(data, actor_id):
+    """旧执行状态机测试先建立通过的预检夹具；入口门禁另行验证。"""
+    existing = GitMigrationRun.query.filter_by(request_key=data["request_key"]).first()
+    if existing:
+        return enqueue_run(dict(data, preflight_id=json.loads(existing.plan_json)["preflight_id"]), actor_id)
+    source, inventory, server, plan = enqueue_run(dict(data, source_frozen=False), actor_id, planning_only=True)
+    trial = GitMigrationPreflight(source_id=source.id, source_version=source.version, inventory_id=inventory.id, server_id=server.id, actor_id=actor_id, request_key="preflight-"+data["request_key"], phase="activate", status="running", plan_json=json.dumps(plan))
+    db.session.add(trial); db.session.commit()
+    return enqueue_run(dict(data, preflight_id=trial.id), actor_id, preflight=trial)
 from git_migration.worker import recover_interrupted
 
 
@@ -34,7 +45,7 @@ class RunTests(unittest.TestCase):
         discovery.status = 'succeeded'
         inventory = GitMigrationInventory(source_id=self.source.id, source_version=self.source.version,
             discovery_id=discovery.id, project_ids_json='[1]', request_key='inventory-test-0001', actor_id=1,
-            status='succeeded', result_json=json.dumps({'projects': [{'project': {'id': 1, 'path': 'org/repo'}, 'datasets': []}]}))
+            status='succeeded', result_json=json.dumps({'projects': [{'project': {'id': 1, 'path': 'org/repo'}, 'datasets': [], 'source_manifest': {'schema': 3, 'objects': [], 'files': [], 'rules': [], 'gaps': []}}]}))
         self.server = GiteaServer(name='隔离目标', gitea_url='https://target.test', api_token='目标令牌', host='127.0.0.1', ssh_user='root', gitea_port=3000)
         db.session.add_all([inventory, self.server]); db.session.commit()
         self.data = {'inventory_id': inventory.id, 'server_id': self.server.id, 'group_id': 7,
@@ -181,6 +192,19 @@ class RunTests(unittest.TestCase):
 
 
 class DerivedStateTests(unittest.TestCase):
+    def test_unstarted_gitlab_job_clock_does_not_mask_business_changes(self):
+        from git_migration.runs import content_digest
+        job = {'id': 17, 'pipeline': {'id': 11}, 'commit': {'id': 'a'*40}, 'stage': 'build',
+               'status': 'canceled', 'started_at': None, 'finished_at': '2026-10-29T00:00:00Z',
+               'queued_duration': 100, 'artifacts': [{'filename': 'result.zip', 'size': 20}]}
+        later = {**job, 'queued_duration': 200}
+        self.assertEqual(content_digest(job), content_digest(later))
+        for change in ({'status': 'running'}, {'started_at': '2026-10-29T00:01:00Z'},
+                       {'commit': {'id': 'b'*40}}, {'artifacts': [{'filename': 'result.zip', 'size': 21}]}):
+            self.assertNotEqual(content_digest(job), content_digest({**later, **change}))
+        started = {**job, 'started_at': '2026-10-29T00:00:00Z'}
+        self.assertNotEqual(content_digest(started), content_digest({**started, 'queued_duration': 200}))
+
     def test_gitlab_background_merge_checks_do_not_mask_real_changes(self):
         from git_migration.runs import content_digest
         row={'source_project_id':1,'target_project_id':2,'merge_status':'unchecked','detailed_merge_status':'checking','sha':'a'*40,'title':'原始正文'}

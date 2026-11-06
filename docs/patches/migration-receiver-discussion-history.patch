@@ -1,0 +1,1476 @@
+diff --git a/models/governance/migration.go b/models/governance/migration.go
+index 80ee310..49da847 100644
+--- a/models/governance/migration.go
++++ b/models/governance/migration.go
+@@ -7,20 +7,22 @@ import "gitea.dev/models/db"
+ 
+ // MigrationSession 将重试限定到同一来源快照和隔离仓库。
+ type MigrationSession struct {
+-	PublishBarrier  bool   `json:"publish_barrier"`
+-	DesiredArchived bool   `json:"desired_archived"`
+-	VerifiedDigest  string `xorm:"VARCHAR(64)" json:"verified_digest"`
+-	BatchKey        string `xorm:"VARCHAR(64) INDEX" json:"batch_key"`
+-	ID              int64  `xorm:"pk autoincr" json:"id"`
+-	Key             string `xorm:"VARCHAR(64) UNIQUE NOT NULL" json:"key"`
+-	RepoID          int64  `xorm:"UNIQUE NOT NULL" json:"repo_id"`
+-	ActorID         int64  `json:"actor_id"`
+-	SourceDigest    string `xorm:"CHAR(64) NOT NULL" json:"source_digest"`
+-	State           string `xorm:"VARCHAR(32) NOT NULL" json:"state"`
+-	TargetOwnerID   int64  `json:"target_owner_id"`
+-	TargetName      string `xorm:"VARCHAR(255)" json:"target_name"`
+-	WikiBranch      string `xorm:"VARCHAR(255)" json:"wiki_branch"`
+-	Revision        int64  `json:"revision"`
++	SealManifestVersion int    `json:"seal_manifest_version"`
++	SealManifestDigest  string `xorm:"VARCHAR(64)" json:"seal_manifest_digest"`
++	PublishBarrier      bool   `json:"publish_barrier"`
++	DesiredArchived     bool   `json:"desired_archived"`
++	VerifiedDigest      string `xorm:"VARCHAR(64)" json:"verified_digest"`
++	BatchKey            string `xorm:"VARCHAR(64) INDEX" json:"batch_key"`
++	ID                  int64  `xorm:"pk autoincr" json:"id"`
++	Key                 string `xorm:"VARCHAR(64) UNIQUE NOT NULL" json:"key"`
++	RepoID              int64  `xorm:"UNIQUE NOT NULL" json:"repo_id"`
++	ActorID             int64  `json:"actor_id"`
++	SourceDigest        string `xorm:"CHAR(64) NOT NULL" json:"source_digest"`
++	State               string `xorm:"VARCHAR(32) NOT NULL" json:"state"`
++	TargetOwnerID       int64  `json:"target_owner_id"`
++	TargetName          string `xorm:"VARCHAR(255)" json:"target_name"`
++	WikiBranch          string `xorm:"VARCHAR(255)" json:"wiki_branch"`
++	Revision            int64  `json:"revision"`
+ }
+ 
+ func (*MigrationSession) TableName() string { return "governance_migration_session" }
+@@ -43,18 +45,19 @@ func AddMigrationReceiver(engine db.EngineMigration) error {
+ 
+ // MigrationAsset 先保存上传意图，再提交文件和原生附件回执。
+ type MigrationAsset struct {
+-	ID            int64  `xorm:"pk autoincr" json:"id"`
+-	SessionID     int64  `xorm:"UNIQUE(migration_asset) NOT NULL" json:"session_id"`
+-	SourceID      string `xorm:"VARCHAR(100) UNIQUE(migration_asset) NOT NULL" json:"source_id"`
+-	ParentKind    string `xorm:"VARCHAR(32) INDEX(migration_parent)" json:"parent_kind"`
+-	ParentID      string `xorm:"VARCHAR(100) INDEX(migration_parent)" json:"parent_id"`
+-	Metadata      string `xorm:"TEXT" json:"-"`
+-	UUID          string `xorm:"VARCHAR(36) UNIQUE NOT NULL" json:"uuid"`
+-	SHA256        string `xorm:"CHAR(64) NOT NULL" json:"sha256"`
+-	Size          int64  `json:"size"`
+-	AttachmentID  int64  `json:"attachment_id"`
+-	PackageID     int64  `json:"package_id"`
+-	PackageFileID int64  `json:"package_file_id"`
++	MetadataDigest string `xorm:"-" json:"metadata_digest"`
++	ID             int64  `xorm:"pk autoincr" json:"id"`
++	SessionID      int64  `xorm:"UNIQUE(migration_asset) NOT NULL" json:"session_id"`
++	SourceID       string `xorm:"VARCHAR(100) UNIQUE(migration_asset) NOT NULL" json:"source_id"`
++	ParentKind     string `xorm:"VARCHAR(32) INDEX(migration_parent)" json:"parent_kind"`
++	ParentID       string `xorm:"VARCHAR(100) INDEX(migration_parent)" json:"parent_id"`
++	Metadata       string `xorm:"TEXT" json:"-"`
++	UUID           string `xorm:"VARCHAR(36) UNIQUE NOT NULL" json:"uuid"`
++	SHA256         string `xorm:"CHAR(64) NOT NULL" json:"sha256"`
++	Size           int64  `json:"size"`
++	AttachmentID   int64  `json:"attachment_id"`
++	PackageID      int64  `json:"package_id"`
++	PackageFileID  int64  `json:"package_file_id"`
+ }
+ 
+ func (*MigrationAsset) TableName() string                { return "governance_migration_asset" }
+diff --git a/models/governance/migration_merge_policy.go b/models/governance/migration_merge_policy.go
+index bbe556c..08f3ae7 100644
+--- a/models/governance/migration_merge_policy.go
++++ b/models/governance/migration_merge_policy.go
+@@ -12,20 +12,25 @@ import (
+ 
+ // MigrationMergePolicy 保留项目合并条件；历史流水线记录不构成当前提交的通过回执。
+ type MigrationMergePolicy struct {
+-	AutodetectManualMerge bool     `json:"autodetect_manual_merge"`
+-	SourceKind            string   `json:"source_kind"`
+-	Method                string   `json:"method"`
+-	Squash                string   `json:"squash"`
+-	AllowedStyles         []string `json:"allowed_styles"`
+-	DefaultStyle          string   `json:"default_style"`
+-	RequirePipeline       bool     `json:"require_pipeline"`
+-	AllowSkippedPipeline  bool     `json:"allow_skipped_pipeline"`
+-	RequireDiscussions    bool     `json:"require_discussions"`
+-	CIContext             string   `json:"ci_context"`
+-	CIUserID              int64    `json:"ci_user_id"`
++	DiscussionMode           string   `json:"discussion_mode,omitempty"`
++	SourceRequireDiscussions bool     `json:"source_require_discussions,omitempty"`
++	AutodetectManualMerge    bool     `json:"autodetect_manual_merge"`
++	SourceKind               string   `json:"source_kind"`
++	Method                   string   `json:"method"`
++	Squash                   string   `json:"squash"`
++	AllowedStyles            []string `json:"allowed_styles"`
++	DefaultStyle             string   `json:"default_style"`
++	RequirePipeline          bool     `json:"require_pipeline"`
++	AllowSkippedPipeline     bool     `json:"allow_skipped_pipeline"`
++	RequireDiscussions       bool     `json:"require_discussions"`
++	CIContext                string   `json:"ci_context"`
++	CIUserID                 int64    `json:"ci_user_id"`
+ }
+ 
+ func (p *MigrationMergePolicy) Validate() error {
++	if p.DiscussionMode != "" && (p.DiscussionMode != "gitea_native" || p.RequireDiscussions) {
++		return ErrConflict
++	}
+ 	if p.SourceKind != "gitlab" && p.SourceKind != "gitea" {
+ 		return ErrConflict
+ 	}
+diff --git a/routers/api/v1/api.go b/routers/api/v1/api.go
+index 8e8e00c..1398e83 100644
+--- a/routers/api/v1/api.go
++++ b/routers/api/v1/api.go
+@@ -1055,6 +1055,7 @@ func Routes() *web.Router {
+ 			m.Get("/migration-capabilities", reqSiteAdmin(), governance.MigrationCapabilities)
+ 			m.Get("/migration-sessions/{key}", reqSiteAdmin(), governance.MigrationRead)
+ 			m.Get("/migration-sessions/{key}/status", reqSiteAdmin(), governance.MigrationStatus)
++			m.Get("/migration-sessions/{key}/manifest", reqSiteAdmin(), governance.MigrationManifest)
+ 			m.Post("/migration-sessions/{key}/assets", reqSiteAdmin(), governance.MigrationAsset)
+ 			m.Get("/migration-sessions/{key}/assets/{asset_id}", reqSiteAdmin(), governance.MigrationAssetRead)
+ 			m.Post("/migration-sessions/{key}/handoff", reqSiteAdmin(), governance.MigrationHandoff)
+diff --git a/routers/api/v1/governance/migration.go b/routers/api/v1/governance/migration.go
+index 737c70b..4f90570 100644
+--- a/routers/api/v1/governance/migration.go
++++ b/routers/api/v1/governance/migration.go
+@@ -17,7 +17,7 @@ import (
+ )
+ 
+ func MigrationCapabilities(ctx *context.APIContext) {
+-	ctx.JSON(http.StatusOK, map[string]any{"protocol": 5, "batch_publish": true, "capacity_probe": true, "people_mapping": true, "merge_conditions": true, "ci_hierarchy": true, "safe_abort": true, "npm_registry_metadata": true, "cross_repository_pulls": true, "package_formats": []string{"generic", "npm", "maven", "pypi", "nuget", "helm"}, "gitlab_rule_union": true, "ci_raw_reports": true, "sealed_handoff": true, "historical_reviews": true, "generic_packages": true, "archived_rule_install": true})
++	ctx.JSON(http.StatusOK, map[string]any{"protocol": 7, "receipt_manifest": true, "discussion_snapshots": true, "batch_publish": true, "capacity_probe": true, "people_mapping": true, "merge_conditions": true, "ci_hierarchy": true, "safe_abort": true, "npm_registry_metadata": true, "cross_repository_pulls": true, "package_formats": []string{"generic", "npm", "maven", "pypi", "nuget", "helm"}, "gitlab_rule_union": true, "ci_raw_reports": true, "sealed_handoff": true, "historical_reviews": true, "generic_packages": true, "archived_rule_install": true})
+ }
+ 
+ // 入口拒绝未知字段，防止调用方以为不支持的内容已被导入。
+@@ -147,13 +147,14 @@ func MigrationWiki(ctx *context.APIContext) {
+ 
+ func MigrationSeal(ctx *context.APIContext) {
+ 	var opt struct {
+-		Objects int64 `json:"objects"`
+-		Assets  int64 `json:"assets"`
++		Objects  int64                             `json:"objects"`
++		Assets   int64                             `json:"assets"`
++		Manifest migrationreceiver.ManifestSummary `json:"manifest"`
+ 	}
+ 	if !migrationBody(ctx, &opt) {
+ 		return
+ 	}
+-	if err := migrationreceiver.Seal(ctx, ctx.Doer, ctx.PathParam("key"), opt.Objects, opt.Assets); err != nil {
++	if err := migrationreceiver.Seal(ctx, ctx.Doer, ctx.PathParam("key"), opt.Objects, opt.Assets, opt.Manifest); err != nil {
+ 		migrationError(ctx, err)
+ 		return
+ 	}
+@@ -232,3 +233,12 @@ func MigrationBatchStatus(ctx *context.APIContext) {
+ 	}
+ 	ctx.JSON(http.StatusOK, state)
+ }
++
++func MigrationManifest(ctx *context.APIContext) {
++	value, err := migrationreceiver.Manifest(ctx, ctx.Doer, ctx.PathParam("key"))
++	if err != nil {
++		migrationError(ctx, err)
++		return
++	}
++	ctx.JSON(http.StatusOK, value)
++}
+diff --git a/routers/web/repo/issue_view.go b/routers/web/repo/issue_view.go
+index 4e04e39..0311e14 100644
+--- a/routers/web/repo/issue_view.go
++++ b/routers/web/repo/issue_view.go
+@@ -38,6 +38,7 @@ import (
+ 	"gitea.dev/services/context"
+ 	"gitea.dev/services/context/upload"
+ 	issue_service "gitea.dev/services/issue"
++	"gitea.dev/services/migrationreceiver"
+ 	pull_service "gitea.dev/services/pull"
+ 	user_service "gitea.dev/services/user"
+ )
+@@ -423,6 +424,12 @@ func ViewIssue(ctx *context.Context) {
+ 		prViewInfo.MergeBoxData.ReloadingInterval = 1 // in dev env, force using the reloading logic to make sure it won't break
+ 	}
+ 
++	badges, badgeErr := migrationreceiver.DiscussionBadges(ctx, ctx.Data["Issue"].(*issues_model.Issue))
++	if badgeErr != nil {
++		ctx.ServerError("读取来源讨论历史", badgeErr)
++		return
++	}
++	ctx.Data["MigrationDiscussionBadges"] = badges
+ 	ctx.HTML(http.StatusOK, tplIssueView)
+ }
+ 
+diff --git a/routers/web/repo/migration_history.go b/routers/web/repo/migration_history.go
+index 5915ecc..d4e4c41 100644
+--- a/routers/web/repo/migration_history.go
++++ b/routers/web/repo/migration_history.go
+@@ -12,15 +12,17 @@ import (
+ 
+ 	"gitea.dev/models/db"
+ 	governance "gitea.dev/models/governance"
++	issues "gitea.dev/models/issues"
+ 	repos "gitea.dev/models/repo"
+ 	"gitea.dev/models/unit"
+ 	"gitea.dev/modules/storage"
+ 	"gitea.dev/modules/templates"
+ 	"gitea.dev/services/context"
++	"gitea.dev/services/migrationreceiver"
+ )
+ 
+ func MigrationHistory(ctx *context.Context) {
+-	if !ctx.Repo.Permission.CanRead(unit.TypeCode) {
++	if !ctx.Repo.Permission.CanRead(unit.TypeCode) && !ctx.Repo.Permission.CanRead(unit.TypeIssues) && !ctx.Repo.Permission.CanRead(unit.TypePullRequests) {
+ 		ctx.NotFound(nil)
+ 		return
+ 	}
+@@ -38,6 +40,45 @@ func MigrationHistory(ctx *context.Context) {
+ 		ctx.ServerError("读取迁移历史", err)
+ 		return
+ 	}
++	nextID := int64(0)
++	if len(rows) == 50 {
++		nextID = rows[len(rows)-1].ID
++	}
++	visible := rows[:0]
++	for _, row := range rows {
++		allowed := ctx.Repo.Permission.CanRead(unit.TypeCode)
++		if row.Kind == "discussion_snapshot" {
++			parent, err := migrationreceiver.DiscussionParent(ctx, row)
++			if issues.IsErrIssueNotExist(err) {
++				continue // 父对象已删除：保留数据库历史，但不再开放读取。
++			}
++			if err != nil {
++				ctx.ServerError("读取来源讨论父对象", err)
++				return
++			}
++			u := unit.TypeIssues
++			if parent.IsPull {
++				u = unit.TypePullRequests
++			}
++			allowed = ctx.Repo.Permission.CanRead(u)
++		}
++		if allowed {
++			visible = append(visible, row)
++		}
++	}
++	rows = visible
++	if ctx.PathParamInt64("id") > 0 && len(rows) == 0 {
++		ctx.NotFound(nil)
++		return
++	}
++	if len(rows) == 1 && rows[0].Kind == "discussion_snapshot" && ctx.PathParamInt64("id") > 0 {
++		view, err := migrationreceiver.DiscussionDetails(ctx, rows[0])
++		if err != nil {
++			ctx.ServerError("读取来源线程详情", err)
++			return
++		}
++		ctx.Data["MigrationDiscussion"] = view
++	}
+ 	type assetView struct {
+ 		ID     int64
+ 		Name   string
+@@ -74,8 +115,8 @@ func MigrationHistory(ctx *context.Context) {
+ 	ctx.Data["MigrationRows"] = rows
+ 	ctx.Data["MigrationFiles"] = files
+ 	ctx.Data["MigrationDetail"] = ctx.PathParamInt64("id") > 0
+-	if len(rows) == 50 {
+-		ctx.Data["MigrationNext"] = rows[len(rows)-1].ID
++	if nextID > 0 {
++		ctx.Data["MigrationNext"] = nextID
+ 	}
+ 	ctx.HTML(http.StatusOK, templates.TplName("repo/migration_history"))
+ }
+diff --git a/routers/web/repo/migration_history_test.go b/routers/web/repo/migration_history_test.go
+new file mode 100644
+index 0000000..21ce301
+--- /dev/null
++++ b/routers/web/repo/migration_history_test.go
+@@ -0,0 +1,71 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package repo
++
++import (
++	"fmt"
++	"testing"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	issues "gitea.dev/models/issues"
++	"gitea.dev/models/unittest"
++	"gitea.dev/services/contexttest"
++	"gitea.dev/services/migrationreceiver"
++	"github.com/stretchr/testify/require"
++)
++
++func historyFixture(t *testing.T) *governance.MigrationHistory {
++	t.Helper()
++	require.NoError(t, unittest.PrepareTestDatabase())
++	parent := unittest.AssertExistsAndLoadBean(t, &issues.Issue{ID: 1})
++	receipt := &governance.MigrationReceipt{SessionID: 777, Kind: "issue", SourceID: "source-issue", TargetID: parent.ID}
++	require.NoError(t, db.Insert(t.Context(), receipt))
++	record := &governance.MigrationHistory{SessionID: 777, RepoID: parent.RepoID, Kind: "discussion_snapshot", SourceID: "thread-1", ParentID: "source-issue", Data: `{"thread_id":"thread-1","parent_kind":"issue","parent_source_id":"source-issue","notes":[{"source_id":"note-1","kind":"comment","resolvable":true,"resolved":false}]}`}
++	require.NoError(t, db.Insert(t.Context(), record))
++	require.NoError(t, db.Insert(t.Context(), &governance.MigrationReceipt{SessionID: 777, Kind: "comment", SourceID: "note-1", TargetID: 987654321}))
++	return record
++}
++
++func TestMigrationHistoryDeletedParentIsHidden(t *testing.T) {
++	record := historyFixture(t)
++	_, err := db.GetEngine(t.Context()).ID(1).Delete(new(issues.Issue))
++	require.NoError(t, err)
++	ctx, response := contexttest.MockContext(t, "/user2/repo1/migration-history")
++	contexttest.LoadUser(t, ctx, 2)
++	contexttest.LoadRepo(t, ctx, 1)
++	ctx.SetPathParam("id", fmt.Sprint(record.ID))
++	MigrationHistory(ctx)
++	require.Equal(t, 404, response.Code, "父对象删除后应隐藏历史详情")
++	found, err := db.GetEngine(t.Context()).ID(record.ID).Exist(new(governance.MigrationHistory))
++	require.NoError(t, err)
++	require.True(t, found)
++}
++
++func TestMigrationHistoryDeletedParentDoesNotBreakList(t *testing.T) {
++	historyFixture(t)
++	_, err := db.GetEngine(t.Context()).ID(1).Delete(new(issues.Issue))
++	require.NoError(t, err)
++	ctx, response := contexttest.MockContext(t, "/user2/repo1/migration-history")
++	contexttest.LoadUser(t, ctx, 2)
++	contexttest.LoadRepo(t, ctx, 1)
++	MigrationHistory(ctx)
++	require.Equal(t, 200, response.Code, "删除的父对象不能阻断整个历史列表")
++	require.Empty(t, ctx.Data["MigrationRows"])
++}
++
++func TestMigrationHistoryStructuredDiscussion(t *testing.T) {
++	record := historyFixture(t)
++	ctx, _ := contexttest.MockContext(t, "/user2/repo1/migration-history")
++	contexttest.LoadUser(t, ctx, 2)
++	contexttest.LoadRepo(t, ctx, 1)
++	ctx.SetPathParam("id", fmt.Sprint(record.ID))
++	MigrationHistory(ctx)
++	require.NotNil(t, ctx.Data["MigrationDiscussion"], "线程详情必须提供结构化展示，不能仅有原始 JSON")
++	view := ctx.Data["MigrationDiscussion"].(*migrationreceiver.DiscussionView)
++	require.Equal(t, "thread-1", view.ThreadID)
++	require.Equal(t, "待解决", view.Notes[0].State)
++	require.Equal(t, "来源未提供", view.Notes[0].ResolvedBy)
++	require.True(t, view.Notes[0].Deleted)
++}
+diff --git a/routers/web/repo/pull.go b/routers/web/repo/pull.go
+index 04becfa..1492457 100644
+--- a/routers/web/repo/pull.go
++++ b/routers/web/repo/pull.go
+@@ -54,6 +54,7 @@ import (
+ 	git_service "gitea.dev/services/git"
+ 	"gitea.dev/services/gitdiff"
+ 	governance_service "gitea.dev/services/governance"
++	"gitea.dev/services/migrationreceiver"
+ 	notify_service "gitea.dev/services/notify"
+ 	pull_service "gitea.dev/services/pull"
+ 	repo_service "gitea.dev/services/repository"
+@@ -1096,6 +1097,12 @@ func viewPullFiles(ctx *context.Context, beforeCommitID, afterCommitID string) {
+ 		}
+ 	}
+ 
++	badges, badgeErr := migrationreceiver.DiscussionBadges(ctx, ctx.Data["Issue"].(*issues_model.Issue))
++	if badgeErr != nil {
++		ctx.ServerError("读取来源讨论历史", badgeErr)
++		return
++	}
++	ctx.Data["MigrationDiscussionBadges"] = badges
+ 	ctx.HTML(http.StatusOK, tplPullFiles)
+ }
+ 
+diff --git a/services/migrationreceiver/asset.go b/services/migrationreceiver/asset.go
+index 517e297..9068b7c 100644
+--- a/services/migrationreceiver/asset.go
++++ b/services/migrationreceiver/asset.go
+@@ -89,6 +89,7 @@ func Asset(ctx context.Context, actor *users.User, key string, opt AssetOptions,
+ 	if _, err = db.GetEngine(ctx).ID(asset.ID).Get(asset); err != nil {
+ 		return nil, err
+ 	}
++	asset.MetadataDigest = metadataDigest(opt)
+ 	if asset.AttachmentID != 0 {
+ 		return asset, nil
+ 	}
+diff --git a/services/migrationreceiver/batch.go b/services/migrationreceiver/batch.go
+index b53e6b1..736f09e 100644
+--- a/services/migrationreceiver/batch.go
++++ b/services/migrationreceiver/batch.go
+@@ -37,6 +37,10 @@ func lockBatch(ctx context.Context, actorID int64, key string) error {
+ }
+ 
+ func finalFingerprint(ctx context.Context, s *governance.MigrationSession) (string, error) {
++	sealed, e := verifyManifest(ctx, s)
++	if e != nil {
++		return "", e
++	}
+ 	r, e := repos.GetRepositoryByID(ctx, s.RepoID)
+ 	if e != nil {
+ 		return "", e
+@@ -64,7 +68,7 @@ func finalFingerprint(ctx context.Context, s *governance.MigrationSession) (stri
+ 	if len(bad) != 1 || string(bad[0]["n"]) != "0" {
+ 		return "", ErrConflict
+ 	}
+-	values := map[string]any{"owner": r.OwnerID, "name": r.Name, "description": r.Description, "private": r.IsPrivate, "archived": r.IsArchived, "default_branch": r.DefaultBranch}
++	values := map[string]any{"manifest": []any{sealed.Version, sealed.Objects, sealed.Assets, sealed.Digest}, "owner": r.OwnerID, "name": r.Name, "description": r.Description, "private": r.IsPrivate, "archived": r.IsArchived, "default_branch": r.DefaultBranch}
+ 	for name, repository := range map[string]gitrepo.Repository{"git_refs": r, "wiki_refs": r.WikiStorageRepo()} {
+ 		if name == "wiki_refs" {
+ 			exists, err := gitrepo.IsRepositoryExist(ctx, repository)
+@@ -82,6 +86,11 @@ func finalFingerprint(ctx context.Context, s *governance.MigrationSession) (stri
+ 		}
+ 		values[name] = refs
+ 	}
++	bindings, e := db.GetEngine(ctx).SQL("SELECT id, package_id, package_file_id FROM governance_migration_asset WHERE session_id = ? ORDER BY id", s.ID).Query()
++	if e != nil {
++		return "", e
++	}
++	values["package_bindings"] = bindings
+ 	for _, t := range []string{"protected_branch", "protected_tag", "repo_unit"} {
+ 		rows, e := db.GetEngine(ctx).SQL("SELECT * FROM "+t+" WHERE repo_id = ? ORDER BY id", r.ID).Query()
+ 		if e != nil {
+diff --git a/services/migrationreceiver/batch_test.go b/services/migrationreceiver/batch_test.go
+index a6e21db..cd13d77 100644
+--- a/services/migrationreceiver/batch_test.go
++++ b/services/migrationreceiver/batch_test.go
+@@ -3,6 +3,7 @@
+ package migrationreceiver
+ 
+ import (
++	"encoding/json"
+ 	"gitea.dev/models/db"
+ 	governance "gitea.dev/models/governance"
+ 	access "gitea.dev/models/perm/access"
+@@ -46,6 +47,9 @@ func TestBatchPublicationIsAllOrNothing(t *testing.T) {
+ 		require.False(t, p.CanRead(unit.TypeCode))
+ 	}
+ 	require.ErrorIs(t, PrepareBatch(ctx, actor, key, items[:1]), ErrConflict)
++	for _, item := range items {
++		require.NoError(t, anchorForTest(ctx, item.Key))
++	}
+ 	require.NoError(t, PrepareBatch(ctx, actor, key, items))
+ 	repo, e := repos.GetRepositoryByID(ctx, ids[0])
+ 	require.NoError(t, e)
+@@ -91,6 +95,7 @@ func TestPreparedReadRequiresExactSessionIdentity(t *testing.T) {
+ 	require.NoError(t, db.Insert(ctx, r))
+ 	s := &governance.MigrationSession{Key: strings.Repeat("b", 32), BatchKey: strings.Repeat("c", 32), ActorID: 1, RepoID: r.ID, State: "handed_off", PublishBarrier: true, TargetOwnerID: 3, TargetName: r.Name}
+ 	require.NoError(t, db.Insert(ctx, s))
++	require.NoError(t, db.Insert(ctx, &governance.MigrationBatch{Key: s.BatchKey, ActorID: actor.ID, Expected: 1, State: "preparing"}))
+ 	page, e := Read(ctx, actor, s.Key, 0)
+ 	require.NoError(t, e)
+ 	require.Empty(t, page.Objects)
+@@ -99,3 +104,55 @@ func TestPreparedReadRequiresExactSessionIdentity(t *testing.T) {
+ 	_, e = Read(ctx, actor, s.Key, 0)
+ 	require.ErrorIs(t, e, ErrConflict)
+ }
++
++// 新增对抗用例：状态、线程、评论关联、历史记录及回执的删除分别注入。
++func TestReviewFinalPublishDetectsSnapshotTampering(t *testing.T) {
++	for _, mode := range []string{"状态", "线程编号", "评论关联", "删除历史", "删除回执"} {
++		t.Run(mode, func(t *testing.T) {
++			require.NoError(t, unittest.PrepareTestDatabase())
++			ctx := t.Context()
++			require.NoError(t, governance.InitializeLegacyNamespaces(ctx))
++			actor, err := users.GetUserByID(ctx, 1)
++			require.NoError(t, err)
++			key := strings.Repeat("c", 32)
++			r := &repos.Repository{OwnerID: actor.ID, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, IsPrivate: true}
++			require.NoError(t, db.Insert(ctx, r))
++			session, err := Start(ctx, actor, StartOptions{Key: key, RepoID: r.ID, SourceDigest: strings.Repeat("b", 64), BatchKey: key, BatchSize: 1})
++			require.NoError(t, err)
++			history := json.RawMessage(`{"thread_id":"thread","parent_kind":"issue","parent_source_id":"4","notes":[{"source_id":"8","kind":"comment","resolvable":true,"resolved":false}]}`)
++			objects := []Object{
++				{Kind: "issue", SourceID: "4", Number: 1, Title: "历史议题", State: "open", Author: "来源作者", Created: 1600000000, Updated: 1600000000},
++				{Kind: "comment", SourceID: "8", ParentKind: "issue", ParentID: "4", Content: "来源评论", Author: "来源作者", Created: 1600000000, Updated: 1600000000},
++				{Kind: "discussion_snapshot", SourceID: "thread", ParentKind: "issue", ParentID: "4", Title: "来源线程", Created: 1600000000, History: history},
++			}
++			receipts, err := Apply(ctx, actor, key, objects)
++			require.NoError(t, err)
++			require.NoError(t, sealForTest(ctx, actor, key, 3, 0))
++			_, err = db.GetEngine(ctx).ID(r.ID).Cols("owner_id", "name", "lower_name", "is_archived").Update(&repos.Repository{OwnerID: 3, Name: "snapshot-loss", LowerName: "snapshot-loss", IsArchived: true})
++			require.NoError(t, err)
++			r, err = repos.GetRepositoryByID(ctx, r.ID)
++			require.NoError(t, err)
++			require.NoError(t, git.InitRepository(ctx, r.RepoPath(), true, "sha1"))
++			require.NoError(t, db.Insert(ctx, &repos.RepoUnit{RepoID: r.ID, Type: unit.TypeCode}))
++			_, err = db.GetEngine(ctx).ID(session.ID).Cols("state", "target_owner_id", "target_name").Update(&governance.MigrationSession{State: "handed_off", TargetOwnerID: 3, TargetName: r.Name})
++			require.NoError(t, err)
++			namespace, err := governance.GetNamespace(ctx, 3)
++			require.NoError(t, err)
++			require.NoError(t, PrepareBatch(ctx, actor, key, []BatchRepo{{Key: key, RepoID: r.ID, GroupRevision: namespace.Revision}}))
++			switch mode {
++			case "状态":
++				_, err = db.GetEngine(ctx).ID(receipts[2].TargetID).Cols("data").Update(&governance.MigrationHistory{Data: strings.ReplaceAll(string(history), `"resolved":false`, `"resolved":true`)})
++			case "线程编号":
++				_, err = db.GetEngine(ctx).ID(receipts[2].TargetID).Cols("data").Update(&governance.MigrationHistory{Data: strings.ReplaceAll(string(history), `"thread_id":"thread"`, `"thread_id":"other"`)})
++			case "评论关联":
++				_, err = db.GetEngine(ctx).ID(receipts[1].ID).Cols("target_id").Update(&governance.MigrationReceipt{TargetID: 987654321})
++			case "删除历史":
++				_, err = db.GetEngine(ctx).ID(receipts[2].TargetID).Delete(new(governance.MigrationHistory))
++			case "删除回执":
++				_, err = db.GetEngine(ctx).ID(receipts[2].ID).Delete(new(governance.MigrationReceipt))
++			}
++			require.NoError(t, err)
++			require.Error(t, PublishBatch(ctx, actor, key), "最终发布应识别封存后的缺项或内容变化")
++		})
++	}
++}
+diff --git a/services/migrationreceiver/discussion_snapshot.go b/services/migrationreceiver/discussion_snapshot.go
+new file mode 100644
+index 0000000..d59c6a0
+--- /dev/null
++++ b/services/migrationreceiver/discussion_snapshot.go
+@@ -0,0 +1,303 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"fmt"
++	"strings"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	issues "gitea.dev/models/issues"
++	repos "gitea.dev/models/repo"
++)
++
++type DiscussionNote struct {
++	SourceID   string          `json:"source_id"`
++	Kind       string          `json:"kind"`
++	Resolvable *bool           `json:"resolvable,omitempty"`
++	Resolved   *bool           `json:"resolved,omitempty"`
++	ResolvedBy json.RawMessage `json:"resolved_by,omitempty"`
++	ResolvedAt json.RawMessage `json:"resolved_at,omitempty"`
++}
++
++type DiscussionHistory struct {
++	ThreadID       string           `json:"thread_id"`
++	ParentKind     string           `json:"parent_kind"`
++	ParentSourceID string           `json:"parent_source_id"`
++	IndividualNote *bool            `json:"individual_note,omitempty"`
++	Notes          []DiscussionNote `json:"notes"`
++}
++
++type DiscussionBadge struct {
++	HistoryID int64
++	State     string
++}
++
++// 只读视图不改写原始 JSON；缺失字段与来源显式空值分开显示。
++type DiscussionNoteView struct {
++	SourceID, State, Resolvable, Resolved, ResolvedBy, ResolvedAt string
++	TargetURL                                                     string
++	Deleted                                                       bool
++}
++
++type DiscussionView struct {
++	ThreadID, ParentURL, ParentLabel string
++	Notes                            []DiscussionNoteView
++}
++
++func sourceValue(fields map[string]json.RawMessage, key string) string {
++	raw, exists := fields[key]
++	if !exists {
++		return "来源未提供"
++	}
++	var value any
++	decoder := json.NewDecoder(bytes.NewReader(raw))
++	decoder.UseNumber()
++	if decoder.Decode(&value) != nil {
++		return string(raw)
++	}
++	if value == nil {
++		return "来源返回空值"
++	}
++	switch v := value.(type) {
++	case string:
++		if v == "" {
++			return "来源返回空值"
++		}
++		return v
++	case bool:
++		if v {
++			return "是"
++		}
++		return "否"
++	case map[string]any:
++		if key == "resolved_by" {
++			parts := []string{}
++			for _, field := range []string{"name", "username", "id"} {
++				if item, ok := v[field]; ok && item != nil && fmt.Sprint(item) != "" {
++					parts = append(parts, map[string]string{"name": "姓名：", "username": "用户名：", "id": "来源编号："}[field]+fmt.Sprint(item))
++				}
++			}
++			if len(parts) > 0 {
++				return strings.Join(parts, " · ")
++			}
++		}
++	}
++	return string(raw)
++}
++
++func discussionState(note DiscussionNote) string {
++	if note.Resolvable != nil {
++		if !*note.Resolvable {
++			return "不可解决"
++		}
++		if note.Resolved != nil {
++			if *note.Resolved {
++				return "已解决"
++			}
++			return "待解决"
++		}
++	}
++	return "来源未提供状态"
++}
++
++func DiscussionDetails(ctx context.Context, history *governance.MigrationHistory) (*DiscussionView, error) {
++	parent, err := DiscussionParent(ctx, history)
++	if err != nil {
++		return nil, err
++	}
++	if err = parent.LoadRepo(ctx); err != nil {
++		return nil, err
++	}
++	var source DiscussionHistory
++	if err = json.Unmarshal([]byte(history.Data), &source); err != nil {
++		return nil, err
++	}
++	var raw struct {
++		Notes []map[string]json.RawMessage `json:"notes"`
++	}
++	if err = json.Unmarshal([]byte(history.Data), &raw); err != nil {
++		return nil, err
++	}
++	view := &DiscussionView{ThreadID: source.ThreadID, ParentURL: parent.Link(), ParentLabel: "议题"}
++	if parent.IsPull {
++		view.ParentLabel = "PR"
++	}
++	for index, note := range source.Notes {
++		fields := raw.Notes[index]
++		item := DiscussionNoteView{SourceID: note.SourceID, State: discussionState(note),
++			Resolvable: sourceValue(fields, "resolvable"), Resolved: sourceValue(fields, "resolved"),
++			ResolvedBy: sourceValue(fields, "resolved_by"), ResolvedAt: sourceValue(fields, "resolved_at")}
++		id, err := dependency(ctx, history.SessionID, note.Kind, note.SourceID)
++		if err != nil {
++			return nil, err
++		}
++		comment, err := issues.GetCommentByID(ctx, id)
++		if issues.IsErrCommentNotExist(err) {
++			item.Deleted = true
++		} else if err != nil {
++			return nil, err
++		} else {
++			expected := issues.CommentTypeComment
++			if note.Kind == "code_comment" {
++				expected = issues.CommentTypeCode
++			}
++			if comment.IssueID != parent.ID || comment.Type != expected {
++				return nil, ErrConflict
++			}
++			item.TargetURL = comment.Link(ctx)
++		}
++		view.Notes = append(view.Notes, item)
++	}
++	return view, nil
++}
++
++func validateDiscussionSnapshot(o Object) error {
++	var h DiscussionHistory
++	if o.SourceID == "" || len(o.SourceID) > 100 || o.Created <= 0 || len(o.History) > 4*1024*1024 || json.Unmarshal(o.History, &h) != nil || h.ThreadID != o.SourceID || h.ParentSourceID != o.ParentID || h.ParentKind != o.ParentKind || (h.ParentKind != "pull" && h.ParentKind != "issue") || len(h.Notes) == 0 {
++		return ErrInvalid
++	}
++	seen := map[string]bool{}
++	for _, n := range h.Notes {
++		if n.SourceID == "" || len(n.SourceID) > 100 || seen[n.SourceID] || (n.Kind != "comment" && n.Kind != "code_comment") {
++			return ErrInvalid
++		}
++		seen[n.SourceID] = true
++	}
++	return nil
++}
++
++// 同时核对父对象与每条评论回执，不能把其他议题的评论接入本线程。
++func discussionLinks(ctx context.Context, s *governance.MigrationSession, h *DiscussionHistory) (int64, map[int64]DiscussionNote, error) {
++	parent, err := dependency(ctx, s.ID, h.ParentKind, h.ParentSourceID)
++	if err != nil {
++		return 0, nil, err
++	}
++	issue, err := issues.GetIssueByID(ctx, parent)
++	if err != nil {
++		return 0, nil, err
++	}
++	if issue.RepoID != s.RepoID || issue.IsPull != (h.ParentKind == "pull") {
++		return 0, nil, ErrConflict
++	}
++	result := map[int64]DiscussionNote{}
++	for _, n := range h.Notes {
++		id, err := dependency(ctx, s.ID, n.Kind, n.SourceID)
++		if err != nil {
++			return 0, nil, err
++		}
++		c, err := issues.GetCommentByID(ctx, id)
++		if err != nil {
++			return 0, nil, err
++		}
++		expected := issues.CommentTypeComment
++		if n.Kind == "code_comment" {
++			expected = issues.CommentTypeCode
++		}
++		if c.IssueID != parent || c.Type != expected {
++			return 0, nil, ErrConflict
++		}
++		result[id] = n
++	}
++	return parent, result, nil
++}
++
++func insertDiscussionSnapshot(ctx context.Context, repo *repos.Repository, s *governance.MigrationSession, o Object) (int64, error) {
++	var h DiscussionHistory
++	if err := json.Unmarshal(o.History, &h); err != nil {
++		return 0, err
++	}
++	if _, _, err := discussionLinks(ctx, s, &h); err != nil {
++		return 0, err
++	}
++	record := &governance.MigrationHistory{RepoID: repo.ID, SessionID: s.ID, SourceID: o.SourceID, Kind: o.Kind, Name: o.Title, ParentID: o.ParentID, Created: o.Created, Data: string(o.History)}
++	_, err := db.GetEngine(ctx).Insert(record)
++	return record.ID, err
++}
++
++func verifyDiscussionSnapshot(ctx context.Context, s *governance.MigrationSession, r *governance.MigrationReceipt, o Object) (bool, error) {
++	h := &governance.MigrationHistory{}
++	found, err := db.GetEngine(ctx).ID(r.TargetID).Get(h)
++	if err != nil || !found {
++		return false, err
++	}
++	if h.RepoID != s.RepoID || h.SessionID != s.ID || h.Kind != o.Kind || h.SourceID != o.SourceID || h.ParentID != o.ParentID || h.Name != o.Title || h.Created != o.Created || !sameHistory(h.Data, o.History) {
++		return false, nil
++	}
++	var value DiscussionHistory
++	if err = json.Unmarshal([]byte(h.Data), &value); err != nil {
++		return false, err
++	}
++	_, _, err = discussionLinks(ctx, s, &value)
++	return err == nil, err
++}
++
++// 历史入口根据实际父议题确定权限，不能沿用代码读取权限。
++func DiscussionParent(ctx context.Context, h *governance.MigrationHistory) (*issues.Issue, error) {
++	var value DiscussionHistory
++	if err := json.Unmarshal([]byte(h.Data), &value); err != nil {
++		return nil, err
++	}
++	id, err := dependency(ctx, h.SessionID, value.ParentKind, value.ParentSourceID)
++	if err != nil {
++		return nil, err
++	}
++	issue, err := issues.GetIssueByID(ctx, id)
++	if err != nil {
++		return nil, err
++	}
++	if issue.RepoID != h.RepoID || issue.IsPull != (value.ParentKind == "pull") {
++		return nil, ErrConflict
++	}
++	return issue, nil
++}
++
++func DiscussionBadges(ctx context.Context, issue *issues.Issue) (map[int64]DiscussionBadge, error) {
++	records := []*governance.MigrationHistory{}
++	parentKind := "issue"
++	if issue.IsPull {
++		parentKind = "pull"
++	}
++	receipt := &governance.MigrationReceipt{}
++	found, err := db.GetEngine(ctx).Where("target_id = ? AND kind = ?", issue.ID, parentKind).Get(receipt)
++	if err != nil {
++		return nil, err
++	}
++	if !found {
++		return map[int64]DiscussionBadge{}, nil
++	}
++	if err := db.GetEngine(ctx).Where("repo_id = ? AND kind = ? AND session_id = ? AND parent_id = ?", issue.RepoID, "discussion_snapshot", receipt.SessionID, receipt.SourceID).Find(&records); err != nil {
++		return nil, err
++	}
++	result := map[int64]DiscussionBadge{}
++	for _, record := range records {
++		parent, err := DiscussionParent(ctx, record)
++		if err != nil {
++			return nil, err
++		}
++		if parent.ID != issue.ID {
++			continue
++		}
++		var value DiscussionHistory
++		if err = json.Unmarshal([]byte(record.Data), &value); err != nil {
++			return nil, err
++		}
++		for _, note := range value.Notes {
++			id, err := dependency(ctx, record.SessionID, note.Kind, note.SourceID)
++			if err != nil {
++				return nil, err
++			}
++			state := discussionState(note)
++			if _, ok := result[id]; ok {
++				return nil, fmt.Errorf("重复的来源讨论关联")
++			}
++			result[id] = DiscussionBadge{HistoryID: record.ID, State: state}
++		}
++	}
++	return result, nil
++}
+diff --git a/services/migrationreceiver/discussion_snapshot_test.go b/services/migrationreceiver/discussion_snapshot_test.go
+new file mode 100644
+index 0000000..420d0a9
+--- /dev/null
++++ b/services/migrationreceiver/discussion_snapshot_test.go
+@@ -0,0 +1,117 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	issues "gitea.dev/models/issues"
++	repos "gitea.dev/models/repo"
++	"gitea.dev/models/unittest"
++	users "gitea.dev/models/user"
++	"github.com/stretchr/testify/require"
++)
++
++func TestDiscussionSnapshotReplayAndIndependentVerification(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	actor, err := users.GetUserByID(ctx, 1)
++	require.NoError(t, err)
++	key := strings.Repeat("f", 32)
++	repo := &repos.Repository{OwnerID: actor.ID, OwnerName: actor.Name, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	_, err = Start(ctx, actor, StartOptions{Key: key, RepoID: repo.ID, SourceDigest: strings.Repeat("a", 64)})
++	require.NoError(t, err)
++	history := json.RawMessage(`{"thread_id":"thread-1","parent_kind":"issue","parent_source_id":"4","individual_note":false,"notes":[{"source_id":"8","kind":"comment","resolvable":true,"resolved":false},{"source_id":"9","kind":"comment"}]}`)
++	snapshot := Object{Kind: "discussion_snapshot", SourceID: "thread-1", ParentKind: "issue", ParentID: "4", Title: "来源讨论历史", Created: 1600000000, History: history}
++	batch := []Object{{Kind: "issue", SourceID: "4", Number: 1, Title: "历史议题", State: "open", Author: "source", Created: 1600000000, Updated: 1600000000},
++		{Kind: "comment", SourceID: "8", ParentKind: "issue", ParentID: "4", Author: "source", Content: "待解决", Created: 1600000000, Updated: 1600000000},
++		{Kind: "comment", SourceID: "9", ParentKind: "issue", ParentID: "4", Author: "source", Content: "回复", Created: 1600000000, Updated: 1600000000}, snapshot}
++	receipts, err := Apply(ctx, actor, key, batch)
++	require.NoError(t, err)
++	repeated, err := Apply(ctx, actor, key, batch)
++	require.NoError(t, err)
++	require.Equal(t, receipts, repeated)
++	issue, err := issues.GetIssueByID(ctx, receipts[0].TargetID)
++	require.NoError(t, err)
++	badges, err := DiscussionBadges(ctx, issue)
++	require.NoError(t, err)
++	require.Equal(t, "待解决", badges[receipts[1].TargetID].State)
++	require.Equal(t, "来源未提供状态", badges[receipts[2].TargetID].State)
++	page, err := Read(ctx, actor, key, 0)
++	require.NoError(t, err)
++	for _, v := range page.Objects {
++		require.True(t, v.Matches)
++	}
++	_, err = db.GetEngine(ctx).ID(receipts[3].TargetID).Cols("data").Update(&governance.MigrationHistory{Data: strings.ReplaceAll(string(history), `"resolved":false`, `"resolved":true`)})
++	require.NoError(t, err)
++	page, err = Read(ctx, actor, key, 0)
++	require.NoError(t, err)
++	require.False(t, page.Objects[3].Matches)
++	_, err = Apply(ctx, actor, key, []Object{snapshot})
++	require.ErrorIs(t, err, ErrConflict)
++}
++
++func TestDiscussionSnapshotRejectsBrokenAssociations(t *testing.T) {
++	for _, raw := range []string{`{}`, `{"thread_id":"wrong","parent_kind":"issue","parent_source_id":"4","notes":[]}`, `{"thread_id":"t","parent_kind":"issue","parent_source_id":"4","notes":[{"source_id":"8","kind":"comment"},{"source_id":"8","kind":"comment"}]}`} {
++		require.ErrorIs(t, Validate(Object{Kind: "discussion_snapshot", SourceID: "t", ParentKind: "issue", ParentID: "4", Created: 1, History: json.RawMessage(raw)}), ErrInvalid)
++	}
++}
++
++func TestSourceDiscussionFieldsKeepMissingNullAndFalse(t *testing.T) {
++	fields := map[string]json.RawMessage{"null": json.RawMessage(`null`), "no": json.RawMessage(`false`),
++		"resolved_by": json.RawMessage(`{"id":123,"username":"source-user","name":"来源审阅人"}`),
++		"resolved_at": json.RawMessage(`"2026-10-29T01:02:03+08:00"`)}
++	require.Equal(t, "来源未提供", sourceValue(fields, "missing"))
++	require.Equal(t, "来源返回空值", sourceValue(fields, "null"))
++	require.Equal(t, "否", sourceValue(fields, "no"))
++	require.Equal(t, "姓名：来源审阅人 · 用户名：source-user · 来源编号：123", sourceValue(fields, "resolved_by"))
++	require.Equal(t, "2026-10-29T01:02:03+08:00", sourceValue(fields, "resolved_at"))
++}
++
++// 新增对抗用例：合法格式的快照依赖缺失，整笔事务必须回滚。
++func TestReviewDiscussionTransactionRollback(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	actor, err := users.GetUserByID(ctx, 1)
++	require.NoError(t, err)
++	key := strings.Repeat("a", 32)
++	repo := &repos.Repository{OwnerID: actor.ID, OwnerName: actor.Name, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	session, err := Start(ctx, actor, StartOptions{Key: key, RepoID: repo.ID, SourceDigest: strings.Repeat("b", 64), BatchKey: key, BatchSize: 1})
++	require.NoError(t, err)
++	objects := []Object{
++		{Kind: "issue", SourceID: "4", Number: 1, Title: "事务回滚议题", State: "open", Author: "来源作者", Created: 1600000000, Updated: 1600000000},
++		{Kind: "comment", SourceID: "8", ParentKind: "issue", ParentID: "4", Content: "来源评论", Author: "来源作者", Created: 1600000000, Updated: 1600000000},
++		{Kind: "discussion_snapshot", SourceID: "thread", ParentKind: "issue", ParentID: "4", Title: "来源线程", Created: 1600000000, History: json.RawMessage(`{"thread_id":"thread","parent_kind":"issue","parent_source_id":"4","notes":[{"source_id":"missing","kind":"comment"}]}`)},
++	}
++	_, err = Apply(ctx, actor, key, objects)
++	require.Error(t, err)
++	count, err := db.GetEngine(ctx).Where("session_id = ?", session.ID).Count(new(governance.MigrationReceipt))
++	require.NoError(t, err)
++	require.Zero(t, count, "依赖失败不能留下部分回执")
++	count, err = db.GetEngine(ctx).Where("repo_id = ?", repo.ID).Count(new(issues.Issue))
++	require.NoError(t, err)
++	require.Zero(t, count, "依赖失败不能留下先插入的议题")
++	objects[2].History = json.RawMessage(`{"thread_id":"thread","parent_kind":"issue","parent_source_id":"4","notes":[{"source_id":"8","kind":"comment","resolvable":true,"resolved":false}]}`)
++	receipts, err := Apply(ctx, actor, key, objects)
++	require.NoError(t, err)
++	replay, err := Apply(ctx, actor, key, objects)
++	require.NoError(t, err)
++	require.Equal(t, receipts, replay, "修正后重试必须复用回执")
++	require.NoError(t, sealForTest(ctx, actor, key, 3, 0))
++	_, err = Apply(ctx, actor, key, objects)
++	require.ErrorIs(t, err, ErrConflict, "已封存会话确实拒绝同一批对象的再次导入")
++	require.NoError(t, Abort(ctx, actor, key, repo.ID, ""), "现有安全终止入口仍可回收封存现场")
++	status, err := Status(ctx, actor, key)
++	require.NoError(t, err)
++	require.Equal(t, "abandoned", status.State)
++	count, err = db.GetEngine(ctx).Where("repo_id = ?", repo.ID).Count(new(governance.MigrationHistory))
++	require.NoError(t, err)
++	require.EqualValues(t, 1, count, "安全终止仍保留历史快照")
++}
+diff --git a/services/migrationreceiver/handoff.go b/services/migrationreceiver/handoff.go
+index 7de4602..94684fb 100644
+--- a/services/migrationreceiver/handoff.go
++++ b/services/migrationreceiver/handoff.go
+@@ -49,6 +49,9 @@ func Handoff(ctx context.Context, actor *users.User, key string, ownerID int64,
+ 		if s.TargetOwnerID != 0 && (s.TargetOwnerID != ownerID || s.TargetName != name) {
+ 			return ErrConflict
+ 		}
++		if _, err := verifyManifest(ctx, s); err != nil {
++			return err
++		}
+ 		n, err := db.GetEngine(ctx).Table(s).Where("id = ? AND revision = ?", s.ID, s.Revision).Incr("revision").Update(&governance.MigrationSession{})
+ 		if err != nil {
+ 			return err
+diff --git a/services/migrationreceiver/issue_fields_test.go b/services/migrationreceiver/issue_fields_test.go
+index f32082a..4ffd447 100644
+--- a/services/migrationreceiver/issue_fields_test.go
++++ b/services/migrationreceiver/issue_fields_test.go
+@@ -41,5 +41,5 @@ func TestIssueDeadlineIsStoredAndIndependentlyVerified(t *testing.T) {
+ 	page, err = Read(ctx, actor, key, 0)
+ 	require.NoError(t, err)
+ 	require.False(t, page.Objects[0].Matches)
+-	require.ErrorIs(t, Seal(ctx, actor, key, 1, 0), ErrConflict)
++	require.ErrorIs(t, sealForTest(ctx, actor, key, 1, 0), ErrConflict)
+ }
+diff --git a/services/migrationreceiver/manifest.go b/services/migrationreceiver/manifest.go
+new file mode 100644
+index 0000000..f59b8a4
+--- /dev/null
++++ b/services/migrationreceiver/manifest.go
+@@ -0,0 +1,156 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"hash"
++	"strconv"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	issues "gitea.dev/models/issues"
++	repos "gitea.dev/models/repo"
++	users "gitea.dev/models/user"
++)
++
++type ManifestSummary struct {
++	Version  int    `json:"version"`
++	Objects  int64  `json:"objects"`
++	Assets   int64  `json:"assets"`
++	Digest   string `json:"digest"`
++	Revision int64  `json:"revision,omitempty"`
++}
++
++// 每字段使用八字节大端长度和 UTF-8 原文，避免跨语言 JSON 编码差异。
++func manifestField(h hash.Hash, value string) {
++	var size [8]byte
++	binary.BigEndian.PutUint64(size[:], uint64(len([]byte(value))))
++	h.Write(size[:])
++	h.Write([]byte(value))
++}
++func metadataDigest(opt AssetOptions) string {
++	h := sha256.New()
++	for _, v := range []string{"gitea-migration-asset-v1", opt.SourceID, opt.Name, opt.ParentKind, opt.ParentID, opt.SHA256, strconv.FormatInt(opt.Size, 10), strconv.FormatInt(opt.Created, 10)} {
++		manifestField(h, v)
++	}
++	return hex.EncodeToString(h.Sum(nil))
++}
++
++func manifest(ctx context.Context, s *governance.MigrationSession) (*ManifestSummary, error) {
++	var receipts []*governance.MigrationReceipt
++	var assets []*governance.MigrationAsset
++	if err := db.GetEngine(ctx).Where("session_id = ?", s.ID).OrderBy("id").Find(&receipts); err != nil {
++		return nil, err
++	}
++	if err := db.GetEngine(ctx).Where("session_id = ?", s.ID).OrderBy("id").Find(&assets); err != nil {
++		return nil, err
++	}
++	h := sha256.New()
++	manifestField(h, "gitea-migration-manifest-v1")
++	manifestField(h, strconv.Itoa(len(receipts)))
++	for _, r := range receipts {
++		sum := sha256.Sum256([]byte(r.Payload))
++		var o Object
++		if json.Unmarshal([]byte(r.Payload), &o) != nil || o.Kind != r.Kind || o.SourceID != r.SourceID || hex.EncodeToString(sum[:]) != r.Digest {
++			return nil, ErrConflict
++		}
++		valid, err := verify(ctx, s, r)
++		if err != nil {
++			return nil, err
++		}
++		if !valid {
++			return nil, ErrConflict
++		}
++		for _, v := range []string{strconv.FormatInt(r.ID, 10), r.Kind, r.SourceID, strconv.FormatInt(r.TargetID, 10), r.Digest} {
++			manifestField(h, v)
++		}
++	}
++	manifestField(h, strconv.Itoa(len(assets)))
++	for _, a := range assets {
++		var opt AssetOptions
++		if json.Unmarshal([]byte(a.Metadata), &opt) != nil || a.SourceID != opt.SourceID || a.ParentKind != opt.ParentKind || a.ParentID != opt.ParentID || a.Size != opt.Size || a.SHA256 != opt.SHA256 || a.AttachmentID <= 0 {
++			return nil, ErrConflict
++		}
++		attachment, err := repos.GetAttachmentByID(ctx, a.AttachmentID)
++		if err != nil {
++			return nil, err
++		}
++		if attachment.RepoID != s.RepoID || attachment.UUID != a.UUID || attachment.Name != opt.Name || attachment.Size != opt.Size || int64(attachment.CreatedUnix) != opt.Created {
++			return nil, ErrConflict
++		}
++		parent, err := dependency(ctx, s.ID, opt.ParentKind, opt.ParentID)
++		if err != nil {
++			return nil, err
++		}
++		switch opt.ParentKind {
++		case "release":
++			if attachment.ReleaseID != parent || attachment.IssueID != 0 || attachment.CommentID != 0 {
++				return nil, ErrConflict
++			}
++		case "issue", "pull":
++			if attachment.IssueID != parent || attachment.CommentID != 0 || attachment.ReleaseID != 0 {
++				return nil, ErrConflict
++			}
++		case "comment", "code_comment":
++			comment, err := issues.GetCommentByID(ctx, parent)
++			if err != nil {
++				return nil, err
++			}
++			if attachment.CommentID != parent || attachment.IssueID != comment.IssueID || attachment.ReleaseID != 0 {
++				return nil, ErrConflict
++			}
++		default:
++			if attachment.IssueID != 0 || attachment.CommentID != 0 || attachment.ReleaseID != 0 {
++				return nil, ErrConflict
++			}
++		}
++		for _, v := range []string{strconv.FormatInt(a.ID, 10), a.SourceID, a.ParentKind, a.ParentID, metadataDigest(opt), strconv.FormatInt(a.Size, 10), a.SHA256, a.UUID, strconv.FormatInt(a.AttachmentID, 10)} {
++			manifestField(h, v)
++		}
++	}
++	return &ManifestSummary{Version: 1, Objects: int64(len(receipts)), Assets: int64(len(assets)), Digest: hex.EncodeToString(h.Sum(nil)), Revision: s.Revision}, nil
++}
++func verifyManifest(ctx context.Context, s *governance.MigrationSession) (*ManifestSummary, error) {
++	actual, err := manifest(ctx, s)
++	if err != nil {
++		return nil, err
++	}
++	if s.SealManifestVersion != 1 || s.SealManifestDigest != actual.Digest {
++		return nil, ErrConflict
++	}
++	return actual, nil
++}
++
++// 在同一事务内领取会话锁，避免分页式读回混入不同修订。
++func Manifest(ctx context.Context, actor *users.User, key string) (*ManifestSummary, error) {
++	var result *ManifestSummary
++	err := db.WithTx(ctx, func(ctx context.Context) error {
++		s, err := Status(ctx, actor, key)
++		if err != nil {
++			return err
++		}
++		if err = readableSession(ctx, actor, s); err != nil {
++			return err
++		}
++		n, err := db.GetEngine(ctx).Table(s).Where("id = ? AND revision = ?", s.ID, s.Revision).Update(map[string]any{"revision": s.Revision})
++		if err != nil {
++			return err
++		}
++		if n != 1 {
++			return ErrConflict
++		}
++		if s.State == "loading" {
++			result, err = manifest(ctx, s)
++		} else {
++			result, err = verifyManifest(ctx, s)
++		}
++		return err
++	})
++	return result, err
++}
+diff --git a/services/migrationreceiver/manifest_test.go b/services/migrationreceiver/manifest_test.go
+new file mode 100644
+index 0000000..cbb36b7
+--- /dev/null
++++ b/services/migrationreceiver/manifest_test.go
+@@ -0,0 +1,57 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++package migrationreceiver
++
++import (
++	"context"
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	"gitea.dev/models/unittest"
++	users "gitea.dev/models/user"
++	"github.com/stretchr/testify/require"
++	"testing"
++)
++
++func sealForTest(ctx context.Context, actor *users.User, key string, objects, assets int64) error {
++	s, err := Status(ctx, actor, key)
++	if err != nil {
++		return err
++	}
++	m, err := manifest(ctx, s)
++	if err != nil {
++		return err
++	}
++	m.Objects = objects
++	m.Assets = assets
++	return Seal(ctx, actor, key, objects, assets, *m)
++}
++func anchorForTest(ctx context.Context, key string) error {
++	s := &governance.MigrationSession{}
++	_, err := db.GetEngine(ctx).Where("key = ?", key).Get(s)
++	if err != nil {
++		return err
++	}
++	m, err := manifest(ctx, s)
++	if err != nil {
++		return err
++	}
++	_, err = db.GetEngine(ctx).ID(s.ID).Cols("seal_manifest_version", "seal_manifest_digest").Update(&governance.MigrationSession{SealManifestVersion: 1, SealManifestDigest: m.Digest})
++	return err
++}
++func TestManifestPortableEncoding(t *testing.T) {
++	require.Equal(t, "1a224ce7d11d06f22b21f11b8f61d4dc707072dee76e84ad7c4320436e4f1fda", metadataDigest(AssetOptions{SourceID: "附件-😀", Name: "a\nb.zip", ParentKind: "comment", ParentID: "9007199254740993", SHA256: "摘要", Size: 123, Created: 1600000000}))
++}
++
++func TestMigrationIssueIndexNeverRegresses(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	require.NoError(t, syncIssueIndex(ctx, 1))
++	require.NoError(t, syncIssueIndex(ctx, 1))
++	_, err := db.GetEngine(ctx).Exec("UPDATE issue_index SET max_index=1000 WHERE group_id=1")
++	require.NoError(t, err)
++	require.NoError(t, syncIssueIndex(ctx, 1))
++	var saved int64
++	_, err = db.GetEngine(ctx).SQL("SELECT max_index FROM issue_index WHERE group_id=1").Get(&saved)
++	require.NoError(t, err)
++	require.EqualValues(t, 1000, saved)
++}
+diff --git a/services/migrationreceiver/receiver.go b/services/migrationreceiver/receiver.go
+index 3ece714..a0f29ac 100644
+--- a/services/migrationreceiver/receiver.go
++++ b/services/migrationreceiver/receiver.go
+@@ -21,6 +21,7 @@ import (
+ 	"gitea.dev/models/unit"
+ 	users "gitea.dev/models/user"
+ 	"gitea.dev/modules/label"
++	"gitea.dev/modules/setting"
+ 	"gitea.dev/modules/timeutil"
+ )
+ 
+@@ -171,6 +172,9 @@ func Start(ctx context.Context, actor *users.User, opt StartOptions) (*governanc
+ }
+ 
+ func Validate(o Object) error {
++	if o.Kind == "discussion_snapshot" {
++		return validateDiscussionSnapshot(o)
++	}
+ 	if o.Kind == "merge_policy" {
+ 		var p governance.MigrationMergePolicy
+ 		if o.SourceID != "project" || json.Unmarshal(o.History, &p) != nil || p.Validate() != nil {
+@@ -275,6 +279,15 @@ func Apply(ctx context.Context, actor *users.User, key string, objects []Object)
+ 				if receipt.Digest != digest {
+ 					return ErrConflict
+ 				}
++				if o.Kind == "discussion_snapshot" {
++					matches, err := verifyDiscussionSnapshot(ctx, s, receipt, o)
++					if err != nil {
++						return err
++					}
++					if !matches {
++						return ErrConflict
++					}
++				}
+ 				result = append(result, receipt)
+ 				continue
+ 			}
+@@ -288,7 +301,7 @@ func Apply(ctx context.Context, actor *users.User, key string, objects []Object)
+ 			}
+ 			result = append(result, receipt)
+ 		}
+-		if err := issues.RecalculateIssueIndexForRepo(ctx, repo.ID); err != nil {
++		if err := syncIssueIndex(ctx, repo.ID); err != nil {
+ 			return err
+ 		}
+ 		return updateStatistics(ctx, repo.ID)
+@@ -302,6 +315,8 @@ func Apply(ctx context.Context, actor *users.User, key string, objects []Object)
+ func insert(ctx context.Context, repo *repos.Repository, s *governance.MigrationSession, o Object) (int64, error) {
+ 	created, updated := timeutil.TimeStamp(o.Created), timeutil.TimeStamp(o.Updated)
+ 	switch o.Kind {
++	case "discussion_snapshot":
++		return insertDiscussionSnapshot(ctx, repo, s, o)
+ 	case "git_ref":
+ 		return insertRef(ctx, repo, o)
+ 	case "ci_pipeline", "ci_job", "ci_trigger", "ci_artifact", "pull_version", "approval_snapshot", "package", "merge_policy":
+@@ -394,3 +409,12 @@ func updateStatistics(ctx context.Context, repoID int64) error {
+ 	}
+ 	return nil
+ }
++
++// 迁入小编号或重复批次也必须同步；PostgreSQL 不允许捕获唯一键错误后继续同一事务。
++func syncIssueIndex(ctx context.Context, repoID int64) error {
++	if setting.Database.Type.IsPostgreSQL() || setting.Database.Type.IsSQLite3() {
++		_, err := db.GetEngine(ctx).Exec(`INSERT INTO issue_index (group_id,max_index) SELECT ?,COALESCE(MAX("index"),0) FROM issue WHERE repo_id=? ON CONFLICT (group_id) DO UPDATE SET max_index=CASE WHEN issue_index.max_index>excluded.max_index THEN issue_index.max_index ELSE excluded.max_index END`, repoID, repoID)
++		return err
++	}
++	return issues.RecalculateIssueIndexForRepo(ctx, repoID)
++}
+diff --git a/services/migrationreceiver/receiver_test.go b/services/migrationreceiver/receiver_test.go
+index 948f24a..085c0eb 100644
+--- a/services/migrationreceiver/receiver_test.go
++++ b/services/migrationreceiver/receiver_test.go
+@@ -145,9 +145,9 @@ func TestReceiverSealRejectsIncompleteAndFurtherWrites(t *testing.T) {
+ 	batch := []Object{{Kind: "label", SourceID: "1", Title: "固定标签", Color: "#ff0000"}}
+ 	_, err = Apply(ctx, actor, key, batch)
+ 	require.NoError(t, err)
+-	require.ErrorIs(t, Seal(ctx, actor, key, 0, 0), ErrConflict)
+-	require.NoError(t, Seal(ctx, actor, key, 1, 0))
+-	require.NoError(t, Seal(ctx, actor, key, 1, 0))
++	require.ErrorIs(t, sealForTest(ctx, actor, key, 0, 0), ErrConflict)
++	require.NoError(t, sealForTest(ctx, actor, key, 1, 0))
++	require.NoError(t, sealForTest(ctx, actor, key, 1, 0))
+ 	_, err = Apply(ctx, actor, key, batch)
+ 	require.ErrorIs(t, err, ErrConflict)
+ }
+diff --git a/services/migrationreceiver/recovery_test.go b/services/migrationreceiver/recovery_test.go
+index 15def99..b3745c0 100644
+--- a/services/migrationreceiver/recovery_test.go
++++ b/services/migrationreceiver/recovery_test.go
+@@ -53,7 +53,7 @@ func TestReceiverAbortArchivesAndPermanentlyClosesSession(t *testing.T) {
+ 	require.True(t, repo.IsArchived)
+ 	_, err = Apply(ctx, actor, key, []Object{{Kind: "label", SourceID: "2", Title: "不应继续写入", Color: "#ff0000"}})
+ 	require.ErrorIs(t, err, ErrConflict)
+-	require.ErrorIs(t, Seal(ctx, actor, key, 1, 0), ErrConflict)
++	require.ErrorIs(t, sealForTest(ctx, actor, key, 1, 0), ErrConflict)
+ 	require.Error(t, Abort(ctx, actor, key, repo.ID+1, ""), "不能按另一个仓库编号关闭会话")
+ }
+ 
+diff --git a/services/migrationreceiver/seal.go b/services/migrationreceiver/seal.go
+index bc7e6ae..c4e2b10 100644
+--- a/services/migrationreceiver/seal.go
++++ b/services/migrationreceiver/seal.go
+@@ -11,8 +11,8 @@ import (
+ )
+ 
+ // Seal 在一笔数据库事务内复核并封存接收会话，封存后不允许新增历史数据。
+-func Seal(ctx context.Context, actor *users.User, key string, objects, assets int64) error {
+-	if objects < 0 || assets < 0 {
++func Seal(ctx context.Context, actor *users.User, key string, objects, assets int64, expected ManifestSummary) error {
++	if objects < 0 || assets < 0 || expected.Version != 1 || !digestPattern.MatchString(expected.Digest) || expected.Objects != objects || expected.Assets != assets {
+ 		return ErrInvalid
+ 	}
+ 	return db.WithTx(ctx, func(ctx context.Context) error {
+@@ -79,7 +79,17 @@ func Seal(ctx context.Context, actor *users.User, key string, objects, assets in
+ 				break
+ 			}
+ 		}
+-		_, err = db.GetEngine(ctx).ID(s.ID).Cols("state").Update(&governance.MigrationSession{State: "sealed"})
++		actual, err := manifest(ctx, s)
++		if err != nil {
++			return err
++		}
++		if actual.Digest != expected.Digest {
++			return ErrConflict
++		}
++		if s.State == "sealed" && (s.SealManifestVersion != 1 || s.SealManifestDigest != actual.Digest) {
++			return ErrConflict
++		}
++		_, err = db.GetEngine(ctx).ID(s.ID).Cols("state", "seal_manifest_version", "seal_manifest_digest").Update(&governance.MigrationSession{State: "sealed", SealManifestVersion: 1, SealManifestDigest: actual.Digest})
+ 		return err
+ 	})
+ }
+diff --git a/services/migrationreceiver/verify.go b/services/migrationreceiver/verify.go
+index e2d08ad..b54215e 100644
+--- a/services/migrationreceiver/verify.go
++++ b/services/migrationreceiver/verify.go
+@@ -14,6 +14,7 @@ import (
+ 	governance "gitea.dev/models/governance"
+ 	issues "gitea.dev/models/issues"
+ 	repos "gitea.dev/models/repo"
++	"gitea.dev/models/unit"
+ 	users "gitea.dev/models/user"
+ 	"gitea.dev/modules/gitrepo"
+ 	"gitea.dev/modules/label"
+@@ -69,6 +70,8 @@ func verify(ctx context.Context, s *governance.MigrationSession, receipt *govern
+ 		return false, err
+ 	}
+ 	switch o.Kind {
++	case "discussion_snapshot":
++		return verifyDiscussionSnapshot(ctx, s, receipt, o)
+ 	case "git_ref":
+ 		repo, err := repos.GetRepositoryByID(ctx, s.RepoID)
+ 		if err != nil {
+@@ -190,6 +193,8 @@ func verifyDiscussion(ctx context.Context, s *governance.MigrationSession, recei
+ 		return false, err
+ 	}
+ 	switch o.Kind {
++	case "discussion_snapshot":
++		return verifyDiscussionSnapshot(ctx, s, receipt, o)
+ 	case "review":
+ 		r := &issues.Review{}
+ 		ok, err := db.GetEngine(ctx).ID(receipt.TargetID).Get(r)
+@@ -226,16 +231,41 @@ func sameHistory(stored string, incoming json.RawMessage) bool {
+ 
+ // readableSession 保留最终形态隔离后的原管理员回读能力，不重新开放写入。
+ func readableSession(ctx context.Context, actor *users.User, s *governance.MigrationSession) error {
+-	if s.PublishBarrier && s.State == "handed_off" {
+-		r, err := repos.GetRepositoryByID(ctx, s.RepoID)
+-		if err != nil {
+-			return err
+-		}
+-		if actor == nil || !actor.IsAdmin || actor.ID != s.ActorID || !r.IsPrivate || !r.IsArchived || r.OwnerID != s.TargetOwnerID || r.Name != s.TargetName {
++	if actor == nil || !actor.IsAdmin || actor.ID != s.ActorID {
++		return ErrConflict
++	}
++	if s.State != "sealed" && s.State != "handed_off" {
++		_, err := isolation(ctx, actor, s.RepoID, s.Key)
++		return err
++	}
++	r, err := repos.GetRepositoryByID(ctx, s.RepoID)
++	if err != nil {
++		return err
++	}
++	if !r.IsPrivate || r.IsMirror || r.IsFork {
++		return ErrConflict
++	}
++	if s.PublishBarrier {
++		b, err := BatchStatus(ctx, actor, s.BatchKey)
++		if err != nil || b.State == "published" || b.State == "abandoned" {
+ 			return ErrConflict
+ 		}
+-		return nil
+ 	}
+-	_, err := isolation(ctx, actor, s.RepoID, s.Key)
+-	return err
++	original := r.OwnerID == actor.ID && r.Name == "gm-migrate-"+s.Key
++	transferred := s.TargetOwnerID > 0 && r.OwnerID == s.TargetOwnerID && r.IsArchived && (r.Name == "gm-migrate-"+s.Key || r.Name == s.TargetName)
++	if s.State == "handed_off" {
++		original = false
++		transferred = transferred && r.Name == s.TargetName
++	}
++	if !original && !transferred {
++		return ErrConflict
++	}
++	enabled, err := db.GetEngine(ctx).Where("repo_id = ? AND type = ?", r.ID, unit.TypeActions).Count(new(repos.RepoUnit))
++	if err != nil {
++		return err
++	}
++	if enabled != 0 {
++		return ErrConflict
++	}
++	return nil
+ }
+diff --git a/templates/repo/diff/comments.tmpl b/templates/repo/diff/comments.tmpl
+index 0dc4a83..57ed00c 100644
+--- a/templates/repo/diff/comments.tmpl
++++ b/templates/repo/diff/comments.tmpl
+@@ -56,6 +56,7 @@
+ 				{{template "repo/issue/view_content/context_menu" dict "item" . "delete" true "issue" false "diff" true "IsCommentPoster" (and $.root.IsSigned (eq $.root.SignedUserID .PosterID))}}
+ 			</div>
+ 		</div>
++		{{if $.root.MigrationDiscussionBadges}}{{with index $.root.MigrationDiscussionBadges .ID}}<div class="ui small message"><a href="{{$.root.RepoLink}}/migration-history/{{.HistoryID}}">迁移时：{{.State}} · 来源线程历史（只读）</a></div>{{end}}{{end}}
+ 		<div class="ui attached segment comment-body">
+ 			<div class="render-content markup" {{if or $.Permission.IsAdmin $.HasIssuesOrPullsWritePermission (and $.root.IsSigned (eq $.root.SignedUserID .PosterID))}}data-can-edit="true"{{end}}>
+ 			{{if .RenderedContent}}
+diff --git a/templates/repo/issue/view_content/comments.tmpl b/templates/repo/issue/view_content/comments.tmpl
+index d2f3da0..ab09e79 100644
+--- a/templates/repo/issue/view_content/comments.tmpl
++++ b/templates/repo/issue/view_content/comments.tmpl
+@@ -59,6 +59,7 @@
+ 							{{template "repo/issue/view_content/context_menu" dict "item" . "delete" true "issue" true "diff" false "IsCommentPoster" (and $.IsSigned (eq $.SignedUserID .PosterID))}}
+ 						</div>
+ 					</div>
++					{{if $.MigrationDiscussionBadges}}{{with index $.MigrationDiscussionBadges .ID}}<div class="ui small message"><a href="{{$.RepoLink}}/migration-history/{{.HistoryID}}">迁移时：{{.State}} · 来源线程历史（只读）</a></div>{{end}}{{end}}
+ 					<div class="ui attached segment comment-body" role="article">
+ 						<div class="render-content markup" {{if or $.Permission.IsAdmin $.HasIssuesOrPullsWritePermission (and $.IsSigned (eq $.SignedUserID .PosterID))}}data-can-edit="true"{{end}}>
+ 							{{if .RenderedContent}}
+diff --git a/templates/repo/migration_history.tmpl b/templates/repo/migration_history.tmpl
+index f74ab58..2a4e1e6 100644
+--- a/templates/repo/migration_history.tmpl
++++ b/templates/repo/migration_history.tmpl
+@@ -3,20 +3,37 @@
+  {{template "repo/header" .}}
+  <div class="ui container">
+   <h2>迁移历史</h2>
+-  <div class="ui info message">保留来源流水线、作业、制品及合并请求历史。历史记录不会执行，也不会计入当前批准。</div>
++  <div class="ui info message">保留来源讨论状态、流水线、作业、制品及合并请求历史。历史记录不会执行，也不会计入当前批准。</div>
+   <table class="ui striped table">
+    <thead><tr><th>类型</th><th>来源编号 / 名称</th><th>状态</th><th>引用与提交</th></tr></thead>
+    <tbody>{{range .MigrationRows}}
+-    <tr><td>{{if eq .Kind "ci_pipeline"}}流水线{{else if eq .Kind "ci_job"}}作业{{else if eq .Kind "ci_artifact"}}构建产物{{else if eq .Kind "pull_version"}}合并请求版本{{else if eq .Kind "package"}}制品包{{else}}审批快照{{end}}</td><td><a href="{{$.RepoLink}}/migration-history/{{.ID}}">{{.SourceID}} · {{.Name}}</a></td><td>{{.State}}</td><td>{{.Ref}}<br><code>{{.Commit}}</code></td></tr>
++    <tr><td>{{if eq .Kind "discussion_snapshot"}}来源讨论快照{{else if eq .Kind "merge_policy"}}来源合并设置{{else if eq .Kind "ci_pipeline"}}流水线{{else if eq .Kind "ci_job"}}作业{{else if eq .Kind "ci_artifact"}}构建产物{{else if eq .Kind "pull_version"}}合并请求版本{{else if eq .Kind "package"}}制品包{{else}}审批快照{{end}}</td><td><a href="{{$.RepoLink}}/migration-history/{{.ID}}">{{.SourceID}} · {{.Name}}</a></td><td>{{.State}}</td><td>{{.Ref}}<br><code>{{.Commit}}</code></td></tr>
+    {{else}}<tr><td colspan="4">没有迁入的历史记录。</td></tr>{{end}}</tbody>
+   </table>
+   {{if .MigrationNext}}<a class="ui button" href="?after_id={{.MigrationNext}}">下一页</a>{{end}}
+   {{if .MigrationDetail}}
++   {{with .MigrationDiscussion}}
++    <section class="ui segment">
++     <h3>来源线程：{{.ThreadID}}</h3>
++     <p>所属{{.ParentLabel}}：<a href="{{.ParentURL}}">查看目标{{.ParentLabel}}</a></p>
++     <p>以下是迁移时的只读来源历史，不随目标编辑或合并改变。</p>
++     <ol class="ui divided list">
++      {{range .Notes}}
++       <li class="item">
++        <h4>来源评论 {{.SourceID}} · 迁移时：{{.State}}</h4>
++        <dl><dt>可解决</dt><dd>{{.Resolvable}}</dd><dt>已解决</dt><dd>{{.Resolved}}</dd><dt>解决人</dt><dd>{{.ResolvedBy}}</dd><dt>解决时间</dt><dd>{{.ResolvedAt}}</dd></dl>
++        {{if .Deleted}}<p>目标评论已删除</p>{{else}}<a href="{{.TargetURL}}">查看目标评论</a>{{end}}
++       </li>
++      {{end}}
++     </ol>
++    </section>
++   {{end}}
+    <h3>文件与构建产物</h3>
+    <div class="ui divided list">{{range .MigrationFiles}}<div class="item"><a href="{{$.RepoLink}}/migration-history/assets/{{.ID}}">{{.Name}}</a> · {{.Size}} 字节<br><code>{{.SHA256}}</code></div>{{else}}<div class="item">没有保留下来的文件。</div>{{end}}</div>
+    {{if .MigrationAssetNext}}<a class="ui button" href="?asset_after={{.MigrationAssetNext}}">下一页文件</a>{{end}}
+-   <h3>来源原始记录</h3>
++   <details><summary>来源原始记录</summary>
+    {{range .MigrationRows}}<pre class="ui segment tw-whitespace-pre-wrap tw-break-all">{{.Data}}</pre>{{end}}
++   </details>
+   {{end}}
+  </div>
+ </div>

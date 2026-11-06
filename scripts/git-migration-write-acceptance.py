@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
+direct = requests.Session()
+direct.trust_env = False
 sys.path.insert(0, str(ROOT / 'backend'))
 from git_migration.providers import Provider
 from git_migration.transport import Transport
@@ -35,6 +37,7 @@ docker = fixture.docker
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', required=True)
+    parser.add_argument('--database', choices=('sqlite','postgres'), default='sqlite')
     parser.add_argument('--project')
     parser.add_argument('--handoff', action='store_true')
     parser.add_argument('--initialize-only', action='store_true', help='只初始化独立接收端，后续由完整 Manager 链路写入')
@@ -61,16 +64,24 @@ def main():
         save_secret(folder / 'resources.json', state)
         label = 'io.gitea-manager.test=git-migration-receiver'
         docker('volume', 'create', '--label', label, name)
+        database=['-e','GITEA__database__DB_TYPE=sqlite3']
+        if args.database=='postgres':
+            db_password=secrets.token_urlsafe(28)
+            docker('network','create','--label',label,name)
+            docker('volume','create','--label',label,name+'-db')
+            docker('run','-d','--platform','linux/amd64','--label',label,'--name',name+'-db','--network',name,'-v',name+'-db:/var/lib/postgresql/data','-e','POSTGRES_DB=gitea','-e','POSTGRES_USER=gitea','-e','POSTGRES_PASSWORD='+db_password,'postgres:16.8-bookworm')
+            database=['--network',name,'-e','GITEA__database__DB_TYPE=postgres','-e','GITEA__database__HOST='+name+'-db:5432','-e','GITEA__database__NAME=gitea','-e','GITEA__database__USER=gitea','-e','GITEA__database__PASSWD='+db_password,'-e','GITEA__database__SSL_MODE=disable']
+            state['database']='postgres';save_secret(folder/'resources.json',state)
         docker('run', '-d', '--platform', 'linux/amd64', '--name', name, '--label', label,
                '--memory', '768m', '--cpus', '2', '-v', name + ':/data', '-p', '127.0.0.1:'+str(port)+':3000',
-               '-e', 'GITEA__database__DB_TYPE=sqlite3', '-e', 'GITEA__security__INSTALL_LOCK=true',
+               *database, '-e', 'GITEA__security__INSTALL_LOCK=true',
                '-e', 'GITEA__service__DISABLE_REGISTRATION=true', '-e', 'GITEA__server__LFS_START_SERVER=true',
                '-e', 'GITEA__server__ROOT_URL='+state['base']+'/', args.image)
         state['base'] = 'http://127.0.0.1:' + docker('port', name, '3000/tcp').rsplit(':', 1)[1]
         save_secret(folder / 'resources.json', state)
     for attempt in range(120):
         try:
-            if requests.get(state['base'] + '/api/v1/version', timeout=2).status_code == 200:
+            if direct.get(state['base'] + '/api/v1/version', timeout=2).status_code == 200:
                 break
         except requests.RequestException:
             pass
@@ -81,7 +92,7 @@ def main():
         docker('exec', '--user', 'git', state['name'], 'gitea', 'admin', 'user', 'create',
                '--admin', '--username', 'migration-admin', '--password', state['password'],
                '--email', 'migration-admin@example.invalid', '--must-change-password=false')
-        response = requests.post(state['base'] + '/api/v1/users/migration-admin/tokens',
+        response = direct.post(state['base'] + '/api/v1/users/migration-admin/tokens',
             auth=('migration-admin', state['password']), json={'name': '隔离迁移验收', 'scopes': ['all']}, timeout=30)
         if response.status_code != 201:
             raise RuntimeError('接收端初始化令牌失败，HTTP ' + str(response.status_code))

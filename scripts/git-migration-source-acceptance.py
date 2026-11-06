@@ -41,6 +41,8 @@ def main():
     parser.add_argument('--image', required=True)
     parser.add_argument('--resume-state', type=Path, help='恢复已启动但尚未初始化样本的独立来源')
     parser.add_argument('--verify-existing', action='store_true', help='已有固定样本时仅复验，避免重复创建')
+    parser.add_argument('--port',type=int,help='隔离环境固定转发端口')
+    parser.add_argument('--publish-address',default='127.0.0.1',help='容器端口监听地址，嵌套引擎由外层限制访问')
     args = parser.parse_args()
     if args.resume_state:
         state = json.loads(args.resume_state.read_text())
@@ -72,7 +74,7 @@ def main():
                   '--cpus', '2', '--pids-limit', '1024']
         if args.kind == 'gitea':
             docker('run', '-d', *common, '--memory', '512m', '--memory-swap', '512m',
-                   '-p', '127.0.0.1::3000', '-v', prefix + ':/data',
+                   '-p', args.publish_address+':'+str(args.port or '')+':3000', '-v', prefix + ':/data',
                    '-e', 'GITEA__database__DB_TYPE=sqlite3', '-e', 'GITEA__security__INSTALL_LOCK=true',
                    '-e', 'GITEA__service__DISABLE_REGISTRATION=true',
                    '-e', 'GITEA__server__LFS_START_SERVER=true',
@@ -91,7 +93,7 @@ def main():
             env.write_text('GITLAB_OMNIBUS_CONFIG=' + config + '\n')
             env.chmod(0o600)
             docker('run', '-d', *common, '--memory', '3g', '--memory-swap', '3g', '--shm-size', '256m',
-                   '-p', '127.0.0.1::80', '-v', prefix + ':/var/opt/gitlab', '--env-file', str(env), args.image)
+                   '-p', args.publish_address+':'+str(args.port or '')+':80', '-v', prefix + ':/var/opt/gitlab', '--env-file', str(env), args.image)
             port = docker('port', prefix, '80/tcp').rsplit(':', 1)[1]
         base = 'http://127.0.0.1:' + port
         state['base'] = base

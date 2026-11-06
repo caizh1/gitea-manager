@@ -1,4 +1,6 @@
 """负责人及当前评审请求只映射到既有目标账号，历史作者仍保留来源身份。"""
+import html
+import re
 from svn_migration.common import require
 
 
@@ -34,10 +36,23 @@ def requirements(snapshot):
     return result
 
 
-def mapped(row, kind, mapping, pending, reviews=()):
+def protected_requirements(snapshot):
+    """正式评审请求可能参与有效门禁，必须保留真实账号绑定。"""
+    result = set()
+    for item in snapshot.get('projects', []):
+        for dataset in item['datasets']:
+            if dataset['category'] == '评审':
+                for row in dataset['rows']:
+                    _, reviewers = references({}, snapshot['kind'], [row])
+                    result.update(key for key, official in reviewers if official)
+    return result
+
+
+def mapped(row, kind, mapping, pending, reviews=(), retained=None):
     assignees, reviewers = references(row, kind, reviews)
     missing = set(assignees) | {key for key, _ in reviewers}
-    missing -= mapping.keys()
+    retained = retained or {}
+    missing = {key for key in missing if key not in mapping or not mapping[key] and key not in retained}
     if missing:
         pending.append({'category': '人员映射', 'source_id': str(row['id']), 'reason': '需要明确目标已有账号：' + '、'.join(sorted(missing))})
         return {}
@@ -45,6 +60,22 @@ def mapped(row, kind, mapping, pending, reviews=()):
         return sorted({user['id'] for key in keys for user in mapping[key]})
     return {'assignee_ids': ids(assignees), 'reviewer_ids': ids(key for key, _ in reviewers),
             'official_reviewer_ids': ids(key for key, official in reviewers if official)}
+
+
+def retention_note(row, kind, retained, reviews=()):
+    """保留可见的来源责任信息；不伪造目标账号或审批关系。"""
+    assignees, reviewers = references(row, kind, reviews)
+    lines = []
+    def safe(value):
+        return re.sub(r'([\\`*_\[\]()!#|])', r'\\\1', html.escape(str(value)).replace('\n', ' ').replace('\r', ' '))
+    for role, keys in (('原负责人', assignees), ('原评审人', [key for key, _ in reviewers])):
+        for key in dict.fromkeys(keys):
+            identity = (retained or {}).get(key)
+            if identity:
+                user = identity['source']
+                lines.append(f"- {role}：{safe(user.get('name') or user['login'])}（账号：{safe(user['login'])}；来源：{kind}/{identity['source_id']}；编号：{user['id']}）")
+    return ('\n\n---\n**迁移来源人员（未绑定目标账号）**\n\n' + '\n'.join(lines)
+            + '\n\n以上仅保留来源责任记录，不产生目标账号待办、通知或权限。') if lines else ''
 
 
 def details(snapshot):

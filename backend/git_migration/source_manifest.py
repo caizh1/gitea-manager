@@ -1,6 +1,7 @@
 """独立从来源重建对象与文件清单，不读取迁移检查点，也不调用转换器或盘点器。"""
 import hashlib
 import re
+from datetime import datetime, timezone
 from urllib.parse import quote
 from svn_migration.common import require, encode, digest
 from .transport import SourceHTTPError
@@ -10,6 +11,25 @@ class Census:
     def __init__(self, provider, project):
         self.provider, self.project = provider, project
         self.objects, self.files, self.rules, self.gaps = set(), {}, set(), []
+        self.fields = {}
+
+    def issue_fields(self, kind, row):
+        """独立提取业务字段，避免转换器漏字段后仍凭数量通过。"""
+        value = row.get('due_date')
+        deadline = 0
+        if value:
+            try:
+                if re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                    parsed = datetime.strptime(value, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                else:
+                    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                require(parsed.tzinfo is not None, '独立清单中的截止日期缺少时区', 'source_format')
+                deadline = int(parsed.timestamp())
+                require(deadline > 0, '独立清单中的截止日期超出范围', 'source_format')
+            except (TypeError, ValueError, OverflowError):
+                require(False, '独立清单中的截止日期无效', 'source_format')
+        self.fields[kind + ':' + str(row['id'])] = {'deadline': deadline,
+            'locked': bool(row.get('discussion_locked' if self.provider.kind == 'gitlab' else 'is_locked'))}
 
     def rows(self, path, **options):
         try:
@@ -39,7 +59,7 @@ class Census:
         project_state = self.project_state()
         if self.provider.kind == 'gitea': self.gitea()
         else: self.gitlab()
-        value = {'schema': 1, 'kind': self.provider.kind, 'project_id': self.project['id'], 'objects': sorted(self.objects),
+        value = {'schema': 3, 'kind': self.provider.kind, 'project_id': self.project['id'], 'objects': sorted(self.objects), 'fields': self.fields,
                  'project': project_state, 'files': sorted(self.files.values(), key=lambda row: encode(row)), 'rules': sorted(self.rules), 'gaps': self.gaps}
         require(len(encode(value).encode()) <= 32*1024*1024, '独立来源清单容量超限', 'capacity')
         return value
@@ -49,6 +69,9 @@ class Census:
         kind = self.provider.kind
         route = '/projects/' + str(self.project['id']) if kind == 'gitlab' else '/repos/' + quote(self.project['path'], safe='/')
         current = self.provider.get(route)
+        if kind == 'gitlab' and 'only_allow_merge_if_all_discussions_are_resolved' in current:
+            self.fields['merge_policy:project'] = {
+                'history.source_require_discussions': current['only_allow_merge_if_all_discussions_are_resolved']}
         path = current.get('path_with_namespace') if kind == 'gitlab' else current.get('full_name')
         require(current.get('id') == self.project['id'] and path == self.project['path'],
                 '来源项目身份或路径已变化，请重新发现及盘点', 'source_changed')
@@ -77,6 +100,7 @@ class Census:
             kind = 'pull' if row.get('pull_request') or number in pulls else 'issue'
             ident = str(pulls[number]['id'] if kind == 'pull' else row['id'])
             self.add(kind, ident)
+            self.issue_fields(kind, dict(row, id=int(ident)))
             # 议题详情与逐议题评论是独立于全仓评论列表的读取入口。
             for asset in row.get('assets') or []: self.file(kind, ident, asset['name'], asset['size'], source_id='attachment-'+str(asset['id']))
             for comment in self.rows(base + '/issues/' + str(number) + '/comments'):
@@ -84,6 +108,7 @@ class Census:
                 for asset in comment.get('assets') or []: self.file('comment', comment['id'], asset['name'], asset['size'], source_id='attachment-'+str(asset['id']))
         for number, pull in pulls.items():
             self.add('pull', pull['id'])
+            self.issue_fields('pull', pull)
             for review in self.rows(base + '/pulls/' + str(number) + '/reviews'):
                 if review['state'] != 'REQUEST_REVIEW': self.add('review', review['id'])
                 for comment in self.rows(base + '/pulls/' + str(number) + '/reviews/' + str(review['id']) + '/comments'):
@@ -134,16 +159,30 @@ class Census:
             for thread in self.rows(path+'/discussions', identity='id'):
                 notes = thread.get('notes') or []
                 position = any(n.get('position') for n in notes)
+                self.add('discussion_snapshot', thread['id'])
+                history = {'thread_id': str(thread['id']), 'parent_kind': parent_kind,
+                           'parent_source_id': str(parent), 'notes': []}
+                if 'individual_note' in thread:
+                    history['individual_note'] = thread['individual_note']
+                for note in notes:
+                    entry = {'source_id': str(note['id']), 'kind': 'code_comment' if position else 'comment'}
+                    for field in ('resolvable', 'resolved', 'resolved_by', 'resolved_at'):
+                        if field in note:
+                            entry[field] = note[field]
+                    history['notes'].append(entry)
+                self.fields['discussion_snapshot:' + str(thread['id'])] = {'history': history}
                 if position: self.add('review', 'discussion-'+str(thread['id']))
                 for note in notes:
                     kind = 'code_comment' if position else 'comment'
                     self.add(kind, note['id'])
                     self.uploads(kind, note['id'], note.get('body') or '')
         for issue in self.rows(base+'/issues', params={'scope':'all','state':'all'}):
+            self.issue_fields('issue', issue)
             self.add('issue', issue['id']); self.uploads('issue', issue['id'], issue.get('description') or '')
             discussions(base+'/issues/'+str(issue['iid']), 'issue', issue['id'])
         for pull in self.rows(base+'/merge_requests', params={'scope':'all','state':'all'}):
             path = base+'/merge_requests/'+str(pull['iid'])
+            self.issue_fields('pull', self.provider.get(path))
             self.add('pull', pull['id']); self.uploads('pull', pull['id'], pull.get('description') or '')
             discussions(path, 'pull', pull['id'])
             for version in self.rows(path+'/versions'): self.add('pull_version', str(pull['id'])+':'+str(version['id']))
@@ -197,6 +236,18 @@ def verify_plan(manifest, normalized, assets, rule_plan):
     expected = {tuple(row) for row in manifest['objects']}
     actual = {(row['kind'], row['source_id']) for row in normalized['objects'] if row['kind'] != 'merge_policy'}
     require(expected == actual, '独立来源对象清单与转换结果不一致：缺少 ' + str(len(expected-actual)) + '，多出 ' + str(len(actual-expected)), 'manifest_mismatch')
+    objects = {row['kind'] + ':' + row['source_id']: row for row in normalized['objects']}
+    for key, fields in manifest.get('fields', {}).items():
+        target = objects.get(key, {})
+        def actual(name):
+            value = target
+            for part in name.split('.'):
+                if not isinstance(value, dict) or part not in value:
+                    return 0 if name == 'deadline' else False if name == 'locked' else None
+                value = value[part]
+            return value
+        require(all(actual(name) == value for name, value in fields.items()),
+                '独立来源业务字段与转换结果不一致：' + key, 'manifest_mismatch')
     planned = {}
     for asset in assets:
         row = asset['metadata']; key = row['source_id']

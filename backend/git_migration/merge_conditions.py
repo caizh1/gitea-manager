@@ -27,7 +27,8 @@ def convert(inventory, kind, mapping, normalized):
                 styles.append('squash')
             policy = {'source_kind': kind, 'method': method, 'squash': squash, 'allowed_styles': styles,
                       'require_pipeline': ci, 'allow_skipped_pipeline': bool(setting.get('allow_merge_on_skipped_pipeline')),
-                      'require_discussions': bool(setting.get('only_allow_merge_if_all_discussions_are_resolved')),
+                      'require_discussions': False, 'discussion_mode': 'gitea_native',
+                      'source_require_discussions': bool(setting.get('only_allow_merge_if_all_discussions_are_resolved')),
                       'ci_context': CI_CONTEXT if ci else '', 'ci_user_id': mapping[CI_ISSUER][0]['id'] if ci else 0,
                       'default_style': 'squash' if squash in ('always', 'default_on') else styles[0]}
         else:

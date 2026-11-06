@@ -22,6 +22,13 @@ def principal_key(entry):
 def requirements(inventory):
     from .people import requirements as people_requirements
     keys = people_requirements(inventory) if inventory.get('kind') else set()
+    return sorted(keys | governance_requirements(inventory))
+
+
+def governance_requirements(inventory):
+    """必须绑定真实账号的授权主体；不能使用历史身份代替。"""
+    from .people import protected_requirements
+    keys = protected_requirements(inventory)
     for item in inventory.get('projects', []):
         for dataset in item['datasets']:
             if inventory.get('kind') == 'gitlab' and dataset['category'] == '项目合并前置条件':
@@ -38,13 +45,44 @@ def requirements(inventory):
                     for user_field, team_field in PRINCIPAL_FIELDS.items():
                         keys.update('gitea:user:' + name for name in rule.get(user_field, []) or [])
                         keys.update('gitea:team:' + name for name in rule.get(team_field, []) or [])
-    return sorted(keys)
+    return keys
 
 
-def validate_mapping(raw, required, receiver):
+def principal_rights(inventory):
+    """审批名单只要求读取评审，写入名单要求代码写入。"""
+    result = {}
+    def add(key, right):
+        result.setdefault(key, set()).add(right)
+    for item in inventory.get('projects', []):
+        for dataset in item['datasets']:
+            for row in dataset['rows']:
+                if dataset['category'] not in ('分支保护', '标签保护'):
+                    continue
+                for field in ('push_access_levels', 'merge_access_levels', 'create_access_levels'):
+                    for entry in row.get(field, []):
+                        if entry.get('access_level') or entry.get('user_id') or entry.get('group_id'):
+                            add(principal_key(entry), 'push_code')
+                if dataset['category'] == '标签保护' and 'create_access_levels' in row:
+                    add('gitlab:access:40', 'push_code')
+                for user_field, team_field in {**PRINCIPAL_FIELDS, 'whitelist_usernames':'whitelist_teams'}.items():
+                    right = 'read_pulls' if user_field == 'approvals_whitelist_username' else 'push_code'
+                    for name in row.get(user_field, []) or []: add('gitea:user:' + name, right)
+                    for name in row.get(team_field, []) or []: add('gitea:team:' + name, right)
+    if 'gitlab:ci:issuer' in governance_requirements(inventory):
+        add('gitlab:ci:issuer', 'push_code')
+    return result
+
+
+def validate_mapping(raw, required, receiver, retained=None):
     require(isinstance(raw, dict) and set(raw) == set(required), '请完成所有规则主体映射；不能增加未使用的映射')
+    retained = retained or {}
+    require(set(retained) <= set(required) and all(':person:' in key for key in retained), '来源身份范围无效')
     result = {}
     for key, names in raw.items():
+        if key in retained:
+            require(names == [], '保留来源身份不能同时绑定目标账号')
+            result[key] = []
+            continue
         require(isinstance(names, list) and 0 < len(names) <= 100 and all(isinstance(n, str) and n.strip() == n and n for n in names),
                 '每个规则主体必须指定目标已有用户')
         require(':person:' not in key or len(names) == 1, '单个来源人员必须对应一个目标账号')
@@ -115,15 +153,7 @@ def apply(receiver, repo, rules, mapping, progress, save):
     if not rules:
         return
     path = '/repos/' + quote(repo['full_name'], safe='/')
-    for key, users in mapping.items():
-        if ':person:' in key or ':review-team:' in key or key == 'gitlab:ci:issuer':
-            # 人员与 CI 使用原生接收端按单元核对权限；治理群组成员的总体 permission 可为 none。
-            continue
-        for expected in users:
-            actual = receiver.api('GET', '/users/' + quote(expected['login'], safe=''))
-            require(actual['id'] == expected['id'], '映射账号已更换，禁止沿用同名账号')
-            permission = receiver.api('GET', path + '/collaborators/' + quote(expected['login'], safe='') + '/permission')
-            require(permission.get('permission') in ('write', 'admin', 'owner'), '映射账号没有目标代码写入权限；请由管理员配置已有群组授权')
+    verify_rule_members(receiver, repo, rules, mapping)
     state = progress.setdefault('rules', {})
     for rule in rules:
         if rule.get('_tag'):
@@ -156,6 +186,30 @@ def apply(receiver, repo, rules, mapping, progress, save):
         require(normalized == rule, '目标规则或人员名单回读不一致')
         state[name]['verified'] = True
         save()
+
+
+def verify_rule_members(receiver, repo, rule_plan, mapping):
+    from .account_mapping import permissions
+    wanted = {}
+    for rule in rule_plan:
+        for field in ('whitelist_usernames', 'delete_whitelist_usernames', *PRINCIPAL_FIELDS):
+            right = 'read_pulls' if field == 'approvals_whitelist_username' else 'push_code'
+            for name in rule.get(field, []) or []:
+                wanted.setdefault(name, set()).add(right)
+    identities = {user['login']: user['id'] for users in mapping.values() for user in users}
+    effective = None
+    path = '/repos/' + quote(repo['full_name'], safe='/')
+    for name, needed in wanted.items():
+        actual = receiver.api('GET', '/users/' + quote(name, safe=''))
+        require(actual['id'] == identities.get(name) and actual.get('active', True) and not actual.get('prohibit_login'),
+                '映射账号已更换或停用，禁止沿用同名账号')
+        native = receiver.api('GET', path + '/collaborators/' + quote(name, safe='') + '/permission').get('permission')
+        granted = {'push_code', 'read_pulls'} if native in ('write', 'admin', 'owner') else {'read_pulls'} if native == 'read' else set()
+        if not needed <= granted:
+            if effective is None:
+                effective = permissions(receiver.members('/governance/repositories/' + str(repo['id']) + '/members?include_inherited=true'))
+            granted.update(effective.get(actual['id'], []))
+        require(needed <= granted, '映射账号没有目标规则所需的有效权限；请由管理员配置已有群组授权')
 
 
 def convert_tags(inventory, kind, mapping, normalized):

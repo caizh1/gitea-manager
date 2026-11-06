@@ -26,6 +26,13 @@ def identifier(value):
     return str(value)
 
 
+def issue_deadline(row, kind):
+    value = row.get('due_date')
+    if kind == 'gitlab' and isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+        value += 'T00:00:00Z'
+    return timestamp(value or None, optional=True)
+
+
 def author(row, kind):
     actor = row.get('author' if kind == 'gitlab' else 'user')
     require(isinstance(actor, dict), '来源作者不存在，需明确已删除作者的处理方式')
@@ -36,13 +43,13 @@ def author(row, kind):
     return {'author': name, 'author_id': ident}
 
 
-def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map=None, principal_map=None):
+def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map=None, principal_map=None, retained_principals=None):
     """这里只转换已支持的对象；返回待处理目录供执行门禁核对，不能将其忽略。"""
     require(kind in ('gitlab', 'gitea'), '来源类型无效')
     result, pending = [], []
     labels, milestones, seen = {}, {}, set()
     datasets = inventory['datasets']
-    from .people import mapped
+    from .people import mapped, retention_note
     mapping = principal_map or {}
 
     def append(value):
@@ -86,7 +93,7 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
             ident = identifier(row['id'])
             require(number not in issue_ids, '来源议题编号重复')
             issue_ids[number] = ident
-            people = mapped(row, kind, mapping, pending)
+            people = mapped(row, kind, mapping, pending, retained=retained_principals)
             selected = []
             for label in row.get('labels', []):
                 name = label if isinstance(label, str) else label['name']
@@ -100,9 +107,10 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
             state = row.get('state')
             require(state in ('opened', 'open', 'closed'), '议题状态不兼容')
             append({'kind': 'issue', 'source_id': ident, 'number': number,
-                    'title': row['title'], 'content': row.get('description' if kind == 'gitlab' else 'body') or '',
+                    'title': row['title'], 'content': (row.get('description' if kind == 'gitlab' else 'body') or '') + retention_note(row, kind, retained_principals),
                     'state': 'closed' if state == 'closed' else 'open', 'labels': selected,
                     'milestone': milestone_id, 'locked': bool(row.get('discussion_locked' if kind == 'gitlab' else 'is_locked')),
+                    'deadline': issue_deadline(row, kind),
                     'created': timestamp(row.get('created_at')), 'updated': timestamp(row.get('updated_at')),
                     'closed': timestamp(row.get('closed_at'), True), **author(row, kind), **people})
     pull_ids = {}
@@ -115,7 +123,7 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
         ident = identifier(row['id'])
         pull_ids[original_number] = ident
         reviews = [r for d in datasets if d['category'] == '评审' and '/pulls/' + str(original_number) + '/' in d['path'] for r in d['rows']]
-        people = mapped(row, kind, mapping, pending, reviews)
+        people = mapped(row, kind, mapping, pending, reviews, retained_principals)
         if kind == 'gitlab':
             refs = row.get('diff_refs') or {}
             head, base = refs.get('head_sha'), refs.get('base_sha')
@@ -141,10 +149,12 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
         milestone_id = milestones.get(milestone['title'], '') if milestone else ''
         require(not milestone or milestone_id, '合并请求里程碑不在固定目录中')
         content = row.get('description' if kind == 'gitlab' else 'body') or ''
+        content += retention_note(row, kind, retained_principals, reviews)
         if number != original_number:
             content = f'【来源合并请求 !{original_number}；因目标统一编号规则迁入为 #{number}】\n\n' + content
         append({'kind': 'pull', 'source_id': ident, 'number': number, 'title': row['title'],
                 'content': content, 'state': 'closed' if row['state'] in ('closed', 'merged') else 'open',
+                'deadline': issue_deadline(row, kind), 'locked': bool(row.get('discussion_locked' if kind == 'gitlab' else 'is_locked')),
                 'created': timestamp(row['created_at']), 'updated': timestamp(row['updated_at']),
                 'closed': timestamp(row.get('closed_at') or row.get('merged_at'), True),
                 'merged': timestamp(row.get('merged_at'), True), 'merge_commit': row.get('merge_commit_sha') or '',
@@ -295,6 +305,13 @@ def objects(inventory, kind, resolve_tag=None, resolve_diff=None, repository_map
                 append({'kind': 'comment', 'source_id': identifier(note['id']), 'parent_id': parents[number], 'parent_kind': parent_kind,
                         'content': ('【来源系统事件】\n\n' if note.get('system') else '') + (note.get('body') or ''), 'created': timestamp(note.get('created_at')),
                         'updated': timestamp(note.get('updated_at')), **author(note, kind)})
+            if kind == 'gitlab' and notes and number in parents:
+                from .discussion_history import snapshot
+                history = snapshot(row, parent_kind, parents[number], bool(thread_position))
+                append({'kind': 'discussion_snapshot', 'source_id': str(row['id']),
+                        'parent_kind': parent_kind, 'parent_id': parents[number],
+                        'title': '来源讨论历史', 'created': timestamp(notes[0]['created_at']),
+                        'history': history})
     if kind == 'gitlab':
         uploads = sorted({match for obj in result for match in re.findall(r'/uploads/[0-9a-fA-F]{32}/[^\s)\]<>]+', obj.get('content', ''))})
         if uploads:
