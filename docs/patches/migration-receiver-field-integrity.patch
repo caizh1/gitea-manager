@@ -1,0 +1,90 @@
+diff --git a/routers/api/v1/governance/migration.go b/routers/api/v1/governance/migration.go
+index 6749404..737c70b 100644
+--- a/routers/api/v1/governance/migration.go
++++ b/routers/api/v1/governance/migration.go
+@@ -17,7 +17,7 @@ import (
+ )
+ 
+ func MigrationCapabilities(ctx *context.APIContext) {
+-	ctx.JSON(http.StatusOK, map[string]any{"protocol": 4, "batch_publish": true, "capacity_probe": true, "people_mapping": true, "merge_conditions": true, "ci_hierarchy": true, "safe_abort": true, "npm_registry_metadata": true, "cross_repository_pulls": true, "package_formats": []string{"generic", "npm", "maven", "pypi", "nuget", "helm"}, "gitlab_rule_union": true, "ci_raw_reports": true, "sealed_handoff": true, "historical_reviews": true, "generic_packages": true, "archived_rule_install": true})
++	ctx.JSON(http.StatusOK, map[string]any{"protocol": 5, "batch_publish": true, "capacity_probe": true, "people_mapping": true, "merge_conditions": true, "ci_hierarchy": true, "safe_abort": true, "npm_registry_metadata": true, "cross_repository_pulls": true, "package_formats": []string{"generic", "npm", "maven", "pypi", "nuget", "helm"}, "gitlab_rule_union": true, "ci_raw_reports": true, "sealed_handoff": true, "historical_reviews": true, "generic_packages": true, "archived_rule_install": true})
+ }
+ 
+ // 入口拒绝未知字段，防止调用方以为不支持的内容已被导入。
+diff --git a/services/migrationreceiver/issue_fields_test.go b/services/migrationreceiver/issue_fields_test.go
+new file mode 100644
+index 0000000..f32082a
+--- /dev/null
++++ b/services/migrationreceiver/issue_fields_test.go
+@@ -0,0 +1,45 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"strings"
++	"testing"
++
++	"gitea.dev/models/db"
++	issues "gitea.dev/models/issues"
++	repos "gitea.dev/models/repo"
++	"gitea.dev/models/unittest"
++	users "gitea.dev/models/user"
++	"github.com/stretchr/testify/require"
++)
++
++func TestIssueDeadlineIsStoredAndIndependentlyVerified(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	actor, err := users.GetUserByID(ctx, 1)
++	require.NoError(t, err)
++	key := strings.Repeat("d", 32)
++	repo := &repos.Repository{OwnerID: actor.ID, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	_, err = Start(ctx, actor, StartOptions{Key: key, RepoID: repo.ID, SourceDigest: strings.Repeat("e", 64)})
++	require.NoError(t, err)
++	receipts, err := Apply(ctx, actor, key, []Object{{Kind: "issue", SourceID: "deadline-issue", Number: 1,
++		Title: "保留截止日期和锁定状态", State: "open", Author: "来源作者", Created: 1600000000, Updated: 1600000010,
++		Deadline: 1794285296, Locked: true}})
++	require.NoError(t, err)
++	issue, err := issues.GetIssueByID(ctx, receipts[0].TargetID)
++	require.NoError(t, err)
++	require.EqualValues(t, 1794285296, issue.DeadlineUnix)
++	require.True(t, issue.IsLocked)
++	page, err := Read(ctx, actor, key, 0)
++	require.NoError(t, err)
++	require.True(t, page.Objects[0].Matches)
++	_, err = db.GetEngine(ctx).ID(issue.ID).Cols("deadline_unix").Update(&issues.Issue{})
++	require.NoError(t, err)
++	page, err = Read(ctx, actor, key, 0)
++	require.NoError(t, err)
++	require.False(t, page.Objects[0].Matches)
++	require.ErrorIs(t, Seal(ctx, actor, key, 1, 0), ErrConflict)
++}
+diff --git a/services/migrationreceiver/receiver.go b/services/migrationreceiver/receiver.go
+index f8873f2..3ece714 100644
+--- a/services/migrationreceiver/receiver.go
++++ b/services/migrationreceiver/receiver.go
+@@ -337,7 +337,7 @@ func insert(ctx context.Context, repo *repos.Repository, s *governance.Migration
+ 		err := issues.InsertMilestones(ctx, r)
+ 		return r.ID, err
+ 	case "issue", "pull":
+-		r := &issues.Issue{RepoID: repo.ID, Repo: repo, Index: o.Number, Title: o.Title, Content: o.Content, PosterID: s.ActorID, OriginalAuthor: o.Author, OriginalAuthorID: -max(o.AuthorID, 1), IsClosed: o.State == "closed", IsLocked: o.Locked, CreatedUnix: created, UpdatedUnix: updated, ClosedUnix: timeutil.TimeStamp(o.Closed)}
++		r := &issues.Issue{RepoID: repo.ID, Repo: repo, Index: o.Number, Title: o.Title, Content: o.Content, PosterID: s.ActorID, OriginalAuthor: o.Author, OriginalAuthorID: -max(o.AuthorID, 1), IsClosed: o.State == "closed", IsLocked: o.Locked, DeadlineUnix: timeutil.TimeStamp(o.Deadline), CreatedUnix: created, UpdatedUnix: updated, ClosedUnix: timeutil.TimeStamp(o.Closed)}
+ 		for _, id := range o.Labels {
+ 			target, err := dependency(ctx, s.ID, "label", id)
+ 			if err != nil {
+diff --git a/services/migrationreceiver/verify.go b/services/migrationreceiver/verify.go
+index 3e53ce6..e2d08ad 100644
+--- a/services/migrationreceiver/verify.go
++++ b/services/migrationreceiver/verify.go
+@@ -116,7 +116,7 @@ func verify(ctx context.Context, s *governance.MigrationSession, receipt *govern
+ 		if err != nil || !ok {
+ 			return false, err
+ 		}
+-		if r.RepoID != s.RepoID || r.Index != o.Number || r.Title != o.Title || r.Content != o.Content || r.IsClosed != (o.State == "closed") || r.IsLocked != o.Locked || r.OriginalAuthor != o.Author || r.OriginalAuthorID != -max(o.AuthorID, 1) || int64(r.CreatedUnix) != o.Created || int64(r.UpdatedUnix) != o.Updated || int64(r.ClosedUnix) != o.Closed {
++		if r.RepoID != s.RepoID || r.Index != o.Number || r.Title != o.Title || r.Content != o.Content || r.IsClosed != (o.State == "closed") || r.IsLocked != o.Locked || int64(r.DeadlineUnix) != o.Deadline || r.OriginalAuthor != o.Author || r.OriginalAuthorID != -max(o.AuthorID, 1) || int64(r.CreatedUnix) != o.Created || int64(r.UpdatedUnix) != o.Updated || int64(r.ClosedUnix) != o.Closed {
+ 			return false, nil
+ 		}
+ 		var expected []int64

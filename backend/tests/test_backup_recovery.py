@@ -221,7 +221,7 @@ class RecoveryTests(unittest.TestCase):
 
     def test_legacy_schema_migration_does_not_adopt_old_rows(self):
         import ast, sqlite3
-        tree = ast.parse((Path('/app') / 'app.py').read_text())
+        tree = ast.parse((Path(__file__).resolve().parents[1] / 'app.py').read_text())
         statements = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant)
                       and isinstance(node.value, str) and node.value.startswith('ALTER TABLE backups ADD COLUMN recovery_')]
         self.assertEqual(len(statements), 2)

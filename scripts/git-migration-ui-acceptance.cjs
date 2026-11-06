@@ -1,0 +1,58 @@
+// 后台浏览器验证真实交付前端、来源凭据表单、人员映射和执行详情，不模拟业务接口。
+const fs = require('node:fs')
+const path = require('node:path')
+const assert = require('node:assert/strict')
+const { chromium } = require('playwright')
+const args = process.argv.slice(2)
+function option(name) { const i = args.indexOf('--' + name); assert(i >= 0, '缺少验收参数：' + name); return args[i + 1] }
+const statePath = path.resolve(option('manager-state'))
+const state = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+const out = path.dirname(statePath)
+;(async () => {
+  const browser = await chromium.launch({ headless: true })
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
+  const page = await context.newPage()
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  try {
+    let r = await context.request.get(state.base + '/api/session')
+    const session = await r.json()
+    r = await context.request.post(state.base + '/api/login', { headers: { 'X-CSRF-Token': session.csrf_token }, data: { password: state.password } })
+    assert(r.ok(), '真实管理端登录失败')
+    await page.goto(state.base + '/git-migrations', { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: '更新凭据', exact: true }).waitFor()
+    await page.getByRole('button', { name: '更新凭据', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '更新来源凭据' })
+    await dialog.waitFor()
+    assert.equal(await dialog.locator('input:disabled').count(), 4, '来源名称、平台、连接地址、管理员身份必须固定')
+    assert.equal(await dialog.locator('input[type="password"]').inputValue(), '', '凭据不得回填到页面')
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await page.getByText('人员与规则主体映射', { exact: true }).waitFor()
+    assert.match(await page.locator('.principal-map').innerText(), /先自动匹配目标已有账号/)
+    const detail = page.getByRole('button', { name: '详情', exact: true }).first()
+    await detail.click()
+    const execution = page.getByRole('dialog', { name: '迁移执行详情' })
+    await execution.waitFor()
+    await execution.getByText(/独立来源核验：通过/).first().waitFor()
+    assert.match(await execution.innerText(), /独立来源核验：通过/)
+    await page.screenshot({ path: path.join(out, 'migration-ui-desktop.png'), fullPage: true, animations: 'disabled' })
+    await execution.getByRole('button', { name: /Close|关闭/ }).click()
+    await execution.waitFor({ state: 'hidden' })
+    await page.getByRole('button', { name: '收起导航', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('.app-aside').getBoundingClientRect().width <= 65)
+    await page.setViewportSize({ width: 390, height: 844 })
+    // 业务表格保留横向滚动；将操作列滚入视口后再测量，不把滚动区域外的列当作按钮溢出。
+    await page.locator('.el-table:has(.actions) .el-scrollbar__wrap').evaluateAll(nodes => nodes.forEach(n => { n.scrollLeft = n.scrollWidth }))
+    await page.screenshot({ path: path.join(out, 'migration-ui-mobile.png'), fullPage: true, animations: 'disabled' })
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= 391), '窄屏页面出现整页水平溢出')
+    const controls = await page.locator('.actions button:visible').evaluateAll(nodes => nodes.map(n => { const r = n.getBoundingClientRect(); return { text: n.innerText, left: r.left, right: r.right, top: r.top, bottom: r.bottom } }))
+    for (const control of controls) assert(control.left >= 0 && control.right <= 391, '窄屏操作按钮超出视口：' + control.text)
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+      const a = controls[i], b = controls[j]
+      assert(!(Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1), '窄屏操作按钮重叠')
+    }
+    assert.deepEqual(errors, [])
+    fs.writeFileSync(path.join(out, 'migration-ui-acceptance.json'), JSON.stringify({ 说明: '真实服务及生产前端的后台浏览器验收', 结果: '通过', 场景: ['凭据身份字段固定且不回填秘密', '人员映射入口和目标权限说明', '执行详情显示独立来源核验', '桌面与窄屏操作按钮无重叠或越界'], 页面异常: errors }, null, 2) + '\n')
+    console.log('后台页面验收通过：' + path.join(out, 'migration-ui-acceptance.json'))
+  } finally { await browser.close() }
+})().catch(error => { console.error(error.message); process.exitCode = 1 })

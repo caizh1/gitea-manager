@@ -20,6 +20,49 @@ class RuntimeChecks(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup);self.root=Path(self.folder.name)
 
+    def test_rollback_health_accepts_original_version_without_git_worker(self):
+        tool = runtime.Upgrade.__new__(runtime.Upgrade)
+        tool.info = {'running': ['backend', 'frontend']}
+        backend, frontend = Mock(), Mock()
+        for row in (backend, frontend):
+            row.attrs = {'State': {'Running': True, 'Paused': False}}
+        backend.exec_run.return_value.exit_code = 0
+        tool.containers = Mock(return_value={'backend': backend, 'frontend': frontend})
+        tool.rollback_health()
+        backend.exec_run.assert_called_once()
+        frontend.exec_run.assert_not_called()
+
+    def test_rollback_health_requires_original_git_worker_to_recover(self):
+        tool = runtime.Upgrade.__new__(runtime.Upgrade)
+        tool.info = {'running': ['backend', 'git-migration-worker']}
+        backend, worker = Mock(), Mock()
+        for row in (backend, worker):
+            row.attrs = {'State': {'Running': True, 'Paused': False}}
+        backend.exec_run.return_value.exit_code = 0
+        worker.exec_run.side_effect = [Mock(exit_code=1), Mock(exit_code=0)]
+        tool.containers = Mock(return_value={'backend': backend, 'git-migration-worker': worker})
+        with patch.object(runtime.time, 'sleep') as wait:
+            tool.rollback_health()
+        self.assertEqual(worker.exec_run.call_count, 2)
+        wait.assert_called_once_with(2)
+
+    def test_git_migration_requires_original_decryptable_key(self):
+        database = self.root / 'manager.db'
+        key = Fernet.generate_key()
+        key_file = self.root / 'git-migration.key'
+        key_file.write_bytes(key)
+        with sqlite3.connect(database) as connection:
+            connection.execute('CREATE TABLE git_migration_sources(secret_ciphertext TEXT)')
+            connection.execute('INSERT INTO git_migration_sources VALUES (?)',
+                               (Fernet(key).encrypt('来源凭据'.encode()).decode(),))
+        def check():
+            return subprocess.run([sys.executable, '-c', runtime.CHECK_ACCESS_KEYS, str(database), ''], capture_output=True)
+        self.assertEqual(check().returncode, 0)
+        key_file.write_bytes(Fernet.generate_key())
+        self.assertNotEqual(check().returncode, 0)
+        key_file.unlink()
+        self.assertNotEqual(check().returncode, 0)
+
     def test_snapshot_includes_writes_committed_during_old_service_shutdown(self):
         path = self.root/'manager.db'
         with sqlite3.connect(path) as connection:

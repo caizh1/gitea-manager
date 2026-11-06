@@ -1,0 +1,30 @@
+{
+  "说明": "协议八：原生制品隔离、完整目标回执及可恢复终止；证据边界见验收报告",
+  "组件": {
+    "backend": {
+      "固定标签": "gitea-review-backend:abort-status-20261030",
+      "镜像身份": "sha256:595e85e7c24507976976b95674c79651c0bd172d26e8c552cb06973cb07ad765"
+    },
+    "frontend": {
+      "固定标签": "gitea-review-frontend:abort-status-20261030",
+      "镜像身份": "sha256:9a772236dda1307d8cd40a2fc964e1a861f572a796cbbca614250f8b497d50ea"
+    },
+    "git": {
+      "固定标签": "gitea-review-git:abort-status-20261030",
+      "镜像身份": "sha256:950503d1145fd5f5cb582e519cf78f7edc9ddafbf2fc4cd13b63de57471128a9"
+    },
+    "svn": {
+      "固定标签": "gitea-review-svn:abort-status-20261030",
+      "镜像身份": "sha256:16d71009b1d7753c0cb577dfc8683a13cb22fbbd3af6d5f32e5655b326444049"
+    },
+    "executor": {
+      "固定标签": "gitea-review-executor:abort-status-20261030",
+      "镜像身份": "sha256:be69694a5a0a42199df2b33da4fb021ea9053ed6324e5353832d117d72128013"
+    },
+    "接收端": {
+      "固定标签": "gm-migration-receiver:abort-status-20261030",
+      "镜像身份": "sha256:bcd006f7244de97cc3069f359d08f806663534842743d310be9c2ad5190e0404",
+      "源码提交": "41b5bdaa83ba6ce6e3252e2728b21229958440d6"
+    }
+  }
+}

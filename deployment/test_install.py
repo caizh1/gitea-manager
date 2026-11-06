@@ -19,7 +19,7 @@ class InstallTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.root = Path(self.folder.name)
-        self.manifest = {'product': 'manager', 'images': {key: {'tag': key} for key in ('backend', 'frontend', 'executor')}}
+        self.manifest = {'product': 'manager', 'images': {key: {'tag': key} for key in ('backend', 'frontend', 'executor', 'git')}}
         self.args = argparse.Namespace(host='127.0.0.1', port=35480, ssh_port=None)
 
     def fresh(self):
@@ -78,12 +78,18 @@ class InstallTests(unittest.TestCase):
         installer = self.fresh()
         config = json.loads((self.root / 'compose.install.json').read_text())
         services = config['services']
-        self.assertEqual(len(services), 7)
+        self.assertEqual(len(services), 8)
         self.assertEqual(services['backend']['environment']['INTEGRATION_ENABLED'], 'false')
         self.assertNotIn('INTEGRATION_SERVICE_TOKEN', services['backend']['environment'])
         self.assertNotIn('ports', services['backend'])
         for name in ('review-worker', 'review-progress', 'review-feedback', 'review-executor'):
             self.assertNotIn('/var/run/docker.sock:/var/run/docker.sock', services[name].get('volumes', []))
+        git_worker = services['git-migration-worker']
+        self.assertEqual(git_worker['command'], ['python', '-m', 'git_migration.worker'])
+        self.assertTrue(git_worker['read_only'])
+        self.assertNotIn('secrets', git_worker)
+        self.assertEqual(git_worker['volumes'], [{'type': 'volume', 'source': 'manager-data',
+            'target': '/app/data', 'read_only': False, 'volume': {'nocopy': True}}])
         self.assertTrue(config['networks']['review-execution']['internal'])
         self.assertEqual(services['review-executor']['networks'], ['review-execution'])
         authorization = 'access_authorization'

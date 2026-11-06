@@ -11,32 +11,40 @@ import time
 
 ROOT=Path(__file__).resolve().parents[1]
 (ROOT/'work').mkdir(exist_ok=True)
-package_lock=(ROOT/'work/AIReview打包.lock').open('a')
+package_lock=(ROOT/'work/review-package.lock').open('a')
 try: fcntl.flock(package_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 except BlockingIOError: raise RuntimeError('另一次离线打包正在执行，未覆盖其临时文件') from None
 parser=argparse.ArgumentParser();parser.add_argument('--export-images',action='store_true')
 parser.add_argument('--source-image-tag',default='local',help='导出已固定构建的镜像标签，避免并行开发改写 local 标签')
 parser.add_argument('--include-legacy-executor',action='store_true')
+parser.add_argument('--migration-receiver-image',help='同时交付已验收的增强版迁移接收端固定镜像，不自动替换目标实例')
 parser.add_argument('--upgrade-only',action='store_true',help='仅包含应用镜像与升级回退必需文件')
 args=parser.parse_args()
 def run(command):subprocess.run(command,cwd=ROOT,check=True)
 if not args.upgrade_only: run(['python3','scripts/review-runtime-prepare.py'])
 offline=ROOT/'offline';offline.mkdir(exist_ok=True)
-images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline','gitea-review-svn:offline',
+images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-review-executor:offline','gitea-review-svn:offline','gitea-review-git:offline',
         'python:3.11-slim','nginx:1.31.1','gitea/gitea:1.26.4','postgres:17.11-bookworm']
-if args.upgrade_only: images=images[:4]
+if args.upgrade_only: images=images[:5]
 if args.include_legacy_executor: images.append('gitea-review-executor-legacy:offline')
+if args.migration_receiver_image: images.append('gitea-migration-receiver:offline')
+server_api=tuple(int(v) for v in subprocess.check_output(['docker','version','--format','{{.Server.APIVersion}}'],text=True).strip().split('.'))
+platform_selection=['--platform','linux/amd64'] if server_api >= (1,48) else []
 expected_images={}
 if args.export_images:
-    for component in (('backend','frontend','executor','svn','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor','svn')):
+    for component in (('backend','frontend','executor','svn','git','executor-legacy') if args.include_legacy_executor else ('backend','frontend','executor','svn','git')):
         source=('gitea-review-executor:'+args.source_image_tag+'-legacy') if component=='executor-legacy' else 'gitea-review-'+component+':'+args.source_image_tag
         if component.startswith('executor'):
             run(['python3', 'scripts/executor-image-acceptance.py', source,
                  str(ROOT/'work'/('package-'+component+'-acceptance.json'))])
         dest='gitea-review-'+component+':offline'
-        expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect','--platform','linux/amd64',source],text=True))[0]['Id']
+        expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,source],text=True))[0]['Id']
         run(['docker','tag',source,dest])
-    run(['docker','image','save','--platform','linux/amd64','-o',str(offline/'运行镜像.tar'),*images])
+    if args.migration_receiver_image:
+        dest='gitea-migration-receiver:offline'
+        expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,args.migration_receiver_image],text=True))[0]['Id']
+        run(['docker','tag',args.migration_receiver_image,dest])
+    run(['docker','image','save',*platform_selection,'-o',str(offline/'运行镜像.tar'),*images])
 if not (offline/'运行镜像.tar').is_file():raise RuntimeError('请先用 --export-images 导出已构建的离线镜像')
 manifest=[]
 with tarfile.open(offline/'运行镜像.tar') as archive:
@@ -79,7 +87,7 @@ manifest_path=ROOT/'docs/AIReview交付清单.json'
 records=[r for r in records if r['文件']!='docs/AIReview交付清单.json']
 manifest_path.write_text(json.dumps({'说明':'文件级固定交付清单，排除本清单自身。','生成时间UTC':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'文件':records},ensure_ascii=False,indent=2)+'\n')
 files=[f for f in files if f!=manifest_path]+[manifest_path]
-target=ROOT/'gitea-manager.tar.gz';temp=ROOT/'work/AIReview打包中.tar.gz';temp.parent.mkdir(exist_ok=True)
+target=ROOT/'gitea-manager.tar.gz';temp=ROOT/'work/review-package-in-progress.tar.gz';temp.parent.mkdir(exist_ok=True)
 with tarfile.open(temp,'w:gz',compresslevel=6) as archive:
     for item in sorted(files):archive.add(item,arcname=str(item.relative_to(ROOT)),recursive=False)
     info=tarfile.TarInfo('data');info.type=tarfile.DIRTYPE;info.mode=0o755;archive.addfile(info)

@@ -1,0 +1,2374 @@
+diff --git a/models/governance/migration.go b/models/governance/migration.go
+index 49da847..839e59f 100644
+--- a/models/governance/migration.go
++++ b/models/governance/migration.go
+@@ -7,6 +7,11 @@ import "gitea.dev/models/db"
+ 
+ // MigrationSession 将重试限定到同一来源快照和隔离仓库。
+ type MigrationSession struct {
++	Protocol              int    `json:"protocol"`
++	PackageReceiptDigest  string `xorm:"VARCHAR(64)" json:"package_receipt_digest"`
++	PackageManifestDigest string `xorm:"VARCHAR(64)" json:"package_manifest_digest"`
++	PackageReceiptCount   int64  `json:"package_receipt_count"`
++
+ 	SealManifestVersion int    `json:"seal_manifest_version"`
+ 	SealManifestDigest  string `xorm:"VARCHAR(64)" json:"seal_manifest_digest"`
+ 	PublishBarrier      bool   `json:"publish_barrier"`
+@@ -84,5 +89,5 @@ func AddMigrationHistory(engine db.EngineMigration) error { return engine.Sync(n
+ 
+ // 扩展已部署的迁移会话，保持旧检查点不变。
+ func ExtendMigrationReceiver(engine db.EngineMigration) error {
+-	return engine.Sync(new(MigrationSession), new(MigrationBatch))
++	return engine.Sync(new(MigrationSession), new(MigrationBatch), new(MigrationPackageReceipt))
+ }
+diff --git a/models/governance/migration_package.go b/models/governance/migration_package.go
+new file mode 100644
+index 0000000..b690dcf
+--- /dev/null
++++ b/models/governance/migration_package.go
+@@ -0,0 +1,85 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package governance
++
++import (
++	"context"
++	"gitea.dev/models/db"
++)
++
++// MigrationPackageReceipt 先占用逻辑身份，再原子登记原生内容；回收记录始终保留。
++type MigrationPackageReceipt struct {
++	ID        int64  `xorm:"pk autoincr"`
++	SessionID int64  `xorm:"UNIQUE(migration_package) NOT NULL"`
++	OwnerID   int64  `xorm:"INDEX"`
++	Type      string `xorm:"VARCHAR(32) UNIQUE(migration_package)"`
++	Name      string `xorm:"VARCHAR(255) UNIQUE(migration_package)"`
++	PackageID int64  `xorm:"INDEX"`
++	Data      string `xorm:"LONGTEXT"`
++	Recalled  bool
++}
++
++func (*MigrationPackageReceipt) TableName() string { return "governance_migration_package_receipt" }
++
++type migrationPackageScopeKey struct{}
++type migrationPackageScope struct {
++	SessionID, ActorID int64
++	Operation          string
++}
++
++// MigrationPackageContext 仅服务端可创建，并在每次底层写入重新核对持久状态。
++func MigrationPackageContext(ctx context.Context, sessionID, actorID int64, operation string) context.Context {
++	return context.WithValue(ctx, migrationPackageScopeKey{}, migrationPackageScope{sessionID, actorID, operation})
++}
++func CheckMigrationPackageWrite(ctx context.Context, ownerID int64, kind, name string, packageID, repoID int64) error {
++	var records []*MigrationPackageReceipt
++	if err := db.GetEngine(ctx).Where("(owner_id = ? AND type = ? AND name = ?) OR (package_id > 0 AND package_id = ?)", ownerID, kind, name, packageID).Find(&records); err != nil {
++		return err
++	}
++	for _, r := range records {
++		s := &MigrationSession{}
++		ok, err := db.GetEngine(ctx).ID(r.SessionID).Get(s)
++		if err != nil {
++			return err
++		}
++		if !ok {
++			return ErrConflict
++		}
++		b := &MigrationBatch{}
++		ok, err = db.GetEngine(ctx).Where("key = ?", s.BatchKey).Get(b)
++		if err != nil {
++			return err
++		}
++		if (r.Recalled && s.State == "abandoned") || (ok && b.State == "published") {
++			continue
++		}
++		scope, scoped := ctx.Value(migrationPackageScopeKey{}).(migrationPackageScope)
++		if !scoped || scope.SessionID != s.ID || scope.ActorID != s.ActorID {
++			return ErrConflict
++		}
++		if scope.Operation == "materialize" && (s.State == "sealed" || s.State == "handed_off") && s.PackageManifestDigest == "" && (!ok || b.State == "preparing") {
++			continue
++		}
++		if scope.Operation == "recall" && s.State == "aborting" && ok && b.State == "aborting" {
++			continue
++		}
++		return ErrConflict
++	}
++	if len(records) == 0 && repoID > 0 {
++		blocked, err := MigrationQuarantined(ctx, repoID)
++		if err != nil {
++			return err
++		}
++		if blocked {
++			return ErrConflict
++		}
++	}
++	return nil
++}
++
++// IsMigrationPackageOperation 只用于禁止隔离期通知，不授予写权限。
++func IsMigrationPackageOperation(ctx context.Context) bool {
++	_, ok := ctx.Value(migrationPackageScopeKey{}).(migrationPackageScope)
++	return ok
++}
+diff --git a/models/governance/migration_path.go b/models/governance/migration_path.go
+index 5e3c19b..34fd08a 100644
+--- a/models/governance/migration_path.go
++++ b/models/governance/migration_path.go
+@@ -18,7 +18,7 @@ func SealedMigrationPathContext(ctx context.Context, key string, actorID int64)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	if !ok || (s.State != "sealed" && s.State != "handed_off") || s.TargetOwnerID <= 0 || s.TargetName == "" {
++	if !ok || (s.State != "sealed" && s.State != "handed_off" && s.State != "aborting") || s.TargetOwnerID <= 0 || s.TargetName == "" {
+ 		return nil, ErrConflict
+ 	}
+ 	return context.WithValue(ctx, migrationPathKey{}, migrationPathScope{s.ID, s.RepoID, actorID}), nil
+@@ -31,7 +31,7 @@ func allowSealedMigrationPath(ctx context.Context, repositoryID int64) bool {
+ 	}
+ 	s := &MigrationSession{}
+ 	found, err := db.GetEngine(ctx).Where("id = ? AND repo_id = ? AND actor_id = ?", scope.SessionID, repositoryID, scope.ActorID).Get(s)
+-	return err == nil && found && (s.State == "sealed" || s.State == "handed_off") && s.TargetOwnerID > 0 && s.TargetName != ""
++	return err == nil && found && (s.State == "sealed" || s.State == "handed_off" || s.State == "aborting") && s.TargetOwnerID > 0 && s.TargetName != ""
+ }
+ 
+ // 归档期规则写入只允许已完成路径交接的同一迁移仓库。
+diff --git a/models/governance/models.go b/models/governance/models.go
+index 37d41eb..9b6aa35 100644
+--- a/models/governance/models.go
++++ b/models/governance/models.go
+@@ -314,7 +314,7 @@ func Beans() []any {
+ 		new(SSHKeyFileSync), new(Invitation), new(AccessRequest), new(AccessRequestSetting), new(RepositoryDeletion), new(PackageContentLock), new(GroupDeletion), new(LFSContentLock), new(ResourceCleanup), new(Namespace), new(ResourcePath), new(Membership), new(Share), new(CustomRole), new(ApprovalRule),
+ 		new(ApprovalSettings), new(PullVersion), new(ApprovalEvidence), new(AuditEvent), new(AuditScope), new(AuditStream),
+ 		new(AuditDelivery), new(MergeAuthorization), new(Reservation), new(WriteLock), new(AuditExport), new(AuditExportChunk), new(ReferenceTransaction), new(ReferenceReservation), new(ReferenceRevision), new(PullRuleVersion),
+-		new(RepositoryCreation), new(MirrorOperation), new(MigrationSession), new(MigrationBatch), new(MigrationReceipt), new(MigrationAsset), new(MigrationHistory),
++		new(MigrationPackageReceipt), new(RepositoryCreation), new(MirrorOperation), new(MigrationSession), new(MigrationBatch), new(MigrationReceipt), new(MigrationAsset), new(MigrationHistory),
+ 	}
+ }
+ 
+diff --git a/models/migrations/migrations.go b/models/migrations/migrations.go
+index 80a8213..874f84e 100644
+--- a/models/migrations/migrations.go
++++ b/models/migrations/migrations.go
+@@ -465,6 +465,7 @@ func prepareMigrationTasks() []*migration {
+ 		newMigration(384, "保留 GitLab 多条分支保护叠加语义", v1_27.AddMigrationBranchSemantics),
+ 		newMigration(385, "保留 GitLab 标签的创建与删除边界", v1_27.AddMigrationTagSemantics),
+ 		newMigration(386, "增加整批迁移隔离与原子开放门禁", governance.ExtendMigrationReceiver),
++		newMigration(387, "原生制品隔离、完整回执及终止恢复", governance.ExtendMigrationReceiver),
+ 	}
+ 	return preparedMigrations
+ }
+diff --git a/models/packages/audit.go b/models/packages/audit.go
+index 12cf497..57b810f 100644
+--- a/models/packages/audit.go
++++ b/models/packages/audit.go
+@@ -92,6 +92,18 @@ func AppendDownloadAccessAudit(ctx context.Context, file *PackageFile) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	private := governance_model.IsMigrationPackageOperation(ctx)
++	if !private && pkg.RepoID > 0 {
++		private, err = governance_model.MigrationQuarantined(ctx, pkg.RepoID)
++		if err != nil {
++			return err
++		}
++	}
++	// 隔离期事件仅进入管理员实例审计，防止群组审计旁路泄露名称与版本。
++	if private {
++		scopeType, scopeID, ancestors = "instance", 0, nil
++	}
++
+ 	details, err := json.Marshal(map[string]any{"phase": "content_opened", "package_type": pkg.Type, "package_name": pkg.Name, "version": version.Version, "file_name": file.Name})
+ 	if err != nil {
+ 		return err
+@@ -105,6 +117,18 @@ func appendPackageAudit(ctx context.Context, pkg *Package, eventType, objectType
+ 	if err != nil {
+ 		return err
+ 	}
++	private := governance_model.IsMigrationPackageOperation(ctx)
++	if !private && pkg.RepoID > 0 {
++		private, err = governance_model.MigrationQuarantined(ctx, pkg.RepoID)
++		if err != nil {
++			return err
++		}
++	}
++	// 隔离期事件仅进入管理员实例审计，防止群组审计旁路泄露名称与版本。
++	if private {
++		scopeType, scopeID, ancestors = "instance", 0, nil
++	}
++
+ 	raw, err := json.Marshal(details)
+ 	if err != nil {
+ 		return err
+diff --git a/models/packages/governance.go b/models/packages/governance.go
+index 9bc939b..7344d94 100644
+--- a/models/packages/governance.go
++++ b/models/packages/governance.go
+@@ -208,7 +208,12 @@ func withPackageWrite(ctx context.Context, packageID int64, apply func(context.C
+ 		if err != nil {
+ 			return err
+ 		}
+-		return withPackageOwnerWrite(ctx, pkg.OwnerID, apply)
++		return withPackageOwnerWrite(ctx, pkg.OwnerID, func(ctx context.Context) error {
++			if err := governance_model.CheckMigrationPackageWrite(ctx, pkg.OwnerID, string(pkg.Type), pkg.LowerName, pkg.ID, pkg.RepoID); err != nil {
++				return err
++			}
++			return apply(ctx)
++		})
+ 	})
+ }
+ 
+@@ -243,3 +248,36 @@ func withPackageReferenceWrite(ctx context.Context, refType PropertyType, refID
+ 		}
+ 	})
+ }
++
++// 删除保留原有命名空间清理语义，只增加迁移占用检查。
++func withMigrationRemoval(ctx context.Context, refType PropertyType, refID int64, apply func(context.Context) error) error {
++	return governance_model.WithWrite(ctx, nil, func(ctx context.Context) error {
++		packageID := refID
++		if refType == PropertyTypeFile {
++			f, ok, e := db.GetByID[PackageFile](ctx, refID)
++			if e != nil {
++				return e
++			}
++			if !ok {
++				return ErrPackageFileNotExist
++			}
++			refID = f.VersionID
++			refType = PropertyTypeVersion
++		}
++		if refType == PropertyTypeVersion {
++			v, e := GetVersionByID(ctx, refID)
++			if e != nil {
++				return e
++			}
++			packageID = v.PackageID
++		}
++		p, e := GetPackageByID(ctx, packageID)
++		if e != nil {
++			return e
++		}
++		if e = governance_model.CheckMigrationPackageWrite(ctx, p.OwnerID, string(p.Type), p.LowerName, p.ID, p.RepoID); e != nil {
++			return e
++		}
++		return apply(ctx)
++	})
++}
+diff --git a/models/packages/nuget/search.go b/models/packages/nuget/search.go
+index 1ec0cec..20c9773 100644
+--- a/models/packages/nuget/search.go
++++ b/models/packages/nuget/search.go
+@@ -8,14 +8,19 @@ import (
+ 	"strings"
+ 
+ 	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
+ 	packages_model "gitea.dev/models/packages"
+ 
+ 	"xorm.io/builder"
+ )
+ 
+ // SearchVersions gets all versions of packages matching the search options
+-func SearchVersions(ctx context.Context, opts *packages_model.PackageSearchOptions) ([]*packages_model.PackageVersion, int64, error) {
+-	cond := toConds(opts)
++func SearchVersions(ctx context.Context, opts *packages_model.PackageSearchOptions) (versions []*packages_model.PackageVersion, total int64, err error) {
++	err = governance.WithStableRead(ctx, func(ctx context.Context) error { var e error; versions, total, e = searchVersions(ctx, opts); return e })
++	return
++}
++func searchVersions(ctx context.Context, opts *packages_model.PackageSearchOptions) ([]*packages_model.PackageVersion, int64, error) {
++	cond := toConds(opts).And(governance.MigrationPackageCondition(ctx))
+ 
+ 	e := db.GetEngine(ctx)
+ 
+@@ -49,7 +54,7 @@ func SearchVersions(ctx context.Context, opts *packages_model.PackageSearchOptio
+ // CountPackages counts all packages matching the search options
+ func CountPackages(ctx context.Context, opts *packages_model.PackageSearchOptions) (int64, error) {
+ 	return db.GetEngine(ctx).
+-		Where(toConds(opts)).
++		Where(toConds(opts).And(governance.MigrationPackageCondition(ctx))).
+ 		Count(&packages_model.Package{})
+ }
+ 
+diff --git a/models/packages/package.go b/models/packages/package.go
+index b45c04c..de5262c 100644
+--- a/models/packages/package.go
++++ b/models/packages/package.go
+@@ -222,7 +222,9 @@ func tryInsertPackage(ctx context.Context, p *Package) (*Package, error) {
+ 	e := db.GetEngine(ctx)
+ 
+ 	existing := &Package{}
+-
++	if err := governance_model.CheckMigrationPackageWrite(ctx, p.OwnerID, string(p.Type), p.LowerName, 0, p.RepoID); err != nil {
++		return nil, err
++	}
+ 	has, err := e.Where(builder.Eq{
+ 		"owner_id":   p.OwnerID,
+ 		"type":       p.Type,
+@@ -242,7 +244,8 @@ func tryInsertPackage(ctx context.Context, p *Package) (*Package, error) {
+ 
+ // DeletePackageByID deletes a package by id
+ func DeletePackageByID(ctx context.Context, packageID int64) error {
+-	_, err := db.GetEngine(ctx).ID(packageID).Delete(&Package{})
++	var err error
++	err = withMigrationRemoval(ctx, PropertyTypePackage, packageID, func(ctx context.Context) error { _, e := db.GetEngine(ctx).ID(packageID).Delete(&Package{}); return e })
+ 	return err
+ }
+ 
+@@ -253,6 +256,15 @@ func SetRepositoryLink(ctx context.Context, packageID, repoID int64) error {
+ 		if err != nil {
+ 			return err
+ 		}
++		if repoID != pkg.RepoID && repoID > 0 {
++			blocked, e := governance_model.MigrationQuarantined(ctx, repoID)
++			if e != nil {
++				return e
++			}
++			if blocked {
++				return governance_model.ErrConflict
++			}
++		}
+ 		beforeRepoID := pkg.RepoID
+ 		if _, err := db.GetEngine(ctx).ID(packageID).Cols("repo_id").Update(&Package{RepoID: repoID}); err != nil {
+ 			return err
+@@ -267,8 +279,19 @@ func UnlinkRepository(ctx context.Context, packageID int64) error {
+ 
+ // UnlinkRepositoryFromAllPackages unlinks every package from the repository
+ func UnlinkRepositoryFromAllPackages(ctx context.Context, repoID int64) error {
+-	_, err := db.GetEngine(ctx).Where("repo_id = ?", repoID).Cols("repo_id").Update(&Package{})
+-	return err
++	return governance_model.WithWrite(ctx, nil, func(ctx context.Context) error {
++		var rows []*Package
++		if e := db.GetEngine(ctx).Where("repo_id=?", repoID).Find(&rows); e != nil {
++			return e
++		}
++		for _, p := range rows {
++			if e := governance_model.CheckMigrationPackageWrite(ctx, p.OwnerID, string(p.Type), p.LowerName, p.ID, p.RepoID); e != nil {
++				return e
++			}
++		}
++		_, e := db.GetEngine(ctx).Where("repo_id=?", repoID).Cols("repo_id").Update(&Package{})
++		return e
++	})
+ }
+ 
+ // GetPackageByID gets a package by id
+diff --git a/models/packages/package_blob.go b/models/packages/package_blob.go
+index b4d4857..bbc5f0c 100644
+--- a/models/packages/package_blob.go
++++ b/models/packages/package_blob.go
+@@ -161,7 +161,7 @@ func IsBlobAccessibleForUser(ctx context.Context, blobID int64, user *user_model
+ 		Join("INNER", "package_file", "package_file.blob_id = package_blob.id").
+ 		Join("INNER", "package_version", "package_version.id = package_file.version_id").
+ 		Join("INNER", "package", "package.id = package_version.package_id").
+-		Where("package_blob.id = ?", blobID).
++		Where("package_blob.id = ?", blobID).And(governance_model.MigrationPackageCondition(ctx)).
+ 		Find(&owners)
+ 	if err != nil {
+ 		return false, err
+diff --git a/models/packages/package_file.go b/models/packages/package_file.go
+index 919e999..b90b203 100644
+--- a/models/packages/package_file.go
++++ b/models/packages/package_file.go
+@@ -10,6 +10,7 @@ import (
+ 	"time"
+ 
+ 	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
+ 	"gitea.dev/modules/timeutil"
+ 	"gitea.dev/modules/util"
+ 
+@@ -131,22 +132,28 @@ func GetFileForVersionByName(ctx context.Context, versionID int64, name, key str
+ 
+ // DeleteFileByID deletes a file
+ func DeleteFileByID(ctx context.Context, fileID int64) error {
+-	_, err := db.GetEngine(ctx).ID(fileID).Delete(&PackageFile{})
++	err := withMigrationRemoval(ctx, PropertyTypeFile, fileID, func(ctx context.Context) error { _, e := db.GetEngine(ctx).ID(fileID).Delete(&PackageFile{}); return e })
+ 	return err
+ }
+ 
+ // DeleteFilesByPackageID deletes all files of a specific package
+ // Versions must not be deleted prior to this call
+ func DeleteFilesByPackageID(ctx context.Context, packageID int64) error {
+-	deleteStmt := builder.Delete(builder.In("version_id", builder.Select("package_version.id").From("package_version").Where(builder.Eq{"package_id": packageID}))).From("package_file")
+-	_, err := db.GetEngine(ctx).Exec(deleteStmt)
+-	return err
++	return withMigrationRemoval(ctx, PropertyTypePackage, packageID, func(ctx context.Context) error {
++
++		deleteStmt := builder.Delete(builder.In("version_id", builder.Select("package_version.id").From("package_version").Where(builder.Eq{"package_id": packageID}))).From("package_file")
++		_, err := db.GetEngine(ctx).Exec(deleteStmt)
++		return err
++	})
+ }
+ 
+ // DeleteFilesByVersionID deletes all files of a specific version
+ func DeleteFilesByVersionID(ctx context.Context, versionID int64) error {
+-	_, err := db.GetEngine(ctx).Where("version_id = ?", versionID).Delete(&PackageFile{})
+-	return err
++	return withMigrationRemoval(ctx, PropertyTypeVersion, versionID, func(ctx context.Context) error {
++
++		_, err := db.GetEngine(ctx).Where("version_id = ?", versionID).Delete(&PackageFile{})
++		return err
++	})
+ }
+ 
+ func UpdateFile(ctx context.Context, pf *PackageFile, cols []string) error {
+@@ -251,7 +258,7 @@ func (opts *PackageFileSearchOptions) toConds() builder.Cond {
+ // SearchFiles gets all files of packages matching the search options
+ func SearchFiles(ctx context.Context, opts *PackageFileSearchOptions) ([]*PackageFile, int64, error) {
+ 	sess := db.GetEngine(ctx).
+-		Where(opts.toConds())
++		Where(opts.toConds()).And(builder.In("package_file.version_id", builder.Select("package_version.id").From("package_version").InnerJoin("package", "package.id=package_version.package_id").Where(governance.MigrationPackageCondition(ctx))))
+ 
+ 	if opts.Paginator != nil {
+ 		db.SetSessionPagination(sess, opts)
+diff --git a/models/packages/package_property.go b/models/packages/package_property.go
+index eedd976..51a6d36 100644
+--- a/models/packages/package_property.go
++++ b/models/packages/package_property.go
+@@ -93,60 +93,81 @@ func insertOrUpdateProperty(ctx context.Context, refType PropertyType, refID int
+ 
+ // DeleteAllProperties deletes all properties of a ref
+ func DeleteAllProperties(ctx context.Context, refType PropertyType, refID int64) error {
+-	_, err := db.GetEngine(ctx).Where("ref_type = ? AND ref_id = ?", refType, refID).Delete(&PackageProperty{})
+-	return err
++	return withMigrationRemoval(ctx, refType, refID, func(ctx context.Context) error {
++
++		_, err := db.GetEngine(ctx).Where("ref_type = ? AND ref_id = ?", refType, refID).Delete(&PackageProperty{})
++		return err
++	})
+ }
+ 
+ // DeletePropertiesByPackageID deletes properties of a typed linked to the package
+ // Use to avoid for loops in mass deletion of properties
+ func DeletePropertiesByPackageID(ctx context.Context, refType PropertyType, packageID int64) error {
+-	var deleteStmt *builder.Builder
+-
+-	switch refType {
+-	case PropertyTypeFile:
+-		deleteStmt = builder.Delete(
+-			// Delete all properties that are attached to a file and are in ids from a subquery
+-			// which returns ids from the package_file table joined on package_version to link it with package id
+-			builder.Eq{"ref_type": PropertyTypeFile}, builder.In("ref_id",
+-				builder.Select("package_file.id").From("package_file").
+-					LeftJoin("package_version", "package_file.version_id = package_version.id").
+-					Where(builder.Eq{"package_version.package_id": packageID}))).From("package_property")
+-	case PropertyTypeVersion:
+-		// Delete all properties that are attached to a version and are in ids from subquery to the package_version filtered by package id
+-		deleteStmt = builder.Delete(
+-			builder.Eq{"ref_type": PropertyTypeVersion}, builder.In("ref_id",
+-				builder.Select("package_version.id").From("package_version").
+-					Where(builder.Eq{"package_version.package_id": packageID}))).From("package_property")
+-	case PropertyTypePackage:
+-		// Delete all properties that are attached to a package and their reference links to the given package ID
+-		deleteStmt = builder.Delete(
+-			builder.Eq{"ref_type": PropertyTypePackage}, builder.Eq{"ref_id": packageID}).
+-			From("package_property")
+-	default:
+-		return errors.New("invalid ref type")
+-	}
+-
+-	_, err := db.GetEngine(ctx).Exec(deleteStmt)
+-	return err
++	return withMigrationRemoval(ctx, PropertyTypePackage, packageID, func(ctx context.Context) error {
++
++		var deleteStmt *builder.Builder
++
++		switch refType {
++		case PropertyTypeFile:
++			deleteStmt = builder.Delete(
++				// Delete all properties that are attached to a file and are in ids from a subquery
++				// which returns ids from the package_file table joined on package_version to link it with package id
++				builder.Eq{"ref_type": PropertyTypeFile}, builder.In("ref_id",
++					builder.Select("package_file.id").From("package_file").
++						LeftJoin("package_version", "package_file.version_id = package_version.id").
++						Where(builder.Eq{"package_version.package_id": packageID}))).From("package_property")
++		case PropertyTypeVersion:
++			// Delete all properties that are attached to a version and are in ids from subquery to the package_version filtered by package id
++			deleteStmt = builder.Delete(
++				builder.Eq{"ref_type": PropertyTypeVersion}, builder.In("ref_id",
++					builder.Select("package_version.id").From("package_version").
++						Where(builder.Eq{"package_version.package_id": packageID}))).From("package_property")
++		case PropertyTypePackage:
++			// Delete all properties that are attached to a package and their reference links to the given package ID
++			deleteStmt = builder.Delete(
++				builder.Eq{"ref_type": PropertyTypePackage}, builder.Eq{"ref_id": packageID}).
++				From("package_property")
++		default:
++			return errors.New("invalid ref type")
++		}
++
++		_, err := db.GetEngine(ctx).Exec(deleteStmt)
++		return err
++	})
+ }
+ 
+ // DeleteFilePropertiesByVersionID deletes all file properties linked to specific version
+ func DeleteFilePropertiesByVersionID(ctx context.Context, versionID int64) error {
+-	deleteStmt := builder.Delete(builder.Eq{"ref_type": PropertyTypeFile}, builder.In("ref_id", builder.Select("id").From("package_file").Where(builder.Eq{"version_id": versionID}))).From("package_property")
+-	_, err := db.GetEngine(ctx).Exec(deleteStmt)
+-	return err
++	return withMigrationRemoval(ctx, PropertyTypeVersion, versionID, func(ctx context.Context) error {
++
++		deleteStmt := builder.Delete(builder.Eq{"ref_type": PropertyTypeFile}, builder.In("ref_id", builder.Select("id").From("package_file").Where(builder.Eq{"version_id": versionID}))).From("package_property")
++		_, err := db.GetEngine(ctx).Exec(deleteStmt)
++		return err
++	})
+ }
+ 
+ // DeletePropertyByID deletes a property
+ func DeletePropertyByID(ctx context.Context, propertyID int64) error {
+-	_, err := db.GetEngine(ctx).ID(propertyID).Delete(&PackageProperty{})
+-	return err
++	pp, has, err := db.GetByID[PackageProperty](ctx, propertyID)
++	if err != nil {
++		return err
++	}
++	if !has {
++		return nil
++	}
++	return withMigrationRemoval(ctx, pp.RefType, pp.RefID, func(ctx context.Context) error {
++		_, e := db.GetEngine(ctx).ID(propertyID).Delete(new(PackageProperty))
++		return e
++	})
+ }
+ 
+ // DeletePropertiesByName deletes properties by name
+ func DeletePropertiesByName(ctx context.Context, refType PropertyType, refID int64, name string) error {
+-	_, err := db.GetEngine(ctx).Where("ref_type = ? AND ref_id = ? AND name = ?", refType, refID, name).Delete(&PackageProperty{})
+-	return err
++	return withMigrationRemoval(ctx, refType, refID, func(ctx context.Context) error {
++
++		_, err := db.GetEngine(ctx).Where("ref_type = ? AND ref_id = ? AND name = ?", refType, refID, name).Delete(&PackageProperty{})
++		return err
++	})
+ }
+ 
+ type DistinctPropertyDependency struct {
+diff --git a/models/packages/package_version.go b/models/packages/package_version.go
+index 045ed7c..e7e200c 100644
+--- a/models/packages/package_version.go
++++ b/models/packages/package_version.go
+@@ -172,14 +172,20 @@ func GetVersionsByPackageName(ctx context.Context, ownerID int64, packageType Ty
+ 
+ // DeleteVersionByID deletes a version by id
+ func DeleteVersionByID(ctx context.Context, versionID int64) error {
+-	_, err := db.GetEngine(ctx).ID(versionID).Delete(&PackageVersion{})
++	err := withMigrationRemoval(ctx, PropertyTypeVersion, versionID, func(ctx context.Context) error {
++		_, e := db.GetEngine(ctx).ID(versionID).Delete(&PackageVersion{})
++		return e
++	})
+ 	return err
+ }
+ 
+ // DeleteVersionsByPackageID deletes all versions of a specific package
+ func DeleteVersionsByPackageID(ctx context.Context, packageID int64) error {
+-	_, err := db.GetEngine(ctx).Where(builder.Eq{"package_id": packageID}).Delete(&PackageVersion{})
+-	return err
++	return withMigrationRemoval(ctx, PropertyTypePackage, packageID, func(ctx context.Context) error {
++
++		_, err := db.GetEngine(ctx).Where(builder.Eq{"package_id": packageID}).Delete(&PackageVersion{})
++		return err
++	})
+ }
+ 
+ // HasVersionFileReferences checks if there are associated files
+diff --git a/models/repo/attachment.go b/models/repo/attachment.go
+index 0642727..177eee2 100644
+--- a/models/repo/attachment.go
++++ b/models/repo/attachment.go
+@@ -177,6 +177,22 @@ func DeleteAttachment(ctx context.Context, a *Attachment, remove bool) error {
+ 	return err
+ }
+ 
++// checkMigrationAttachmentMutation 必须在治理写事务内调用，防止过期的原生请求破坏来源副本。
++func checkMigrationAttachmentMutation(ctx context.Context, attachmentID int64) error {
++	rows, err := db.GetEngine(ctx).SQL(`SELECT a.id FROM governance_migration_asset a
++		INNER JOIN governance_migration_session s ON s.id=a.session_id
++		LEFT JOIN governance_migration_batch b ON b.key=s.batch_key
++		WHERE a.attachment_id=? AND s.protocol=8 AND s.publish_barrier=?
++		AND (b.key IS NULL OR b.state<>?) LIMIT 1`, attachmentID, true, "published").Query()
++	if err != nil {
++		return err
++	}
++	if len(rows) != 0 {
++		return governance_model.ErrConflict
++	}
++	return nil
++}
++
+ // DeleteAttachments deletes the given attachments and optionally the associated files.
+ func DeleteAttachments(ctx context.Context, attachments []*Attachment, remove bool) (int, error) {
+ 	if len(attachments) == 0 {
+@@ -201,6 +217,11 @@ func DeleteAttachments(ctx context.Context, attachments []*Attachment, remove bo
+ 			if err := db.GetEngine(ctx).In("id", ids).Find(&deleted); err != nil {
+ 				return err
+ 			}
++			for _, attachment := range deleted {
++				if err := checkMigrationAttachmentMutation(ctx, attachment.ID); err != nil {
++					return err
++				}
++			}
+ 			var err error
+ 			cnt, err = db.GetEngine(ctx).In("id", ids).NoAutoCondition().Delete(new(Attachment))
+ 			if err != nil {
+@@ -274,6 +295,9 @@ func UpdateAttachmentByUUID(ctx context.Context, attach *Attachment, cols ...str
+ 			if err != nil {
+ 				return err
+ 			}
++			if err := checkMigrationAttachmentMutation(ctx, current.ID); err != nil {
++				return err
++			}
+ 			if _, err := db.GetEngine(ctx).Where("uuid=?", attach.UUID).Cols(cols...).Update(attach); err != nil {
+ 				return err
+ 			}
+@@ -306,6 +330,9 @@ func UpdateAttachment(ctx context.Context, atta *Attachment) error {
+ 		if err != nil {
+ 			return err
+ 		}
++		if err := checkMigrationAttachmentMutation(ctx, current.ID); err != nil {
++			return err
++		}
+ 		sess := db.GetEngine(ctx).Cols("name", "issue_id", "release_id", "comment_id", "download_count")
+ 		if atta.ID != 0 && atta.UUID == "" {
+ 			sess = sess.ID(atta.ID)
+diff --git a/routers/api/packages/generic/generic.go b/routers/api/packages/generic/generic.go
+index 32abf66..7772721 100644
+--- a/routers/api/packages/generic/generic.go
++++ b/routers/api/packages/generic/generic.go
+@@ -5,6 +5,7 @@ package generic
+ 
+ import (
+ 	"errors"
++	governance "gitea.dev/models/governance"
+ 	"net/http"
+ 	"regexp"
+ 	"strings"
+@@ -23,6 +24,9 @@ var (
+ )
+ 
+ func apiError(ctx *context.Context, status int, obj any) {
++	if err, ok := obj.(error); ok && errors.Is(err, governance.ErrConflict) {
++		status = http.StatusConflict
++	}
+ 	message := helper.ProcessErrorForUser(ctx, status, obj)
+ 	ctx.PlainText(status, message)
+ }
+diff --git a/routers/api/v1/governance/migration.go b/routers/api/v1/governance/migration.go
+index 4f90570..826d1e5 100644
+--- a/routers/api/v1/governance/migration.go
++++ b/routers/api/v1/governance/migration.go
+@@ -17,7 +17,7 @@ import (
+ )
+ 
+ func MigrationCapabilities(ctx *context.APIContext) {
+-	ctx.JSON(http.StatusOK, map[string]any{"protocol": 7, "receipt_manifest": true, "discussion_snapshots": true, "batch_publish": true, "capacity_probe": true, "people_mapping": true, "merge_conditions": true, "ci_hierarchy": true, "safe_abort": true, "npm_registry_metadata": true, "cross_repository_pulls": true, "package_formats": []string{"generic", "npm", "maven", "pypi", "nuget", "helm"}, "gitlab_rule_union": true, "ci_raw_reports": true, "sealed_handoff": true, "historical_reviews": true, "generic_packages": true, "archived_rule_install": true})
++	ctx.JSON(http.StatusOK, map[string]any{"protocol": 8, "package_isolation": true, "native_package_manifest": true, "receipt_manifest": true, "discussion_snapshots": true, "batch_publish": true, "capacity_probe": true, "people_mapping": true, "merge_conditions": true, "ci_hierarchy": true, "safe_abort": true, "npm_registry_metadata": true, "cross_repository_pulls": true, "package_formats": []string{"generic", "npm", "maven", "pypi", "nuget", "helm"}, "gitlab_rule_union": true, "ci_raw_reports": true, "sealed_handoff": true, "historical_reviews": true, "generic_packages": true, "archived_rule_install": true})
+ }
+ 
+ // 入口拒绝未知字段，防止调用方以为不支持的内容已被导入。
+@@ -51,6 +51,10 @@ func MigrationStart(ctx *context.APIContext) {
+ 	if !migrationBody(ctx, &opt) {
+ 		return
+ 	}
++	if opt.Protocol != 8 {
++		migrationError(ctx, migrationreceiver.ErrInvalid)
++		return
++	}
+ 	result, err := migrationreceiver.Start(ctx, ctx.Doer, opt)
+ 	if err != nil {
+ 		migrationError(ctx, err)
+diff --git a/services/migrationreceiver/abort.go b/services/migrationreceiver/abort.go
+index f9b3e46..0f1265c 100644
+--- a/services/migrationreceiver/abort.go
++++ b/services/migrationreceiver/abort.go
+@@ -5,6 +5,10 @@ package migrationreceiver
+ 
+ import (
+ 	"context"
++	"crypto/sha256"
++	"fmt"
++	"gitea.dev/modules/storage"
++	"io"
+ 	"strings"
+ 
+ 	"gitea.dev/models/db"
+@@ -30,11 +34,11 @@ func Status(ctx context.Context, actor *users.User, key string) (*governance.Mig
+ }
+ 
+ // Abort 保留现场并永久封锁接收会话；回执丢失后可按相同编号重复核对。
+-func Abort(ctx context.Context, actor *users.User, key string, repoID int64, marker string) error {
++func abortLegacy(ctx context.Context, actor *users.User, key string, repoID int64, marker string) error {
+ 	if actor == nil || !actor.IsAdmin || !keyPattern.MatchString(key) || repoID <= 0 {
+ 		return ErrInvalid
+ 	}
+-	return db.WithTx(ctx, func(ctx context.Context) error {
++	return governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		repo, err := repos.GetRepositoryByID(ctx, repoID)
+ 		if err != nil {
+ 			return err
+@@ -48,6 +52,10 @@ func Abort(ctx context.Context, actor *users.User, key string, repoID int64, mar
+ 			return err
+ 		}
+ 		if found {
++			// 初次查询后可能刚创建了整批会话，必须由协议八入口重新取得批次锁。
++			if s.Protocol == 8 && s.PublishBarrier {
++				return ErrConflict
++			}
+ 			if s.PublishBarrier {
+ 				if err = lockBatch(ctx, actor.ID, s.BatchKey); err != nil {
+ 					return err
+@@ -93,3 +101,146 @@ func Abort(ctx context.Context, actor *users.User, key string, repoID int64, mar
+ 		return err
+ 	})
+ }
++
++// Abort 将回收意图先持久化；原生制品与回执逐包原子回收，路径失败可继续。
++func Abort(ctx context.Context, actor *users.User, key string, repoID int64, marker string) error {
++	if actor == nil || !actor.IsAdmin || !keyPattern.MatchString(key) || repoID <= 0 {
++		return ErrInvalid
++	}
++	s := &governance.MigrationSession{}
++	found, err := db.GetEngine(ctx).Where("key = ?", key).Get(s)
++	if err != nil {
++		return err
++	}
++	if !found {
++		return abortLegacy(ctx, actor, key, repoID, marker)
++	}
++	if s.ActorID != actor.ID {
++		return ErrConflict
++	}
++	return withBatchOperation(ctx, s.BatchKey, func() error {
++		fresh, e := Status(ctx, actor, key)
++		if e != nil {
++			return e
++		}
++		s = fresh
++		if s.Protocol != 8 || !s.PublishBarrier {
++			return abortLegacy(ctx, actor, key, repoID, marker)
++		}
++		if s.SealManifestVersion == 1 {
++			if _, e := verifyManifest(ctx, s); e != nil {
++				return e
++			}
++			var assets []*governance.MigrationAsset
++			if e := db.GetEngine(ctx).Where("session_id=? AND parent_kind=?", s.ID, "package").Find(&assets); e != nil {
++				return e
++			}
++			for _, a := range assets {
++				attachment, e := repos.GetAttachmentByID(ctx, a.AttachmentID)
++				if e != nil {
++					return e
++				}
++				stream, e := storage.Attachments.Open(attachment.RelativePath())
++				if e != nil {
++					return e
++				}
++				digest := sha256.New()
++				size, e := io.Copy(digest, stream)
++				stream.Close()
++				if e != nil {
++					return e
++				}
++				if size != a.Size || fmt.Sprintf("%x", digest.Sum(nil)) != a.SHA256 {
++					return ErrConflict
++				}
++			}
++		}
++		err := governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++			if e := lockBatch(ctx, actor.ID, s.BatchKey); e != nil {
++				return e
++			}
++			if _, e := db.GetEngine(ctx).ID(s.ID).Get(s); e != nil {
++				return e
++			}
++			var b governance.MigrationBatch
++			found, e := db.GetEngine(ctx).Where("key=?", s.BatchKey).Get(&b)
++			if e != nil {
++				return e
++			}
++			if !found || b.State == "published" || s.RepoID != repoID || s.ActorID != actor.ID {
++				return ErrConflict
++			}
++			repository, e := repos.GetRepositoryByID(ctx, repoID)
++			if e != nil {
++				return e
++			}
++			if !repository.IsPrivate || (repository.OwnerID != actor.ID && repository.OwnerID != s.TargetOwnerID) || (repository.Name != "gm-migrate-"+s.Key && repository.Name != s.TargetName) {
++				return ErrConflict
++			}
++			if s.State == "abandoned" {
++				r, e := repos.GetRepositoryByID(ctx, repoID)
++				if e != nil {
++					return e
++				}
++				if !r.IsPrivate || !r.IsArchived || r.OwnerID != actor.ID || r.Name != "gm-migrate-"+s.Key {
++					return ErrConflict
++				}
++				return verifyNative(ctx, s, false)
++			}
++			if s.State != "loading" && s.State != "sealed" && s.State != "handed_off" && s.State != "aborting" {
++				return ErrConflict
++			}
++			if e := verifyNative(ctx, s, s.State == "handed_off"); e != nil {
++				return e
++			}
++			if _, e = db.GetEngine(ctx).Where("key=?", s.BatchKey).Cols("state").Update(&governance.MigrationBatch{State: "aborting"}); e != nil {
++				return e
++			}
++			s.State = "aborting"
++			_, e = db.GetEngine(ctx).ID(s.ID).Cols("state").Incr("revision").Update(s)
++			return e
++		})
++		if err != nil {
++			return err
++		}
++		if s.State == "abandoned" {
++			return nil
++		}
++		if err = recallNative(ctx, actor, s); err != nil {
++			return err
++		}
++		repo, err := repos.GetRepositoryByID(ctx, repoID)
++		if err != nil {
++			return err
++		}
++		if !repo.IsPrivate || (repo.OwnerID != actor.ID && repo.OwnerID != s.TargetOwnerID) {
++			return ErrConflict
++		}
++		if err = recallPrepared(ctx, actor, s, repo); err != nil {
++			return err
++		}
++		return governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++			if e := lockBatch(ctx, actor.ID, s.BatchKey); e != nil {
++				return e
++			}
++			s.State = "abandoned"
++			if e := verifyNative(ctx, s, false); e != nil {
++				return e
++			}
++			if _, e := db.GetEngine(ctx).ID(repoID).Cols("is_archived").Update(&repos.Repository{IsArchived: true}); e != nil {
++				return e
++			}
++			if _, e := db.GetEngine(ctx).ID(s.ID).Cols("state").Incr("revision").Update(s); e != nil {
++				return e
++			}
++			remaining, e := db.GetEngine(ctx).Where("batch_key=? AND state<>?", s.BatchKey, "abandoned").Count(new(governance.MigrationSession))
++			if e != nil {
++				return e
++			}
++			if remaining == 0 {
++				_, e = db.GetEngine(ctx).Where("key=?", s.BatchKey).Cols("state").Update(&governance.MigrationBatch{State: "abandoned"})
++			}
++			return e
++		})
++	})
++}
+diff --git a/services/migrationreceiver/abort_regression_test.go b/services/migrationreceiver/abort_regression_test.go
+new file mode 100644
+index 0000000..9b23270
+--- /dev/null
++++ b/services/migrationreceiver/abort_regression_test.go
+@@ -0,0 +1,164 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"context"
++	"crypto/sha256"
++	"errors"
++	"fmt"
++	"io"
++	"net/url"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	packages "gitea.dev/models/packages"
++	repos "gitea.dev/models/repo"
++	"gitea.dev/models/unittest"
++	users "gitea.dev/models/user"
++	"gitea.dev/modules/setting"
++
++	"github.com/stretchr/testify/require"
++	"xorm.io/xorm"
++	"xorm.io/xorm/contexts"
++	"xorm.io/xorm/names"
++)
++
++type abortReadFault struct {
++	err   error
++	fired bool
++}
++
++func (f *abortReadFault) BeforeProcess(c *contexts.ContextHook) (context.Context, error) {
++	if !f.fired && strings.HasPrefix(strings.ToUpper(c.SQL), "SELECT") && strings.Contains(c.SQL, "governance_migration_session") {
++		f.fired = true
++		return c.Ctx, f.err
++	}
++	return c.Ctx, nil
++}
++
++func (*abortReadFault) AfterProcess(*contexts.ContextHook) error { return nil }
++
++// 仅显式指定本机独立测试库时切换，禁止误用真实业务数据库。
++func abortRegressionDatabase(t *testing.T) {
++	t.Helper()
++	dsn := os.Getenv("GITEA_TEST_MIGRATION_ABORT_DSN")
++	if dsn == "" {
++		return
++	}
++	u, err := url.Parse(dsn)
++	require.NoError(t, err)
++	require.Contains(t, []string{"127.0.0.1", "localhost"}, u.Hostname())
++	require.Equal(t, "/migration_abort_test", u.Path)
++	engine, err := xorm.NewEngine("postgres", dsn)
++	require.NoError(t, err)
++	engine.SetMapper(names.GonicMapper{})
++	original, databaseType := db.GetXORMEngineForTesting(), setting.Database.Type
++	fixtures := unittest.FixturesOptions{Dir: filepath.Join(setting.GetGiteaTestSourceRoot(), "models", "fixtures")}
++	t.Cleanup(func() {
++		db.SetDefaultEngine(context.Background(), original)
++		setting.Database.Type = databaseType
++		require.NoError(t, unittest.InitFixtures(fixtures))
++		require.NoError(t, engine.Close())
++	})
++	db.SetDefaultEngine(context.Background(), engine)
++	setting.Database.Type = "postgres"
++	version, err := engine.QueryString("SELECT version()")
++	require.NoError(t, err)
++	require.Len(t, version, 1)
++	require.Contains(t, version[0]["version"], "PostgreSQL 16.8")
++	t.Logf("定向回归数据库：%s", version[0]["version"])
++	require.NoError(t, db.SyncAllTables())
++	require.NoError(t, unittest.InitFixtures(fixtures))
++}
++
++func TestAbortRegression(t *testing.T) {
++	abortRegressionDatabase(t)
++	t.Run("会话读取失败保持原状态并允许重试", func(t *testing.T) {
++		ctx, actor, _, repo, session, asset := reviewPackage(t, "nuget", 2)
++		fault := &abortReadFault{err: errors.New("故障注入：会话读取暂时失败")}
++		db.GetXORMEngineForTesting().AddHook(fault)
++		require.ErrorIs(t, Abort(ctx, actor, session.Key, repo.ID, ""), fault.err)
++		require.True(t, fault.fired)
++		fresh, err := Status(ctx, actor, session.Key)
++		require.NoError(t, err)
++		require.Equal(t, "handed_off", fresh.State)
++		require.Equal(t, session.PackageReceiptDigest, fresh.PackageReceiptDigest)
++		batch, err := BatchStatus(ctx, actor, session.BatchKey)
++		require.NoError(t, err)
++		require.Equal(t, "prepared", batch.State)
++		_, err = packages.GetPackageByID(ctx, asset.PackageID)
++		require.NoError(t, err)
++		require.NoError(t, Abort(ctx, actor, session.Key, repo.ID, ""))
++		require.NoError(t, Abort(ctx, actor, session.Key, repo.ID, ""))
++		_, err = packages.GetPackageByID(ctx, asset.PackageID)
++		require.ErrorIs(t, err, packages.ErrPackageNotExist)
++		fresh, err = Status(ctx, actor, session.Key)
++		require.NoError(t, err)
++		require.Equal(t, "abandoned", fresh.State)
++		rows, err := nativeReceipts(ctx, fresh)
++		require.NoError(t, err)
++		require.NotEmpty(t, rows)
++		for _, row := range rows {
++			require.True(t, row.Recalled)
++		}
++		_, stream, err := OpenAsset(ctx, actor, session.Key, asset.ID)
++		require.NoError(t, err)
++		defer stream.Close()
++		content, err := io.ReadAll(stream)
++		require.NoError(t, err)
++		require.Equal(t, asset.SHA256, fmt.Sprintf("%x", sha256.Sum256(content)))
++	})
++	t.Run("旧终止分支不得接管新会话", func(t *testing.T) {
++		ctx, actor, _, repo, session, asset := reviewPackage(t, "nuget")
++		// 覆盖初次查询不存在、等待治理锁时另一请求已提交会话的窗口。
++		require.ErrorIs(t, abortLegacy(ctx, actor, session.Key, repo.ID, ""), ErrConflict)
++		fresh, err := Status(ctx, actor, session.Key)
++		require.NoError(t, err)
++		require.Equal(t, "handed_off", fresh.State)
++		_, err = packages.GetPackageByID(ctx, asset.PackageID)
++		require.NoError(t, err)
++	})
++	t.Run("未完成回收不能冒充终态", func(t *testing.T) {
++		ctx, actor, _, repo, session, _ := reviewPackage(t, "nuget")
++		// 固定旧错误分支留下的现场，只验证阻断，不自动补录或回收旧现场。
++		require.NoError(t, recallPrepared(ctx, actor, session, repo))
++		require.NoError(t, governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++			if _, err := db.GetEngine(ctx).ID(session.ID).Cols("state").Update(&governance.MigrationSession{State: "abandoned"}); err != nil {
++				return err
++			}
++			_, err := db.GetEngine(ctx).Where("key=?", session.BatchKey).Cols("state").Update(&governance.MigrationBatch{State: "abandoned"})
++			return err
++		}))
++		require.ErrorIs(t, Abort(ctx, actor, session.Key, repo.ID, ""), ErrConflict)
++	})
++	t.Run("未创建会话按确切标记收尾", func(t *testing.T) {
++		require.NoError(t, unittest.PrepareTestDatabase())
++		ctx := t.Context()
++		actor, err := users.GetUserByID(ctx, 1)
++		require.NoError(t, err)
++		key := strings.Repeat("c", 32)
++		marker := "Gitea Manager 迁移隔离仓库 " + key + " " + strings.Repeat("a", 64)
++		repo := &repos.Repository{OwnerID: actor.ID, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, Description: marker, IsPrivate: true}
++		require.NoError(t, db.Insert(ctx, repo))
++		require.ErrorIs(t, Abort(ctx, actor, key, repo.ID, marker+"错误"), ErrConflict)
++		require.NoError(t, Abort(ctx, actor, key, repo.ID, marker))
++		require.NoError(t, Abort(ctx, actor, key, repo.ID, marker))
++	})
++	t.Run("错误身份与已发布批次保持阻断", func(t *testing.T) {
++		ctx, actor, _, repo, session, asset := reviewPackage(t, "generic")
++		wrongActor := *actor
++		wrongActor.ID++
++		require.Error(t, Abort(ctx, &wrongActor, session.Key, repo.ID, ""))
++		require.Error(t, Abort(ctx, actor, session.Key, repo.ID+1, ""))
++		require.NoError(t, PublishBatch(ctx, actor, session.BatchKey))
++		require.ErrorIs(t, Abort(ctx, actor, session.Key, repo.ID, ""), ErrConflict)
++		_, err := packages.GetPackageByID(ctx, asset.PackageID)
++		require.NoError(t, err)
++	})
++}
+diff --git a/services/migrationreceiver/asset.go b/services/migrationreceiver/asset.go
+index 9068b7c..085debc 100644
+--- a/services/migrationreceiver/asset.go
++++ b/services/migrationreceiver/asset.go
+@@ -56,7 +56,7 @@ func Asset(ctx context.Context, actor *users.User, key string, opt AssetOptions,
+ 	}
+ 	metadata, _ := json.Marshal(opt)
+ 	asset := &governance.MigrationAsset{}
+-	err = db.WithTx(ctx, func(ctx context.Context) error {
++	err = governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		n, err := db.GetEngine(ctx).Table(s).Where("id = ? AND state = ?", s.ID, "loading").Incr("revision").Update(&governance.MigrationSession{})
+ 		if err != nil {
+ 			return err
+@@ -118,7 +118,7 @@ func Asset(ctx context.Context, actor *users.User, key string, opt AssetOptions,
+ 	if count != opt.Size {
+ 		return nil, ErrInvalid
+ 	}
+-	err = db.WithTx(ctx, func(ctx context.Context) error {
++	err = governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		n, err := db.GetEngine(ctx).Table(s).Where("id = ? AND state = ?", s.ID, "loading").Incr("revision").Update(&governance.MigrationSession{})
+ 		if err != nil {
+ 			return err
+diff --git a/services/migrationreceiver/batch.go b/services/migrationreceiver/batch.go
+index 736f09e..9062477 100644
+--- a/services/migrationreceiver/batch.go
++++ b/services/migrationreceiver/batch.go
+@@ -37,6 +37,12 @@ func lockBatch(ctx context.Context, actorID int64, key string) error {
+ }
+ 
+ func finalFingerprint(ctx context.Context, s *governance.MigrationSession) (string, error) {
++	if s.Protocol != 8 {
++		return "", ErrConflict
++	}
++	if err := verifyNative(ctx, s, true); err != nil {
++		return "", err
++	}
+ 	sealed, e := verifyManifest(ctx, s)
+ 	if e != nil {
+ 		return "", e
+@@ -68,7 +74,7 @@ func finalFingerprint(ctx context.Context, s *governance.MigrationSession) (stri
+ 	if len(bad) != 1 || string(bad[0]["n"]) != "0" {
+ 		return "", ErrConflict
+ 	}
+-	values := map[string]any{"manifest": []any{sealed.Version, sealed.Objects, sealed.Assets, sealed.Digest}, "owner": r.OwnerID, "name": r.Name, "description": r.Description, "private": r.IsPrivate, "archived": r.IsArchived, "default_branch": r.DefaultBranch}
++	values := map[string]any{"native_manifest": s.PackageManifestDigest, "manifest": []any{sealed.Version, sealed.Objects, sealed.Assets, sealed.Digest}, "owner": r.OwnerID, "name": r.Name, "description": r.Description, "private": r.IsPrivate, "archived": r.IsArchived, "default_branch": r.DefaultBranch}
+ 	for name, repository := range map[string]gitrepo.Repository{"git_refs": r, "wiki_refs": r.WikiStorageRepo()} {
+ 		if name == "wiki_refs" {
+ 			exists, err := gitrepo.IsRepositoryExist(ctx, repository)
+@@ -114,10 +120,13 @@ func finalFingerprint(ctx context.Context, s *governance.MigrationSession) (stri
+ 
+ // PrepareBatch 保存最终规则与归属指纹，任何仓库未完成时都不能开放。
+ func PrepareBatch(ctx context.Context, actor *users.User, key string, items []BatchRepo) error {
++	return withBatchOperation(ctx, key, func() error { return prepareBatch(ctx, actor, key, items) })
++}
++func prepareBatch(ctx context.Context, actor *users.User, key string, items []BatchRepo) error {
+ 	if actor == nil || !actor.IsAdmin || !keyPattern.MatchString(key) {
+ 		return ErrInvalid
+ 	}
+-	return db.WithTx(ctx, func(ctx context.Context) error {
++	return governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		if e := lockBatch(ctx, actor.ID, key); e != nil {
+ 			return e
+ 		}
+@@ -126,7 +135,7 @@ func PrepareBatch(ctx context.Context, actor *users.User, key string, items []Ba
+ 		if e != nil {
+ 			return e
+ 		}
+-		if !ok || b.State == "published" || len(items) != b.Expected {
++		if !ok || (b.State != "preparing" && b.State != "prepared") || len(items) != b.Expected {
+ 			return ErrConflict
+ 		}
+ 		var sessions []*governance.MigrationSession
+@@ -177,10 +186,13 @@ func PrepareBatch(ctx context.Context, actor *users.User, key string, items []Ba
+ 
+ // PublishBatch 的事务只修改可见性和最终归档状态，不再搬运文件或首次安装规则。
+ func PublishBatch(ctx context.Context, actor *users.User, key string) error {
++	return withBatchOperation(ctx, key, func() error { return publishBatch(ctx, actor, key) })
++}
++func publishBatch(ctx context.Context, actor *users.User, key string) error {
+ 	if actor == nil || !actor.IsAdmin || !keyPattern.MatchString(key) {
+ 		return ErrInvalid
+ 	}
+-	return db.WithTx(ctx, func(ctx context.Context) error {
++	return governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		if e := lockBatch(ctx, actor.ID, key); e != nil {
+ 			return e
+ 		}
+diff --git a/services/migrationreceiver/handoff.go b/services/migrationreceiver/handoff.go
+index 94684fb..f43857a 100644
+--- a/services/migrationreceiver/handoff.go
++++ b/services/migrationreceiver/handoff.go
+@@ -16,7 +16,15 @@ import (
+ 	repository "gitea.dev/services/repository"
+ )
+ 
+-func Handoff(ctx context.Context, actor *users.User, key string, ownerID int64, name string) (*repos.Repository, error) {
++func Handoff(ctx context.Context, actor *users.User, key string, ownerID int64, name string) (result *repos.Repository, err error) {
++	s, e := Status(ctx, actor, key)
++	if e != nil {
++		return nil, e
++	}
++	err = withBatchOperation(ctx, s.BatchKey, func() error { var e error; result, e = handoff(ctx, actor, key, ownerID, name); return e })
++	return
++}
++func handoff(ctx context.Context, actor *users.User, key string, ownerID int64, name string) (*repos.Repository, error) {
+ 	if actor == nil || !actor.IsAdmin || ownerID <= 0 || !keyPattern.MatchString(key) {
+ 		return nil, ErrInvalid
+ 	}
+@@ -38,7 +46,7 @@ func Handoff(ctx context.Context, actor *users.User, key string, ownerID int64,
+ 		return nil, ErrConflict
+ 	}
+ 	s := &governance.MigrationSession{}
+-	err = db.WithTx(ctx, func(ctx context.Context) error {
++	err = governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		ok, err := db.GetEngine(ctx).Where("key = ? AND actor_id = ?", key, actor.ID).Get(s)
+ 		if err != nil {
+ 			return err
+@@ -49,9 +57,24 @@ func Handoff(ctx context.Context, actor *users.User, key string, ownerID int64,
+ 		if s.TargetOwnerID != 0 && (s.TargetOwnerID != ownerID || s.TargetName != name) {
+ 			return ErrConflict
+ 		}
++		if err := lockBatch(ctx, actor.ID, s.BatchKey); err != nil {
++			return err
++		}
++		var batch governance.MigrationBatch
++		if ok, e := db.GetEngine(ctx).Where("key=?", s.BatchKey).Get(&batch); e != nil {
++			return e
++		} else if !ok || (batch.State != "preparing" && batch.State != "prepared") {
++			return ErrConflict
++		}
+ 		if _, err := verifyManifest(ctx, s); err != nil {
+ 			return err
+ 		}
++		if s.State == "handed_off" {
++			return verifyNative(ctx, s, true)
++		}
++		if err := reserveNative(ctx, s, ownerID); err != nil {
++			return err
++		}
+ 		n, err := db.GetEngine(ctx).Table(s).Where("id = ? AND revision = ?", s.ID, s.Revision).Incr("revision").Update(&governance.MigrationSession{})
+ 		if err != nil {
+ 			return err
+@@ -93,15 +116,23 @@ func Handoff(ctx context.Context, actor *users.User, key string, ownerID int64,
+ 			return nil, err
+ 		}
+ 	}
++	ctx = governance.MigrationPackageContext(ctx, s.ID, actor.ID, "materialize")
+ 	ctx = context.WithValue(ctx, governance.MigrationPackageReaderKey{}, true)
+ 	ctx = context.WithValue(ctx, governance.MigrationEvaluationKey{}, repo.ID)
+-	if err = publishPackages(ctx, actor, owner, repo, s); err != nil {
+-		return nil, err
++	if s.State != "handed_off" {
++		if err = publishPackages(ctx, actor, owner, repo, s); err != nil {
++			return nil, err
++		}
+ 	}
+ 	if err = checkPeoplePermissions(ctx, s.ID, repo); err != nil {
+ 		return nil, fmt.Errorf("交接后的人员权限核对失败：%w", err)
+ 	}
+-	if err = completeHandoff(ctx, s.ID); err != nil {
++	if err = governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++		if e := freezeNative(ctx, s); e != nil {
++			return e
++		}
++		return completeHandoff(ctx, s.ID)
++	}); err != nil {
+ 		return nil, err
+ 	}
+ 	if s.PublishBarrier {
+diff --git a/services/migrationreceiver/manifest.go b/services/migrationreceiver/manifest.go
+index f59b8a4..88421c0 100644
+--- a/services/migrationreceiver/manifest.go
++++ b/services/migrationreceiver/manifest.go
+@@ -20,11 +20,14 @@ import (
+ )
+ 
+ type ManifestSummary struct {
+-	Version  int    `json:"version"`
+-	Objects  int64  `json:"objects"`
+-	Assets   int64  `json:"assets"`
+-	Digest   string `json:"digest"`
+-	Revision int64  `json:"revision,omitempty"`
++	NativeVersion int    `json:"native_version,omitempty"`
++	NativeDigest  string `json:"native_digest,omitempty"`
++	NativeCount   int64  `json:"native_count"`
++	Version       int    `json:"version"`
++	Objects       int64  `json:"objects"`
++	Assets        int64  `json:"assets"`
++	Digest        string `json:"digest"`
++	Revision      int64  `json:"revision,omitempty"`
+ }
+ 
+ // 每字段使用八字节大端长度和 UTF-8 原文，避免跨语言 JSON 编码差异。
+@@ -130,7 +133,7 @@ func verifyManifest(ctx context.Context, s *governance.MigrationSession) (*Manif
+ // 在同一事务内领取会话锁，避免分页式读回混入不同修订。
+ func Manifest(ctx context.Context, actor *users.User, key string) (*ManifestSummary, error) {
+ 	var result *ManifestSummary
+-	err := db.WithTx(ctx, func(ctx context.Context) error {
++	err := governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		s, err := Status(ctx, actor, key)
+ 		if err != nil {
+ 			return err
+@@ -150,6 +153,16 @@ func Manifest(ctx context.Context, actor *users.User, key string) (*ManifestSumm
+ 		} else {
+ 			result, err = verifyManifest(ctx, s)
+ 		}
++		if err == nil && s.Protocol == 8 {
++			if e := verifyNative(ctx, s, s.State == "handed_off"); e != nil {
++				return e
++			}
++			if s.PackageManifestDigest != "" {
++				result.NativeVersion = 1
++				result.NativeDigest = s.PackageManifestDigest
++				result.NativeCount = s.PackageReceiptCount
++			}
++		}
+ 		return err
+ 	})
+ 	return result, err
+diff --git a/services/migrationreceiver/manifest_test.go b/services/migrationreceiver/manifest_test.go
+index cbb36b7..91cac05 100644
+--- a/services/migrationreceiver/manifest_test.go
++++ b/services/migrationreceiver/manifest_test.go
+@@ -4,6 +4,7 @@ package migrationreceiver
+ 
+ import (
+ 	"context"
++	"encoding/json"
+ 	"gitea.dev/models/db"
+ 	governance "gitea.dev/models/governance"
+ 	"gitea.dev/models/unittest"
+@@ -35,7 +36,7 @@ func anchorForTest(ctx context.Context, key string) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	_, err = db.GetEngine(ctx).ID(s.ID).Cols("seal_manifest_version", "seal_manifest_digest").Update(&governance.MigrationSession{SealManifestVersion: 1, SealManifestDigest: m.Digest})
++	_, err = db.GetEngine(ctx).ID(s.ID).Cols("protocol", "package_receipt_digest", "package_manifest_digest", "seal_manifest_version", "seal_manifest_digest").Update(&governance.MigrationSession{Protocol: 8, PackageReceiptDigest: emptyPackageDigest(), PackageManifestDigest: emptyPackageDigest(), SealManifestVersion: 1, SealManifestDigest: m.Digest})
+ 	return err
+ }
+ func TestManifestPortableEncoding(t *testing.T) {
+@@ -55,3 +56,12 @@ func TestMigrationIssueIndexNeverRegresses(t *testing.T) {
+ 	require.NoError(t, err)
+ 	require.EqualValues(t, 1000, saved)
+ }
++
++// 空制品集合同样是明确基线，响应不能省略零计数。
++func TestEmptyNativeManifestCountIsExplicit(t *testing.T) {
++	raw, err := json.Marshal(ManifestSummary{NativeVersion: 1, NativeDigest: emptyPackageDigest()})
++	require.NoError(t, err)
++	var result map[string]any
++	require.NoError(t, json.Unmarshal(raw, &result))
++	require.EqualValues(t, 0, result["native_count"])
++}
+diff --git a/services/migrationreceiver/native_manifest.go b/services/migrationreceiver/native_manifest.go
+new file mode 100644
+index 0000000..e5d56e2
+--- /dev/null
++++ b/services/migrationreceiver/native_manifest.go
+@@ -0,0 +1,327 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"strconv"
++	"strings"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	packages "gitea.dev/models/packages"
++	users "gitea.dev/models/user"
++	package_service "gitea.dev/services/packages"
++)
++
++type nativeSnapshot struct {
++	Rows map[string][]map[string][]byte `json:"rows"`
++	// 派生文件记录源包、生成器及原生文件编号，不充当来源附件。
++	Derived map[string]string `json:"derived"`
++}
++
++func emptyPackageDigest() string {
++	sum := sha256.Sum256([]byte("migration-native-packages-v1\n"))
++	return hex.EncodeToString(sum[:])
++}
++func nativeReceipts(ctx context.Context, s *governance.MigrationSession) ([]*governance.MigrationPackageReceipt, error) {
++	var rows []*governance.MigrationPackageReceipt
++	err := db.GetEngine(ctx).Where("session_id = ?", s.ID).OrderBy("id").Find(&rows)
++	return rows, err
++}
++func nativeDigest(rows []*governance.MigrationPackageReceipt) string {
++	h := sha256.New()
++	h.Write([]byte("migration-native-packages-v1\n"))
++	for _, r := range rows {
++		raw, _ := json.Marshal(r)
++		manifestField(h, string(raw))
++	}
++	return hex.EncodeToString(h.Sum(nil))
++}
++func saveNativeDigest(ctx context.Context, s *governance.MigrationSession) error {
++	rows, err := nativeReceipts(ctx, s)
++	if err != nil {
++		return err
++	}
++	s.PackageReceiptDigest = nativeDigest(rows)
++	s.PackageReceiptCount = int64(len(rows))
++	_, err = db.GetEngine(ctx).ID(s.ID).Cols("package_receipt_digest", "package_receipt_count").Update(s)
++	return err
++}
++func readNativeSnapshot(ctx context.Context, id int64) (map[string][]map[string][]byte, error) {
++	queries := map[string]string{
++		"package":    "SELECT * FROM package WHERE id = ? ORDER BY id",
++		"versions":   "SELECT id,package_id,creator_id,version,lower_version,created_unix,is_internal,metadata_json FROM package_version WHERE package_id = ? ORDER BY id",
++		"files":      "SELECT f.*,b.hash_sha256,b.size FROM package_file f INNER JOIN package_version v ON v.id=f.version_id INNER JOIN package_blob b ON b.id=f.blob_id WHERE v.package_id = ? ORDER BY f.id",
++		"properties": "SELECT p.* FROM package_property p WHERE (p.ref_type=2 AND p.ref_id=?) OR (p.ref_type=0 AND p.ref_id IN (SELECT id FROM package_version WHERE package_id=?)) OR (p.ref_type=1 AND p.ref_id IN (SELECT f.id FROM package_file f INNER JOIN package_version v ON v.id=f.version_id WHERE v.package_id=?)) ORDER BY p.id",
++	}
++	result := map[string][]map[string][]byte{}
++	for name, q := range queries {
++		args := []any{id}
++		if name == "properties" {
++			args = []any{id, id, id}
++		}
++		rows, err := db.GetEngine(ctx).SQL(q, args...).Query()
++		if err != nil {
++			return nil, err
++		}
++		result[name] = rows
++	}
++	if len(result["package"]) != 1 {
++		return nil, ErrConflict
++	}
++	return result, nil
++}
++func verifyNative(ctx context.Context, s *governance.MigrationSession, complete bool) error {
++	rows, err := nativeReceipts(ctx, s)
++	if err != nil {
++		return err
++	}
++	digest := nativeDigest(rows)
++	// 旧手工空夹具可读取，但存在制品的新任务必须有协议和摘要。
++	if s.Protocol != 8 {
++		if len(rows) > 0 {
++			return ErrConflict
++		}
++		return nil
++	}
++	if digest != s.PackageReceiptDigest || int64(len(rows)) != s.PackageReceiptCount {
++		return ErrConflict
++	}
++	if s.State != "aborting" && s.State != "abandoned" && s.PackageManifestDigest != "" && digest != s.PackageManifestDigest {
++		return ErrConflict
++	}
++	known := map[int64]bool{}
++	for _, r := range rows {
++		if s.State == "abandoned" && !r.Recalled {
++			return ErrConflict
++		}
++		if r.Recalled {
++			if s.State != "aborting" && s.State != "abandoned" {
++				return ErrConflict
++			}
++			var count int64
++			count, err = db.GetEngine(ctx).Table("package").Where("id=?", r.PackageID).Count()
++			if err != nil {
++				return err
++			}
++			if count != 0 {
++				return ErrConflict
++			}
++			continue
++		}
++		if r.PackageID == 0 {
++			if complete {
++				return ErrConflict
++			}
++			continue
++		}
++		known[r.PackageID] = true
++		actual, err := readNativeSnapshot(ctx, r.PackageID)
++		if err != nil {
++			return err
++		}
++		var saved nativeSnapshot
++		if json.Unmarshal([]byte(r.Data), &saved) != nil {
++			return ErrConflict
++		}
++		a, _ := json.Marshal(actual)
++		b, _ := json.Marshal(saved.Rows)
++		if string(a) != string(b) {
++			return ErrConflict
++		}
++	}
++	var actual []*packages.Package
++	if err = db.GetEngine(ctx).Where("repo_id=?", s.RepoID).Find(&actual); err != nil {
++		return err
++	}
++	for _, p := range actual {
++		if !known[p.ID] {
++			return ErrConflict
++		}
++	}
++	if complete {
++		return verifyNativeCoverage(ctx, s, rows)
++	}
++	return nil
++}
++func reserveNative(ctx context.Context, s *governance.MigrationSession, ownerID int64) error {
++	if s.Protocol != 8 {
++		return ErrConflict
++	}
++	if err := verifyNative(ctx, s, false); err != nil {
++		return err
++	}
++	var histories []*governance.MigrationHistory
++	if err := db.GetEngine(ctx).Where("session_id=? AND kind=?", s.ID, "package").OrderBy("id").Find(&histories); err != nil {
++		return err
++	}
++	for _, h := range histories {
++		var m packageManifest
++		if json.Unmarshal([]byte(h.Data), &m) != nil {
++			return ErrInvalid
++		}
++		name := strings.ToLower(m.Name)
++		var rows []*governance.MigrationPackageReceipt
++		if err := db.GetEngine(ctx).Where("owner_id=? AND type=? AND name=?", ownerID, m.Type, name).Find(&rows); err != nil {
++			return err
++		}
++		own := false
++		for _, r := range rows {
++			if r.Recalled {
++				old := &governance.MigrationSession{}
++				if _, e := db.GetEngine(ctx).ID(r.SessionID).Get(old); e != nil {
++					return e
++				}
++				if old.State == "abandoned" {
++					continue
++				}
++			}
++			if r.SessionID == s.ID {
++				own = true
++				continue
++			}
++			return ErrConflict
++		}
++		if own {
++			continue
++		}
++		exists, err := db.GetEngine(ctx).Table("package").Where("owner_id=? AND type=? AND lower_name=?", ownerID, m.Type, name).Exist()
++		if err != nil {
++			return err
++		}
++		if exists {
++			return ErrConflict
++		}
++		if err = db.Insert(ctx, &governance.MigrationPackageReceipt{SessionID: s.ID, OwnerID: ownerID, Type: m.Type, Name: name}); err != nil {
++			return err
++		}
++	}
++	return saveNativeDigest(ctx, s)
++}
++func recordNative(ctx context.Context, s *governance.MigrationSession, id, versionID int64, sourceID string, spec *preparedPackage) error {
++	var r governance.MigrationPackageReceipt
++	found, err := db.GetEngine(ctx).Where("session_id=? AND (package_id=? OR package_id=0)", s.ID, id).And("owner_id=(SELECT owner_id FROM package WHERE id=?) AND type=(SELECT type FROM package WHERE id=?) AND name=(SELECT lower_name FROM package WHERE id=?)", id, id, id).Get(&r)
++	if err != nil {
++		return err
++	}
++	if !found {
++		return ErrConflict
++	}
++	snap := nativeSnapshot{Derived: map[string]string{}}
++	if r.Data != "" && json.Unmarshal([]byte(r.Data), &snap) != nil {
++		return ErrConflict
++	}
++	snap.Rows, err = readNativeSnapshot(ctx, id)
++	if err != nil {
++		return err
++	}
++	if spec.InternalName != "" {
++		for _, f := range snap.Rows["files"] {
++			if string(f["version_id"]) == strconv.FormatInt(versionID, 10) && strings.EqualFold(string(f["name"]), spec.InternalName) {
++				snap.Derived[string(f["id"])] = sourceID + ":nuget-nuspec-v1"
++			}
++		}
++	}
++	raw, err := json.Marshal(snap)
++	if err != nil {
++		return err
++	}
++	r.PackageID = id
++	r.Data = string(raw)
++	if _, err = db.GetEngine(ctx).ID(r.ID).Cols("package_id", "data").Update(&r); err != nil {
++		return err
++	}
++	return saveNativeDigest(ctx, s)
++}
++func verifyNativeCoverage(ctx context.Context, s *governance.MigrationSession, rows []*governance.MigrationPackageReceipt) error {
++	var assets []*governance.MigrationAsset
++	if err := db.GetEngine(ctx).Where("session_id=? AND parent_kind=?", s.ID, "package").Find(&assets); err != nil {
++		return err
++	}
++	expected := map[int64]bool{}
++	for _, a := range assets {
++		if a.PackageID <= 0 || a.PackageFileID <= 0 {
++			return ErrConflict
++		}
++		expected[a.PackageFileID] = true
++	}
++	for _, r := range rows {
++		if r.Recalled {
++			continue
++		}
++		var snap nativeSnapshot
++		if json.Unmarshal([]byte(r.Data), &snap) != nil {
++			return ErrConflict
++		}
++		for _, f := range snap.Rows["files"] {
++			id, err := strconv.ParseInt(string(f["id"]), 10, 64)
++			if err != nil {
++				return err
++			}
++			if !expected[id] && snap.Derived[fmt.Sprint(id)] == "" {
++				return ErrConflict
++			}
++			delete(expected, id)
++		}
++	}
++	if len(expected) > 0 {
++		return ErrConflict
++	}
++	return nil
++}
++func freezeNative(ctx context.Context, s *governance.MigrationSession) error {
++	if err := verifyNative(ctx, s, true); err != nil {
++		return err
++	}
++	s.PackageManifestDigest = s.PackageReceiptDigest
++	_, err := db.GetEngine(ctx).ID(s.ID).Cols("package_manifest_digest").Update(s)
++	return err
++}
++
++func recallNative(ctx context.Context, actor *users.User, s *governance.MigrationSession) error {
++	rows, err := nativeReceipts(ctx, s)
++	if err != nil {
++		return err
++	}
++	for _, r := range rows {
++		err = governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++			if _, e := db.GetEngine(ctx).ID(s.ID).Get(s); e != nil {
++				return e
++			}
++			if e := verifyNative(ctx, s, false); e != nil {
++				return e
++			}
++			if _, e := db.GetEngine(ctx).ID(r.ID).Get(r); e != nil {
++				return e
++			}
++			if r.Recalled {
++				return nil
++			}
++			if r.PackageID > 0 {
++				pkg, e := packages.GetPackageByID(ctx, r.PackageID)
++				if e != nil {
++					return e
++				}
++				scoped := governance.MigrationPackageContext(ctx, s.ID, actor.ID, "recall")
++				if e = package_service.RemovePackage(scoped, actor, pkg); e != nil {
++					return e
++				}
++			}
++			r.Recalled = true
++			if _, e := db.GetEngine(ctx).ID(r.ID).Cols("recalled").Update(r); e != nil {
++				return e
++			}
++			return saveNativeDigest(ctx, s)
++		})
++		if err != nil {
++			return err
++		}
++	}
++	return nil
++}
+diff --git a/services/migrationreceiver/operation_lock.go b/services/migrationreceiver/operation_lock.go
+new file mode 100644
+index 0000000..c36679a
+--- /dev/null
++++ b/services/migrationreceiver/operation_lock.go
+@@ -0,0 +1,45 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++
++package migrationreceiver
++
++import (
++	"context"
++	"gitea.dev/modules/setting"
++	"golang.org/x/sys/unix"
++	"os"
++	"path/filepath"
++	"time"
++)
++
++// 单节点持久卷上的批次锁跨进程有效，崩溃由内核释放，不按时间抢占活跃操作。
++func withBatchOperation(ctx context.Context, key string, apply func() error) error {
++	if !keyPattern.MatchString(key) {
++		return ErrInvalid
++	}
++	directory := filepath.Join(setting.AppDataPath, "migration-locks")
++	if err := os.MkdirAll(directory, 0700); err != nil {
++		return err
++	}
++	f, err := os.OpenFile(filepath.Join(directory, key+".lock"), os.O_CREATE|os.O_RDWR, 0600)
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++	for {
++		err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB)
++		if err == nil {
++			break
++		}
++		if err != unix.EWOULDBLOCK && err != unix.EAGAIN {
++			return err
++		}
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		case <-time.After(25 * time.Millisecond):
++		}
++	}
++	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
++	return apply()
++}
+diff --git a/services/migrationreceiver/package_isolation_test.go b/services/migrationreceiver/package_isolation_test.go
+new file mode 100644
+index 0000000..2c87220
+--- /dev/null
++++ b/services/migrationreceiver/package_isolation_test.go
+@@ -0,0 +1,445 @@
++// Copyright 2026 Gitea.
++// SPDX-License-Identifier: MIT
++package migrationreceiver
++
++import (
++	"archive/zip"
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"fmt"
++	"gitea.dev/modules/setting"
++	"io"
++	"os"
++	"os/exec"
++	"strings"
++	"testing"
++	"time"
++
++	"gitea.dev/models/db"
++	governance "gitea.dev/models/governance"
++	packages "gitea.dev/models/packages"
++	nugetmodel "gitea.dev/models/packages/nuget"
++	"gitea.dev/models/perm"
++	repos "gitea.dev/models/repo"
++	"gitea.dev/models/unittest"
++	users "gitea.dev/models/user"
++	"gitea.dev/modules/git"
++	"gitea.dev/modules/optional"
++	packageio "gitea.dev/modules/packages"
++
++	genericroute "gitea.dev/routers/api/packages/generic"
++	nugetroute "gitea.dev/routers/api/packages/nuget"
++	webctx "gitea.dev/services/context"
++	"gitea.dev/services/contexttest"
++	service "gitea.dev/services/packages"
++	"gitea.dev/services/packages/pkgspec"
++	"github.com/stretchr/testify/require"
++)
++
++// 使用真实导入、附件、原生交接和制品发布服务，不伪造制品回执。
++func reviewPackage(t *testing.T, kind string, counts ...int) (context.Context, *users.User, *users.User, *repos.Repository, *governance.MigrationSession, *governance.MigrationAsset) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	require.NoError(t, pkgspec.InitManager())
++	ctx := t.Context()
++	require.NoError(t, governance.InitializeLegacyNamespaces(ctx))
++	actor, err := users.GetUserByID(ctx, 1)
++	require.NoError(t, err)
++	owner, err := users.GetUserByID(ctx, 3)
++	require.NoError(t, err)
++	// 权限在预迁移开始前固定，后续测试不改变目标配置和权限。
++	require.NoError(t, db.Insert(ctx, &governance.Membership{ScopeType: "group", ScopeID: owner.ID, UserID: 2, Role: governance.Maintainer}, &governance.Membership{ScopeType: "group", ScopeID: owner.ID, UserID: 4, Role: governance.Reporter}))
++	key := strings.Repeat("9", 32)
++	repo := &repos.Repository{OwnerID: actor.ID, OwnerName: actor.Name, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	_, err = governance.RegisterNativeRepository(ctx, repo.ID, actor.ID, repo.Name)
++	require.NoError(t, err)
++	require.NoError(t, git.InitRepository(ctx, repo.RepoPath(), true, "sha1"))
++	session, err := Start(ctx, actor, StartOptions{Key: key, BatchKey: key, BatchSize: 1, RepoID: repo.ID, SourceDigest: strings.Repeat("8", 64)})
++	require.NoError(t, err)
++	history, err := json.Marshal(map[string]any{"name": "Review.Package", "version": "1.0.0", "type": kind})
++	require.NoError(t, err)
++	_, err = Apply(ctx, actor, key, []Object{{Kind: "package", SourceID: "package", Title: "Review.Package", Created: 1600000000, History: history}})
++	require.NoError(t, err)
++	content := []byte("来源固定内容")
++	filename := "payload.bin"
++	if kind == "nuget" {
++		var archive bytes.Buffer
++		writer := zip.NewWriter(&archive)
++		entry, err := writer.Create("Review.Package.nuspec")
++		require.NoError(t, err)
++		_, err = entry.Write([]byte(`<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"><metadata><id>Review.Package</id><version>1.0.0</version><authors>来源作者</authors><description>未发布的内部说明</description></metadata></package>`))
++		require.NoError(t, err)
++		require.NoError(t, writer.Close())
++		content = archive.Bytes()
++		filename = "review.package.1.0.0.nupkg"
++	}
++	asset, err := Asset(ctx, actor, key, AssetOptions{SourceID: "file", Name: filename, ParentKind: "package", ParentID: "package", SHA256: fmt.Sprintf("%x", sha256.Sum256(content)), Size: int64(len(content)), Created: 1600000000}, bytes.NewReader(content))
++	require.NoError(t, err)
++	total := int64(1)
++	if len(counts) > 0 && counts[0] == 2 {
++		require.Equal(t, "nuget", kind)
++		secondHistory, err := json.Marshal(map[string]any{"name": "Review.Package", "version": "2.0.0", "type": kind})
++		require.NoError(t, err)
++		_, err = Apply(ctx, actor, key, []Object{{Kind: "package", SourceID: "package2", Title: "Review.Package", Created: 1600000000, History: secondHistory}})
++		require.NoError(t, err)
++		var second bytes.Buffer
++		zw := zip.NewWriter(&second)
++		entry, err := zw.Create("Review.Package.nuspec")
++		require.NoError(t, err)
++		_, err = entry.Write([]byte(`<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"><metadata><id>Review.Package</id><version>2.0.0</version><authors>来源作者</authors><description>第二版本</description></metadata></package>`))
++		require.NoError(t, err)
++		require.NoError(t, zw.Close())
++		data := second.Bytes()
++		_, err = Asset(ctx, actor, key, AssetOptions{SourceID: "file2", Name: "review.package.2.0.0.nupkg", ParentKind: "package", ParentID: "package2", SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Size: int64(len(data)), Created: 1600000000}, bytes.NewReader(data))
++		require.NoError(t, err)
++		total = 2
++	}
++	require.NoError(t, sealForTest(ctx, actor, key, total, total))
++	// 与 Manager 一致，封存后先归档，再通过原生交接函数完成转移、改名及制品发布。
++	_, err = db.GetEngine(ctx).ID(repo.ID).Cols("is_archived").Update(&repos.Repository{IsArchived: true})
++	require.NoError(t, err)
++	repo, err = Handoff(ctx, actor, key, owner.ID, "review-package")
++	require.NoError(t, err)
++	session, err = Status(ctx, actor, key)
++	require.NoError(t, err)
++	_, err = db.GetEngine(ctx).ID(asset.ID).Get(asset)
++	require.NoError(t, err)
++	namespace, err := governance.GetNamespace(ctx, owner.ID)
++	require.NoError(t, err)
++	require.NoError(t, PrepareBatch(ctx, actor, key, []BatchRepo{{Key: key, RepoID: repo.ID, GroupRevision: namespace.Revision}}))
++	return ctx, actor, owner, repo, session, asset
++}
++
++func TestReviewNugetAbortOwnGeneratedFile(t *testing.T) {
++	ctx, actor, _, repo, session, asset := reviewPackage(t, "nuget")
++	files, err := db.GetEngine(ctx).Table("package_file").Join("INNER", "package_version", "package_file.version_id=package_version.id").Where("package_version.package_id=?", asset.PackageID).Count(new(packages.PackageFile))
++	require.NoError(t, err)
++	require.EqualValues(t, 2, files, "来源只有一个文件，第二个文件由接收端生成")
++	require.NoError(t, Abort(ctx, actor, session.Key, repo.ID, ""), "未发布且所有文件均由本次迁移产生，应能安全终止")
++}
++
++func TestReviewNugetSearchRespectsIsolation(t *testing.T) {
++	ctx, _, owner, _, _, _ := reviewPackage(t, "nuget")
++	opts := &packages.PackageSearchOptions{OwnerID: owner.ID, Type: packages.TypeNuGet, Name: packages.SearchValue{Value: "Review.Package", ExactMatch: true}, IsInternal: optional.Some(false)}
++	ordinary, _, err := packages.SearchVersions(ctx, opts)
++	require.NoError(t, err)
++	require.Empty(t, ordinary, "通用查询已隐藏未发布资料")
++	actual, count, err := nugetmodel.SearchVersions(ctx, opts)
++	require.NoError(t, err)
++	t.Logf("未发布的专用查询：版本数=%d，包数=%d", len(actual), count)
++	request, response := contexttest.MockContext(t, "/api/packages/user3/nuget/query?q=Review.Package")
++	contexttest.LoadUser(t, request, 4)
++	request.ContextUser = owner
++	webctx.PackageAssignment()(request)
++	require.NotNil(t, request.Package)
++	require.GreaterOrEqual(t, request.Package.AccessMode, perm.AccessModeRead)
++	require.False(t, request.Doer.IsAdmin)
++	nugetroute.SearchServiceV3(request)
++	t.Logf("普通读取者的专用查询 HTTP=%d，响应=%s", response.Code, response.Body.String())
++	require.Empty(t, actual, "NuGet 专用查询也应隐藏未发布资料")
++}
++
++func TestReviewNativeUploadCannotMutatePreparedPackage(t *testing.T) {
++	ctx, actor, owner, _, session, asset := reviewPackage(t, "generic")
++	writer, err := users.GetUserByID(ctx, 2)
++	require.NoError(t, err)
++	require.False(t, writer.IsAdmin)
++	data, err := packageio.CreateHashedBufferFromReader(bytes.NewReader([]byte("并发上传的额外内容")))
++	require.NoError(t, err)
++	defer data.Close()
++	version, file, uploadErr := service.CreatePackageOrAddFileToExisting(ctx, &service.PackageCreationInfo{PackageInfo: service.PackageInfo{Owner: owner, PackageType: packages.TypeGeneric, Name: "Review.Package", Version: "1.0.0"}, Creator: writer}, &service.PackageFileCreationInfo{PackageFileInfo: service.PackageFileInfo{Filename: "extra.bin"}, Creator: writer, Data: data, IsLead: true})
++	if uploadErr == nil {
++		require.Equal(t, asset.PackageID, version.PackageID)
++		require.NotEqual(t, asset.PackageFileID, file.ID)
++		publishErr := PublishBatch(ctx, actor, session.Key)
++		require.NoError(t, publishErr)
++		t.Logf("普通群组维护者已写入隔离包，原子发布仍成功")
++	}
++	require.Error(t, uploadErr, "普通注册表上传不能绕过迁移隔离向已准备制品写入")
++}
++
++func TestReviewNativeHTTPUploadAndPublication(t *testing.T) {
++	ctx, actor, owner, _, session, _ := reviewPackage(t, "generic")
++	request, response := contexttest.MockContext(t, "PUT /api/packages/user3/generic/Review.Package/1.0.0/extra.bin")
++	contexttest.LoadUser(t, request, 2)
++	request.ContextUser = owner
++	request.SetPathParam("packagename", "Review.Package")
++	request.SetPathParam("packageversion", "1.0.0")
++	request.SetPathParam("filename", "extra.bin")
++	content := []byte("并发上传的额外内容")
++	request.Req.Body = io.NopCloser(bytes.NewReader(content))
++	request.Req.ContentLength = int64(len(content))
++	request.Req.Header.Set("Content-Type", "application/octet-stream")
++	webctx.PackageAssignment()(request)
++	require.NotNil(t, request.Package)
++	require.False(t, request.Doer.IsAdmin)
++	require.GreaterOrEqual(t, request.Package.AccessMode, perm.AccessModeWrite)
++	genericroute.UploadPackage(request)
++	t.Logf("隔离期间普通维护者上传 HTTP=%d，响应=%s", response.Code, response.Body.String())
++	require.NoError(t, PublishBatch(ctx, actor, session.Key))
++	batch, err := BatchStatus(ctx, actor, session.Key)
++	require.NoError(t, err)
++	require.Equal(t, "published", batch.State)
++	version, err := packages.GetVersionByNameAndVersion(ctx, owner.ID, packages.TypeGeneric, "Review.Package", "1.0.0")
++	require.NoError(t, err)
++	_, err = packages.GetFileForVersionByName(ctx, version.ID, "extra.bin", "")
++	require.ErrorIs(t, err, packages.ErrPackageFileNotExist)
++	t.Log("未盘点的新增文件被拒绝，原固定批次仍可发布")
++	require.GreaterOrEqual(t, response.Code, 400, "隔离期间原生 HTTP 上传必须拒绝")
++}
++
++func TestNativeManifestTampering(t *testing.T) {
++	for _, mode := range []string{"多余文件", "多余版本", "删除文件", "删除全部回执", "修改回执", "修改元数据", "修改关联"} {
++		t.Run(mode, func(t *testing.T) {
++			ctx, actor, _, repo, s, a := reviewPackage(t, "generic")
++			var err error
++			switch mode {
++			case "多余文件":
++				_, err = db.GetEngine(ctx).Exec("INSERT INTO package_file (version_id,blob_id,name,lower_name,composite_key,is_lead,created_unix) SELECT version_id,blob_id,'extra','extra','',0,created_unix FROM package_file WHERE id=?", a.PackageFileID)
++			case "多余版本":
++				_, err = db.GetEngine(ctx).Exec("INSERT INTO package_version (package_id,creator_id,version,lower_version,created_unix,is_internal,metadata_json,download_count) SELECT package_id,creator_id,'2.0','2.0',created_unix,0,metadata_json,0 FROM package_version WHERE package_id=?", a.PackageID)
++			case "删除文件":
++				_, err = db.GetEngine(ctx).Exec("DELETE FROM package_file WHERE id=?", a.PackageFileID)
++			case "删除全部回执":
++				_, err = db.GetEngine(ctx).Exec("DELETE FROM governance_migration_package_receipt WHERE session_id=?", s.ID)
++			case "修改回执":
++				_, err = db.GetEngine(ctx).Exec("UPDATE governance_migration_package_receipt SET data='{}' WHERE session_id=?", s.ID)
++			case "修改元数据":
++				_, err = db.GetEngine(ctx).Exec("UPDATE package_version SET metadata_json='{}' WHERE package_id=?", a.PackageID)
++			case "修改关联":
++				_, err = db.GetEngine(ctx).Exec("UPDATE package SET repo_id=0 WHERE id=?", a.PackageID)
++			}
++			require.NoError(t, err)
++			require.Error(t, PublishBatch(ctx, actor, s.Key))
++			b, err := BatchStatus(ctx, actor, s.Key)
++			require.NoError(t, err)
++			require.Equal(t, "prepared", b.State)
++			require.Error(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++		})
++	}
++}
++
++func TestNativeWriteAndAbortLifecycle(t *testing.T) {
++	ctx, actor, owner, repo, s, a := reviewPackage(t, "nuget")
++	size, e := packages.CalculateFileSize(ctx, &packages.PackageFileSearchOptions{OwnerID: owner.ID})
++	require.NoError(t, e)
++	require.Positive(t, size, "隔离内容仍必须计入存储配额")
++	for _, user := range []*users.User{actor, func() *users.User { u, e := users.GetUserByID(ctx, 2); require.NoError(t, e); return u }()} {
++		pkg, e := packages.GetPackageByID(ctx, a.PackageID)
++		require.NoError(t, e)
++		require.Error(t, service.RemovePackage(ctx, user, pkg))
++		require.Error(t, packages.SetRepositoryLink(ctx, a.PackageID, 0))
++		require.Error(t, packages.InsertOrUpdateProperty(ctx, packages.PropertyTypePackage, a.PackageID, "extra", "value"))
++	}
++	require.NoError(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++	require.NoError(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++	after, e := Status(ctx, actor, s.Key)
++	require.NoError(t, e)
++	require.Equal(t, "abandoned", after.State)
++	_, e = packages.GetPackageByID(ctx, a.PackageID)
++	require.ErrorIs(t, e, packages.ErrPackageNotExist)
++	attachment, e := repos.GetAttachmentByID(ctx, a.AttachmentID)
++	require.NoError(t, e)
++	require.NotZero(t, attachment.ID)
++	_, stream, e := OpenAsset(ctx, actor, s.Key, a.ID)
++	require.NoError(t, e, "终止后原管理员仍能核验来源附件")
++	content, e := io.ReadAll(stream)
++	require.NoError(t, e)
++	require.NoError(t, stream.Close())
++	require.Equal(t, a.SHA256, fmt.Sprintf("%x", sha256.Sum256(content)))
++	require.Error(t, PublishBatch(ctx, actor, s.Key))
++	opts := &packages.PackageSearchOptions{OwnerID: owner.ID, Type: packages.TypeNuGet, IsInternal: optional.Some(false)}
++	found, total, e := nugetmodel.SearchVersions(ctx, opts)
++	require.NoError(t, e)
++	require.Empty(t, found)
++	require.Zero(t, total)
++	other := *actor
++	other.ID += 10000
++	_, _, e = OpenAsset(ctx, &other, s.Key, a.ID)
++	require.Error(t, e, "其他管理员不能读取本会话来源附件")
++	_, e = db.GetEngine(ctx).ID(repo.ID).Cols("is_private").Update(&repos.Repository{IsPrivate: false})
++	require.NoError(t, e)
++	_, _, e = OpenAsset(ctx, actor, s.Key, a.ID)
++	require.Error(t, e, "隔离归属发生变化时仍须阻断回读")
++}
++
++func TestNativePublicationAndRepeatHandoff(t *testing.T) {
++	ctx, actor, owner, repo, s, _ := reviewPackage(t, "generic")
++	_, err := Handoff(ctx, actor, s.Key, owner.ID, repo.Name)
++	require.NoError(t, err)
++	require.NoError(t, PublishBatch(ctx, actor, s.Key))
++	data, err := packageio.CreateHashedBufferFromReader(bytes.NewReader([]byte("发布后的合法写入")))
++	require.NoError(t, err)
++	defer data.Close()
++	_, _, err = service.CreatePackageOrAddFileToExisting(ctx, &service.PackageCreationInfo{PackageInfo: service.PackageInfo{Owner: owner, PackageType: packages.TypeGeneric, Name: "Review.Package", Version: "1.0.0"}, Creator: actor}, &service.PackageFileCreationInfo{PackageFileInfo: service.PackageFileInfo{Filename: "business.bin"}, Creator: actor, Data: data})
++	require.NoError(t, err)
++	require.NoError(t, PublishBatch(ctx, actor, s.Key))
++	require.Error(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++}
++
++func TestNativeAbortResponseLossAndRecovery(t *testing.T) {
++	ctx, actor, _, repo, s, a := reviewPackage(t, "nuget")
++	// 模拟删除提交后、路径回收前中断；仅已持久化的回收记录可以证明删除。
++	require.NoError(t, governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++		_, e := db.GetEngine(ctx).ID(s.ID).Cols("state").Update(&governance.MigrationSession{State: "aborting"})
++		if e != nil {
++			return e
++		}
++		_, e = db.GetEngine(ctx).Where("key=?", s.BatchKey).Cols("state").Update(&governance.MigrationBatch{State: "aborting"})
++		return e
++	}))
++	s, err := Status(ctx, actor, s.Key)
++	require.NoError(t, err)
++	require.NoError(t, recallNative(ctx, actor, s))
++	_, err = packages.GetPackageByID(ctx, a.PackageID)
++	require.ErrorIs(t, err, packages.ErrPackageNotExist)
++	require.NoError(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++	require.NoError(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++}
++
++func TestBatchOperationCrossProcess(t *testing.T) {
++	if folder := os.Getenv("GM_LOCK_TEST_FOLDER"); folder != "" {
++		setting.AppDataPath = folder
++		ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
++		defer cancel()
++		called := false
++		err := withBatchOperation(ctx, strings.Repeat("f", 32), func() error { called = true; return nil })
++		if os.Getenv("GM_LOCK_EXPECT_BLOCKED") == "yes" {
++			require.ErrorIs(t, err, context.DeadlineExceeded, "父进程持锁时子进程必须被实际阻断")
++			require.False(t, called, "被阻断的子进程不得进入操作")
++		} else {
++			require.NoError(t, err)
++			require.True(t, called, "父进程释放后子进程应能获取同一个锁")
++		}
++		return
++	}
++	folder := t.TempDir()
++	old := setting.AppDataPath
++	setting.AppDataPath = folder
++	t.Cleanup(func() { setting.AppDataPath = old })
++	child := func(blocked string) {
++		cmd := exec.Command(os.Args[0], "-test.run=^TestBatchOperationCrossProcess$")
++		cmd.Env = append(os.Environ(), "GM_LOCK_TEST_FOLDER="+folder, "GM_LOCK_EXPECT_BLOCKED="+blocked)
++		output, err := cmd.CombinedOutput()
++		require.NoError(t, err, string(output))
++	}
++	require.NoError(t, withBatchOperation(t.Context(), strings.Repeat("f", 32), func() error { child("yes"); return nil }))
++	child("no")
++}
++
++func TestPublicationAbortRace(t *testing.T) {
++	ctx, actor, _, repo, s, _ := reviewPackage(t, "generic")
++	ready := make(chan struct{})
++	results := make(chan error, 2)
++	go func() { <-ready; results <- PublishBatch(ctx, actor, s.Key) }()
++	go func() { <-ready; results <- Abort(ctx, actor, s.Key, repo.ID, "") }()
++	close(ready)
++	first, second := <-results, <-results
++	require.True(t, (first == nil) != (second == nil), "发布与终止不能同时成功或同时失败")
++	b, err := BatchStatus(ctx, actor, s.Key)
++	require.NoError(t, err)
++	require.Contains(t, []string{"published", "abandoned"}, b.State)
++}
++
++func TestAbortRejectsChangedIdentityBeforeRemovingPackages(t *testing.T) {
++	ctx, actor, _, repo, s, a := reviewPackage(t, "generic")
++	_, err := db.GetEngine(ctx).ID(repo.ID).Cols("owner_id").Update(&repos.Repository{OwnerID: 2})
++	require.NoError(t, err)
++	require.Error(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++	_, err = packages.GetPackageByID(ctx, a.PackageID)
++	require.NoError(t, err, "身份异常必须在回收制品之前阻断")
++	state, err := Status(ctx, actor, s.Key)
++	require.NoError(t, err)
++	require.Equal(t, "handed_off", state.State)
++}
++
++func TestNugetMultipleVersionProvenance(t *testing.T) {
++	ctx, actor, _, repo, s, _ := reviewPackage(t, "nuget", 2)
++	rows, err := nativeReceipts(ctx, s)
++	require.NoError(t, err)
++	require.Len(t, rows, 1)
++	var snapshot nativeSnapshot
++	require.NoError(t, json.Unmarshal([]byte(rows[0].Data), &snapshot))
++	require.Len(t, snapshot.Derived, 2)
++	values := map[string]bool{}
++	for _, value := range snapshot.Derived {
++		values[value] = true
++	}
++	require.True(t, values["package:nuget-nuspec-v1"])
++	require.True(t, values["package2:nuget-nuspec-v1"])
++	require.NoError(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++}
++
++func TestLoadingApplyAndAbortShareLockOrder(t *testing.T) {
++	require.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++	actor, err := users.GetUserByID(ctx, 1)
++	require.NoError(t, err)
++	key := strings.Repeat("7", 32)
++	repo := &repos.Repository{OwnerID: actor.ID, Name: "gm-migrate-" + key, LowerName: "gm-migrate-" + key, IsPrivate: true}
++	require.NoError(t, db.Insert(ctx, repo))
++	_, err = Start(ctx, actor, StartOptions{Key: key, BatchKey: key, BatchSize: 1, RepoID: repo.ID, SourceDigest: strings.Repeat("8", 64)})
++	require.NoError(t, err)
++	start := make(chan struct{})
++	done := make(chan error, 1)
++	go func() {
++		<-start
++		_, e := Apply(ctx, actor, key, []Object{{Kind: "label", SourceID: "late", Title: "并发标签", Color: "#ffffff"}})
++		done <- e
++	}()
++	close(start)
++	require.NoError(t, Abort(ctx, actor, key, repo.ID, ""))
++	<-done
++	state, err := Status(ctx, actor, key)
++	require.NoError(t, err)
++	require.Equal(t, "abandoned", state.State)
++	_, err = Apply(ctx, actor, key, []Object{{Kind: "label", SourceID: "after", Title: "终止后标签", Color: "#ffffff"}})
++	require.Error(t, err)
++}
++
++func TestAbortKeepsNativeCopyWhenSourceAttachmentMissing(t *testing.T) {
++	ctx, actor, _, repo, s, a := reviewPackage(t, "generic")
++	_, err := db.GetEngine(ctx).ID(a.AttachmentID).Delete(new(repos.Attachment))
++	require.NoError(t, err)
++	require.Error(t, Abort(ctx, actor, s.Key, repo.ID, ""), "原始附件已损坏时不能删除最后的原生副本")
++	_, err = packages.GetPackageByID(ctx, a.PackageID)
++	require.NoError(t, err)
++}
++
++func TestMigrationPackageAuditDoesNotExposeGroupMetadata(t *testing.T) {
++	ctx, _, owner, _, _, _ := reviewPackage(t, "generic")
++	filter := governance.AuditFilter{ScopeType: "group", ScopeID: owner.ID, From: time.Now().UTC().Add(-time.Hour), To: time.Now().UTC().Add(time.Second), EventType: "package.version_published"}
++	page, err := governance.QueryAudit(ctx, filter, 0, 100)
++	require.NoError(t, err)
++	require.Empty(t, page.Events, "群组审计读取者不能提前看到隔离制品名称与版本")
++	filter.ScopeType = "instance"
++	filter.ScopeID = 0
++	page, err = governance.QueryAudit(ctx, filter, 0, 100)
++	require.NoError(t, err)
++	require.NotEmpty(t, page.Events, "迁移内部审计必须保留")
++}
++
++func TestSealedSourceAttachmentRejectsStaleNativeMutation(t *testing.T) {
++	ctx, actor, _, repo, s, a := reviewPackage(t, "generic")
++	attachment, err := repos.GetAttachmentByID(ctx, a.AttachmentID)
++	require.NoError(t, err)
++	// 模拟请求已通过较早的页面权限检查，再到达底层提交；不能依赖路由归档检查。
++	require.Error(t, repos.DeleteAttachment(ctx, attachment, true))
++	attachment.Name = "changed.bin"
++	require.Error(t, repos.UpdateAttachment(ctx, attachment))
++	require.Error(t, repos.UpdateAttachmentByUUID(ctx, attachment, "name"))
++	require.NoError(t, Abort(ctx, actor, s.Key, repo.ID, ""))
++	require.Error(t, repos.DeleteAttachment(ctx, attachment, true), "终止仍保留来源副本")
++}
++
++func TestPublishedSourceAttachmentUsesNativeLifecycle(t *testing.T) {
++	ctx, actor, _, _, s, a := reviewPackage(t, "generic")
++	require.NoError(t, PublishBatch(ctx, actor, s.Key))
++	attachment, err := repos.GetAttachmentByID(ctx, a.AttachmentID)
++	require.NoError(t, err)
++	attachment.Name = "published.bin"
++	require.NoError(t, repos.UpdateAttachment(ctx, attachment))
++	require.NoError(t, repos.DeleteAttachment(ctx, attachment, true))
++}
+diff --git a/services/migrationreceiver/packages.go b/services/migrationreceiver/packages.go
+index 485eb3e..b9bc592 100644
+--- a/services/migrationreceiver/packages.go
++++ b/services/migrationreceiver/packages.go
+@@ -86,7 +86,36 @@ func publishPackages(ctx context.Context, actor, owner *users.User, repo *repos.
+ 			buffer.Close()
+ 			return err
+ 		}
+-		err = db.WithTx(ctx, func(ctx context.Context) error {
++
++		staged, err := service.StagePackageBlob(ctx, buffer)
++		if err != nil {
++			buffer.Close()
++			return err
++		}
++		var internalBlob *packages.PackageBlob
++		if specification.InternalName != "" {
++			internal, err := packageio.CreateHashedBufferFromReader(bytes.NewReader(specification.Internal))
++			if err != nil {
++				buffer.Close()
++				return err
++			}
++			internalBlob, err = service.StagePackageBlob(ctx, internal)
++			internal.Close()
++			if err != nil {
++				buffer.Close()
++				return err
++			}
++		}
++		err = governance.WithWrite(ctx, nil, func(ctx context.Context) error {
++			if err := lockBatch(ctx, actor.ID, s.BatchKey); err != nil {
++				return err
++			}
++			if _, err := db.GetEngine(ctx).ID(s.ID).Get(s); err != nil {
++				return err
++			}
++			if err := verifyNative(ctx, s, false); err != nil {
++				return err
++			}
+ 			// 串行化会话发布；已存在的目标包必须有本会话原生回执。
+ 			n, err := db.GetEngine(ctx).Table(s).Where("id = ? AND state IN (?,?)", s.ID, "sealed", "handed_off").Incr("revision").Update(&governance.MigrationSession{})
+ 			if err != nil {
+@@ -154,10 +183,10 @@ func publishPackages(ctx context.Context, actor, owner *users.User, repo *repos.
+ 					return err
+ 				}
+ 			}
+-			pv, pf, err := service.CreatePackageOrAddFileToExisting(ctx, &service.PackageCreationInfo{
++			pv, pf, err := service.CreatePackageOrAddPreparedFile(ctx, &service.PackageCreationInfo{
+ 				PackageInfo: service.PackageInfo{Owner: owner, PackageType: packages.Type(manifest.Type), Name: manifest.Name, Version: manifest.Version}, Creator: actor,
+ 				SemverCompatible: specification.Semver, Metadata: specification.Metadata,
+-			}, &service.PackageFileCreationInfo{PackageFileInfo: service.PackageFileInfo{Filename: attachment.Name}, Creator: actor, Data: buffer, IsLead: true})
++			}, &service.PackageFileCreationInfo{PackageFileInfo: service.PackageFileInfo{Filename: attachment.Name}, Creator: actor, Data: buffer, IsLead: true}, staged)
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -184,7 +213,7 @@ func publishPackages(ctx context.Context, actor, owner *users.User, repo *repos.
+ 						return ErrConflict
+ 					}
+ 				} else if errors.Is(err, packages.ErrPackageFileNotExist) {
+-					if _, err = service.AddFileToPackageVersionInternal(ctx, pv, &service.PackageFileCreationInfo{PackageFileInfo: service.PackageFileInfo{Filename: specification.InternalName}, Data: internalBuffer}); err != nil {
++					if _, err = service.AddPreparedMigrationFile(ctx, pv, &service.PackageFileCreationInfo{PackageFileInfo: service.PackageFileInfo{Filename: specification.InternalName}, Data: internalBuffer}, internalBlob); err != nil {
+ 						return err
+ 					}
+ 				} else {
+@@ -220,7 +249,10 @@ func publishPackages(ctx context.Context, actor, owner *users.User, repo *repos.
+ 			}
+ 			a.PackageID, a.PackageFileID = pv.PackageID, pf.ID
+ 			_, err = db.GetEngine(ctx).ID(a.ID).Cols("package_id", "package_file_id").Update(a)
+-			return err
++			if err != nil {
++				return err
++			}
++			return recordNative(ctx, s, pv.PackageID, pv.ID, a.ParentID, specification)
+ 		})
+ 		buffer.Close()
+ 		if err != nil {
+diff --git a/services/migrationreceiver/recall.go b/services/migrationreceiver/recall.go
+index 83a3961..7883d42 100644
+--- a/services/migrationreceiver/recall.go
++++ b/services/migrationreceiver/recall.go
+@@ -29,6 +29,9 @@ func recallPrepared(ctx context.Context, actor *users.User, s *governance.Migrat
+ 	}
+ 	ctx = context.WithValue(ctx, governance.MigrationPackageReaderKey{}, true)
+ 	for id := range ids {
++		if s.Protocol == 8 {
++			continue
++		}
+ 		pkg, err := packages.GetPackageByID(ctx, id)
+ 		if errors.Is(err, packages.ErrPackageNotExist) {
+ 			continue
+diff --git a/services/migrationreceiver/receiver.go b/services/migrationreceiver/receiver.go
+index a0f29ac..b0b6ccc 100644
+--- a/services/migrationreceiver/receiver.go
++++ b/services/migrationreceiver/receiver.go
+@@ -31,6 +31,7 @@ var keyPattern = regexp.MustCompile(`^[a-f0-9]{32,64}$`)
+ var digestPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+ 
+ type StartOptions struct {
++	Protocol     int    `json:"protocol"`
+ 	BatchSize    int    `json:"batch_size"`
+ 	BatchKey     string `json:"batch_key"`
+ 	Key          string `json:"key"`
+@@ -125,7 +126,7 @@ func Start(ctx context.Context, actor *users.User, opt StartOptions) (*governanc
+ 		return nil, err
+ 	}
+ 	s := &governance.MigrationSession{}
+-	err := db.WithTx(ctx, func(ctx context.Context) error {
++	err := governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		found, err := db.GetEngine(ctx).Where("key = ?", opt.Key).Get(s)
+ 		if err != nil {
+ 			return err
+@@ -164,7 +165,7 @@ func Start(ctx context.Context, actor *users.User, opt StartOptions) (*governanc
+ 				}
+ 			}
+ 		}
+-		*s = governance.MigrationSession{Key: opt.Key, RepoID: opt.RepoID, ActorID: actor.ID, SourceDigest: opt.SourceDigest, BatchKey: opt.BatchKey, PublishBarrier: opt.BatchSize > 0, State: "loading", Revision: 1}
++		*s = governance.MigrationSession{Protocol: 8, PackageReceiptDigest: emptyPackageDigest(), Key: opt.Key, RepoID: opt.RepoID, ActorID: actor.ID, SourceDigest: opt.SourceDigest, BatchKey: opt.BatchKey, PublishBarrier: opt.BatchSize > 0, State: "loading", Revision: 1}
+ 		_, err = db.GetEngine(ctx).Insert(s)
+ 		return err
+ 	})
+@@ -243,7 +244,7 @@ func Apply(ctx context.Context, actor *users.User, key string, objects []Object)
+ 		}
+ 	}
+ 	result := make([]*governance.MigrationReceipt, 0, len(objects))
+-	err := db.WithTx(ctx, func(ctx context.Context) error {
++	err := governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		s := &governance.MigrationSession{}
+ 		ok, err := db.GetEngine(ctx).Where("key = ?", key).Get(s)
+ 		if err != nil {
+diff --git a/services/migrationreceiver/seal.go b/services/migrationreceiver/seal.go
+index c4e2b10..a73bb1d 100644
+--- a/services/migrationreceiver/seal.go
++++ b/services/migrationreceiver/seal.go
+@@ -15,7 +15,7 @@ func Seal(ctx context.Context, actor *users.User, key string, objects, assets in
+ 	if objects < 0 || assets < 0 || expected.Version != 1 || !digestPattern.MatchString(expected.Digest) || expected.Objects != objects || expected.Assets != assets {
+ 		return ErrInvalid
+ 	}
+-	return db.WithTx(ctx, func(ctx context.Context) error {
++	return governance.WithWrite(ctx, nil, func(ctx context.Context) error {
+ 		s := &governance.MigrationSession{}
+ 		ok, err := db.GetEngine(ctx).Where("key = ?", key).Get(s)
+ 		if err != nil {
+diff --git a/services/migrationreceiver/verify.go b/services/migrationreceiver/verify.go
+index b54215e..fe3c448 100644
+--- a/services/migrationreceiver/verify.go
++++ b/services/migrationreceiver/verify.go
+@@ -234,6 +234,20 @@ func readableSession(ctx context.Context, actor *users.User, s *governance.Migra
+ 	if actor == nil || !actor.IsAdmin || actor.ID != s.ActorID {
+ 		return ErrConflict
+ 	}
++	if s.Protocol == 8 && s.PublishBarrier && s.State == "abandoned" {
++		r, err := repos.GetRepositoryByID(ctx, s.RepoID)
++		if err != nil {
++			return err
++		}
++		b, err := BatchStatus(ctx, actor, s.BatchKey)
++		if err != nil {
++			return err
++		}
++		if (b.State != "aborting" && b.State != "abandoned") || !r.IsPrivate || !r.IsArchived || r.IsMirror || r.IsFork || r.OwnerID != actor.ID || r.Name != "gm-migrate-"+s.Key {
++			return ErrConflict
++		}
++		return verifyNative(ctx, s, false)
++	}
+ 	if s.State != "sealed" && s.State != "handed_off" {
+ 		_, err := isolation(ctx, actor, s.RepoID, s.Key)
+ 		return err
+diff --git a/services/packages/packages.go b/services/packages/packages.go
+index bfba3d3..fa452f6 100644
+--- a/services/packages/packages.go
++++ b/services/packages/packages.go
+@@ -134,7 +134,7 @@ func createPackageAndAddFile(ctx context.Context, pvci *PackageCreationInfo, pfc
+ 		return nil, nil, err
+ 	}
+ 
+-	if created {
++	if created && !governance_model.IsMigrationPackageOperation(ctx) {
+ 		pd, err := packages_model.GetPackageDescriptor(ctx, pv)
+ 		if err != nil {
+ 			return nil, nil, err
+@@ -529,7 +529,9 @@ func RemovePackageVersion(ctx context.Context, doer *user_model.User, pv *packag
+ 		return err
+ 	}
+ 
+-	notify_service.PackageDelete(ctx, doer, pd)
++	if !governance_model.IsMigrationPackageOperation(ctx) {
++		notify_service.PackageDelete(ctx, doer, pd)
++	}
+ 
+ 	return nil
+ }
+@@ -587,7 +589,9 @@ func RemovePackageFileAndVersionIfUnreferenced(ctx context.Context, doer *user_m
+ 	}
+ 
+ 	if pd != nil {
+-		notify_service.PackageDelete(ctx, doer, pd)
++		if !governance_model.IsMigrationPackageOperation(ctx) {
++			notify_service.PackageDelete(ctx, doer, pd)
++		}
+ 	}
+ 
+ 	return nil
+@@ -815,6 +819,9 @@ func RemovePackage(ctx context.Context, doer *user_model.User, p *packages_model
+ 		if fresh.OwnerID != p.OwnerID {
+ 			return governance_model.ErrConflict
+ 		}
++		if err := governance_model.CheckMigrationPackageWrite(ctx, fresh.OwnerID, string(fresh.Type), fresh.LowerName, fresh.ID, fresh.RepoID); err != nil {
++			return err
++		}
+ 		if err := GetSpecManager().Get(p.Type).OnBeforeRemovePackageAll(ctx, doer, p, pds); err != nil {
+ 			return err
+ 		}
+@@ -850,7 +857,9 @@ func RemovePackage(ctx context.Context, doer *user_model.User, p *packages_model
+ 		return err
+ 	}
+ 	for _, pd := range pds {
+-		notify_service.PackageDelete(ctx, doer, pd)
++		if !governance_model.IsMigrationPackageOperation(ctx) {
++			notify_service.PackageDelete(ctx, doer, pd)
++		}
+ 	}
+ 	return nil
+ }
+@@ -882,3 +891,24 @@ func RemoveAllPackages(ctx context.Context, userID int64) (int, error) {
+ 	}
+ 	return count, nil
+ }
++
++// CreatePackageOrAddPreparedFile 供内部接收器在锁外暂存内容后原子建立引用。
++func CreatePackageOrAddPreparedFile(ctx context.Context, pvci *PackageCreationInfo, pfci *PackageFileCreationInfo, pb *packages_model.PackageBlob) (*packages_model.PackageVersion, *packages_model.PackageFile, error) {
++	if !governance_model.IsMigrationPackageOperation(ctx) {
++		return nil, nil, governance_model.ErrForbidden
++	}
++	return createPackageAndAddFile(ctx, pvci, pfci, pb, true)
++}
++func AddPreparedMigrationFile(ctx context.Context, pv *packages_model.PackageVersion, pfci *PackageFileCreationInfo, pb *packages_model.PackageBlob) (*packages_model.PackageFile, error) {
++	if !governance_model.IsMigrationPackageOperation(ctx) {
++		return nil, governance_model.ErrForbidden
++	}
++	pf, err := addFileToPackageVersionUnchecked(ctx, pv, pfci, pb)
++	if err != nil {
++		return nil, err
++	}
++	if err = packages_model.AppendFileAudit(ctx, pf, "package.file_added"); err != nil {
++		return nil, err
++	}
++	return pf, nil
++}

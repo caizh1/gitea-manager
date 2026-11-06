@@ -1,0 +1,98 @@
+{
+  "说明": "迁移构建输入的固定基线与模块摘要，不包含未提交的其他业务修改",
+  "基线": "931561a90c386dadedee0c96f26f57b6d8a28bc5",
+  "迁移模块": [
+    {
+      "文件": "backend/git_migration/__init__.py",
+      "SHA256": "0c80ea7281a9c12d062cd91bd96862ce8f861a00e472457e278efc9f5ea1a72a"
+    },
+    {
+      "文件": "backend/git_migration/assets.py",
+      "SHA256": "b15e4a62425f996ebc0a9197d418770937385a7737b7e0636a9865757be1a42b"
+    },
+    {
+      "文件": "backend/git_migration/ci.py",
+      "SHA256": "226d19dcb8a91ec682e1768df0f99787daf2f8e7a414e56fb555e8896df6bfce"
+    },
+    {
+      "文件": "backend/git_migration/dependencies.py",
+      "SHA256": "a11f2e696ec1b4b370031f74a735a6b73042df9cdc05f5b01de77d8f350859e4"
+    },
+    {
+      "文件": "backend/git_migration/discussions.py",
+      "SHA256": "c69bba439c8d6e82efa5b4bd8c6b9c4241b1714333a12b942338c37c7cd31774"
+    },
+    {
+      "文件": "backend/git_migration/files.py",
+      "SHA256": "52f0b3042f51fcb60bad0b53fcb6fd5a31c82d8810bf96cb01ee3d6fea6a18c4"
+    },
+    {
+      "文件": "backend/git_migration/git_snapshot.py",
+      "SHA256": "eed04161a24106bb7e496c8a5bd3516de30411bf1b2033ab5e0bbcfb76b6b532"
+    },
+    {
+      "文件": "backend/git_migration/gitea_web.py",
+      "SHA256": "153ee9ef10c4ca73984514820c912166849e442da34b67d6b0eca90a6e7582e3"
+    },
+    {
+      "文件": "backend/git_migration/gitlab_web.py",
+      "SHA256": "bbc87b63d6a98edd5662e672c91d454a56b7ca48fb184788da8a77af6332cc99"
+    },
+    {
+      "文件": "backend/git_migration/handoff.py",
+      "SHA256": "03670e5c07f3748a2d24e6b51fad4adcea339319bb5ded062b0d3cfc9a256d32"
+    },
+    {
+      "文件": "backend/git_migration/instance.py",
+      "SHA256": "ecaae44b1c507df597b4dee0ff57ed2a73742fda74cd60ffb469014d981f5895"
+    },
+    {
+      "文件": "backend/git_migration/inventory.py",
+      "SHA256": "fdc62f60ddde3a58290f2c15369c10f65c14379712639985b1bc73ba1b5d6120"
+    },
+    {
+      "文件": "backend/git_migration/models.py",
+      "SHA256": "aa5dcd65c3657caeccd088a4c9dca1f7c3282adcdb71abda0ab0d96bc62bdadb"
+    },
+    {
+      "文件": "backend/git_migration/normalize.py",
+      "SHA256": "db71ee7c1df9a137bf66ed5d9399d0b8c6c92f0f69e1f1a4260598341842d738"
+    },
+    {
+      "文件": "backend/git_migration/packages.py",
+      "SHA256": "a5deec6000729156e60a546254c9a48b3261acc14baed9e8b186ea1e3fe60260"
+    },
+    {
+      "文件": "backend/git_migration/providers.py",
+      "SHA256": "bee53a3a06ab83c6f987b9b3d557c6d4b5d86f6dbc2464e35caa6338cf071944"
+    },
+    {
+      "文件": "backend/git_migration/rules.py",
+      "SHA256": "d4af6966c7927a8884ca77e418b10be2d0e0358303ca16d70326be3bed5c9ef3"
+    },
+    {
+      "文件": "backend/git_migration/runs.py",
+      "SHA256": "6dbee2549a12716903eb951cc1979e6fd536e3ff0c407bfc2ae54c44e711af2d"
+    },
+    {
+      "文件": "backend/git_migration/store.py",
+      "SHA256": "86ded56f70099684dcc17a4620a79d57ce95f47213952361860c17f86d554151"
+    },
+    {
+      "文件": "backend/git_migration/target.py",
+      "SHA256": "9c53a3b0d9f3467542c303fedf86e9445a0980a1ee1ef6ca4f58e23af0bd1ee0"
+    },
+    {
+      "文件": "backend/git_migration/transport.py",
+      "SHA256": "c44d02ba246a923225c83247ec021349d433a69d8b83523ba0d1f038ea702f21"
+    },
+    {
+      "文件": "backend/git_migration/worker.py",
+      "SHA256": "136ada7770a3015d183d5d71ce913db85ce1d87d0860ea52fe5b5cf39b9a4432"
+    },
+    {
+      "文件": "backend/routes/git_migration_routes.py",
+      "SHA256": "77a28733d620bec28867179942da90d2ff22366ad5f8f90f92f8241aad41899a"
+    }
+  ]
+}
