@@ -160,7 +160,9 @@ def connection_test():
 
 @ai_review_bp.get('/servers')
 def servers():
-    return jsonify([{'id': s.id, 'name': s.name, 'version': s.version} for s in GiteaServer.query.order_by(GiteaServer.id)])
+    return jsonify([{'id': s.id, 'name': s.name, 'version': s.version, 'role': s.role,
+                     'url': s.gitea_url, 'host': s.host, 'gitea_port': s.gitea_port}
+                    for s in GiteaServer.query.order_by(GiteaServer.id)])
 
 
 @ai_review_bp.get('/catalog')
@@ -170,7 +172,10 @@ def catalog():
     try:
         rows = client.request('GET', '/repos/search', params={'page': positive(request.args.get('page', '1')), 'limit': 50,
                      'q': request.args.get('q', '')[:200], 'include_private': True})
-        return jsonify(items=[{'id': r['id'], 'name': r['full_name']} for r in rows.get('data', [])])
+        # 层级群组的 full_name 可能是内部兼容组织名；仅展示使用完整路径，接入身份保持原值。
+        return jsonify(items=[{'id': r['id'], 'name': r['full_name'],
+                               'full_path': r.get('full_path') or r['full_name']}
+                              for r in rows.get('data', [])])
     finally:
         client.close()
 

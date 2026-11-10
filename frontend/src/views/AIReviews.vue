@@ -102,8 +102,8 @@
 
     <el-dialog append-to-body v-model="repoVisible" :title="repoForm.id ? '配置审查仓库' : '添加审查仓库'" width="min(640px, 95vw)" :close-on-click-modal="false">
       <el-alert v-if="repoError" :title="repoError" type="error" show-icon :closable="false" /><el-form label-position="top">
-        <el-form-item label="Gitea 实例"><el-select v-model="repoForm.server_id" :disabled="!!repoForm.id" class="full" @change="catalog = []; repoForm.repo_name = ''; searchCatalog('')"><el-option v-for="s in servers" :key="s.id" :value="s.id" :label="s.name" /></el-select></el-form-item>
-        <el-form-item label="仓库"><el-select v-model="repoForm.repo_name" :disabled="!!repoForm.id" filterable remote :remote-method="searchCatalog" :loading="catalogLoading" placeholder="搜索所有者或仓库名称" class="full"><el-option v-for="r in catalog" :key="r.id" :value="r.name" :label="r.name" /><el-option v-if="repoForm.id" :label="repoForm.repo_name" :value="repoForm.repo_name" /></el-select></el-form-item>
+        <el-form-item label="Gitea 实例"><GiteaInstanceSelect v-model="repoForm.server_id" :servers="servers" aria-label="Gitea 实例" :disabled="!!repoForm.id" @change="catalog = []; repoForm.repo_name = ''; searchCatalog('')" /></el-form-item>
+        <el-form-item label="仓库"><el-select v-model="repoForm.repo_name" :disabled="!!repoForm.id" filterable remote :remote-method="searchCatalog" :loading="catalogLoading" placeholder="搜索所有者或仓库名称" class="full"><el-option v-for="r in catalog" :key="r.id" :value="r.name" :label="r.full_path || r.name" /><el-option v-if="repoForm.id" :label="repoForm.repo_name" :value="repoForm.repo_name" /></el-select></el-form-item>
         <el-form-item v-if="isPlatformAdmin" label="专用机器人 Token（编辑时留空保留）"><el-input v-model="repoForm.bot_token" type="password" autocomplete="new-password" /></el-form-item>
         <div v-if="isPlatformAdmin" class="permission-guide"><strong>账号与 Token 的权限分别配置</strong><dl><dt>机器人账号</dt><dd>独立非管理员；仓库协作者选择 Read／只读。组织和团队也不能授予代码写入或管理权限。</dd><dt>Token 权限</dt><dd><code>read:user</code>、<code>write:repository</code>、<code>write:issue</code>。私有仓库不能选择仅公开资源。</dd></dl><p>Token 的写权限用于发布审查和进度评论，账号自身仍保持代码只读。已有 Token 满足要求时，可以继续使用。</p></div>
         <el-form-item label="启用该仓库"><el-switch v-model="repoForm.enabled" /></el-form-item>
@@ -130,6 +130,7 @@ import { isPlatformAdmin, scopedServers } from '../composables/accessState.js'
 import AIReviewDataset from '../components/AIReviewDataset.vue'
 import ReviewRepositories from '../components/ReviewRepositories.vue'
 import ReviewTaskDetail from '../components/ReviewTaskDetail.vue'
+import GiteaInstanceSelect from '../components/GiteaInstanceSelect.vue'
 import { errorMessage, statusType } from '../components/reviewDisplay'
 
 const route = useRoute(), router = useRouter()
