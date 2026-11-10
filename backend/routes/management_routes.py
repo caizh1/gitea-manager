@@ -177,6 +177,9 @@ def exec_container(data, container, args):
 def connect():
     data=request.get_json() or {}
     def run(report):
+        role=data.get('role')
+        if role not in ('primary','backup','mirror'):
+            raise ValueError('请选择有效的服务器角色；如页面没有角色选项，请刷新后重试')
         selected=next((r for r in discover(data) if r['id']==data.get('instance_id')),None)
         if selected is None:raise ValueError('实例身份已变化，请重新发现')
         identity=selected['project']+':'+selected['name']
@@ -198,7 +201,7 @@ def connect():
         prefix=['gitea','--config','/data/gitea/conf/app.ini','admin','user']
         token=exec_container(data,name,prefix+['generate-access-token','--username','administrator','--token-name',token_name,'--scopes','all','--raw']).strip()
         register_secret(token)
-        server=GiteaServer(name=data.get('name') or selected['project'],role=data.get('role','primary'),
+        server=GiteaServer(name=data.get('name') or selected['project'],role=role,
             host=management_host,ssh_port=int(data.get('ssh_port',22)),ssh_user=data.get('ssh_user','root'),
             connection_mode='local' if data.get('mode')=='local' else 'ssh',is_local=data.get('mode')=='local',
             instance_identity=identity,gitea_container=name,pg_container=selected['pg_container'],

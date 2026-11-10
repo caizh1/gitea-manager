@@ -5,11 +5,11 @@
       :title="runtime.ready ? `AI 运行时就绪：${runtime.version}（${runtime.mode === 'legacy' ? '兼容模式' : '标准模式'}）` : 'AI 暂不可用，核心管理与备份可以继续使用'"
       :description="runtime.reason" />
     <div class="glass-card">
-      <el-radio-group v-model="form.mode" @change="instances = []; selected = ''">
+      <el-radio-group v-model="form.mode" :disabled="busy" @change="instances = []; selected = ''">
         <el-radio-button value="local">本机 Gitea</el-radio-button>
         <el-radio-button value="ssh">跨主机 Gitea</el-radio-button>
       </el-radio-group>
-      <el-form label-width="130px">
+      <el-form label-width="130px" :disabled="busy">
         <template v-if="form.mode === 'ssh'">
           <el-alert title="先在目标宿主机为管理账号授权下面的公钥；使用系统 SSH 端口，不是 Git SSH 端口。账号需要 Docker 和备份文件操作权限。" type="info" :closable="false" />
           <p>请目标主机管理员将此公钥追加到管理账号的 ~/.ssh/authorized_keys，目录权限设为 700，文件权限设为 600。该账号须能直接执行 docker 命令；授权完成后，其余检查在本页面完成。</p>
@@ -24,10 +24,27 @@
         <el-form-item label="Gitea 访问地址"><el-input v-model="form.gitea_url" placeholder="可选，默认从实例配置读取" /></el-form-item>
       </el-form>
       <el-button @click="discover" :loading="busy">发现并检查实例</el-button>
-      <el-radio-group v-model="selected" class="instance-list">
+      <el-radio-group v-model="selected" :disabled="busy" class="instance-list">
         <el-radio v-for="item in instances" :key="item.id" :value="item.id">{{ item.name }} · HTTP {{ item.port }} · {{ item.running ? '运行中' : '未运行' }}</el-radio>
       </el-radio-group>
-      <el-button type="primary" :disabled="!selected" :loading="busy" @click="connect">连接并添加服务器</el-button>
+      <div class="role-section">
+        <div id="server-role-label" class="role-label">服务器角色 <span aria-hidden="true">*</span></div>
+        <div class="role-content">
+          <el-radio-group v-model="form.role" :disabled="busy" aria-labelledby="server-role-label" aria-required="true" class="role-options">
+            <el-radio value="primary" border class="role-choice">
+              <span class="role-description"><strong>主服务器</strong><small>可作为备份来源</small></span>
+            </el-radio>
+            <el-radio value="backup" border class="role-choice">
+              <span class="role-description"><strong>备服务器</strong><small>可作为恢复目标</small></span>
+            </el-radio>
+          </el-radio-group>
+          <div class="role-notes">
+            <span class="role-note"><Info :size="15" aria-hidden="true" /><span>角色仅用于管理分类，不会自动创建同步或切换。</span></span>
+            <span>接入后可在服务器管理中修改</span>
+          </div>
+        </div>
+      </div>
+      <el-button type="primary" :disabled="!selected || !form.role" :loading="busy" @click="connect">连接并添加服务器</el-button>
       <el-alert v-if="message" :title="message" :type="failed ? 'error' : 'success'" :closable="false" />
       <a v-if="lastDiagnostic" :href="`/api/management/diagnostics/operation/${lastDiagnostic}`">下载本次操作诊断</a>
     </div>
@@ -47,10 +64,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import { Info } from '@lucide/vue'
 import { api } from '../api'
 const stepsVisible = ref(false), steps = ref([])
 async function showSteps(row) { steps.value = (await api.get(`/management/diagnostics/${row.kind}/${row.id}/steps`)).data.events; stepsVisible.value = true }
-const form = ref({ mode: 'local', host: '', ssh_port: 22, ssh_user: 'root', name: '', gitea_url: '' })
+const form = ref({ mode: 'local', host: '', ssh_port: 22, ssh_user: 'root', name: '', gitea_url: '', role: '' })
 const runtime = ref({ ready: false }), publicKey = ref(''), csrf = ref(''), instances = ref([]), selected = ref('')
 let runtimeTimer
 onUnmounted(() => clearInterval(runtimeTimer))
@@ -63,7 +81,7 @@ async function run(action) {
 }
 async function loadReports() { reports.value = (await api.get('/management/diagnostics')).data.reports }
 function discover() { return run(async () => { const { data } = await post('discover', form.value); instances.value = data.instances; lastDiagnostic.value = data.diagnostic_id; message.value = `发现 ${instances.value.length} 个实例` }) }
-function connect() { return run(async () => { const { data } = await post('connect', { ...form.value, instance_id: selected.value }); lastDiagnostic.value = data.diagnostic_id; message.value = '服务器已连接，可以在服务器管理和备份页面使用' }) }
+function connect() { return run(async () => { const payload = { ...form.value, instance_id: selected.value }; const { data } = await post('connect', payload); lastDiagnostic.value = data.diagnostic_id; message.value = payload.role === 'primary' ? '主服务器已连接，可在备份管理中选择' : '备服务器已连接，可在恢复操作中选择' }) }
 function trustHost() { return run(async () => { const { data } = await post('ssh-fingerprint', form.value); await ElMessageBox.confirm(`请与目标管理员核对主机指纹：${data.fingerprint}`, '确认主机身份'); await post('ssh-trust', data); message.value = '主机指纹已固定，请继续发现实例' }) }
 async function copyPublicKey() { try { await navigator.clipboard.writeText(publicKey.value); ElMessage.success('公钥已复制') } catch { ElMessage.info('当前浏览器不支持自动复制，请选择公钥文本复制') } }
 function downloadPublicKey() { const url = URL.createObjectURL(new Blob([publicKey.value + '\n'], { type: 'text/plain' })); const link = document.createElement('a'); link.href = url; link.download = 'gitea-manager.pub'; link.click(); URL.revokeObjectURL(url) }
@@ -77,4 +95,24 @@ onMounted(async () => { runtimeTimer = setInterval(async () => { try { runtime.v
 .instance-list :deep(.el-radio) { max-width: 100%; height: auto; white-space: normal; align-items: flex-start; }
 .instance-list :deep(.el-radio__label) { white-space: normal; overflow-wrap: anywhere; }
 .instance-list { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.role-section { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.role-label { padding-top: 14px; color: var(--text-primary); font-size: 16px; font-weight: 600; }
+.role-label span { color: var(--color-danger); }
+.role-content { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.role-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
+.role-options :deep(.role-choice) { display: flex; align-items: flex-start; width: 100%; height: auto; min-height: 74px; margin: 0; padding: 12px 16px; border-radius: 8px; box-sizing: border-box; white-space: normal; }
+.role-options :deep(.el-radio__input) { margin-top: 3px; }
+.role-options :deep(.role-choice.is-checked) { background: var(--el-color-primary-light-9); }
+.role-options :deep(.el-radio__label) { min-width: 0; white-space: normal; }
+.role-description { display: flex; flex-direction: column; gap: 6px; }
+.role-description strong { color: var(--text-primary); font-size: 16px; }
+.role-description small { color: var(--text-secondary); font-size: 13px; }
+.role-notes { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.role-note { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.role-note svg { flex: 0 0 15px; margin-top: 2px; }
+@media (max-width: 700px) {
+  .role-section { grid-template-columns: minmax(0, 1fr); }
+  .role-label { padding-top: 0; }
+  .role-options { grid-template-columns: minmax(0, 1fr); }
+}
 </style>
