@@ -2,9 +2,11 @@
   <section v-if="record" class="svn-detail">
     <SvnSteps :active="2" />
     <el-button link type="primary" @click="$emit('back')"><el-icon><Back /></el-icon>返回上一页</el-button>
-    <div class="page-heading"><div><div class="title-line"><h2>预检详情 #{{ record.id }}</h2><el-tag :type="checkTone(record)">{{ checkLabel(record) }}</el-tag></div><p>{{ record.plan_name }} · 检查时间 {{ dateTime(record.created_at) }}</p></div><div class="button-group"><el-button @click="$emit('plan',record.plan_id)">查看关联计划</el-button><el-button type="primary" :loading="busy" :disabled="['queued','preflight'].includes(record.status)" @click="$emit('preflight',record.plan_id)">重新预检</el-button></div></div>
+    <div class="page-heading"><div><div class="title-line"><h2>预检详情 #{{ record.id }}</h2><el-tag :type="checkTone(record)">{{ checkLabel(record) }}</el-tag></div><p>{{ record.plan_name }} · 检查时间 {{ dateTime(record.created_at) }}</p></div><div class="button-group"><el-button @click="$emit('plan',record.plan_id)">查看关联计划</el-button><el-button :loading="busy" :disabled="['queued','preflight'].includes(record.status)" @click="$emit('preflight',record.plan_id)">重新预检</el-button><el-button v-if="execution" type="primary" :disabled="busy" @click="$emit('run',execution.id)">{{ ['queued','running','paused','uncertain'].includes(execution.status)?'查看迁移进度':'查看迁移结果' }}</el-button><el-button v-else-if="canStart" type="primary" :loading="busy" @click="$emit('start',record)">开始迁移</el-button></div></div>
     <p class="notice"><el-icon><InfoFilled /></el-icon>工作台与来源页查看的是同一份预检记录；结果仅适用于本计划及当次输入。</p>
     <el-alert v-if="!record.current && !['queued','preflight'].includes(record.status)" title="这份结果已过期或检查未完成，不能作为当前执行依据。请重新预检。" type="warning" :closable="false" />
+    <el-alert v-else-if="canStart" title="预检通过，点击“开始迁移”核对目标和范围，确认完整读取权限及来源备份停写后即可提交，无需返回工作台。" type="success" :closable="false" show-icon />
+    <el-alert v-else-if="latestPreflightId && latestPreflightId!==record.id && !execution" title="这是一份历史预检，请查看最新预检结果后再开始迁移。" type="info" :closable="false"><el-button link type="primary" @click="$emit('check',latestPreflightId)">查看最新预检</el-button></el-alert>
     <div class="preflight-grid">
       <div class="surface">
         <h3>阻断问题（{{ record.preview?.issues?.length || 0 }}）</h3>
@@ -30,8 +32,8 @@ import { computed } from 'vue'
 import SvnSteps from './SvnSteps.vue'
 import { Back, InfoFilled } from '@element-plus/icons-vue'
 import { checkLabel, checkTone, dateTime } from './svnMigrationDisplay.js'
-const props=defineProps({record:Object,targetName:String,busy:Boolean})
-defineEmits(['back','plan','edit','preflight','check'])
+const props=defineProps({record:Object,targetName:String,busy:Boolean,canStart:Boolean,execution:Object,latestPreflightId:Number})
+defineEmits(['back','plan','edit','preflight','check','start','run'])
 const evidenceRows=computed(()=>(props.record.preview?.selected || props.record.preview?.repositories || []).map(row=>({...row,...props.record.preview?.repositories?.find(r=>r.repository_id===row.repository_id)})))
 function repositoryName(id){return props.record.preview?.selected?.find(r=>r.repository_id===id)?.name || props.record.config?.repositories?.find(r=>r.id===id)?.name || '计划范围'}
 function repoState(id){const preview=props.record.preview || {};return (preview.issues || []).some(i=>!i.repository_id || i.repository_id===id) ? '受阻' : (preview.repositories || []).some(r=>r.repository_id===id) ? '通过' : '未完成检查'}

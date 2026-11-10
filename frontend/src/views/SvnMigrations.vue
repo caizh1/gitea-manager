@@ -2,7 +2,7 @@
   <div ref="center" class="svn-center">
     <el-alert v-if="pollingError" :title="pollingError" type="warning" :closable="false" />
     <SvnPlanEditor v-if="page==='plan' && stateLoaded" :key="route.fullPath" :plan-id="route.params.planId ? Number(route.params.planId) : null" :repositories="planRepositories" :selected-ids="routeSelectedIds" :targets="state.targets" @back="navigate('sources')" @saved="onPlanSaved" />
-    <SvnPreflightDetail v-else-if="page==='preflight' && currentCheck" :record="currentCheck" :target-name="targetName(currentCheck.server_id)" :busy="saving" @back="backFromCheck" @check="openCheck" @plan="showPlan" @edit="editPlanById" @preflight="preflightById" />
+    <SvnPreflightDetail v-else-if="page==='preflight' && currentCheck" :record="currentCheck" :target-name="targetName(currentCheck.server_id)" :busy="saving" :can-start="canStartCurrentCheck" :execution="currentCheckExecution" :latest-preflight-id="currentCheckPlan?.preflight?.id" @back="backFromCheck" @check="openCheck" @plan="showPlan" @edit="editPlanById" @preflight="preflightById" @start="startFromCheck" @run="openRun" />
     <SvnRunDetail v-else-if="page==='run' && currentRun" :run="currentRun" :events="runEvents" :target-name="targetName(currentRun.server_id)" :busy="saving" @back="navigate('runs')" @control="controlRun" @report="downloadReport" @cleanup="cleanupRun" />
     <template v-else-if="['preflight','run','plan'].includes(page)"><el-skeleton v-if="!detailError" :rows="8" animated /><el-result v-else icon="warning" title="无法读取详情" :sub-title="detailError"><template #extra><el-button @click="refresh">重试</el-button><el-button @click="navigate('workbench')">返回迁移工作台</el-button></template></el-result></template>
     <template v-else>
@@ -104,6 +104,9 @@ const repositoryInputs=computed(()=>{
 })
 watch(layoutMode,()=>{detectedLayouts.value=[]})
 const currentPlan=ref(null),currentRun=ref(null),currentCheck=ref(null),runEvents=ref([]),fullRead=ref(false),frozen=ref(false)
+const currentCheckPlan=computed(()=>state.plans.find(plan=>plan.id===currentCheck.value?.plan_id))
+const currentCheckExecution=computed(()=>state.runs.find(run=>run.plan_id===currentCheck.value?.plan_id&&run.preflight_id===currentCheck.value?.id&&run.plan_version===currentCheck.value?.plan_version))
+const canStartCurrentCheck=computed(()=>currentCheck.value?.status==='ready'&&currentCheck.value.current&&currentCheckPlan.value?.status==='ready'&&currentCheckPlan.value.preflight?.id===currentCheck.value.id&&currentCheckPlan.value.preflight.current&&!currentCheckExecution.value)
 const sourceById=id=>state.sources.find(s=>s.id===id)
 const targetName=id=>{const server=state.targets.find(s=>s.id===id);return server?serverLabel(server):'目标实例 #'+id}
 const sourceRepositories=id=>state.repositories.filter(r=>r.source_id===id)
@@ -184,6 +187,18 @@ async function onPlanSaved(row){if(row.preflight?.id)await openCheck(row.preflig
 async function planById(id){return state.plans.find(p=>p.id===id)||(await api.get(`${base}/plans/${id}`)).data}
 async function editPlanById(id){editPlan(await planById(id))}
 async function showPlan(id){openPlan(await planById(id))}
+async function startFromCheck(record){
+ if(!canStartCurrentCheck.value||record.id!==currentCheck.value?.id||saving.value)return
+ const routePath=route.fullPath
+ await save(async()=>{
+  const [planReply,runsReply]=await Promise.all([api.get(`${base}/plans/${record.plan_id}`),api.get(base+'/runs')])
+  if(route.fullPath!==routePath||currentCheck.value?.id!==record.id)return
+  const plan=planReply.data,execution=runsReply.data.find(run=>run.plan_id===record.plan_id&&run.preflight_id===record.id&&run.plan_version===record.plan_version)
+  if(execution){await openRun(execution.id);return}
+  if(plan.status!=='ready'||plan.version!==record.plan_version||plan.preflight?.id!==record.id||!plan.preflight.current){ElMessage.warning('预检结果已变化，请查看最新预检或重新预检后再开始迁移');return}
+  openPlan(plan)
+ })
+}
 async function preflightById(id){await preflight(await planById(id))}
 function openPlan(row){currentPlan.value=row;fullRead.value=false;frozen.value=false;runRequestKey.value=requestKey();previewDialog.value=true}
 async function preflight(row){await save(async()=>{const {data}=await api.post(`${base}/plans/${row.id}/preflight`);fullRead.value=false;frozen.value=false;if(page.value==='preflight'&&data.preflight)await router.push({path:`${base}/preflights/${data.preflight.id}`,query:{from:route.query.from==='sources'?'sources':'workbench'}})})}
