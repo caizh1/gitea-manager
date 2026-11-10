@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 SERVICES = {'backend', 'frontend', 'review-worker', 'review-feedback', 'review-progress',
-            'review-executor', 'approval-view', 'svn-migration-worker'}
+            'review-executor', 'approval-view', 'svn-migration-worker', 'git-migration-worker'}
 LABEL = 'com.docker.compose.project'
 
 
