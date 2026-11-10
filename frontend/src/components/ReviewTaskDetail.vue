@@ -15,6 +15,24 @@
         <div class="identity-copy"><strong>{{ instance || '历史实例未记录' }} · {{ repository }} #{{ task.number }}</strong><span>{{ modelName }} · 任务 {{ task.id }}</span></div>
         <div class="identity-actions"><slot name="actions" /><el-button v-if="canCancel && ['queued', 'running', 'awaiting_cost', 'budget_paused', 'incomplete'].includes(task.status)" type="danger" plain :loading="cancelling" :disabled="cancelling" @click="$emit('cancel')">强制取消</el-button><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
       </div>
+      <section class="execution-summary" aria-label="执行进度与资源用量">
+      <ol class="stage-track">
+        <li v-for="(stage, index) in stages" :key="stage.key" :class="stage.state"><span><el-icon v-if="stage.state === 'done'"><Check /></el-icon><template v-else>{{ index + 1 }}</template></span><div><strong>{{ stage.label }}</strong><small>{{ stage.detail }}</small></div></li>
+      </ol>
+      <section class="action-card">
+        <el-icon class="action-symbol"><Loading v-if="continuing" class="is-loading" /><CircleCheckFilled v-else-if="task.status === 'succeeded'" /><WarningFilled v-else /></el-icon><div class="action-copy"><span>当前动作</span><h3>{{ currentAction }}</h3><p>{{ actionContext }}</p></div>
+        <div class="action-state"><el-icon v-if="continuing" class="is-loading"><Loading /></el-icon><el-icon v-else-if="task.status === 'succeeded'"><CircleCheckFilled /></el-icon><el-icon v-else><WarningFilled /></el-icon><strong>{{ continuing ? '执行中' : statusLabel(task.status) }}</strong></div>
+      </section>
+      <el-alert v-if="compacting" title="模型正在压缩上下文" description="正在整理会话历史，压缩完成后继续审查；执行器心跳仅表示会话存活。" type="info" :closable="false" show-icon data-testid="compaction-status" />
+      <div class="metrics">
+        <div><el-icon><Clock /></el-icon><div><span>已耗时</span><strong>{{ duration(elapsedSeconds) }}</strong><small>{{ targetText }}</small></div></div>
+        <div><el-icon><Timer /></el-icon><div><span>剩余预算</span><strong>{{ remainingBudget }}</strong><small>{{ task.progress_stage === 'issue_checks' ? '逐问题使用独立请求超时' : '主审查会话预算' }}</small></div></div>
+        <div><el-icon><Cpu /></el-icon><div><span>模型请求</span><strong>{{ counters.model_calls ?? task.model_calls ?? 0 }} 次</strong><small>{{ modelWaitLabel }}</small></div></div>
+        <div><el-icon><Setting /></el-icon><div><span>工具调用</span><strong>{{ toolCount }} 次</strong><small>{{ eventCount }} 条原生记录</small></div></div>
+      </div>
+
+      <el-alert v-if="task.progress?.sync_error" :title="'PR 进度同步：' + task.progress.sync_error" type="warning" :closable="false" />
+      </section>
       <el-alert v-if="task.cancel_requested_at" :title="task.status === 'cancelling' ? '正在强制取消；确认执行停止后显示已取消' : '本次审查已人工取消，当前版本不会自动重跑'" :description="[task.cancel_requested_by, task.cancel_error].filter(Boolean).join(' · ')" type="info" show-icon :closable="false" />
       <details v-if="isPlatformAdmin && task.error" class="failure-card" aria-label="任务失败详情"><summary>失败原因：{{ errorSummary }} · 展开诊断</summary>
         <div class="failure-heading"><WarningFilled /><div><strong>{{ errorSummary }}</strong><details v-if="String(task.error).length > 100" class="full-error"><summary>查看完整错误信息</summary><pre>{{ task.error }}</pre></details><p>{{ diagnosticSummary }}</p></div></div>
@@ -35,30 +53,14 @@
       </details>
 
       <ReviewFailureChecks :task="task" />
-      <ReviewBatchPlan v-if="task.batch_protocol" :task="task" @refresh="$emit('refresh')" />
-      <details class="execution-summary" :open="continuing"><summary>{{ continuing ? '执行进度与资源用量' : '执行摘要 · 查看耗时与资源用量' }}</summary>
-      <section class="action-card">
-        <div><span>当前动作</span><h3>{{ currentAction }}</h3><p>{{ actionContext }}</p></div>
-        <div class="action-state"><el-icon v-if="continuing" class="is-loading"><Loading /></el-icon><el-icon v-else-if="task.status === 'succeeded'"><CircleCheckFilled /></el-icon><el-icon v-else><WarningFilled /></el-icon><strong>{{ continuing ? '执行中' : statusLabel(task.status) }}</strong></div>
-      </section>
-      <el-alert v-if="compacting" title="模型正在压缩上下文" description="正在整理会话历史，压缩完成后继续审查；执行器心跳仅表示会话存活。" type="info" :closable="false" show-icon data-testid="compaction-status" />
-      <div class="metrics">
-        <div><span>已耗时</span><strong>{{ duration(elapsedSeconds) }}</strong><small>{{ targetText }}</small></div>
-        <div><span>剩余预算</span><strong>{{ remainingBudget }}</strong><small>{{ task.progress_stage === 'issue_checks' ? '逐问题使用独立请求超时' : '主审查会话预算' }}</small></div>
-        <div><span>模型请求</span><strong>{{ counters.model_calls ?? task.model_calls ?? 0 }} 次</strong><small>{{ modelWaitLabel }}</small></div>
-        <div><span>工具调用</span><strong>{{ toolCount }} 次</strong><small>{{ eventCount }} 条原生记录</small></div>
+      <div v-if="task.batch_protocol" class="plan-shortcut" :class="{ 'needs-action': needsPlanAction }">
+        <span><el-icon><Document /></el-icon><strong>{{ needsPlanAction ? statusLabel(task.status) : '审查计划' }}</strong><span>{{ planSummary }}</span></span>
+        <el-button link type="primary" @click="activeTab = 'plan'">{{ needsPlanAction ? '查看并处理' : '查看计划与依据' }}<el-icon><ArrowRight /></el-icon></el-button>
       </div>
-
-      <ol class="stage-track">
-        <li v-for="(stage, index) in stages" :key="stage.key" :class="stage.state"><span><el-icon v-if="stage.state === 'done'"><Check /></el-icon><template v-else>{{ index + 1 }}</template></span><div><strong>{{ stage.label }}</strong><small>{{ stage.detail }}</small></div></li>
-      </ol>
-
-      <el-alert v-if="task.progress?.sync_error" :title="'PR 进度同步：' + task.progress.sync_error" type="warning" :closable="false" />
-      </details>
       <el-tabs v-model="activeTab" class="detail-tabs">
         <el-tab-pane label="实时过程" name="process">
           <section class="process-pane">
-            <div class="process-heading"><div><h3>执行记录</h3><p>公开模型说明与工具状态按发生时间升序显示。</p></div><div class="process-actions"><el-select v-if="task.batch_protocol" v-model="eventSession" placeholder="当前单元会话" clearable style="width: 240px"><el-option v-for="attempt in task.batch?.attempts || []" :key="attempt.session_id" :value="attempt.session_id" :label="attempt.unit + ' / 尝试 ' + attempt.attempt" /></el-select><el-segmented v-model="eventFilter" :options="filterOptions" /><el-input v-model="searchDraft" clearable :prefix-icon="Search" placeholder="搜索文件或记录" @keyup.enter="applySearch" @clear="applySearch" /><el-button :icon="Download" @click="downloadEvents">下载脱敏日志</el-button></div></div>
+            <div class="process-heading"><div><h3>执行记录</h3><p>按时间顺序查看模型说明与工具状态。</p></div><div class="process-actions"><el-select v-if="task.batch_protocol" v-model="eventSession" placeholder="当前单元会话" clearable class="session-selector"><el-option v-for="attempt in task.batch?.attempts || []" :key="attempt.session_id" :value="attempt.session_id" :label="attempt.unit + ' / 尝试 ' + attempt.attempt" /></el-select><el-segmented v-model="eventFilter" :options="filterOptions" /><el-input v-model="searchDraft" clearable :prefix-icon="Search" placeholder="搜索文件或记录" @keyup.enter="applySearch" @clear="applySearch" /><el-button :icon="Download" @click="downloadEvents">下载脱敏日志</el-button></div></div>
             <el-alert v-if="eventError" :title="eventError" type="error" :closable="false"><el-button link type="primary" @click="resetEvents">重新连接</el-button></el-alert>
             <el-empty v-if="legacyWithoutEvents" description="此旧任务没有记录原生执行日志；审查结果与历史检索仍可在其他页签查看。" />
             <div v-else ref="eventScroller" class="event-scroller" @scroll="onEventScroll">
@@ -99,6 +101,9 @@
           <el-collapse v-else v-model="expanded"><el-collapse-item v-for="(f, i) in findings" :key="f.finding_id || f.candidate_id || i" :name="String(i)"><template #title><div class="finding-title"><el-tag :type="f.severity === 'P1' ? 'danger' : 'warning'" size="small">{{ f.severity }}</el-tag><strong>{{ f.title }}</strong><span v-if="f.assessment === 'uncertain'">待确认</span></div></template><article class="finding-content"><p class="path">{{ f.path }} · {{ f.scope }}</p><p v-if="f.anchor">{{ f.anchor.side === 'new' ? '新' : '旧' }}侧第 {{ f.anchor.line }} 行<span v-if="f.existing_review_id"> · 已有历史意见，本次未重复发布</span></p><p v-else>普通意见：{{ f.fallback_reason || '没有可靠的行内位置' }}</p><pre v-if="f.quote">{{ f.quote }}</pre><dl><template v-for="field in findingFields" :key="field.key"><dt v-if="f[field.key]">{{ field.label }}</dt><dd v-if="f[field.key]">{{ String(f[field.key]).slice(0, textLimits[i + field.key] || 1200) }}<template v-if="String(f[field.key]).length > 1200"><p class="secondary">共 {{ String(f[field.key]).length }} 字符，当前显示 {{ Math.min(textLimits[i + field.key] || 1200, String(f[field.key]).length) }} 字符</p><el-button v-if="(textLimits[i + field.key] || 1200) < String(f[field.key]).length" link type="primary" @click="textLimits[i + field.key] = (textLimits[i + field.key] || 1200) + 12000">展开下一段</el-button><el-button v-if="textLimits[i + field.key] > 1200" link @click="textLimits[i + field.key] = 1200">收起</el-button></template></dd></template></dl><details v-if="f.source_evidence?.length || f.trace?.length"><summary>查看推导及源码证据</summary><ol><li v-for="(step, n) in f.trace || []" :key="n">{{ step }}</li></ol><div v-for="(source, n) in f.source_evidence || []" :key="n"><p>{{ source.version === 'before' ? '修改前' : '修改后' }} · {{ source.path }}</p><pre>{{ source.quote }}</pre></div></details><p v-if="f.finding_id" class="secondary">意见编号 {{ f.finding_id }}</p></article></el-collapse-item></el-collapse>
         </el-tab-pane>
 
+        <el-tab-pane v-if="task.batch_protocol" label="计划与依据" name="plan" lazy>
+          <ReviewBatchPlan :task="task" @refresh="$emit('refresh')" />
+        </el-tab-pane>
         <el-tab-pane :label="`变更与覆盖（${groups.length} 组缺口）`" name="coverage">
           <el-alert v-if="diffOnly" :title="`已提供 ${coverage.diff_files_provided || 0} 个文件的 PR diff`" description="这里统计输入范围，不代表完整工程覆盖；二进制内容和 diff 外的依赖无法检查。" type="info" :closable="false" />
           <p class="secondary">文件读取数量与分析完成数量分别统计。重复缺口已合并，展开文件查看具体原因。</p><p v-if="coverage.change_evidence" class="evidence-count">已提供变更原文 {{ coverage.change_evidence.supplied }} / {{ coverage.change_evidence.expected }} 行。此项只统计原文供给，审查结论还需结合已完成单元和未决范围。</p><el-empty v-if="!groups.length" :description="task.status === 'succeeded' ? '本次没有记录覆盖缺口。' : '当前尚未记录缺口，任务完成前不能判断覆盖完整。'" /><el-collapse><el-collapse-item v-for="group in groups" :key="group.path" :name="group.path"><template #title><div class="coverage-title"><strong>{{ group.path }}</strong><el-tag type="warning" size="small">{{ group.reasons.length }} 类原因</el-tag></div></template><div v-for="(reason, i) in group.reasons" :key="i" class="coverage-reason"><p>{{ reason.reason }}</p><small>记录 {{ reason.count }} 次<span v-if="reason.scopes.length"> · 涉及 {{ reason.scopes.length }} 个函数</span></small><details v-if="reason.scopes.length"><summary>查看函数</summary><ul><li v-for="scope in reason.scopes" :key="scope">{{ scope }}</li></ul></details></div></el-collapse-item></el-collapse>
@@ -119,7 +124,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, ArrowLeft, Check, CircleCheckFilled, Close, Download, Document, FullScreen, Loading, Search, Setting, TopRight, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Check, Clock, Cpu, Timer, CircleCheckFilled, Close, Download, Document, FullScreen, Loading, Search, Setting, TopRight, WarningFilled } from '@element-plus/icons-vue'
 import { api } from '../api'
 import ReviewIssueLedger from './ReviewIssueLedger.vue'
 import ReviewBatchPlan from './ReviewBatchPlan.vue'
@@ -139,7 +144,18 @@ const expandedEvents = ref(new Set()), connectionOk = ref(false)
 const reads = ref([]), readTotal = ref(0), readPage = ref(1), reading = ref(false), readError = ref('')
 const diagnosticCopied = ref(false)
 const rawDownloading = ref(false), rawDownloadError = ref('')
-let generation = 0, eventTimer, eventController, readGeneration = 0
+let generation = 0, eventTimer, eventController, readGeneration = 0, eventResizeObserver
+const eventWidth = ref(960)
+
+const needsPlanAction = computed(() => Boolean(props.task?.batch_protocol) && ['awaiting_cost', 'budget_paused', 'incomplete'].includes(props.task?.status))
+const initialTab = () => needsPlanAction.value ? 'plan' : continuing.value ? 'process' : 'result'
+const planSummary = computed(() => {
+  const task = props.task, plan = task?.batch?.value
+  if (!plan) return '正在生成计划'
+  const total = task.progress?.units_total ?? task.batch?.units?.length
+  const completed = task.progress?.units_completed ?? task.batch?.units?.filter(unit => unit.state === 'done').length
+  return [total != null ? `单元完成 ${completed ?? 0} / ${total}` : '', `最多 ${plan.max_calls ?? '—'} 次调用`, `${plan.relations?.length || 0} 项源码关系`].filter(Boolean).join(' · ')
+})
 
 const continuing = computed(() => ['queued','running','cancelling','publishing','recovering','publish_unknown'].includes(props.task?.status))
 const shouldPollEvents = computed(() => hasNativeEvents.value && props.task?.status !== 'cancelled' && props.task?.log_sync?.complete !== true)
@@ -152,7 +168,7 @@ const retrieval = computed(() => props.task?.result?.context_retrieval || {})
 const counters = computed(() => props.task?.counters || {})
 const modelName = computed(() => props.task?.configuration?.model || '历史模型未记录')
 const compacting = computed(() => continuing.value && props.task?.counters?.compaction_active === true)
-const currentAction = computed(() => ['cancelling', 'cancelled'].includes(props.task?.status) ? statusLabel(props.task.status) : compacting.value ? '模型正在压缩上下文' : props.task?.current_action || props.task?.stage || statusLabel(props.task?.status))
+const currentAction = computed(() => ['cancelling', 'cancelled', 'awaiting_cost', 'budget_paused', 'incomplete', 'superseded'].includes(props.task?.status) ? statusLabel(props.task.status) : compacting.value ? '模型正在压缩上下文' : props.task?.current_action || props.task?.stage || statusLabel(props.task?.status))
 const actionContext = computed(() => { const a = props.task?.progress?.action || props.task?.action || {}; const version = a.version === 'before' ? '修改前' : a.version === 'after' ? '修改后' : ''; return [version, a.path, a.start_line && a.end_line ? `${a.start_line}–${a.end_line} 行` : ''].filter(Boolean).join(' · ') || props.task?.progress?.detail || '等待下一条原生执行记录' })
 const elapsedSeconds = computed(() => props.task?.timing?.execution_seconds ?? props.task?.progress?.elapsed_seconds ?? (props.task?.progress?.started_at ? Math.max(0, Date.now()/1000-props.task.progress.started_at) : null))
 const reviewBudget = computed(() => props.task?.batch?.budget_seconds ?? props.task?.configuration?.review_timeout_seconds ?? props.task?.progress?.target_seconds ?? props.task?.configuration?.task_timeout_seconds ?? 600)
@@ -207,12 +223,18 @@ const stages = computed(() => {
       {key:'review',label:'自主审查',state:status==='cancelling'?'active':'pending',detail:statusLabel(status)},
       {key:'publish',label:'发布结果',state:'pending',detail:'未发布'}]
   }
+  if (['awaiting_cost', 'budget_paused', 'incomplete', 'superseded'].includes(status)) {
+    const planned = Boolean(props.task?.batch?.value)
+    return [{key:'prepare',label:'准备仓库',state:planned?'done':'pending',detail:planned?'已生成计划':'计划未完成'},
+      {key:'review',label:'自主审查',state:'pending',detail:statusLabel(status)},
+      {key:'publish',label:'发布结果',state:'pending',detail:'未发布'}]
+  }
   let index=status==='queued'?0:status==='running'?1:2
   if(status==='failed') index=/准备|仓库|快照/.test(phase)?0:/发布|核对/.test(phase)?2:1
   const success=status==='succeeded'
   return [{key:'prepare',label:'准备仓库'},{key:'review',label:'自主审查'},{key:'publish',label:'发布结果'}].map((s,i)=>({...s,state:success||i<index?'done':status==='failed'&&i===index?'error':i===index&&continuing.value?'active':'pending',detail:success||i<index?'已完成':status==='failed'&&i===index?'执行失败':i===index&&continuing.value?'正在进行':'等待执行'}))
 })
-const rowHeights = computed(() => events.value.map(e => expandedEvents.value.has(eventKey(e)) ? 154 : 82))
+const rowHeights = computed(() => events.value.map(e => expandedEvents.value.has(eventKey(e)) ? (eventWidth.value < 600 ? 230 : 170) : (eventWidth.value < 600 ? 112 : 68)))
 const offsets = computed(() => { let top=0; return rowHeights.value.map(height => { const row={top,height}; top+=height; return row }) })
 const virtualHeight = computed(() => rowHeights.value.reduce((sum,value)=>sum+value,0))
 const visibleEvents = computed(() => {
@@ -226,7 +248,7 @@ const visibleEvents = computed(() => {
 const beforeSpace = computed(() => visibleEvents.value[0]?.top || 0)
 const afterSpace = computed(() => visibleEvents.value.length ? Math.max(0,virtualHeight.value-visibleEvents.value.at(-1).top-visibleEvents.value.at(-1).height) : virtualHeight.value)
 
-const statusLabel = s => ({cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
+const statusLabel = s => ({awaiting_cost:'等待成本确认',budget_paused:'预算暂停',incomplete:'审查未完成',cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
 const seconds = value => Number.isFinite(value) ? `${value} 秒` : '未记录'
 const duration = value => Number.isFinite(Number(value)) ? `${String(Math.floor(Number(value)/60)).padStart(2,'0')}:${String(Math.floor(Number(value)%60)).padStart(2,'0')}` : '—'
 const fmt = value => value ? new Date(Number(value)>1e12?Number(value):Number(value)*1000).toLocaleString('zh-CN') : '尚无'
@@ -276,15 +298,25 @@ async function toggleFullscreen(){try{if(!document.fullscreenElement)await panel
 function syncFullscreen(){isFullscreen.value=document.fullscreenElement===panel.value}
 async function loadReads(){if(reading.value||!props.open||!props.task?.id)return;const current=readGeneration,id=props.task.id;reading.value=true;readError.value='';try{const r=await api.get(`/ai-review/tasks/${id}/context-reads`,{params:{page:readPage.value,start:reads.value.length+1}});if(current!==readGeneration)return;reads.value.push(...r.data.items);readTotal.value=r.data.total;readPage.value++}catch(e){if(current===readGeneration)readError.value=e.response?.data?.error||'读取记录暂时无法加载'}finally{if(current===readGeneration)reading.value=false}}
 
+watch(eventScroller, element => {
+  eventResizeObserver?.disconnect()
+  if (!element) return
+  eventResizeObserver = new ResizeObserver(([entry]) => {
+    eventWidth.value = entry.contentRect.width
+    viewportHeight.value = element.clientHeight
+  })
+  eventResizeObserver.observe(element)
+})
 watch(eventFilter,resetEvents)
 watch(eventSession,resetEvents)
 watch(()=>props.task?.session_id, (value, previous)=>{ if(value !== previous) resetEvents() })
 watch(hasNativeEvents,(native,wasNative)=>{if(native&&!wasNative&&props.open&&props.task?.id)resetEvents();else if(!native&&wasNative){generation++;eventController?.abort();clearTimeout(eventTimer);requestingEvents.value=false;loadingEvents.value=false;loadingHistory.value=false;events.value=[];newestSeq.value=0;oldestSeq.value=0;connectionOk.value=false}})
-watch([()=>props.task?.id,()=>props.open],([id,open],[oldId,oldOpen])=>{if(id===oldId&&open===oldOpen)return;const reloadReads=activeTab.value==='coverage'||activeTab.value==='context';generation++;readGeneration++;eventController?.abort();clearTimeout(eventTimer);events.value=[];newestSeq.value=0;oldestSeq.value=0;requestingEvents.value=false;loadingEvents.value=false;loadingHistory.value=false;reads.value=[];readTotal.value=0;readPage.value=1;reading.value=false;readError.value='';rawDownloading.value=false;rawDownloadError.value='';expandedEvents.value=new Set();following.value=true;pendingCount.value=0;activeTab.value=continuing.value?'process':'result';if(open&&id&&hasNativeEvents.value)fetchEvents().then(schedulePoll);if(open&&id&&reloadReads)loadReads()})
+watch([()=>props.task?.id,()=>props.open],([id,open],[oldId,oldOpen])=>{if(id===oldId&&open===oldOpen)return;const reloadReads=activeTab.value==='coverage'||activeTab.value==='context';generation++;readGeneration++;eventController?.abort();clearTimeout(eventTimer);events.value=[];newestSeq.value=0;oldestSeq.value=0;requestingEvents.value=false;loadingEvents.value=false;loadingHistory.value=false;reads.value=[];readTotal.value=0;readPage.value=1;reading.value=false;readError.value='';rawDownloading.value=false;rawDownloadError.value='';expandedEvents.value=new Set();following.value=true;pendingCount.value=0;activeTab.value=initialTab();if(open&&id&&hasNativeEvents.value)fetchEvents().then(schedulePoll);if(open&&id&&reloadReads)loadReads()})
+watch(needsPlanAction, (needed, previous) => { if (needed && !previous) activeTab.value = 'plan' })
 watch(activeTab,tab=>{if(tab==='context')activeTab.value='coverage';if((tab==='coverage'||tab==='context')&&readPage.value===1)loadReads()})
 watch(()=>retrieval.value.operations,count=>{if((activeTab.value==='coverage'||activeTab.value==='context')&&count>readTotal.value){if(reads.value.length===readTotal.value)loadReads();else readTotal.value=count}})
-onMounted(()=>{activeTab.value=continuing.value?'process':'result';document.addEventListener('visibilitychange',schedulePoll);document.addEventListener('fullscreenchange',syncFullscreen);if(props.open&&props.task?.id&&hasNativeEvents.value)fetchEvents().then(schedulePoll)})
-onBeforeUnmount(()=>{generation++;readGeneration++;eventController?.abort();clearTimeout(eventTimer);document.removeEventListener('visibilitychange',schedulePoll);document.removeEventListener('fullscreenchange',syncFullscreen)})
+onMounted(()=>{activeTab.value=initialTab();document.addEventListener('visibilitychange',schedulePoll);document.addEventListener('fullscreenchange',syncFullscreen);if(props.open&&props.task?.id&&hasNativeEvents.value)fetchEvents().then(schedulePoll)})
+onBeforeUnmount(()=>{eventResizeObserver?.disconnect();generation++;readGeneration++;eventController?.abort();clearTimeout(eventTimer);document.removeEventListener('visibilitychange',schedulePoll);document.removeEventListener('fullscreenchange',syncFullscreen)})
 </script>
 
 <style scoped>
@@ -292,9 +324,10 @@ onBeforeUnmount(()=>{generation++;readGeneration++;eventController?.abort();clea
 .review-detail{min-width:0;overflow-wrap:anywhere;background:rgba(255,255,255,.82);border:1px solid rgba(148,163,184,.2);border-radius:16px;box-shadow:0 12px 36px rgba(15,23,42,.08);padding:0 20px 22px}
 .review-detail.is-fullscreen{overflow:auto;border-radius:0;padding:0 28px 24px;background:#f8fafc}
 .detail-bar,.identity-row,.detail-controls,.identity-actions,.process-heading,.process-actions,.event-title,.stream-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
-.detail-bar{position:sticky;top:0;z-index:2;background:rgba(255,255,255,.96);justify-content:space-between;border-bottom:1px solid #e5eaf1;padding:12px 0}
+.detail-bar{position:relative;top:0;z-index:2;background:rgba(255,255,255,.96);justify-content:space-between;border-bottom:1px solid #e5eaf1;padding:12px 0}
+.is-fullscreen .detail-bar{position:sticky;top:0}
 .detail-bar h2{font-size:20px;margin:2px 0}
-.execution-summary{margin:12px 0}.execution-summary>summary{cursor:pointer;color:#52637b;font-size:13px;padding:8px 0}.execution-summary[open]>summary{margin-bottom:8px}
+.execution-summary{margin:12px 0 16px;padding:16px 18px 8px;border:1px solid #caddf8;border-radius:14px;background:#f5f9ff}
 .detail-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
 .failure-card>summary,.raw-diagnostics>summary{cursor:pointer;line-height:1.6}
 @container review-page (min-width: 961px) { .identity-copy strong{font-size:17px}.metrics>div{padding:4px 8px}.metrics strong{font-size:19px}.detail-bar h2{font-size:16px}.stage-track{font-size:12px}.stage-track li{gap:5px}.stage-track li::after{margin:0 4px}.action-card h3{font-size:18px} }
@@ -318,25 +351,25 @@ onBeforeUnmount(()=>{generation++;readGeneration++;eventController?.abort();clea
 .dot.error{background:#dc2626}
 .dot.waiting{background:#d97706}
 .identity-row{justify-content:space-between;padding:12px 0 10px}
-.identity-copy{display:flex;flex-direction:column;gap:5px}
+.identity-copy{display:flex;flex:1 1 360px;min-width:0;flex-direction:column;gap:5px}.identity-copy span{font-size:12px}.identity-copy strong{overflow-wrap:anywhere}
 .identity-copy strong{font-size:20px}
-.action-card{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 18px;border-radius:10px;background:linear-gradient(110deg,#eef6ff,#f7fbff);border:1px solid #e0edff}
+.action-card{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 14px;border-radius:10px;background:#e8f2ff;border:1px solid #e0edff}
 .action-card span{font-size:13px;color:#1765be}
-.action-card h3{font-size:22px;margin:5px 0}
-.action-card p{margin:0;color:#52647b}
+.action-card h3{font-size:18px;margin:4px 0;line-height:1.4}.action-copy{min-width:0;flex:1}.action-symbol{display:inline-flex;flex:0 0 40px;width:40px;height:40px;border-radius:10px;background:#d4e7ff;color:#1765be;font-size:23px}
+.action-card p{margin:0;color:#52647b;font-size:12px;line-height:1.5}
 .action-state{display:flex;align-items:center;gap:9px;color:#0b69d1;flex-shrink:0}
-.action-state .el-icon{font-size:22px}
+.action-state .el-icon{font-size:18px}.action-state{font-size:12px}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:12px 0}
-.metrics>div{display:flex;flex-direction:column;gap:5px;padding:4px 22px;border-right:1px solid #dfe5ed}
+.metrics>div{display:flex;align-items:center;gap:12px;padding:4px 16px;border-right:1px solid #dfe5ed;min-width:0}.metrics>div>div{display:flex;min-width:0;flex-direction:column;gap:4px}.metrics .el-icon{font-size:21px;color:#536987;flex:0 0 21px}
 .metrics>div:last-child{border-right:0}
 .metrics span,.metrics small{color:#64748b;font-size:12px}
-.metrics strong{font-size:22px}
-.stage-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));list-style:none;margin:8px 0 14px;padding:0}
+.metrics strong{font-size:21px;font-variant-numeric:tabular-nums}.metrics small{font-size:11px;line-height:1.5}
+.stage-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));list-style:none;margin:0 0 14px;padding:0}
 .stage-track li{display:flex;align-items:center;gap:10px;min-width:0}
 .stage-track li::after{content:'';height:3px;background:#dfe5ed;flex:1;order:2;margin:0 10px}
 .stage-track li:last-child::after{display:none}
 .stage-track li>span{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#e3e8ef;color:#4b5b72;flex:0 0 26px}
-.stage-track li>div{display:flex;flex-direction:column;min-width:max-content}
+.stage-track li>div{display:flex;flex-direction:column;gap:3px;min-width:0}.stage-track strong{font-size:13px}.stage-track small{font-size:11px}
 .stage-track small{color:#64748b}
 .stage-track .done>span{background:#26935a;color:#fff}
 .stage-track .done::after,.stage-track .active::after{background:#6cacf2}
@@ -344,10 +377,10 @@ onBeforeUnmount(()=>{generation++;readGeneration++;eventController?.abort();clea
 .stage-track .active small{color:#0b69d1}
 .stage-track .error>span{background:#dc2626;color:#fff}
 .process-heading{justify-content:space-between;margin-bottom:10px}
-.process-heading h3{margin:0}
+.process-heading h3{margin:0;font-size:14px}.process-heading>div:first-child{display:none}
 .process-heading p{font-size:13px;margin:5px 0}
-.process-actions .el-input{width:220px}
-.event-scroller{height:min(54vh,620px);min-height:360px;overflow:auto;border-block:1px solid #e8edf3;scrollbar-gutter:stable}
+.process-actions{flex:1}.process-actions .el-input{width:auto;flex:1 1 180px;min-width:150px}.process-actions .session-selector{width:200px}.process-actions>.el-button{margin-left:0}
+.event-scroller{height:clamp(320px,46vh,620px);min-height:320px;overflow:auto;border-block:1px solid #e8edf3;scrollbar-gutter:stable}
 .new-events{position:sticky;top:8px;z-index:3;display:block;margin:8px auto;padding:8px 14px;border:1px solid #bcd8fa;border-radius:18px;background:#eef6ff;color:#075eb9;cursor:pointer}
 .history-loading{text-align:center;color:#64748b;padding:8px}
 .virtual-space{min-width:680px}
@@ -383,10 +416,12 @@ summary{cursor:pointer;color:#3c608b;padding:8px 0}
 .read-warning{color:#956006}
 .evidence-count{line-height:1.7}
 :deep(.el-collapse-item__header){height:auto;min-height:52px}
-:deep(.el-tabs__item){padding:0 18px}
+.plan-shortcut,.plan-shortcut>span{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}.plan-shortcut{justify-content:space-between;padding:9px 12px;margin:0 0 8px;border:1px solid #e5ecf5;border-radius:9px;font-size:12px;color:#52647b;background:#fafcff}.plan-shortcut strong{color:#344761;font-weight:500}.plan-shortcut.needs-action{background:#fff9ed;border-color:#f2d396}.plan-shortcut .el-button{font-size:12px}.plan-shortcut .el-icon{flex:0 0 14px}.plan-shortcut .el-button .el-icon{margin-left:4px}
+:deep(.el-tabs__item){padding:0 16px;font-size:13px}
+@container review-page (max-width:1100px){.metrics>div{padding:4px 8px;gap:8px}.metrics .el-icon{display:none}.identity-copy strong{font-size:17px}.identity-actions{gap:6px}.identity-actions .el-button+.el-button{margin-left:0}.action-state{display:none}}
 
 @media(max-width:900px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.metrics>div{border-right:0;border-bottom:1px solid #dfe5ed;padding:8px}
+.metrics>div{border-right:0;padding:6px 8px}
 .process-heading{align-items:flex-start}
 .process-actions{width:100%}
 .stage-track{gap:8px}
@@ -402,11 +437,11 @@ summary{cursor:pointer;color:#3c608b;padding:8px 0}
 .action-state strong{display:none}
 .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
 .metrics strong{font-size:18px}
-.stage-track{grid-template-columns:minmax(0,1fr);gap:10px}
+.stage-track{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.stage-track li{align-items:flex-start;gap:5px}.stage-track li>span{width:22px;height:22px;flex-basis:22px}.execution-summary{padding:12px 10px 4px}.action-symbol{display:none}
 .stage-track li>div{min-width:0}
 .process-actions{display:grid;grid-template-columns:minmax(0,1fr)}
 .process-actions .el-input{width:100%}
-.event-scroller{min-height:420px}
+.event-scroller{min-height:300px}.plan-shortcut{gap:4px}.plan-shortcut>span{gap:6px}.identity-actions .el-button+.el-button{margin-left:0}.metrics{gap:4px}.metrics small{font-size:11px}.process-actions .session-selector{width:100%}
 .virtual-space{min-width:0}
 .event-row{grid-template-columns:58px 24px minmax(0,1fr);padding-inline:2px}
 .event-title code{max-width:150px}
@@ -415,8 +450,8 @@ dl{grid-template-columns:minmax(0,1fr);gap:4px}
 dd{margin-bottom:10px}
 :deep(.el-tabs__nav-wrap.is-scrollable){padding:0}
 :deep(.el-tabs__nav-prev),:deep(.el-tabs__nav-next),:deep(.el-tabs__active-bar){display:none}
-:deep(.el-tabs__nav){display:flex;flex-wrap:wrap;width:100%;transform:none!important}
-:deep(.el-tabs__item){flex:1 1 50%;padding:0 5px;justify-content:center}
+:deep(.el-tabs__nav){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;transform:none!important}
+:deep(.el-tabs__item){min-width:0;padding:6px 5px;justify-content:center;white-space:normal;text-align:center;height:auto;min-height:38px;line-height:1.4}
 :deep(.el-tabs__item.is-active){background:#eef4fc;border-radius:6px}
 }
 

@@ -105,7 +105,7 @@ async function main() {
   const original = page.locator('.batch-plan').getByRole('button', { name: '确认此计划（最多 19 次）' })
   await original.waitFor()
   await original.click()
-  await page.locator('.batch-plan').getByText('基础调用 7 次，含候选反证最多 19 次；已授权 0 次。').waitFor({ state: 'hidden' })
+  await original.waitFor({ state: 'hidden' })
   assert.equal(posts.filter(post => post.id === 'stale').length, 2)
   assert.equal(posts.at(-1).data.plan_hash, '新摘要')
   await page.getByRole('button', { name: '返回完整列表' }).click()
