@@ -17,7 +17,7 @@ import zipfile
 
 import requests
 
-from .common import ReviewError, encode, endpoint, MODEL_CONNECT_TIMEOUT
+from .common import ReviewError, encode, endpoint, validate_model_id, MODEL_CONNECT_TIMEOUT
 from .gitea import Gitea
 from .host_policy import address, approve, ensure, gitea_address
 from .store import Store
@@ -102,8 +102,7 @@ def submit(store, data, fallback_url):
         data = dict(data, api_base_url=old['api_base_url'], model=old['model'], api_key='')
     api_url = address(data.get('api_base_url') or old['api_base_url'])[0]
     model = data.get('model') or old['model'] or 'deepseek-v4-flash'
-    if not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}', model):
-        raise ReviewError('模型名称格式无效')
+    validate_model_id(model)
     key = data.get('api_key')
     sealed = store.seal(key) if key else old['api_key']
     if not sealed:

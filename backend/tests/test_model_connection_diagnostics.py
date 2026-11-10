@@ -62,3 +62,14 @@ class ConnectionDiagnosticsTests(unittest.TestCase):
             client.get.return_value = reply({'data':[{'id':'fixture'}]})
             client.post.return_value = reply({'choices':[{'finish_reason':'stop','message':{'content':'{"ok":true}'}}]})
             self.assertTrue(verify_model(store, config)['listed'])
+
+    def test_model_id_spaces_preserved_in_directory_and_request(self):
+        model = 'Deepseek- V4.1-Flash'
+        with patch('ai_review.setup_service.endpoint', return_value='http://fixture/v1'), patch('ai_review.setup_service.requests.Session') as factory:
+            client = factory.return_value.__enter__.return_value
+            client.get.return_value = reply({'data': [{'id': model}]})
+            client.post.return_value = reply({'choices': [{'finish_reason': 'stop', 'message': {'content': '{"ok":true}'}}]})
+            config = {'api_base_url': 'http://fixture/v1', 'api_key': '密文', 'model': model}
+            result = verify_model(Mock(unseal=Mock(return_value='fixture-secret')), config)
+            self.assertTrue(result['listed'])
+            self.assertEqual(client.post.call_args.kwargs['json']['model'], model)

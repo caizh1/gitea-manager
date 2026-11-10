@@ -15,7 +15,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.wsgi import LimitedStream
 
 from models import db, GiteaServer
-from ai_review.common import ReviewError, endpoint, valid_sha
+from ai_review.common import ReviewError, endpoint, valid_sha, validate_model_id
 from ai_review.host_policy import gitea_address
 from ai_review.gitea import Gitea
 from ai_review.store import Store
@@ -136,8 +136,7 @@ def save_config():
         from ai_review.host_policy import path, approve
         if path() and 'api_base_url' in data: approve({'AI_REVIEW_MODEL_HOSTS': [value['api_base_url']]})
         value['api_base_url'] = endpoint(value['api_base_url'], 'AI_REVIEW_MODEL_HOSTS')
-    if not isinstance(value['model'], str) or value['model'] and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}', value['model']):
-        raise ReviewError('模型标识格式无效')
+    validate_model_id(value['model'], allow_empty=True)
     if 'api_key' in data:
         value['api_key'] = state.seal(data['api_key']) if data['api_key'] else ''
     if value['enabled'] and not all(value[k] for k in ('api_base_url', 'api_key', 'model')):

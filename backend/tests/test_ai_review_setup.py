@@ -69,6 +69,56 @@ class SetupTests(unittest.TestCase):
         self.assertNotIn('仅测试模型凭据'.encode(), (self.root/'review.db').read_bytes())
         self.assertEqual(public_job(self.store)['status'], 'pending')
 
+    def test_model_id_spaces_survive_configuration_and_setup(self):
+        headers = self.login()
+        model = 'Deepseek- V4.1-Flash'
+        response = self.client.put('/api/ai-review/config', json={
+            'revision': self.payload['config_revision'], 'model': model,
+            'api_base_url': self.payload['api_base_url'], 'api_key': self.payload['api_key'],
+        }, headers=headers)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(response.json['model'], model)
+        self.assertEqual(self.client.get('/api/ai-review/config').json['config']['model'], model)
+        self.assertEqual(self.store.config()['model'], model)
+        payload = dict(self.payload, config_revision=response.json['revision'])
+        response = self.client.post('/api/ai-review/setup', json=payload, headers=headers)
+        self.assertEqual(response.status_code, 202, response.json)
+        self.assertEqual(public_job(self.store)['model'], model)
+
+    def test_first_setup_accepts_model_id_spaces(self):
+        model = 'Deepseek- V4.1-Flash'
+        response = self.client.post('/api/ai-review/setup',
+            json=dict(self.payload, model=model), headers=self.login())
+        self.assertEqual(response.status_code, 202, response.json)
+        self.assertEqual(public_job(self.store)['model'], model)
+
+    def test_model_id_compatibility_and_length_boundary(self):
+        headers = self.login()
+        for model in ('', 'm', 'deepseek-v4-flash', 'vendor/model:v4.1_flash',
+                      'Deepseek-  V4.1-Flash', 'm' + ' ' * 126 + '1'):
+            with self.subTest(模型=model):
+                response = self.client.put('/api/ai-review/config', json={
+                    'revision': self.store.config()['revision'], 'model': model,
+                }, headers=headers)
+                self.assertEqual(response.status_code, 200, response.json)
+                self.assertEqual(self.store.config()['model'], model)
+
+    def test_invalid_model_ids_rejected_by_configuration_and_setup(self):
+        headers = self.login()
+        for model in (' model', 'model ', 'model\tname', 'model\nname', 'model\rname',
+                      'model\n', 'model\x00name', 'model\x7fname', 'model\u00a0name',
+                      'm' * 129, '-model', 'model;command', 'model"name', 123, ['model']):
+            with self.subTest(模型=model):
+                response = self.client.put('/api/ai-review/config', json={
+                    'revision': self.payload['config_revision'], 'model': model,
+                }, headers=headers)
+                self.assertEqual(response.status_code, 400, response.json)
+                response = self.client.post('/api/ai-review/setup',
+                    json=dict(self.payload, model=model), headers=headers)
+                self.assertEqual(response.status_code, 400, response.json)
+                self.assertEqual(self.store.config()['model'], '')
+                self.assertIsNone(public_job(self.store))
+
     def test_untrusted_input_cannot_select_nonexistent_server(self):
         payload = dict(self.payload, repositories=[{'server_id':9999, 'repo_id':12, 'name':'团队/仓库'}])
         with self.assertRaises(ReviewError): submit(self.store, payload, 'http://manager.internal')

@@ -75,6 +75,17 @@ def valid_sha(value):
     return value
 
 
+def validate_model_id(value, *, allow_empty=False):
+    """保留模型标识原文，允许内部普通空格，拒绝控制字符及首尾空格。"""
+    if allow_empty and value == '':
+        return value
+    if (not isinstance(value, str)
+            or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/ -]{0,127}', value)
+            or value.endswith(' ')):
+        raise ReviewError('模型标识格式无效')
+    return value
+
+
 def safe_path(value):
     if (not isinstance(value, str) or not value or len(value) > 1000 or value.startswith('/')
             or any(p in ('', '.', '..') for p in value.split('/'))

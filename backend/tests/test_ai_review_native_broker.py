@@ -294,6 +294,13 @@ class NativeBrokerFailureTests(unittest.TestCase):
         self.assertEqual(profile['top_p'], 0.95)
         self.assertEqual(profile['presence_penalty'], 0.0)
 
+    def test_model_id_spaces_preserved_in_native_request(self):
+        model = 'Deepseek- V4.1-Flash'
+        response, _, upstream = self.request('capture', 5, model=model)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(upstream.bodies), 1)
+        self.assertEqual(upstream.bodies[0]['model'], model)
+
     def test_actual_http_403_keeps_status_and_header_metrics(self):
         response, diagnostic, _upstream = self.request('http403', 5)
         self.assertEqual(response.status_code, 502)
