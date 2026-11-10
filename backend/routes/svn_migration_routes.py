@@ -64,7 +64,8 @@ def status():
 
 @svn_migration_bp.get('/targets')
 def targets():
-    return jsonify([{'id': row.id, 'name': row.name, 'url': row.gitea_url} for row in
+    return jsonify([{'id': row.id, 'name': row.name, 'role': row.role,
+                     'url': row.gitea_url, 'host': row.host, 'gitea_port': row.gitea_port} for row in
                     GiteaServer.query.filter(GiteaServer.role != 'archive').order_by(GiteaServer.id)])
 
 

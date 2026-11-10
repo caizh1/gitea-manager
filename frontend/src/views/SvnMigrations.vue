@@ -81,6 +81,7 @@ import SvnLayoutDetection from '../components/SvnLayoutDetection.vue'
 import SvnPlanEditor from '../components/SvnPlanEditor.vue'
 import SvnSteps from '../components/SvnSteps.vue'
 import SvnProjectDiscovery from '../components/SvnProjectDiscovery.vue'
+import { serverLabel } from '../components/serverDisplay.js'
 import { tone, checkLabel, checkTone, migrationLabel, dateTime } from '../components/svnMigrationDisplay.js'
 
 const center=ref(null)
@@ -104,7 +105,7 @@ const repositoryInputs=computed(()=>{
 watch(layoutMode,()=>{detectedLayouts.value=[]})
 const currentPlan=ref(null),currentRun=ref(null),currentCheck=ref(null),runEvents=ref([]),fullRead=ref(false),frozen=ref(false)
 const sourceById=id=>state.sources.find(s=>s.id===id)
-const targetName=id=>state.targets.find(s=>s.id===id)?.name || '目标实例 #'+id
+const targetName=id=>{const server=state.targets.find(s=>s.id===id);return server?serverLabel(server):'目标实例 #'+id}
 const sourceRepositories=id=>state.repositories.filter(r=>r.source_id===id)
 const selectedRepos=computed(()=>state.repositories.filter(r=>selection.ids.includes(r.id)&&!r.archived&&!sourceById(r.source_id)?.archived).map(r=>({...r,source_name:sourceById(r.source_id)?.name})))
 const selectedSourceCount=computed(()=>new Set(selectedRepos.value.map(r=>r.source_id)).size)

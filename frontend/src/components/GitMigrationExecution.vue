@@ -3,9 +3,7 @@
     <h3>迁移执行与交接</h3>
     <p>选择接收群组后，来源完整路径将保留在该群组下。资料未全部核验时，仓库保留在管理员私有隔离区。</p>
     <div v-if="inventory?.status === 'succeeded' && !inventory.stale" class="execution-form">
-      <el-select v-model="serverId" placeholder="选择目标实例" aria-label="目标实例" @change="resetGroups">
-        <el-option v-for="server in servers" :key="server.id" :value="server.id" :label="server.name" />
-      </el-select>
+      <GiteaInstanceSelect v-model="serverId" :servers="servers" aria-label="目标实例" @change="resetGroups" />
       <div v-if="serverId" class="group-browser">
         <div class="actions"><el-button :disabled="!parents.length" @click="goBack">上一级</el-button><span>{{ parents.at(-1)?.full_path || '根目录' }}</span></div>
         <div v-for="group in groups" :key="group.id" class="group-row">
@@ -65,6 +63,7 @@ import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import { useOperationPolling } from '../composables/useOperationPolling'
+import GiteaInstanceSelect from './GiteaInstanceSelect.vue'
 const props = defineProps({ inventory: Object, sourceId: Number })
 const router = useRouter(), mapping = ref(null)
 const servers = ref([]), serverId = ref(null), groupId = ref(null), groups = ref([]), parents = ref([]), chosen = ref(null), nextGroup = ref(0)

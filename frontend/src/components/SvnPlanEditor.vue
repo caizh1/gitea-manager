@@ -12,7 +12,7 @@
           <section class="target-panel"><h3>迁移计划配置</h3>
             <el-form label-position="left" label-width="144px" @submit.prevent="save">
               <el-form-item label="计划名称" required><el-input v-model="form.name" aria-label="计划名称" maxlength="200" /></el-form-item>
-              <el-form-item label="目标 Gitea 实例" required><el-select v-model="form.server_id" placeholder="选择已登记的 Gitea 实例" aria-label="目标 Gitea 实例"><el-option v-for="target in targets" :key="target.id" :value="target.id" :label="target.name" /></el-select></el-form-item>
+              <el-form-item label="目标 Gitea 实例" required><GiteaInstanceSelect v-model="form.server_id" :servers="targets" /></el-form-item>
               <el-form-item label="目标群组" required><div class="group-field"><el-select v-model="groupId" filterable :disabled="!form.server_id" :loading="loadingGroups" placeholder="请选择目标群组" aria-label="目标群组"><el-option v-for="group in availableGroups" :key="group.id" :value="group.id" :label="group.name+' · '+group.full_path" :disabled="!group.selectable" /></el-select><el-button :disabled="!form.server_id" @click="picker=true">选择群组</el-button></div><p class="field-note">请选择有创建仓库权限的群组。</p><el-button link type="primary" :disabled="!form.server_id" @click="openCreate"><el-icon><CirclePlus /></el-icon>新建群组</el-button></el-form-item>
               <el-form-item label="目标路径"><div class="target-prefix">{{ selectedGroup ? selectedGroup.full_path+'/' : '选择群组后显示' }}</div></el-form-item>
             </el-form>
@@ -20,7 +20,7 @@
             <div class="permission-note"><el-icon><InfoFilled /></el-icon><span>沿用所选群组的权限，预检将检查建库权限与同名冲突。</span></div>
           </section>
           <section class="target-panel preview-panel"><h3>迁移结果预览</h3>
-            <div class="destination-summary"><el-icon><Document /></el-icon><div>将创建以下 {{ form.repositories.length }} 个仓库到指定群组：<strong>{{ selectedTarget?.name || '请选择目标实例' }} / {{ selectedGroup ? selectedGroup.name+' · '+selectedGroup.full_path : '请选择目标群组' }}</strong></div></div>
+            <div class="destination-summary"><el-icon><Document /></el-icon><div>将创建以下 {{ form.repositories.length }} 个仓库到指定群组：<strong>{{ serverLabel(selectedTarget) }} / {{ selectedGroup ? selectedGroup.name+' · '+selectedGroup.full_path : '请选择目标群组' }}</strong></div></div>
             <div v-for="(row,index) in form.repositories" :key="row.id" class="destination-row"><el-icon class="folder-icon"><FolderOpened /></el-icon><strong class="source-name">{{ sourceName(row) }}</strong><el-icon class="path-arrow"><Right /></el-icon><span class="destination-path">{{ selectedGroup ? selectedGroup.full_path+'/'+row.name : '请选择目标群组' }}</span><div class="path-status" :class="pathRows[index]?.available?'is-available':pathRows[index]?'is-conflict':''"><span><el-icon><CircleCheckFilled v-if="pathRows[index]?.available"/><WarningFilled v-else-if="pathRows[index]"/><Loading v-else-if="checkingPaths"/><Clock v-else/></el-icon>{{ pathRows[index]?.message || (checkingPaths?'检查路径中':'待检查') }}</span><small>新建私有仓库</small></div></div>
             <el-alert v-if="pathError" :title="pathError" type="error" show-icon :closable="false" />
             <div class="complete-note"><el-icon><CircleCheckFilled /></el-icon>项目内容与目录结构保持完整。</div>
@@ -43,6 +43,8 @@ import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Right, CirclePlus, FolderOpened, Document, InfoFilled, CircleCheckFilled, WarningFilled, Loading, Clock } from '@element-plus/icons-vue'
 import { api } from '../api'
 import SvnSteps from './SvnSteps.vue'
+import GiteaInstanceSelect from './GiteaInstanceSelect.vue'
+import { serverLabel } from './serverDisplay.js'
 const props=defineProps({ repositories:{type:Array,default:()=>[]}, selectedIds:{type:Array,default:()=>[]}, targets:{type:Array,default:()=>[]}, planId:{type:Number,default:null} })
 const emit=defineEmits(['back','saved'])
 const form=ref({name:'SVN 内容迁移',server_id:null,repositories:[],target_ca_pem:'',excluded:[]}),authorsCsv=ref('source_id,svn_user,name,email\n')
