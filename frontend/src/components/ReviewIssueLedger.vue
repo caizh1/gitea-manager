@@ -1,7 +1,7 @@
 <template>
   <section v-if="error || data.total || task.result?.lifecycle || task.progress_stage === 'issue_checks'" class="issue-ledger" data-testid="review-issue-ledger">
     <h4>PR 问题台账</h4>
-    <p>旧问题复核 {{ completed }} / {{ checkTotal }}；每个旧问题一次请求，仅对照历史和当前 PR diff。</p>
+    <p>旧问题复核 {{ completed }} / {{ checkTotal }}<template v-if="task.configuration?.engine === 'codex_cli'">，每个问题使用独立 Codex 会话核对固定源码与历史证据。</template><template v-else>；每个旧问题一次请求，仅对照历史和当前 PR diff。</template></p>
     <p>状态以依据版本为准。原评论与人工讨论保留；待确认不代表已修复。</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <el-table :data="data.items" size="small" empty-text="尚无可跟踪的独立问题">
