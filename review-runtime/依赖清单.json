@@ -29,6 +29,15 @@
       "SHA256": "5a0ffa7a5504bdde023a0c59cfa009654c52186d135b3b762f28e032ca2833b5",
       "归档SHA256": "96df9b0b4fcabb420c445dfdcf45d49570a57546603bbb4784593c6dfb098d7e",
       "来源": "https://github.com/anomalyco/opencode/releases/download/v1.18.7/opencode-linux-x64-baseline.tar.gz"
+    },
+    {
+      "组件": "Codex CLI",
+      "版本": "0.169.0",
+      "文件": "review-runtime/vendor/codex-linux-x64",
+      "SHA256": "b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b",
+      "归档SHA256": "9af4d751fce183faedea629437d5252dbf458eeb04130cf4f97be844621ea985",
+      "归档文件": "codex-x86_64-unknown-linux-musl",
+      "来源": "https://github.com/openai/codex/releases/download/rust-v0.169.0/codex-x86_64-unknown-linux-musl.tar.gz"
     }
   ]
 }

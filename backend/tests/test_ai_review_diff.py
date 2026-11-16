@@ -117,7 +117,7 @@ class DiffReviewTests(unittest.TestCase):
             key = Path(folder)/'master.key'; key.write_bytes(Fernet.generate_key())
             with patch.dict(os.environ, AI_REVIEW_MASTER_KEY_FILE=str(key)):
                 store = Store(Path(folder)/'review.db')
-                store.save_config({'revision': 1, 'enabled': True, 'debounce_seconds': 0, 'model': '协议替身'})
+                store.save_config({'revision': 1, 'enabled': True, 'debounce_seconds': 0, 'model': '协议替身', 'engine': 'opencode_native'})
                 repo = store.save_repo(1, 7, {'enabled': True, 'bot_token': store.seal('测试'),
                     'webhook_secret': store.seal('测试'), 'repo_name': 'test/code', 'bot_id': 9})
                 ident = store.enqueue(repo['id'], 1, {'head': 'a'*40, 'base': 'b'*40})
@@ -148,7 +148,7 @@ class DiffReviewTests(unittest.TestCase):
             key = Path(folder)/'master.key'; key.write_bytes(Fernet.generate_key())
             with patch.dict(os.environ, AI_REVIEW_MASTER_KEY_FILE=str(key), AI_REVIEW_WORKSPACE_ROOT=folder):
                 store = Store(Path(folder)/'review.db')
-                store.save_config({'revision': 1, 'enabled': True, 'debounce_seconds': 0, 'model': '协议替身'})
+                store.save_config({'revision': 1, 'enabled': True, 'debounce_seconds': 0, 'model': '协议替身', 'engine': 'opencode_native'})
                 repo = store.save_repo(1, 7, {'enabled': True, 'bot_token': store.seal('测试'),
                     'webhook_secret': store.seal('测试'), 'repo_name': 'test/code', 'bot_id': 9})
                 ident = store.enqueue(repo['id'], 1, {'head': 'a'*40, 'base': 'b'*40}); job = store.claim()

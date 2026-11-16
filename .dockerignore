@@ -16,3 +16,7 @@ review-runtime/*
 !review-runtime/StructuredOutput.js
 !review-runtime/vendor/
 !review-runtime/Dockerfile
+!review-runtime/codex_session.py
+!review-runtime/review_tools.py
+!review-runtime/backend_responses.py
+!review-runtime/codex_model.json

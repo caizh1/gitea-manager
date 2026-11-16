@@ -79,7 +79,7 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['model'], model)
         self.assertEqual(self.client.get('/api/ai-review/config').json['config']['model'], model)
-        self.assertEqual(self.store.config()['model'], model)
+        self.assertEqual(self.store.config()['model'], model or 'DeepSeek- V4.1-Flash')
         payload = dict(self.payload, config_revision=response.json['revision'])
         response = self.client.post('/api/ai-review/setup', json=payload, headers=headers)
         self.assertEqual(response.status_code, 202, response.json)
@@ -101,7 +101,7 @@ class SetupTests(unittest.TestCase):
                     'revision': self.store.config()['revision'], 'model': model,
                 }, headers=headers)
                 self.assertEqual(response.status_code, 200, response.json)
-                self.assertEqual(self.store.config()['model'], model)
+                self.assertEqual(self.store.config()['model'], model or 'DeepSeek- V4.1-Flash')
 
     def test_invalid_model_ids_rejected_by_configuration_and_setup(self):
         headers = self.login()
@@ -116,7 +116,7 @@ class SetupTests(unittest.TestCase):
                 response = self.client.post('/api/ai-review/setup',
                     json=dict(self.payload, model=model), headers=headers)
                 self.assertEqual(response.status_code, 400, response.json)
-                self.assertEqual(self.store.config()['model'], '')
+                self.assertEqual(self.store.config()['model'], 'DeepSeek- V4.1-Flash')
                 self.assertIsNone(public_job(self.store))
 
     def test_untrusted_input_cannot_select_nonexistent_server(self):

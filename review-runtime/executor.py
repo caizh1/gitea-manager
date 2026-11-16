@@ -288,6 +288,11 @@ def initialize_runtime():
     from runtime_probe import probe
     try:
         runtime_status = probe()
+        from codex_session import VERSION
+        version = subprocess.check_output([os.environ.get('AI_REVIEW_CODEX', '/opt/review/codex'), '--version'], timeout=30, text=True).strip()
+        runtime_status['codex_version'] = version
+        runtime_status['codex_ready'] = version == 'codex-cli ' + VERSION
+        runtime_status['ready'] = runtime_status['ready'] and runtime_status['codex_ready']
     except Exception as exc:
         runtime_status = {'ready': False, 'reason': str(exc)}
     logging.warning('执行器启动检测：%s', json.dumps(runtime_status, ensure_ascii=False))

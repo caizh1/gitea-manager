@@ -23,3 +23,4 @@ offline/
 /outputs/
 /*离线包复验.json
 /gitea-manager.*包复验.json
+/review-runtime/vendor/codex-linux-x64

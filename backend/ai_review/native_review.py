@@ -158,7 +158,7 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
     session_deadline = deadline - FINISH_MARGIN
     if time.time() >= session_deadline:
         raise ReviewError('工作区准备已用完原生审查时间，未启动模型')
-    capability = _capability(store, job, config['model'], session_deadline, 1 if job.get('batch_protocol') else -1)
+    capability = _capability(store, job, config['model'], session_deadline, 1 if job.get('batch_protocol') and config.get('engine') != 'codex_cli' else -1)
     response_limit = config.get('model_response_max_mib', 8) * 1024 * 1024
     session = requests.Session(); session.trust_env = False
     submitted = bool(current.get('session_submitted_at'))
@@ -166,7 +166,7 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
         if submitted:
             # 执行器保留同一 Manager session。租约接管只幂等更新它持有的
             # capability；404/冲突都不得回退到 /execute。
-            authorize_data = {'job_id': job['id'], 'model': config['model'],
+            authorize_data = {'engine': config.get('engine'), 'job_id': job['id'], 'model': config['model'],
                               'deadline_at': session_deadline, 'capability': capability}
             for attempt in range(2):
                 try:
@@ -192,7 +192,7 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                 break
         else:
             event_token = mark_submitted(store, job['id'], job['owner'], event_token)
-            data = {'job_id': job['id'], 'session_id': current['session_id'], 'workspace': workspace,
+            data = {'engine': config.get('engine'), 'job_id': job['id'], 'session_id': current['session_id'], 'workspace': workspace,
                     'prompt': PROMPT, 'system': SYSTEM, 'model': config['model'],
                     'deadline_at': session_deadline, 'timeout': max(20, int(session_deadline-time.time())),
                     'event_url': EVENT_URL, 'event_token': event_token, 'capability': capability,
@@ -207,6 +207,8 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                 from .diff_review import SYSTEM as DIFF_SYSTEM, prompt as diff_prompt
                 data.update(review_scope='diff', prompt=diff_prompt(diff_snapshot), system=DIFF_SYSTEM,
                             context_retrieval_budget=0)
+                if config.get('engine') == 'codex_cli':
+                    data.update(batch_protocol=1, codex_phase=diff_snapshot.get('_codex_phase', 'primary'), context_retrieval_budget=config.get('context_retrieval_budget',20))
                 if diff_snapshot.get('_batch_messages'):
                     data.update(system=diff_snapshot['_batch_messages'][0]['content'], prompt=diff_snapshot['_batch_messages'][1]['content'], batch_protocol=1)
             try:

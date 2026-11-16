@@ -23,14 +23,14 @@ PLATFORM = {
     'mirror': 'list_mirrors create_mirror update_mirror delete_mirror setup_mirror sync_mirror mirror_status mirror_audit_logs sync_repo',
     'settings': 'get_settings update_settings',
     'management': 'status public_key fingerprint trust discovery connect reports download_report report_steps',
-    'ai_review': 'save_config connection_test progress_assets create_repository remove_repository install_webhook setup_status setup_submit setup_detail setup_resume raw_diagnostics_download',
+    'ai_review': 'save_config connection_test progress_assets create_repository remove_repository install_webhook setup_status setup_submit setup_detail setup_resume raw_diagnostics_download clear_source_cache',
     'approval': 'native_governance native_governance_server bundle native_import_preview native_import_apply native_uninstall_bundle',
 }
 ORGANIZATION = {
     'access_context': 'context',
     'repository_policies': 'csrf schema servers organizations candidate_users candidate_teams repositories repository_rules templates create_template update_template delete_template verify_template_identities preview_batch apply_batch batches batch_detail',
     'commit_gate': 'list_rules create_rule update_rule delete_rule list_repos apply_gate remove_gate_route test_rule',
-    'ai_review': 'csrf config servers catalog repositories update_repository tasks statistics issue_list task_issues dataset_list dataset_disable dataset_export dataset_history task task_failure_checks task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention task_plan confirm_plan continue_plan tokenizers',
+    'ai_review': 'csrf config servers catalog repositories update_repository tasks statistics issue_list task_issues dataset_list dataset_disable dataset_export dataset_history task task_failure_checks task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention task_plan confirm_plan continue_plan tokenizers publication_preview approve_publication source_cache',
     'approval': 'csrf policies create_policy update_policy preview delete_policy enable disable admin_status audits',
     'statistics': 'overview commit_trend repo_ranking author_ranking author_detail author_repos author_trend refresh_statistics',
     'alert': 'list_alerts alert_summary clear_alert clear_resolved',

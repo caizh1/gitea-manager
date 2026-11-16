@@ -12,7 +12,7 @@ SESSION_RE = re.compile(r'^[A-Za-z0-9_-]{16,100}$')
 EVENT_RE = re.compile(r'^[A-Za-z0-9_.:-]{1,180}$')
 SECRET_KEYS = re.compile(r'(authorization|cookie|token|secret|password|api[_-]?key|credential)', re.I)
 SECRET_TEXT = re.compile(r'(?i)\b(bearer|token)\s+[A-Za-z0-9._~+/=-]{8,}')
-SAFE_TOKEN_COUNTS = {'model_context_tokens', 'upstream_output_tokens', 'configured_output_tokens', 'compaction_threshold_tokens'}
+SAFE_TOKEN_COUNTS = {'input_tokens', 'output_tokens', 'total_tokens', 'cached_tokens', 'reasoning_tokens', 'model_context_tokens', 'upstream_output_tokens', 'configured_output_tokens', 'compaction_threshold_tokens'}
 EVENT_LIMIT = 256 * 1024
 SESSION_LIFECYCLE = {
     'session.starting': {'running'},
@@ -91,7 +91,7 @@ def migrate(c):
     setting = c.execute('SELECT value FROM settings WHERE id=1').fetchone()
     if setting:
         config = json.loads(setting[0])
-        if config.get('engine') != 'opencode_native':
+        if config.get('engine') not in ('opencode_native', 'codex_cli'):
             # 引擎收口是一次升级迁移，不是用户更换模型/凭据。保留旧执行代次，
             # 否则下一轮仓库核对会把全部旧 PR 当成新配置自动重审。
             previous_execution_revision = int(config.get('execution_revision', config.get('revision', 1)))
@@ -234,7 +234,7 @@ def _receive(c, store, token_hash, event, now):
         tool_id = event['payload'].get('call_id') or event['payload'].get('part_id')
         if isinstance(tool_id, str) and 0 < len(tool_id) <= 200:
             inserted_tool = c.execute('INSERT OR IGNORE INTO review_session_tool_calls VALUES (?,?)',
-                                      (event['job'], tool_id)).rowcount
+                                      (event['job'], event['session_id'] + ':' + tool_id)).rowcount
             if inserted_tool:
                 counters['tool_calls'] = counters.get('tool_calls', 0) + 1
     c.execute('''UPDATE jobs SET session_status=CASE WHEN ?!='' THEN ? ELSE session_status END,

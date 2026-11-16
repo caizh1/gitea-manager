@@ -55,7 +55,7 @@ def _remove_repository(state, repository, revision, target):
             connection.execute('UPDATE repositories SET enabled=0,revision=revision+1,value=? WHERE id=?',
                                (encode(value), repository))
             connection.execute("""UPDATE jobs SET status='superseded',error='仓库接入已停止',updated=?
-                WHERE repository=? AND status IN ('queued','awaiting_cost','budget_paused','incomplete')""",
+                WHERE repository=? AND status IN ('queued','awaiting_cost','budget_paused','incomplete','awaiting_publication')""",
                                (time.time(), repository))
             connection.execute('DELETE FROM capabilities WHERE job IN (SELECT id FROM jobs WHERE repository=?)', (repository,))
             connection.execute('UPDATE review_native_bindings SET active=0 WHERE job IN (SELECT id FROM jobs WHERE repository=?)', (repository,))

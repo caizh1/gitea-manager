@@ -1,5 +1,5 @@
 ARG BASE_IMAGE=10.10.5.21:5001/library/python:3.11-slim
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS dependencies
 
 WORKDIR /app
 
@@ -7,7 +7,14 @@ COPY requirements.txt .
 COPY wheels/ /tmp/wheels/
 RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels/ -r requirements.txt && rm -rf /tmp/wheels
 
-COPY . .
+COPY . /source
+RUN rm -rf /source/wheels /source/tests /source/__pycache__
+
+FROM ${BASE_IMAGE}
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=dependencies /usr/local /usr/local
+COPY --from=dependencies /source /app
 
 RUN mkdir -p /app/data/backups
 

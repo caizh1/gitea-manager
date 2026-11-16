@@ -6,7 +6,7 @@ from .performance import TARGET_SECONDS
 
 RUNNING = ('running', 'publishing', 'recovering')
 TERMINAL = ('succeeded', 'failed', 'superseded', 'publish_unknown', 'cancelled')
-LABELS = {'awaiting_cost': '等待成本确认', 'budget_paused': '预算暂停', 'incomplete': '审查未完成', 'queued': '已排队', 'running': '正在审查', 'publishing': '正在发布',
+LABELS = {'awaiting_publication': '等待确认发布', 'awaiting_cost': '等待成本确认', 'budget_paused': '预算暂停', 'incomplete': '审查未完成', 'queued': '已排队', 'running': '正在审查', 'publishing': '正在发布',
           'recovering': '正在核对发布结果', 'succeeded': '审查完成', 'failed': '审查失败',
           'superseded': '版本已过期', 'publish_unknown': '发布结果待核对',
           'cancelling': '取消中', 'cancelled': '已取消',

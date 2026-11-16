@@ -15,7 +15,7 @@ from .common import ReviewError, Stale, encode, secret_file
 from .budgets import TIME_FIELDS, CONTEXT_DEFAULTS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision
 import json
 
-DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'opencode_native', 'api_base_url': '', 'model': '',
+DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': 'DeepSeek- V4.1-Flash',
             'api_key': '', 'revision': 1, 'debounce_seconds': 20, 'max_files': 40,
             'max_calls': 32, 'task_timeout_seconds': 1200, 'review_timeout_seconds': REVIEW_TIMEOUT_DEFAULT,
             'model_request_timeout_seconds': MODEL_TIMEOUT_DEFAULT,
@@ -28,10 +28,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 18:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 19:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 18:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 19:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -100,7 +100,9 @@ class Store:
             c.execute("CREATE INDEX IF NOT EXISTS finding_archive_job ON review_finding_archive(json_extract(value,'$.job'))")
             from .batch_store import migrate as migrate_batches
             migrate_batches(c)
-            c.execute('PRAGMA user_version=18')
+            from .publication import migrate as migrate_publication
+            migrate_publication(c)
+            c.execute('PRAGMA user_version=19')
             c.commit()
         os.chmod(self.path, 0o600)
 
@@ -182,6 +184,8 @@ class Store:
         else:
             with contextlib.closing(self.connect()) as c:
                 result = self.config(connection=c)
+        if not result.get('model'):
+            result['model'] = 'DeepSeek- V4.1-Flash'
         result.setdefault('model_request_timeout_seconds', MODEL_TIMEOUT_DEFAULT)
         result.setdefault('review_timeout_seconds', result.get('task_timeout_seconds', REVIEW_TIMEOUT_DEFAULT))
         result.setdefault('model_max_output_tokens', 0)
@@ -252,7 +256,7 @@ class Store:
             public = dict(old); public['api_key_configured'] = bool(public.pop('api_key',''))
             c.execute('INSERT INTO configuration_history VALUES (?,?,?)', (public['revision'],encode(public),time.time()))
             if invalidate:
-                c.execute("UPDATE jobs SET status='superseded',error='配置已变更',updated=? WHERE status IN ('queued','running','awaiting_cost','budget_paused','incomplete')", (time.time(),))
+                c.execute("UPDATE jobs SET status='superseded',error='配置已变更',updated=? WHERE status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')", (time.time(),))
                 c.execute('UPDATE repositories SET last_reconcile=0')
                 c.execute('UPDATE pr_state SET progress_seq=progress_seq+1')
         return self.config(public=True)
@@ -299,7 +303,7 @@ class Store:
                 value.update(data)
                 c.execute('UPDATE repositories SET value=?,enabled=?,revision=revision+1,last_reconcile=0 WHERE id=?',
                           (encode(value), bool(value['enabled']), repository))
-                c.execute("UPDATE jobs SET status='superseded',error='仓库配置已变更',updated=? WHERE repository=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete')",
+                c.execute("UPDATE jobs SET status='superseded',error='仓库配置已变更',updated=? WHERE repository=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')",
                           (time.time(), repository))
                 c.execute('UPDATE pr_state SET progress_seq=progress_seq+1 WHERE repository=?', (repository,))
             else:
@@ -386,7 +390,7 @@ class Store:
             c.execute('''INSERT INTO pr_state(repository,number,generation,signature) VALUES (?,?,?,?)
                        ON CONFLICT(repository,number) DO UPDATE SET generation=excluded.generation,signature=excluded.signature''',
                       (repository, number, generation, signature))
-            c.execute("UPDATE jobs SET status='superseded',error='PR 已更新或关闭',updated=? WHERE repository=? AND number=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete')", (now, repository, number))
+            c.execute("UPDATE jobs SET status='superseded',error='PR 已更新或关闭',updated=? WHERE repository=? AND number=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')", (now, repository, number))
             if closed:
                 return None
             job = secrets.token_hex(16)
@@ -396,6 +400,8 @@ class Store:
                        config['revision'], repo['revision'], int(manual), target_head))
             c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=8 WHERE id=?',
                       (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
+            if config.get('engine') == 'codex_cli':
+                c.execute('UPDATE jobs SET batch_protocol=0 WHERE id=?', (job,))
             return job
 
     def job(self, job, public=False, evidence=True):
@@ -406,6 +412,9 @@ class Store:
         if not row:
             raise ReviewError('任务不存在')
         value = dict(row)
+        with contextlib.closing(self.connect()) as c:
+            usage = c.execute('SELECT SUM(input_tokens),SUM(output_tokens) FROM review_codex_usage WHERE job=?', (job,)).fetchone()
+        value['model_usage'] = {'input_tokens': usage[0] or 0, 'output_tokens': usage[1] or 0}
         from .attention import blocking, worker_state, reconciliation
         with contextlib.closing(self.connect()) as c:
             value['attention'] = blocking(c,row['repository'],row['number'])
@@ -437,7 +446,7 @@ class Store:
             value.pop('event_token_hash', None)
             value.pop('native_result_sha256', None)
             if value['snapshot']:
-                value['snapshot'] = {k: value['snapshot'][k] for k in ('id', 'base', 'head', 'merge_base', 'coverage', 'analysis_version') if k in value['snapshot']}
+                value['snapshot'] = {k: value['snapshot'][k] for k in ('id', 'base', 'head', 'merge_base', 'coverage', 'analysis_version', 'source_cache') if k in value['snapshot']}
             from .session_events import project
             project(value)
         return value
@@ -560,7 +569,7 @@ class Store:
             # 只改变本执行者仍持有的行；已被新事件取消的任务不得复活。
             c.execute("UPDATE jobs SET status=?,stage=?,error=?,updated=?,lease=0 WHERE id=? AND owner=? AND status IN ('running','publishing','recovering')",
                       (status, {'succeeded': '已完成', 'superseded': '版本已过期', 'failed': '执行失败',
-                                'publish_unknown': '发布结果待核对'}.get(status, status), error[:1000], time.time(), job, owner))
+                                'publish_unknown': '发布结果待核对', 'incomplete': '审查未完成'}.get(status, status), error[:1000], time.time(), job, owner))
             # 过期进程结束时只能撤销自己的授权，不能删除已重新领取者的授权。
             c.execute('DELETE FROM capabilities WHERE job=? AND owner=?', (job, owner))
 

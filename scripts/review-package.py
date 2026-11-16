@@ -74,6 +74,7 @@ for name in roots:
     for item in (path.rglob('*') if path.is_dir() else [path]):
         rel=item.relative_to(ROOT)
         if any(p in excluded for p in rel.parts) or not item.is_file():continue
+        if rel.parts[0]=='offline' and str(rel) not in ('offline/运行镜像.tar','offline/镜像清单.json','offline/git-migration-receiver.bundle','offline/git-migration-receiver.json'):continue
         if item.is_symlink() or item.suffix in ('.pyc','.db','.key','.log') or item.name.endswith(('.db-wal','.db-shm')):continue
         files.append(item)
 records=[]

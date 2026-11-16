@@ -144,6 +144,9 @@ def submit(store, data, fallback_url):
 
 
 def verify_model(store, value):
+    if value.get('engine') == 'codex_cli':
+        from .responses import verify_connection
+        return verify_connection(store, value)
     from .thinking import parameters, description
     from services.diagnostics import redact
     base = endpoint(value['api_base_url'], 'AI_REVIEW_MODEL_HOSTS')

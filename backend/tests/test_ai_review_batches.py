@@ -22,7 +22,7 @@ def state():
         key = Path(folder)/'key'; key.write_bytes(Fernet.generate_key())
         with patch.dict(os.environ, AI_REVIEW_MASTER_KEY_FILE=str(key), AI_REVIEW_WORKSPACE_ROOT=folder):
             store = Store(Path(folder)/'review.db')
-            store.save_config({'revision': 1, 'enabled': True, 'model': '测试模型', 'debounce_seconds': 0})
+            store.save_config({'revision': 1, 'enabled': True, 'model': '测试模型', 'debounce_seconds': 0, 'engine':'opencode_native'})
             repo = store.save_repo(1, 7, {'enabled': True, 'bot_token': store.seal('测试'), 'webhook_secret': store.seal('测试'), 'repo_name': 'test/code', 'bot_id': 9})
             job_id = store.enqueue(repo['id'], 1, {'head': 'a'*40, 'base': 'b'*40})
             # 本文件锁定旧版计划恢复语义；新建任务默认版本在第三版测试中单独验证。

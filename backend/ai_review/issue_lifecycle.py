@@ -198,13 +198,13 @@ def validate_check(raw, payload, snapshot):
         if not isinstance(entry, dict) or set(entry) != {'id', 'quote'} or not isinstance(entry['id'], str):
             raise ReviewError('复核证据必须引用 diff 编号和原文')
         ident = entry['id']; prefix = ident[:1]
-        source = payload['historical_diff'] if prefix == 'H' else payload['current_diff'] if prefix == 'C' else {}
+        source = payload['historical_diff'] if prefix == 'H' else payload['current_diff'] if prefix == 'C' else payload.get('current_source', {}) if prefix == 'S' else {}
         if ident not in source or not source[ident].strip() or source[ident] != entry['quote']:
             raise ReviewError('复核引用不属于固定 diff 原文')
         prefixes.add(prefix)
-    if state == 'present' and 'C' not in prefixes:
+    if state == 'present' and not prefixes & {'C', 'S'}:
         raise ReviewError('仍存在必须引用当前 diff 证据')
-    if state == 'fixed' and not {'H', 'C'} <= prefixes:
+    if state == 'fixed' and not ('H' in prefixes and prefixes & {'C', 'S'}):
         raise ReviewError('已修复必须引用修复前后 diff 证据')
     if state == 'obsolete' and ('H' not in prefixes or raw.get('obsolete_reason') not in ('withdrawn', 'out_of_scope')):
         raise ReviewError('已失效必须说明撤回或退出 PR 范围的依据')

@@ -118,6 +118,8 @@ def guard_review(endpoint, binding, data):
             raise AccessError('资源不存在或无权访问', 404)
         task = state.job(job_id, public=True, evidence=False)
         require_resource('ai_repository', task['repository'])
+    if endpoint == 'ai_review.clear_source_cache':
+        raise AccessError('仅平台管理员可清理源码缓存', 403)
     if endpoint == 'ai_review.config':
         return jsonify(config={'enabled': state.config(public=True)['enabled']}, health={}, supported_version='1.26.4')
     if endpoint == 'ai_review.catalog':

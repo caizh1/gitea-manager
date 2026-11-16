@@ -119,7 +119,7 @@ def save_config():
         raise ReviewError('配置包含不支持的字段')
     old = state.config()
     value = dict(old, **data)
-    if not isinstance(value['enabled'], bool) or value['engine'] != 'opencode_native':
+    if not isinstance(value['enabled'], bool) or value['engine'] not in ('opencode_native', 'codex_cli'):
         raise ReviewError('开关或执行引擎无效')
     for key, low, high in [('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
                            ('task_timeout_seconds', 60, 3600), ('review_timeout_seconds', 60, 3600),
@@ -141,6 +141,10 @@ def save_config():
         value['api_key'] = state.seal(data['api_key']) if data['api_key'] else ''
     if value['enabled'] and not all(value[k] for k in ('api_base_url', 'api_key', 'model')):
         raise ReviewError('启用前请配置模型服务地址、密钥和模型')
+    if value['enabled'] and value['engine'] == 'codex_cli' and any(
+            value.get(key) != old.get(key) for key in ('enabled', 'engine', 'api_base_url', 'api_key', 'model')):
+        from ai_review.setup_service import verify_model
+        verify_model(state, value)
     return jsonify(state.save_config(value))
 
 
@@ -724,3 +728,47 @@ def attention():
         positive(request.args['repository']) if request.args.get('repository') else None,
         positive(request.args['number']) if request.args.get('number') else None,
         allowed_jobs=review_job_ids(state)))
+
+
+@ai_review_bp.get('/tasks/<job>/publication-preview')
+def publication_preview(job):
+    from ai_review.publication import preview
+    state = store()
+    task = state.job(job)
+    state.repo(task['repository'])
+    return jsonify(preview(state, task))
+
+
+@ai_review_bp.post('/tasks/<job>/approve-publication')
+def approve_publication(job):
+    from ai_review.publication import approve
+    from access.scopes import actor_name
+    from ai_review.worker import client_for
+    state = store()
+    task = state.job(job)
+    repo = state.repo(task['repository'])
+    client = client_for(state, repo)
+    try:
+        approve(state, client, task, body(), actor_name())
+    finally:
+        client.close()
+    return jsonify(ok=True)
+
+
+@ai_review_bp.get('/source-cache')
+def source_cache():
+    from ai_review.git_cache import inventory
+    state = store()
+    from access.organization_api import review_repository_ids
+    allowed = review_repository_ids()
+    repos = [r for r in state.repos() if allowed is None or r['id'] in allowed]
+    return jsonify(inventory(state, repos))
+
+
+@ai_review_bp.delete('/source-cache/<int:repository>')
+def clear_source_cache(repository):
+    from ai_review.git_cache import clear
+    state = store()
+    repo = state.repo(repository)
+    clear(state, repo)
+    return jsonify(ok=True)

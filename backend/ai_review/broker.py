@@ -818,4 +818,6 @@ def create_broker(store=None):
         result=Response(archive_chunks(),headers=headers)
         result.call_on_close(lambda:(upstream.close(),client.close()))
         return result
+    from .responses import register
+    register(app, store)
     return app

@@ -159,6 +159,9 @@ def sync_comments(publisher):
             WHERE x.repository=? AND x.number=? ORDER BY x.review_id,x.comment_id''',
             (job['id'], job['repository'], job['number']))]
     for link in rows:
+        approved = publisher.full_result.get('_approved_issue_ids')
+        if approved is not None and link['issue'] not in approved:
+            continue
         store.active(job['id'], job['owner'])
         value = json.loads(link['value'])
         desired = link['original_body'] + status_block(link['issue'], value['status'], value['reason'], snapshot,

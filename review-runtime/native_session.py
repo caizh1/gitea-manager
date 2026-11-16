@@ -1531,7 +1531,11 @@ class NativeSessions:
                                        'model': data['model'], 'deadline_at': data['deadline_at']})
             if batched:
                 atomic_json(batch_path, {'job_id': data['job_id'], 'session_id': data['session_id'], 'cancelled': False})
-            row = SessionRun(data, workspace, runtime,
+            run_type = SessionRun
+            if data.get('engine') == 'codex_cli':
+                from codex_session import CodexRun
+                run_type = CodexRun
+            row = run_type(data, workspace, runtime,
                 os.environ.get('AI_REVIEW_BROKER_URL', 'http://review-worker:5051/v1'))
             self.sessions[row.session_id] = row
 
@@ -1578,7 +1582,9 @@ class NativeSessions:
         value = terminal.public(include_result=False) if terminal else {'session_id': session_id, 'job_id': job_id,
                                                    'status': 'aborted', 'error_code': 'user_cancelled'}
         # gunicorn 进程重启可能留下 OpenCode 子进程，只匹配本任务固定工作区与原生命令。
-        value['execution_stopped'] = (binding.get('never_started') is True or self._stop_orphans(job_id))
+        value['execution_stopped'] = (binding.get('never_started') is True
+                                      or terminal is not None and terminal.record.get('execution_stopped') is True
+                                      or self._stop_orphans(job_id))
         if not terminal:
             value.update(log_stream_closed=True, acked_seq=0)
         return value
@@ -1589,6 +1595,8 @@ class NativeSessions:
             return False
         workspace = (Path(os.environ.get('AI_REVIEW_WORKSPACE_ROOT', '/app/review-workspaces')) / job_id).resolve()
         binary = str(Path(os.environ.get('AI_REVIEW_OPENCODE', '/opt/review/opencode')))
+        codex_binary = str(Path(os.environ.get('AI_REVIEW_CODEX', '/opt/review/codex')))
+        runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))
         found = False
         for folder in proc.iterdir():
             if not folder.name.isdigit():
@@ -1597,9 +1605,19 @@ class NativeSessions:
                 command = (folder / 'cmdline').read_bytes().split(b'\0')
                 native_command = (command and (os.fsdecode(command[0]) == binary or
                     command[0].endswith(b'/rosetta') and os.fsencode(binary) in command[1:3]))
-                if not native_command:
+                codex_command = (command and (os.fsdecode(command[0]) == codex_binary or command[0].endswith(b'/rosetta') and os.fsencode(codex_binary) in command[1:3]))
+                cwd = (folder / 'cwd').resolve()
+                if codex_command:
+                    bindings = list((runtime / 'bindings').glob(job_id + '.*.json'))
+                    allowed_dirs = set()
+                    for binding in bindings:
+                        value = json.loads(binding.read_text())
+                        allowed_dirs.add((runtime / value['session_id']).resolve())
+                    if cwd not in allowed_dirs or b'review' not in command:
+                        continue
+                elif not native_command:
                     continue
-                if (folder / 'cwd').resolve() != workspace or not (b'serve' in command or b'--version' in command):
+                elif cwd != workspace or not (b'serve' in command or b'--version' in command):
                     continue
                 pid = int(folder.name)
                 if os.getpgid(pid) != pid:
@@ -1608,7 +1626,7 @@ class NativeSessions:
                 os.killpg(pid, signal.SIGKILL)
             except (FileNotFoundError, ProcessLookupError):
                 continue
-            except (PermissionError, OSError):
+            except (PermissionError, OSError, ValueError, KeyError):
                 return False
         # 已找到并发送信号的进程须在下一轮再次确认消失。
         return not found

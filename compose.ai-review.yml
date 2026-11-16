@@ -31,7 +31,7 @@ services:
       AI_REVIEW_MODEL_HOSTS: ${AI_REVIEW_MODEL_HOSTS:-}
       AI_REVIEW_EXECUTOR_URL: http://review-executor:5052
       PYTHONDONTWRITEBYTECODE: '1'
-    volumes: [review-data:/app/review]
+    volumes: [review-data:/app/review, review-workspaces:/app/review-workspaces]
     secrets: [review_master, review_executor, access_authorization]
     networks: [default, review-execution]
     read_only: true
@@ -92,6 +92,7 @@ services:
       AI_REVIEW_EXECUTOR_TOKEN_FILE: /run/secrets/review_executor
       AI_REVIEW_BROKER_URL: http://review-worker:5051/v1
       PYTHONDONTWRITEBYTECODE: '1'
+    volumes: [review-workspaces:/app/review-workspaces:ro, review-native:/app/review-native]
     secrets: [review_executor]
     networks: [review-execution]
     dns: [127.0.0.1]
@@ -107,6 +108,8 @@ networks:
   review-execution:
     internal: true
 volumes:
+  review-workspaces:
+  review-native:
   review-data:
 secrets:
   review_master:

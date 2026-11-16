@@ -21,12 +21,12 @@ for row in manifest['依赖']:
         if hashlib.sha256(data).hexdigest()!=expected:raise RuntimeError('下载文件哈希不匹配：'+row['组件'])
         if '归档SHA256' in row:
             with tarfile.open(fileobj=io.BytesIO(data),mode='r:gz') as archive:
-                files=[m for m in archive.getmembers() if m.isfile() and Path(m.name).name=='opencode']
-                if len(files)!=1:raise RuntimeError('OpenCode 归档结构异常')
+                files=[m for m in archive.getmembers() if m.isfile() and Path(m.name).name==row.get('归档文件','opencode')]
+                if len(files)!=1:raise RuntimeError('运行时归档结构异常')
                 data=archive.extractfile(files[0]).read()
         if hashlib.sha256(data).hexdigest()!=row['SHA256']:raise RuntimeError('运行文件哈希不匹配')
         path.parent.mkdir(exist_ok=True,parents=True);path.write_bytes(data)
-        if row['组件']=='OpenCode':path.chmod(0o555)
+        if row['组件'] in ('OpenCode','Codex CLI'):path.chmod(0o555)
         ok=True
     if not ok:raise RuntimeError('缺少固定依赖或哈希不匹配：'+row['文件']+'；请在联网准备机使用 --download')
     print(row['组件']+' '+row['版本']+'：SHA-256 校验通过')

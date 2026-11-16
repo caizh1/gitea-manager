@@ -147,7 +147,7 @@ class StoreTests(unittest.TestCase):
         key = self.root/'主密钥'; key.write_bytes(Fernet.generate_key())
         env = mock_patch.dict(os.environ, {'AI_REVIEW_MASTER_KEY_FILE': str(key)}); env.start(); self.addCleanup(env.stop)
         self.store = Store(self.root/'review.db')
-        self.store.save_config({'revision': 1, 'enabled': True, 'debounce_seconds': 0, 'model': '测试模型'})
+        self.store.save_config({'revision': 1, 'enabled': True, 'debounce_seconds': 0, 'model': '测试模型', 'engine':'opencode_native'})
         self.repo = self.store.save_repo(1, 7, {'enabled': True, 'bot_token': self.store.seal('仅测试凭据'),
             'webhook_secret': self.store.seal('签名测试秘密'), 'repo_name': 'test/code', 'bot_id': 9})['id']
 

@@ -36,7 +36,7 @@ import GiteaInstanceSelect from './GiteaInstanceSelect.vue'
 import { serverLabel } from './serverDisplay.js'
 const props = defineProps({ servers: { type: Array, default: () => [] }, config: { type: Object, default: () => ({}) }, repositories: { type: Array, default: () => [] }, embedded: Boolean })
 const emit = defineEmits(['changed'])
-const form = ref({ api_base_url: '', api_key: '', model: 'deepseek-v4-flash', manager_url: '' })
+const form = ref({ api_base_url: '', api_key: '', model: 'DeepSeek- V4.1-Flash', manager_url: '' })
 const serverId = ref(null), selected = ref([]), options = ref([]), available = ref(true), job = ref(null), error = ref('')
 const catalogError = ref(''), pollError = ref('')
 const expanded = ref(false), searching = ref(false), submitting = ref(false)

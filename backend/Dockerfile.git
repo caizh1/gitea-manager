@@ -1,11 +1,17 @@
 ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE} AS dependencies
+WORKDIR /app
+COPY requirements.txt .
+COPY wheels/ /tmp/wheels/
+RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels/ -r requirements.txt
+COPY . /source
+RUN rm -rf /source/wheels /source/tests /source/__pycache__
+
 FROM ${BASE_IMAGE}
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git git-lfs ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-COPY wheels/ /tmp/wheels/
-RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels/ -r requirements.txt && rm -rf /tmp/wheels
-COPY . .
+COPY --from=dependencies /usr/local /usr/local
+COPY --from=dependencies /source /app
 ENV PYTHONDONTWRITEBYTECODE=1 LANG=C.UTF-8
 CMD ["python", "-m", "git_migration.worker"]

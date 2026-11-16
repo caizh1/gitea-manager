@@ -347,7 +347,8 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
     from .snapshot import SourceFile
 
     root = Path(workspace)
-    raw = _read_fixed(root / '变更.diff', deadline_at, store, job)
+    diff_path = root / 'change.diff' if (root / 'change.diff').exists() else root / '变更.diff'
+    raw = _read_fixed(diff_path, deadline_at, store, job)
     patches = parse_diff(raw)
     files, anchors, skipped = [], {}, []
     with store.tx() as c:

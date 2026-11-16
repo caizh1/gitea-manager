@@ -170,6 +170,11 @@ def process(store, job, recovering=False):
 
 
 def _process(store, job, recovering=False):
+    if store.job_config(job['id']).get('engine') == 'codex_cli':
+        from .codex_review import process as process_codex
+        if recovering:
+            job = dict(job, status='recovering')
+        return process_codex(store, job)
     if job.get('batch_protocol') and not recovering:
         from .batch_worker import process as process_batches
         return process_batches(store, job)
@@ -366,6 +371,13 @@ def reconcile_unknown(store):
                 raise PublishUnknown('缺少原任务发布快照或结果，需要管理员核对原请求已经结束且未发布')
             repo = store.repo(job['repository'])
             client = client_for(store, repo)
+            if store.job_config(job['id']).get('engine') == 'codex_cli':
+                from .publication import recover_confirmed
+                reference = recover_confirmed(store, client, job, repo)
+                with store.tx() as c:
+                    completed = bool(c.execute("UPDATE jobs SET status='succeeded',stage='发布回执已核对',error='',review_id=?,review_fragment=?,updated=?,lease=0 WHERE id=? AND status='publish_unknown'",
+                        (reference['review_id'], reference['review_fragment'], time.time(), job['id'])).rowcount)
+                return
             publisher = Publisher(store, client, job, repo, job['snapshot'], job['result'])
             if job['result'].get('lifecycle'):
                 from .issue_publication import recover

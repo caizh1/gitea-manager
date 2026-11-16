@@ -13,7 +13,7 @@
     <template v-if="task">
       <div class="identity-row">
         <div class="identity-copy"><strong>{{ instance || '历史实例未记录' }} · {{ repository }} #{{ task.number }}</strong><span>{{ modelName }} · 任务 {{ task.id }}</span></div>
-        <div class="identity-actions"><slot name="actions" /><el-button v-if="canCancel && ['queued', 'running', 'awaiting_cost', 'budget_paused', 'incomplete'].includes(task.status)" type="danger" plain :loading="cancelling" :disabled="cancelling" @click="$emit('cancel')">强制取消</el-button><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
+        <div class="identity-actions"><slot name="actions" /><el-button v-if="canCancel && ['queued', 'running', 'awaiting_cost', 'budget_paused', 'incomplete', 'awaiting_publication'].includes(task.status)" type="danger" plain :loading="cancelling" :disabled="cancelling" @click="$emit('cancel')">强制取消</el-button><el-tag :type="statusType(task.status)" size="large">{{ task.progress?.label || statusLabel(task.status) }}</el-tag><el-button v-if="prUrl" type="primary" :icon="TopRight" tag="a" :href="prUrl" target="_blank" rel="noopener">查看 PR</el-button></div>
       </div>
       <section class="execution-summary" aria-label="执行进度与资源用量">
       <ol class="stage-track">
@@ -31,6 +31,11 @@
         <div><el-icon><Setting /></el-icon><div><span>工具调用</span><strong>{{ toolCount }} 次</strong><small>{{ eventCount }} 条原生记录</small></div></div>
       </div>
 
+      <section v-if="task.snapshot?.source_cache" class="glass-card panel" aria-label="固定源码与模型用量">
+        <p>{{ task.snapshot.source_cache.mode }} · 网络获取 {{ task.snapshot.source_cache.network_seconds }} 秒 · 本地准备 {{ task.snapshot.source_cache.prepare_seconds }} 秒</p>
+        <p>模型输入 {{ task.model_usage?.input_tokens ?? 0 }} Token · 输出 {{ task.model_usage?.output_tokens ?? 0 }} Token</p>
+        <p>固定提交 {{ task.snapshot.head }} · 比较基点 {{ task.snapshot.merge_base }}</p>
+      </section>
       <el-alert v-if="task.progress?.sync_error" :title="'PR 进度同步：' + task.progress.sync_error" type="warning" :closable="false" />
       </section>
       <el-alert v-if="task.cancel_requested_at" :title="task.status === 'cancelling' ? '正在强制取消；确认执行停止后显示已取消' : '本次审查已人工取消，当前版本不会自动重跑'" :description="[task.cancel_requested_by, task.cancel_error].filter(Boolean).join(' · ')" type="info" show-icon :closable="false" />
@@ -83,8 +88,10 @@
           <el-alert v-if="diffOnly" title="仅审查 PR diff" description="仅使用 PR 标题、描述和 diff 中的变更与相邻上下文；未读取完整文件或工程，未执行构建与测试。" type="info" :closable="false" />
           <el-alert v-if="partial" title="本次审查存在未覆盖或未完成内容，请结合覆盖范围查看。" type="warning" show-icon :closable="false" />
           <ReviewIssueLedger :task="task" :open="open" />
+          <details v-if="task.result?.refutation?.length"><summary>独立会话反证结果</summary><section v-for="(check, index) in task.result.refutation" :key="index"><strong>{{ check.candidate }} · {{ check.retained ? '保留' : '排除' }}</strong><p>{{ check.reason }}</p></section></details>
+          <details v-if="task.result?.evidence_reads?.length"><summary>实际读取的固定源码证据</summary><section v-for="(read, index) in task.result.evidence_reads" :key="index"><p>{{ read.path }} · 第 {{ read.line_start }}–{{ read.line_end }} 行 · {{ read.sha256 }}</p><pre>{{ read.lines.map(line => line.line + ' ' + line.text).join('\n') }}</pre></section></details>
           <template v-if="reportText">
-            <div v-if="diffOnly && findings.length" data-testid="diff-inline-locations">
+            <div v-if="findings.length" data-testid="diff-inline-locations">
               <p v-if="task.result?.lifecycle">本轮问题候选（{{ findings.length }} 项；实际新增、复用和待确认状态见问题台账）</p>
               <p v-else>行内定位（{{ findings.length }} 项；{{ task.status === 'succeeded' ? '已完成发布核对' : '以最终发布结果为准' }}）</p>
               <p v-for="(f, i) in findings" :key="i">
@@ -248,7 +255,7 @@ const visibleEvents = computed(() => {
 const beforeSpace = computed(() => visibleEvents.value[0]?.top || 0)
 const afterSpace = computed(() => visibleEvents.value.length ? Math.max(0,virtualHeight.value-visibleEvents.value.at(-1).top-visibleEvents.value.at(-1).height) : virtualHeight.value)
 
-const statusLabel = s => ({awaiting_cost:'等待成本确认',budget_paused:'预算暂停',incomplete:'审查未完成',cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
+const statusLabel = s => ({awaiting_publication:'等待确认发布',awaiting_cost:'等待成本确认',budget_paused:'预算暂停',incomplete:'审查未完成',cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
 const seconds = value => Number.isFinite(value) ? `${value} 秒` : '未记录'
 const duration = value => Number.isFinite(Number(value)) ? `${String(Math.floor(Number(value)/60)).padStart(2,'0')}:${String(Math.floor(Number(value)%60)).padStart(2,'0')}` : '—'
 const fmt = value => value ? new Date(Number(value)>1e12?Number(value):Number(value)*1000).toLocaleString('zh-CN') : '尚无'
