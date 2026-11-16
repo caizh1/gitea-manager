@@ -13,6 +13,26 @@ from ai_review.responses import ResponseStream
 from ai_review.git_cache import _extract, run_git, cache_key
 
 
+def test_coverage_counts_actual_reads_across_phases():
+    from ai_review.codex_review import read_coverage
+
+    snapshot = {
+        "diff": "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-a=1\n+a=2\n"
+        "diff --git a/b.py b/b.py\n--- a/b.py\n+++ b/b.py\n@@ -1 +1 @@\n-b=1\n+b=2\n",
+        "coverage": {"files_total": 2, "files_reviewed": 2, "complete": True},
+    }
+    assert read_coverage(snapshot, [])["files_reviewed"] == 0
+    reads = [
+        {"path": "after/a.py"},
+        {"path": "after/a.py"},
+        {"path": "after/helper.py"},
+    ]
+    result = read_coverage(snapshot, reads)
+    assert result["files_reviewed"] == 1
+    assert result["source_files_read"] == 2
+    assert read_coverage(snapshot, reads + [{"path": "before/b.py"}])["files_reviewed"] == 2
+
+
 def test_responses_requires_complete_terminal():
     parser = ResponseStream(4096)
     parser.feed(b'data: {"type":"response.completed","response":{"status":"completed","output":[]}}\r\n\r\n')
