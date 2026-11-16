@@ -158,8 +158,9 @@ class TimeBudgetTests(unittest.TestCase):
                 revision=client.get('/api/ai-review/config').json['config']['revision']
                 response=client.put('/api/ai-review/config',json={'revision':revision,'task_timeout_seconds':value,'model_request_timeout_seconds':value},headers=headers)
                 self.assertEqual(response.status_code,200,response.json)
+        max_output = initial['model_context_tokens'] - initial['compaction_threshold_tokens']
         with patch('routes.ai_review_routes.endpoint',return_value='http://model.invalid/v1'):
-            for field, bounds in (('model_max_output_tokens',(0,52144)),('model_response_max_mib',(1,64))):
+            for field, bounds in (('model_max_output_tokens',(0,max_output)),('model_response_max_mib',(1,64))):
                 for invalid in (bounds[0]-1,bounds[1]+1,True,8.5,'8',None):
                     revision=self.store.config()['revision']
                     self.assertEqual(client.put('/api/ai-review/config',json={'revision':revision,field:invalid},headers=headers).status_code,400)
@@ -170,7 +171,7 @@ class TimeBudgetTests(unittest.TestCase):
                     self.assertEqual(response.json[field],bound)
                 self.assertEqual(client.put('/api/ai-review/config',json={'revision':revision,field:bounds[0]},headers=headers).status_code,400)
         reopened=type(self.store)(self.store.path).config()
-        self.assertEqual(reopened['model_max_output_tokens'],52144)
+        self.assertEqual(reopened['model_max_output_tokens'],max_output)
         self.assertEqual(reopened['model_response_max_mib'],64)
         self.assertEqual(reopened['task_timeout_seconds'],3600)
         self.assertEqual(reopened['model_request_timeout_seconds'],3600)

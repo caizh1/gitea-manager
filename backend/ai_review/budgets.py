@@ -2,6 +2,8 @@
 
 TIME_FIELDS = frozenset({'batch_splitting_enabled', 'tokenizer_profile', 'batch_input_tokens', 'batch_auto_calls', 'batch_execution_seconds', 'batch_preprocess_seconds', 'batch_memory_mib', 'task_timeout_seconds', 'review_timeout_seconds', 'model_request_timeout_seconds', 'model_max_output_tokens', 'model_response_max_mib', 'thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'context_retrieval_budget', 'model_context_tokens', 'compaction_threshold_tokens'})
 CONTEXT_DEFAULTS = {'model_context_tokens': 262144, 'compaction_threshold_tokens': 210000}
+DEFAULT_CODEX_MODEL = 'DeepSeek- V4.1-Flash'
+CODEX_CONTEXT_DEFAULTS = {'model_context_tokens': 1_000_000, 'compaction_threshold_tokens': 800_000}
 MODEL_TIMEOUT_DEFAULT = 600
 MODEL_TIMEOUT_MAX = 3600
 REVIEW_TIMEOUT_DEFAULT = 600

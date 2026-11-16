@@ -8,11 +8,9 @@ import sys
 
 
 class SourceTools:
-    def __init__(self, root, audit, limit=200):
+    def __init__(self, root, audit):
         self.root = Path(root).resolve()
         self.audit = Path(audit)
-        self.limit = limit
-        self.calls = 0
 
     def resolve(self, path):
         relative = Path(path)
@@ -30,10 +28,6 @@ class SourceTools:
         return target
 
     def call(self, name, args):
-        self.calls += 1
-        if self.calls > self.limit:
-            self.audit.with_suffix(".exhausted").touch()
-            raise ValueError("已达到源码检索调用预算")
         if name == "changes":
             target = self.root / "change.diff"
             if target.is_symlink() or not target.is_file():
@@ -109,7 +103,7 @@ class SourceTools:
 
 
 def main():
-    tools = SourceTools(sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 200)
+    tools = SourceTools(sys.argv[1], sys.argv[2])
     schemas = [
         {
             "name": "changes",

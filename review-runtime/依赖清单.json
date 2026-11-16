@@ -38,6 +38,15 @@
       "归档SHA256": "9af4d751fce183faedea629437d5252dbf458eeb04130cf4f97be844621ea985",
       "归档文件": "codex-x86_64-unknown-linux-musl",
       "来源": "https://github.com/openai/codex/releases/download/rust-v0.169.0/codex-x86_64-unknown-linux-musl.tar.gz"
+    },
+    {
+      "组件": "ripgrep",
+      "版本": "14.1.1",
+      "文件": "review-runtime/vendor/rg-linux-x64",
+      "SHA256": "f401154e2393f9002ac77e419f9ee5521c18f4f8cd3e32293972f493ba06fce7",
+      "归档SHA256": "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e",
+      "归档文件": "rg",
+      "来源": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz"
     }
   ]
 }

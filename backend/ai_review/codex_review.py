@@ -14,10 +14,19 @@ class IncompleteReview(ReviewError):
     pass
 
 
+def incomplete_result(result):
+    explanation = result.get("overall_explanation", "").lstrip()
+    return bool(result.get("_budget_exhausted")) or explanation.startswith("INCOMPLETE")
+
+
 def read_coverage(snapshot, reads):
     """用各审查阶段的实际读取记录统计覆盖，不把可访问文件当成已读取。"""
     from .diff import parse_diff
 
+    if snapshot.get("codex_tools") == "native":
+        return dict(snapshot["coverage"], files_reviewed=0, source_files_read=None,
+                    diff_files_provided=snapshot["coverage"]["files_total"],
+                    source_read_tracking="native_commands")
     paths = {row["path"] for row in reads}
     reviewed = sum(
         bool(
@@ -37,8 +46,14 @@ def prompt(snapshot, phase="primary", candidates=None):
 每项意见正文必须说明可达触发条件、因果链、严重影响和已核对的保护条件。
 P0/P1 仅限当前代码、支持范围内可达且有固定源码证据、严重到阻止合并的问题。主动检查并发、中断、恢复、权限、资源生命周期、硬件与构建条件等相关风险，并逐项反证已有保护和调用约束。未验证风险不得升级为阻塞问题，P2/P3 不导致 FAIL。
 按原生 review JSON 格式输出完整 JSON 对象，不加 Markdown 围栏或外围文字，code_location.absolute_file_path 使用 after/ 或 before/ 开头的相对路径。若使用绝对路径，必须指向工具参数中同一个源码快照。每项引用先调用 read 实际读取对应行。
-如果必要源码未读完、检索失败或关键文件缺失，在 overall_explanation 加标记 INCOMPLETE 并说明缺口。仓库完整检索后确认某调用方不存在，不属于未完成范围，应按已知事实判断影响。
+如果必要源码未读完、检索失败或关键文件缺失，以 INCOMPLETE 开头写 overall_explanation 并说明缺口。仓库完整检索后确认某调用方不存在，应按已知事实判断影响。
 """
+    if snapshot.get("codex_tools") == "native":
+        text = text.replace(
+            "只有 MCP review 的只读源码工具可用，不执行命令、不修改代码。",
+            "使用 Codex 原生命令工具自主调查源码，可使用 rg、sed、cat、diff 等程序。"
+            "本次只做审查，不修改源码，不执行构建或测试。",
+        ).replace("每项引用先调用 read 实际读取对应行。", "每项引用先通过原生工具实际读取对应行。")
     if phase.startswith("refutation-"):
         text += (
             "\n独立反证任务。独立核对下列单个候选，搜索调用约束与已有保护。仅返回该候选是否仍然成立，成立时沿用相同代码定位，排除时 findings 为空，overall_explanation 说明依据与反证过程。\n"
@@ -82,7 +97,7 @@ def normalize(raw, snapshot, workspace):
         lines = target.read_text(encoding="utf-8").splitlines()
         if type(start) is not int or type(end) is not int or not 1 <= start <= end <= len(lines):
             raise ReviewError("Codex 意见行范围无法核对")
-        if not any(
+        if snapshot.get("codex_tools") != "native" and not any(
             r.get("path") == path and r.get("line_start", 0) <= start and r.get("line_end", 0) >= end
             for r in reads
         ):
@@ -202,7 +217,7 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
     acknowledge_result(store, phase_job, raw["_native_result_sha256"], raw["_native_final_event_seq"])
     if raw.get("_event_log_complete") is not True:
         raise ReviewError("会话事件尚未完整确认")
-    if raw.get("_budget_exhausted") or "INCOMPLETE" in raw.get("overall_explanation", ""):
+    if incomplete_result(raw):
         raise IncompleteReview("Codex 报告存在未完成范围，请查看原始结果")
     return raw
 
@@ -250,7 +265,10 @@ def process(store, job):
             else:
                 await_publication(store, job, job["result"])
             return
-        snapshot = job.get("snapshot") or capture(client, job["number"], config, batched=True)
+        snapshot = job.get("snapshot")
+        if not snapshot:
+            snapshot = capture(client, job["number"], config, batched=True)
+            snapshot["codex_tools"] = "native"
         snapshot.pop("batch_protocol", None)
         snapshot["engine"] = "codex_cli"
         validate_single_size(snapshot)
@@ -267,9 +285,7 @@ def process(store, job):
         from .native_review import acknowledge_result
 
         for phase_result in phases.values():
-            if phase_result.get("_budget_exhausted") or "INCOMPLETE" in phase_result.get(
-                "overall_explanation", ""
-            ):
+            if incomplete_result(phase_result):
                 raise IncompleteReview("已保存阶段存在未完成范围，不能继续发布")
             with contextlib.closing(store.connect()) as c:
                 row = c.execute(
@@ -335,6 +351,7 @@ def process(store, job):
             "report_markdown": report,
             "review_scope": "repository",
             "native_session": True,
+            "native_commands": raw.get("_codex_commands", []),
         }
         store.update(job["id"], job["owner"], result=result, deadline_at=None, stage="核对历史问题")
         client.deadline_at = None
@@ -408,6 +425,8 @@ def process(store, job):
         reads = [entry for row in records for entry in json.loads(row["result"]).get("_codex_reads", [])]
         result["evidence_reads"] = reads
         result["coverage"] = read_coverage(snapshot, reads)
+        result["native_commands"] = [entry for row in records
+                                     for entry in json.loads(row["result"]).get("_codex_commands", [])]
         # 相同问题经历史复核确认仍存在时，也参与最终 P0/P1 结论。
         with contextlib.closing(store.connect()) as c:
             current_issues = c.execute(

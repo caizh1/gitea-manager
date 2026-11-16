@@ -40,7 +40,7 @@ def test_fresh_budget_defaults_are_persisted_and_can_plan(state):
     store, job, _ = state
     config = store.job_config(job['id'])
     assert config['batch_input_tokens'] == 65536
-    assert config['model_max_output_tokens'] == 32768
+    assert config['model_max_output_tokens'] == 0
     validate_context(config)
     plan = batch_plan.build(snapshot(config), config)
     assert plan['primary'] > 0
@@ -49,7 +49,7 @@ def test_fresh_budget_defaults_are_persisted_and_can_plan(state):
     with store.connect() as conn:
         saved = json.loads(conn.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
     assert saved['batch_input_tokens'] == 65536
-    assert saved['model_max_output_tokens'] == 32768
+    assert saved['model_max_output_tokens'] == 0
 
 
 @pytest.mark.parametrize('input_tokens,output_tokens', [(32768, 0), (32768, 8192), (98304, 24576)])

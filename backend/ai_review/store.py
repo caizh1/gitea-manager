@@ -12,14 +12,14 @@ from cryptography.fernet import Fernet, InvalidToken
 from .token_budget import DEFAULTS as BATCH_DEFAULTS
 from .thinking import DEFAULTS as THINKING_DEFAULTS
 from .common import ReviewError, Stale, encode, secret_file
-from .budgets import TIME_FIELDS, CONTEXT_DEFAULTS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision
+from .budgets import TIME_FIELDS, CONTEXT_DEFAULTS, CODEX_CONTEXT_DEFAULTS, DEFAULT_CODEX_MODEL, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision
 import json
 
-DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': 'DeepSeek- V4.1-Flash',
+DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CODEX_CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': DEFAULT_CODEX_MODEL,
             'api_key': '', 'revision': 1, 'debounce_seconds': 20, 'max_files': 40,
             'max_calls': 32, 'task_timeout_seconds': 1200, 'review_timeout_seconds': REVIEW_TIMEOUT_DEFAULT,
             'model_request_timeout_seconds': MODEL_TIMEOUT_DEFAULT,
-            'execution_revision': 1, 'model_max_output_tokens': 32768, 'model_response_max_mib': 8, 'max_findings': 20}
+            'execution_revision': 1, 'model_max_output_tokens': 0, 'model_response_max_mib': 8, 'max_findings': 20}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
 
 
@@ -185,7 +185,7 @@ class Store:
             with contextlib.closing(self.connect()) as c:
                 result = self.config(connection=c)
         if not result.get('model'):
-            result['model'] = 'DeepSeek- V4.1-Flash'
+            result['model'] = DEFAULT_CODEX_MODEL
         result.setdefault('model_request_timeout_seconds', MODEL_TIMEOUT_DEFAULT)
         result.setdefault('review_timeout_seconds', result.get('task_timeout_seconds', REVIEW_TIMEOUT_DEFAULT))
         result.setdefault('model_max_output_tokens', 0)

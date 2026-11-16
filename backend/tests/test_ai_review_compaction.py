@@ -34,8 +34,8 @@ class ContextTaskTests(unittest.TestCase):
         login_platform(client)
         headers = {'X-Review-CSRF': client.get('/api/ai-review/csrf').json['token']}
         initial = client.get('/api/ai-review/config').json['config']
-        self.assertEqual(initial['compaction_threshold_tokens'], 210000)
-        for invalid in (True, 0, 262144, 210000.5, '210000'):
+        self.assertEqual(initial['compaction_threshold_tokens'], 800_000)
+        for invalid in (True, 0, initial['model_context_tokens'], 210000.5, '210000'):
             response = client.put('/api/ai-review/config', json={'revision': initial['revision'],
                 'compaction_threshold_tokens': invalid}, headers=headers)
             self.assertEqual(response.status_code, 400)

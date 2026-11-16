@@ -26,7 +26,7 @@ for row in manifest['依赖']:
                 data=archive.extractfile(files[0]).read()
         if hashlib.sha256(data).hexdigest()!=row['SHA256']:raise RuntimeError('运行文件哈希不匹配')
         path.parent.mkdir(exist_ok=True,parents=True);path.write_bytes(data)
-        if row['组件'] in ('OpenCode','Codex CLI'):path.chmod(0o555)
+        if row['组件'] in ('OpenCode','Codex CLI','ripgrep'):path.chmod(0o555)
         ok=True
     if not ok:raise RuntimeError('缺少固定依赖或哈希不匹配：'+row['文件']+'；请在联网准备机使用 --download')
     print(row['组件']+' '+row['版本']+'：SHA-256 校验通过')

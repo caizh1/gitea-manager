@@ -43,6 +43,167 @@ def test_responses_requires_complete_terminal():
         parser.finish()
 
 
+@pytest.mark.parametrize("configured_output_limit", [None, 16384])
+@pytest.mark.parametrize("native_tools", [False, True])
+def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_path, monkeypatch, configured_output_limit, native_tools):
+    import hashlib
+    import time
+
+    from flask import Flask
+    from ai_review.responses import register
+    from ai_review.store import Store
+
+    store = Store(tmp_path / "review.db")
+    config = store.config()
+    assert config["model_max_output_tokens"] == 0
+    config.update(enabled=True, debounce_seconds=0, batch_input_tokens=4096)
+    if configured_output_limit is not None:
+        config["model_max_output_tokens"] = configured_output_limit
+    store.save_config(config)
+    repo = store.save_repo(1, 1, {"enabled": True, "gitea_url": "http://test", "repo_name": "owner/repo"})
+    job_id = store.enqueue(repo["id"], 1, {"head": "b" * 40, "base": "a" * 40})
+    job = store.claim()
+    store.update(job_id, job["owner"], session_id="codex-session")
+    if native_tools:
+        store.update(job_id, job["owner"], snapshot={"codex_tools": "native"})
+    with store.tx() as conn:
+        conn.execute("INSERT INTO capabilities VALUES (?,?,?,?,?,?)", (
+            hashlib.sha256(b"test-capability").hexdigest(), job_id, job["owner"], time.time() + 60, -1,
+            store.config()["model"],
+        ))
+
+    assert store.job_config(job_id)["model_context_tokens"] == 1_000_000
+
+    class ResponsesStream:
+        status = 200
+
+        def chunks(self, guard):
+            guard()
+            yield (b'data: {"type":"response.completed","response":{"status":"completed","output":[],'
+                   b'"usage":{"input_tokens":43000,"output_tokens":300}}}\n\n')
+
+        def close(self):
+            pass
+
+    sent = []
+
+    def open_stream(url, body, *_args, **_kwargs):
+        sent.append(body)
+        return ResponsesStream()
+
+    monkeypatch.setattr("ai_review.responses.open_model_stream", open_stream)
+    monkeypatch.setattr("ai_review.responses.endpoint", lambda *_: "https://example.invalid/v1")
+    monkeypatch.setattr(store, "unseal", lambda _: "test-key")
+    app = Flask(__name__)
+    register(app, store)
+    client = app.test_client()
+    headers = {"Authorization": "Bearer test-capability", "X-Review-Session": "codex-session"}
+    body = {"model": store.config()["model"], "stream": True, "max_output_tokens": 8192,
+            "input": [{"role": "user", "content": "测试" * 25000}]}
+    body["tools"] = [{"type": "function", "name": "exec_command", "parameters": {"type": "object"}}]
+    assert client.post("/v1/responses", json=body).status_code == 400
+    assert client.post("/v1/responses", json=body, headers={**headers, "X-Review-Session": "other"}).status_code == 400
+    assert client.post("/v1/responses", json=body, headers=headers, buffered=True).status_code == 200
+    body["max_output_tokens"] = 1024
+    assert client.post("/v1/responses", json=body, headers=headers).status_code == 400
+    for call in range(2, 66):
+        body["input"] = [{"role": "user", "content": f"第 {call} 次请求"}]
+        assert client.post("/v1/responses", json=body, headers=headers, buffered=True).status_code == 200
+    store.finish(job_id, job["owner"], "cancelled")
+    body["input"] = [{"role": "user", "content": "取消后的新请求"}]
+    assert client.post("/v1/responses", json=body, headers=headers).status_code == 400
+    assert len(sent) == 65
+    assert all(bool(outbound["tools"]) == native_tools for outbound in sent)
+    if configured_output_limit is None:
+        assert all("max_output_tokens" not in outbound for outbound in sent)
+    else:
+        assert all(outbound["max_output_tokens"] == configured_output_limit for outbound in sent)
+    assert store.job(job_id)["model_calls"] == 65
+    assert store.job(job_id)["model_usage"] == {"input_tokens": 43000 * 65, "output_tokens": 300 * 65}
+
+
+def test_native_tools_response_and_fixed_source_evidence(tmp_path):
+    from ai_review.codex_review import normalize, read_coverage
+
+    item = {"type": "function_call", "name": "exec_command", "arguments": '{"cmd":"rg bug after"}'}
+    ResponseStream(4096, native_tools=True).validate_item(item)
+    with pytest.raises(ReviewError):
+        ResponseStream(4096).validate_item(item)
+    (tmp_path / "after").mkdir()
+    (tmp_path / "after/a.py").write_text("a=2\n")
+    snapshot = {
+        "id": "fixed-snapshot",
+        "codex_tools": "native",
+        "diff": "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-a=1\n+a=2\n",
+        "coverage": {"files_total": 1, "files_reviewed": 1, "complete": True},
+    }
+    raw = {"findings": [{"priority": 1, "title": "测试问题", "body": "固定版本中的具体问题",
+                          "code_location": {"absolute_file_path": "after/a.py",
+                                            "line_range": {"start": 1, "end": 1}}}]}
+    assert normalize(raw, snapshot, tmp_path)[0]["support"][0]["quote"] == "a=2"
+    assert read_coverage(snapshot, [])["source_files_read"] is None
+    assert read_coverage(snapshot, [])["files_reviewed"] == 0
+    raw["findings"][0]["code_location"]["absolute_file_path"] = "../secret"
+    with pytest.raises(ReviewError):
+        normalize(raw, snapshot, tmp_path)
+
+
+def test_codex_native_config_and_command_events(tmp_path):
+    from types import SimpleNamespace
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "review-runtime"))
+    from codex_session import CodexRun
+
+    run = object.__new__(CodexRun)
+    run.root = tmp_path
+    run.upstream_output_tokens = 0
+    run.compaction_threshold_tokens = 800000
+    run.model_context_tokens = 1000000
+    run.model = "测试模型"
+    run.gateway = SimpleNamespace(url="http://127.0.0.1:1/v1")
+    run.thinking_enabled = True
+    run.project = tmp_path
+    run.native_tools = True
+    run.native_commands = []
+    args = run._config()
+    settings = [args[i + 1] for i in range(0, len(args), 2)]
+    assert "features.shell_tool=true" in settings
+    assert not any(value.startswith("mcp_servers.") for value in settings)
+    events = []
+    run.emit = lambda kind, **kwargs: events.append((kind, kwargs))
+    command = {"type": "command_execution", "id": "执行一", "command": "rg needle after",
+               "aggregated_output": "after/a.py:1:needle", "exit_code": 0, "status": "completed"}
+    run._consume({"type": "item.completed", "item": command})
+    assert run.native_commands[0]["command"] == "rg needle after"
+    assert events[0][1]["payload"]["call_id"] == "执行一"
+    run.native_tools = False
+    settings = run._config()
+    assert any(value.startswith("mcp_servers.review.command=") for value in settings)
+
+
+def test_native_complete_review_accepts_intro_and_rejects_truncated_results():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "review-runtime"))
+    from codex_session import decode_review
+    from native_session import NativeError
+
+    value = {"findings": [], "overall_explanation": "核对完成"}
+    encoded = json.dumps(value, ensure_ascii=False)
+    assert decode_review("审查已完成。\n" + encoded) == value
+    assert decode_review("```json\n" + encoded + "\n```") == value
+    with pytest.raises(NativeError):
+        decode_review(encoded[:-1])
+    with pytest.raises(NativeError):
+        decode_review(encoded + "\n" + encoded)
+
+
+def test_incomplete_marker_requires_explicit_result_prefix():
+    from ai_review.codex_review import incomplete_result
+
+    assert not incomplete_result({"overall_explanation": "证据已经核对，无需标记 INCOMPLETE。"})
+    assert incomplete_result({"overall_explanation": " INCOMPLETE 缺少必要源码"})
+    assert incomplete_result({"_budget_exhausted": True, "overall_explanation": ""})
+
+
 def test_extract_ignores_export_ignore_and_never_follows_symlinks(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -140,7 +301,7 @@ def test_corrupt_blob_rebuilds_cache_before_snapshot(tmp_path, monkeypatch):
             blob.write_bytes(b"broken")
 
 
-def test_source_tools_reject_escape(tmp_path):
+def test_source_tools_reject_escape_and_record_unlimited_reads(tmp_path):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "review-runtime"))
     from review_tools import SourceTools
 
@@ -151,7 +312,9 @@ def test_source_tools_reject_escape(tmp_path):
     for path in ("../secret", "/etc/passwd", "after/link"):
         with pytest.raises(ValueError):
             tools.call("read", {"path": path})
-    assert tools.call("read", {"path": "after/a.py"})["line_end"] == 1
+    for _ in range(201):
+        assert tools.call("read", {"path": "after/a.py"})["line_end"] == 1
+    assert len((tmp_path / "reads.jsonl").read_text().splitlines()) == 201
 
 
 def test_defaults_preserve_explicit_model(tmp_path):
@@ -159,6 +322,7 @@ def test_defaults_preserve_explicit_model(tmp_path):
 
     store = Store(tmp_path / "review.db")
     assert store.config()["model"] == "DeepSeek- V4.1-Flash"
+    assert store.config()["compaction_threshold_tokens"] == 800_000
     with store.tx() as c:
         current = store.config(connection=c)
         current["model"] = "existing-model"

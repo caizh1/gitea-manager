@@ -208,7 +208,8 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                 data.update(review_scope='diff', prompt=diff_prompt(diff_snapshot), system=DIFF_SYSTEM,
                             context_retrieval_budget=0)
                 if config.get('engine') == 'codex_cli':
-                    data.update(batch_protocol=1, codex_phase=diff_snapshot.get('_codex_phase', 'primary'), context_retrieval_budget=config.get('context_retrieval_budget',20))
+                    data.update(batch_protocol=1, codex_phase=diff_snapshot.get('_codex_phase', 'primary'),
+                                codex_native_tools=diff_snapshot.get('codex_tools') == 'native')
                 if diff_snapshot.get('_batch_messages'):
                     data.update(system=diff_snapshot['_batch_messages'][0]['content'], prompt=diff_snapshot['_batch_messages'][1]['content'], batch_protocol=1)
             try:

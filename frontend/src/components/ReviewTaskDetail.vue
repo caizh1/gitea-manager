@@ -90,6 +90,7 @@
           <ReviewIssueLedger :task="task" :open="open" />
           <details v-if="task.result?.refutation?.length"><summary>独立会话反证结果</summary><section v-for="(check, index) in task.result.refutation" :key="index"><strong>{{ check.candidate }} · {{ check.retained ? '保留' : '排除' }}</strong><p>{{ check.reason }}</p></section></details>
           <details v-if="task.result?.evidence_reads?.length"><summary>实际读取的固定源码证据</summary><section v-for="(read, index) in task.result.evidence_reads" :key="index"><p>{{ read.path }} · 第 {{ read.line_start }}–{{ read.line_end }} 行 · {{ read.sha256 }}</p><pre>{{ read.lines.map(line => line.line + ' ' + line.text).join('\n') }}</pre></section></details>
+          <details v-if="task.result?.native_commands?.length"><summary>Codex 原生命令与检索结果</summary><section v-for="(command, index) in task.result.native_commands" :key="command.id || index"><p>{{ command.command }} · 退出码 {{ command.exit_code }}</p><pre>{{ command.aggregated_output }}</pre></section></details>
           <template v-if="reportText">
             <div v-if="findings.length" data-testid="diff-inline-locations">
               <p v-if="task.result?.lifecycle">本轮问题候选（{{ findings.length }} 项；实际新增、复用和待确认状态见问题台账）</p>

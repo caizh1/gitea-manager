@@ -12,17 +12,20 @@ from .model_transport import open_model_stream
 
 
 class ResponseStream:
-    def __init__(self, limit, probe=False):
+    def __init__(self, limit, probe=False, native_tools=False):
         self.pending = bytearray()
         self.total = 0
         self.limit = limit
         self.completed = None
         self.failed = False
         self.probe = probe
+        self.native_tools = native_tools
 
     def validate_item(self, item):
         kind = item.get("type", "")
         if kind in ("message", "reasoning", ""):
+            return
+        if self.native_tools and kind in ("function_call", "custom_tool_call"):
             return
         names = ("read", "list", "search", "changes")
         allowed = kind == "function_call" and (
@@ -87,28 +90,6 @@ def register(app, store):
             token_hash = hashlib.sha256(token.encode()).hexdigest()
             if not isinstance(body, dict) or body.get("stream") is not True:
                 raise ReviewError("仅支持流式 Responses")
-            # 执行器只注册源码 MCP 工具，网关再核验模型请求的工具集合。
-            filtered_tools = []
-            for tool in body.get("tools", []):
-                if tool.get("type") == "namespace" and tool.get("name") == "mcp__review":
-                    if any(
-                        t.get("type") != "function"
-                        or t.get("name") not in ("read", "list", "search", "changes")
-                        for t in tool.get("tools", [])
-                    ):
-                        raise ReviewError(
-                            "审查请求包含未授权工具 " + str(tool.get("type")) + "/" + str(tool.get("name"))
-                        )
-                    filtered_tools.append(tool)
-                elif tool.get("type") == "function" and tool.get("name") in (
-                    "mcp__review__read",
-                    "mcp__review__list",
-                    "mcp__review__search",
-                    "mcp__review__changes",
-                ):
-                    filtered_tools.append(tool)
-                # CLI 内置工具不发送给模型，只暴露此任务只读工具。
-            body["tools"] = filtered_tools
             with store.tx() as c:
                 cap = c.execute("SELECT * FROM capabilities WHERE token_hash=?", (token_hash,)).fetchone()
                 if (
@@ -122,29 +103,43 @@ def register(app, store):
                 config = store.job_config(cap["job"], c)
                 if config.get("engine") != "codex_cli":
                     raise ReviewError("该任务未使用 Codex 引擎")
+                snapshot_row = c.execute("SELECT snapshot FROM jobs WHERE id=?", (cap["job"],)).fetchone()
+                snapshot = json.loads(snapshot_row[0] or "{}")
+                native_tools = snapshot.get("codex_tools") == "native"
+                if not native_tools:
+                    # 历史任务沿用原 MCP 协议，新任务直接转发 CLI 原生工具。
+                    body["tools"] = [
+                        tool for tool in body.get("tools", [])
+                        if tool.get("type") == "namespace" and tool.get("name") == "mcp__review"
+                        or tool.get("type") == "function" and tool.get("name") in (
+                            "mcp__review__read", "mcp__review__list", "mcp__review__search", "mcp__review__changes"
+                        )
+                    ]
+                    for tool in body["tools"]:
+                        if any(t.get("type") != "function" or t.get("name") not in ("read", "list", "search", "changes")
+                               for t in tool.get("tools", [])):
+                            raise ReviewError("历史审查请求包含未授权工具")
+                output_limit = config.get("model_max_output_tokens", 0)
+                if output_limit > 0:
+                    body["max_output_tokens"] = output_limit
+                else:
+                    body.pop("max_output_tokens", None)
                 row = c.execute(
                     "SELECT model_calls,session_id,repository FROM jobs WHERE id=?", (cap["job"],)
                 ).fetchone()
                 if row["session_id"] != request.headers.get("X-Review-Session"):
                     raise ReviewError("模型调用与任务当前会话不匹配")
-                if row["model_calls"] >= config["max_calls"]:
-                    raise ReviewError("已达到任务调用上限")
                 # 相同会话与完整请求禁止重放，包括流中断后的 CLI 自动重试。
-                fingerprint = hashlib.sha256(encode(body).encode()).hexdigest()
+                serialized = encode(body)
+                fingerprint = hashlib.sha256(serialized.encode()).hexdigest()
                 if c.execute(
                     "SELECT 1 FROM review_native_calls WHERE job=? AND session_id=? AND request_hash=?",
                     (cap["job"], row["session_id"], fingerprint),
                 ).fetchone():
                     raise ReviewError("该模型请求已提交，禁止隐式重放")
                 call_id = hashlib.sha256((token_hash + str(row["model_calls"])).encode()).hexdigest()[:32]
-                input_bytes = len(encode(body).encode())
-                capacity = min(
-                    config.get("batch_input_tokens", 65536),
-                    config["model_context_tokens"] - (config.get("model_max_output_tokens") or 8192) - 8192,
-                )
-                # UTF-8 字节数作保守上限，明确不冒充精确 Token 数。
-                if input_bytes > capacity:
-                    raise ReviewError(f"模型完整请求为 {input_bytes} 字节，超过保守输入额度 {capacity}")
+                # Codex 按冻结的 Token 窗口和阈值压缩历史，上游校验实际窗口。
+                # 请求体仍受执行器与 Flask 的传输大小限制，包括压缩请求。
                 c.execute(
                     "INSERT INTO review_native_calls VALUES (?,?,?,?,?,?,?,?)",
                     (
@@ -164,7 +159,7 @@ def register(app, store):
                 )
                 c.execute(
                     "INSERT INTO review_model_inputs VALUES (?,?,?,?)",
-                    (cap["job"], row["model_calls"] + 1, encode(body), time.time()),
+                    (cap["job"], row["model_calls"] + 1, serialized, time.time()),
                 )
                 if cap["remaining"] > 0:
                     c.execute(
@@ -189,7 +184,6 @@ def register(app, store):
                 body,
                 model=config["model"],
                 store=False,
-                max_output_tokens=config.get("model_max_output_tokens") or 8192,
             )
             if body.get("previous_response_id"):
                 raise ReviewError("审查请求必须携带完整会话上下文")
@@ -204,7 +198,8 @@ def register(app, store):
             )
             if transport.status != 200:
                 raise ReviewError(f"Responses 服务返回 HTTP {transport.status}")
-            collector = ResponseStream(config.get("model_response_max_mib", 8) * 1024 * 1024)
+            collector = ResponseStream(config.get("model_response_max_mib", 8) * 1024 * 1024,
+                                       native_tools=native_tools)
 
             @stream_with_context
             def generate():
@@ -296,9 +291,11 @@ def _verify_connection(store, config):
                 "tool_choice": choice,
                 "stream": True,
                 "store": False,
-                "max_output_tokens": 1024,
                 "reasoning": {"effort": "none"},
             }
+            output_limit = config.get("model_max_output_tokens", 0)
+            if output_limit > 0:
+                body["max_output_tokens"] = output_limit
             collector = ResponseStream(1024 * 1024, probe=True)
             with client.post(
                 base + "/responses",

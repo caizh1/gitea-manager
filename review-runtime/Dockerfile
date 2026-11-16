@@ -9,12 +9,14 @@ COPY --from=dependencies /usr/local /usr/local
 RUN useradd --uid 10001 --create-home reviewer
 COPY --chmod=555 review-runtime/vendor/opencode-linux-x64 /opt/review/opencode
 COPY --chmod=555 review-runtime/vendor/codex-linux-x64 /opt/review/codex
+COPY --chmod=555 review-runtime/vendor/rg-linux-x64 /usr/local/bin/rg
 COPY review-runtime/codex_session.py review-runtime/review_tools.py review-runtime/backend_responses.py review-runtime/codex_model.json /opt/review/
 COPY review-runtime/executor.py /opt/review/executor.py
 COPY review-runtime/native_session.py review-runtime/native_gateway.py review-runtime/raw_diagnostics.py review-runtime/runtime_diagnostics.py review-runtime/runtime_probe.py review-runtime/legacy_adapter.py review-runtime/review_result_schema.json review-runtime/StructuredOutput.js /opt/review/
 RUN python -c "import native_session, runtime_probe; native_session.load_review_result_schema()"
 RUN test "$(/opt/review/opencode --version)" = "1.18.7"
 RUN test "$(/opt/review/codex --version)" = "codex-cli 0.169.0"
+RUN rg --version | grep -q '^ripgrep 14.1.1'
 USER 10001:10001
 EXPOSE 5052
 CMD ["gunicorn", "--bind", "0.0.0.0:5052", "--workers", "1", "--threads", "2", "--timeout", "190", "--access-logfile", "/dev/null", "executor:app"]

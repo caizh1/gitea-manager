@@ -69,8 +69,11 @@ def summary(job, snapshot, result):
         # 保留 Markdown，但禁止模型正文插入发布标记、HTML 或触发用户提及。
         return text + markdown(report)
     text = (marker(job) + '\n### AI Code Review（辅助意见）\n\n'
-            + f"审查版本：`{snapshot['head']}`；比较基点：`{snapshot['merge_base']}`。\n\n"
-            + f"已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。")
+            + f"审查版本：`{snapshot['head']}`；比较基点：`{snapshot['merge_base']}`。\n\n")
+    if coverage.get('source_read_tracking') == 'native_commands':
+        text += f"已提供 {coverage['files_total']} 个变更文件的完整 diff，源码调查记录见 Manager 原生命令日志。"
+    else:
+        text += f"已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。"
     if not coverage['complete']:
         text += '\n\n**本次部分完成，存在未完成或未覆盖内容，不能据此判断整个 PR 没有问题。**\n'
         text += '\n'.join('- ' + prose(s['path']) + '：' + prose(s['reason']) for s in coverage['skipped'][:40])

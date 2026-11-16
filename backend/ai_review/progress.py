@@ -43,7 +43,7 @@ def payload_for(repo, state, job, enabled, pr, now=None):
     result = job.get('result') or {}
     coverage = result.get('coverage') or (job.get('snapshot') or {}).get('coverage')
     diff_only = bool(coverage and coverage.get('scope') == 'diff')
-    coverage = ({k: coverage.get(k) for k in ('complete', 'files_reviewed', 'files_total')}
+    coverage = ({k: coverage.get(k) for k in ('complete', 'files_reviewed', 'files_total', 'source_read_tracking')}
                 if coverage and (not diff_only or job.get('batch_protocol')) else None)
     return dict(progress, attention=job.get('attention'), version=1, repository_id=repo['repo_id'], repository=repo['repo_name'], number=job['number'],
                 job=job['id'], generation=state['generation'], job_generation=job['generation'], sequence=state['progress_seq'],
@@ -78,7 +78,10 @@ def comment_body(payload):
     if payload.get('review_scope') == 'diff':
         text += '\n\n仅审查 PR diff；未读取完整工程。具体问题见审查报告，不提供自动提取的问题计数。'
     if coverage:
-        text += f" 已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。"
+        if coverage.get('source_read_tracking') == 'native_commands':
+            text += f" 已提供 {coverage['files_total']} 个变更文件的完整 diff，源码调查记录见原生命令日志。"
+        else:
+            text += f" 已读取 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。"
         if not coverage['complete']:
             text += ' **部分覆盖，请继续检查未覆盖内容。**'
     if payload['review_id']:

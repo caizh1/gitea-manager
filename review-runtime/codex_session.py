@@ -18,6 +18,42 @@ from native_session import SessionRun, NativeError, atomic_json
 VERSION = "0.169.0"
 
 
+def decode_review(text):
+    """接受完整原生结果及外围说明，拒绝截断和多个冲突结果。"""
+    encoded = text.strip()
+    if encoded.startswith("```json\n") and encoded.endswith("\n```"):
+        encoded = encoded[8:-4].strip()
+    try:
+        return json.loads(encoded)
+    except ValueError:
+        pass
+    decoder = json.JSONDecoder()
+    results = []
+    for index, char in enumerate(encoded):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(encoded, index)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and isinstance(value.get("findings"), list) and isinstance(value.get("overall_explanation"), str):
+            results.append(value)
+    if len(results) != 1:
+        raise NativeError("codex_review_json_invalid")
+    return results[0]
+
+
+def is_compaction(body, headers):
+    """读取固定 Codex 版本在 Responses 请求中声明的操作类型。"""
+    metadata = body.get("client_metadata")
+    raw = metadata.get("x-codex-turn-metadata") if isinstance(metadata, dict) else None
+    try:
+        value = json.loads(raw or headers.get("x-codex-turn-metadata", "{}"))
+    except (TypeError, ValueError):
+        return False
+    return isinstance(value, dict) and value.get("request_kind") == "compaction"
+
+
 class Gateway:
     def __init__(self, run):
         self.run = run
@@ -49,11 +85,14 @@ class Gateway:
                 data = self.rfile.read(length)
                 from backend_responses import StreamCollector
 
-                collector = StreamCollector(run.response_limit)
+                collector = StreamCollector(run.response_limit, native_tools=run.native_tools)
                 client = requests.Session()
                 client.trust_env = False
                 try:
                     body = json.loads(data)
+                    compacting = is_compaction(body, self.headers)
+                    if compacting:
+                        run.emit("session.compaction", status="running", summary="Codex 正在压缩上下文")
                     with client.post(
                         run.broker + "/responses",
                         json=body,
@@ -83,8 +122,11 @@ class Gateway:
                             self.wfile.flush()
                         final = collector.finish()
                         with gateway.lock:
-                            gateway.final = final
+                            if not compacting:
+                                gateway.final = final
                             gateway.completed_calls += 1
+                        if compacting:
+                            run.emit("session.compaction", status="completed", summary="Codex 上下文压缩完成")
                         run.emit(
                             "model.completed",
                             summary="模型调用完成",
@@ -117,6 +159,8 @@ class CodexRun(SessionRun):
         self.tool_errors = []
         self.turn_completed = False
         self.final_review = None
+        self.native_tools = data.get("codex_native_tools", False)
+        self.native_commands = []
 
     def authorize(self, data):
         with self.lock:
@@ -142,13 +186,17 @@ class CodexRun(SessionRun):
         self._kill()
 
     def _config(self):
+        output_reserve = self.upstream_output_tokens or 8192
+        compact_at = self.compaction_threshold_tokens or min(
+            self.model_context_tokens * 4 // 5, self.model_context_tokens - output_reserve
+        )
         model = json.loads(Path(__file__).with_name("codex_model.json").read_text())
         model.update(
             slug=self.model,
             display_name=self.model,
             context_window=self.model_context_tokens,
             max_context_window=self.model_context_tokens,
-            auto_compact_token_limit=self.model_context_tokens * 4,
+            auto_compact_token_limit=compact_at,
         )
         model["truncation_policy"] = {"mode": "tokens", "limit": self.model_context_tokens}
         catalog = self.root / "models.json"
@@ -163,7 +211,7 @@ class CodexRun(SessionRun):
             "web_search": "disabled",
             "project_doc_max_bytes": 0,
             "model_context_window": self.model_context_tokens,
-            "model_auto_compact_token_limit": self.model_context_tokens * 4,
+            "model_auto_compact_token_limit": compact_at,
             "model_reasoning_effort": "high" if self.thinking_enabled else "none",
             "features.shell_tool": False,
             "features.apply_patch_freeform": False,
@@ -182,7 +230,6 @@ class CodexRun(SessionRun):
                 str(Path(__file__).with_name("review_tools.py")),
                 str(self.project),
                 str(self.root / "reads.jsonl"),
-                str(max(1, self.retrieval_budget)),
             ],
             "mcp_servers.review.required": True,
             "mcp_servers.review.default_tools_approval_mode": "approve",
@@ -192,6 +239,16 @@ class CodexRun(SessionRun):
             "mcp_servers.review.tools.search.output_token_limit": 32768,
             "mcp_servers.review.tools.changes.output_token_limit": 32768,
         }
+        if self.native_tools:
+            settings = {key: value for key, value in settings.items()
+                        if not key.startswith("mcp_servers.review.")}
+            settings.update({
+                # 命令运行在现有执行器容器中，源码卷沿用只读挂载。
+                "sandbox_mode": "danger-full-access",
+                "features.shell_tool": True,
+                "features.shell_snapshot": False,
+                "allow_login_shell": False,
+            })
         args = []
         for key, value in settings.items():
             args += ["-c", key + "=" + json.dumps(value, ensure_ascii=False)]
@@ -202,10 +259,22 @@ class CodexRun(SessionRun):
         if kind == "thread.started":
             self.native_session_id = event.get("thread_id")
         elif kind in ("error", "turn.failed"):
+            error = event.get("error") or {}
+            message = error.get("message") if isinstance(error, dict) else str(error)
+            self.diagnostic = {"source": "codex", "event_type": kind,
+                               "reason": str(message or event.get("message") or kind)[:2000]}
             raise NativeError("codex_failed")
         elif kind == "item.completed":
             item = event.get("item", {})
-            if item.get("type") in ("command_execution", "file_change", "web_search"):
+            if item.get("type") == "command_execution" and self.native_tools:
+                command = {key: item.get(key) for key in
+                           ("id", "command", "aggregated_output", "exit_code", "status")}
+                self.native_commands.append(command)
+                self.emit("tool.completed", summary="Codex 原生命令完成",
+                          payload={"tool": "exec_command", "call_id": item.get("id"),
+                                   "command": item.get("command"),
+                                   "exit_code": item.get("exit_code"), "status": item.get("status")})
+            elif item.get("type") in ("command_execution", "file_change", "web_search"):
                 raise NativeError("codex_unexpected_tool")
             if item.get("type") == "mcp_tool_call":
                 if item.get("status") != "completed":
@@ -241,13 +310,7 @@ class CodexRun(SessionRun):
         ]
         final_text = "".join(texts)
         self.raw_diagnostics.result_text(final_text)
-        encoded = final_text.strip()
-        if encoded.startswith("```json\n") and encoded.endswith("\n```"):
-            encoded = encoded[8:-4].strip()
-        try:
-            result = json.loads(encoded)
-        except ValueError:
-            raise NativeError("codex_review_json_invalid") from None
+        result = decode_review(final_text)
         if self.phase.startswith("history-") and isinstance(result, dict) and "issue_id" in result:
             result = {"findings": [], "overall_explanation": json.dumps(result, ensure_ascii=False)}
         if (
@@ -256,10 +319,11 @@ class CodexRun(SessionRun):
             or not isinstance(result.get("overall_explanation"), str)
         ):
             raise NativeError("codex_review_shape_invalid")
-        result["_budget_exhausted"] = (self.root / "reads.exhausted").exists()
         result["_tool_errors"] = self.tool_errors
         result["_review_completion"] = {"complete": True, "finish_reason": "stop"}
         result["_codex_reads"] = []
+        if self.native_tools:
+            result["_codex_commands"] = self.native_commands
         audit = self.root / "reads.jsonl"
         if audit.exists():
             result["_codex_reads"] = [json.loads(line) for line in audit.read_text().splitlines()]
@@ -298,7 +362,7 @@ class CodexRun(SessionRun):
             }
             self.process = subprocess.Popen(
                 args,
-                cwd=self.root,
+                cwd=self.project if self.native_tools else self.root,
                 env=env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,

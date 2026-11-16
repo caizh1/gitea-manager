@@ -8,17 +8,20 @@ class ReviewError(ValueError):
 
 
 class ResponseStream:
-    def __init__(self, limit, probe=False):
+    def __init__(self, limit, probe=False, native_tools=False):
         self.pending = bytearray()
         self.total = 0
         self.limit = limit
         self.completed = None
         self.failed = False
         self.probe = probe
+        self.native_tools = native_tools
 
     def validate_item(self, item):
         kind = item.get("type", "")
         if kind in ("message", "reasoning", ""):
+            return
+        if self.native_tools and kind in ("function_call", "custom_tool_call"):
             return
         names = ("read", "list", "search", "changes")
         allowed = kind == "function_call" and (
