@@ -327,7 +327,7 @@ def prepare(store, client, repo, job, snapshot):
         if not (folder / "HEAD").exists():
             run_git(["init", "--bare", "."], cwd=folder, check=check)
         try:
-            run_git(["fsck", "--connectivity-only", "--no-dangling"], cwd=folder, check=check)
+            run_git(["fsck", "--full", "--no-dangling"], cwd=folder, check=check)
         except GitFailure:
             # 超时、撤权不允许被当成损坏重建。
             check()
@@ -372,7 +372,7 @@ def prepare(store, client, repo, job, snapshot):
                     if not has_object(sha):
                         run_git(["fetch", "--no-tags", url, sha], cwd=folder, env=env, check=check)
         network_seconds = time.monotonic() - network_started
-        run_git(["fsck", "--connectivity-only", "--no-dangling"], cwd=folder, check=check)
+        run_git(["fsck", "--full", "--no-dangling"], cwd=folder, check=check)
         bases = (
             run_git(["merge-base", "--all", required[0], required[1]], cwd=folder, check=check)
             .decode()

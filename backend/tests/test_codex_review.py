@@ -79,6 +79,67 @@ def test_cache_separates_authorization():
     assert cache_key(repo) != cache_key(dict(repo, access_scope={"binding_id": 2}))
 
 
+def test_corrupt_blob_rebuilds_cache_before_snapshot(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from ai_review import git_cache, native_workspace
+    from ai_review.store import Store
+
+    key = tmp_path / "master.key"
+    key.write_bytes(Fernet.generate_key())
+    monkeypatch.setenv("AI_REVIEW_MASTER_KEY_FILE", str(key))
+    store = Store(tmp_path / "review.db")
+    config = store.config()
+    config.update(enabled=True, debounce_seconds=0)
+    store.save_config(config)
+    repo = store.save_repo(1, 1, {"enabled": True, "gitea_url": "http://test",
+                                "repo_name": "owner/repo", "bot_token": store.seal("test")})
+    repo = store.repo(repo["id"])
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(source), *args], stderr=subprocess.DEVNULL).decode().strip()
+
+    git("init", "-b", "main")
+    git("config", "user.name", "测试")
+    git("config", "user.email", "test@example.invalid")
+    (source / "a.py").write_text("a=1\n")
+    git("add", ".")
+    git("commit", "-m", "基线")
+    base = git("rev-parse", "HEAD")
+    (source / "a.py").write_text("a=2\n")
+    git("commit", "-am", "变更")
+    head = git("rev-parse", "HEAD")
+    original = git_cache.run_git
+
+    def fetch_local(args, **kwargs):
+        if args[0] == "fetch":
+            return subprocess.check_output(
+                ["git", "-c", "protocol.file.allow=always", "-C", str(kwargs["cwd"]),
+                 "fetch", str(source), "+refs/heads/*:refs/heads/*"], stderr=subprocess.DEVNULL)
+        return original(args, **kwargs)
+
+    from types import SimpleNamespace
+    client = SimpleNamespace(url="http://test", repository=lambda: None, check_active=lambda: None)
+    monkeypatch.setattr(git_cache, "run_git", fetch_local)
+    monkeypatch.setattr(native_workspace, "WORKSPACE_ROOT", tmp_path / "workspaces")
+    monkeypatch.setattr("ai_review.authorization.authorize", lambda *args: None)
+    monkeypatch.setattr("ai_review.gitea.assert_version", lambda *args: None)
+    for number in (1, 2):
+        job_id = store.enqueue(repo["id"], number, {"head": head, "base": base})
+        job = store.claim()
+        workspace, info = git_cache.prepare(store, client, repo, job,
+            {"id": head, "base": base, "head": head, "merge_base": base, "diff": git("diff", base, head)})
+        assert (Path(workspace) / "after/a.py").read_text() == "a=2\n"
+        assert info["mode"] == ("首次获取" if number == 1 else "缓存重建")
+        store.finish(job_id, job["owner"], "succeeded")
+        if number == 1:
+            oid = git("rev-parse", "HEAD:a.py")
+            blob = git_cache.cache_root(store) / cache_key(repo) / "objects" / oid[:2] / oid[2:]
+            blob.chmod(0o600)
+            blob.write_bytes(b"broken")
+
+
 def test_source_tools_reject_escape(tmp_path):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "review-runtime"))
     from review_tools import SourceTools
