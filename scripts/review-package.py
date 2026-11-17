@@ -47,7 +47,12 @@ if args.export_images:
         expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,source],text=True))[0]['Id']
         if component=='frontend' and expected_images[dest]!=navigation_report['镜像ID']:
             raise RuntimeError('导航验收后前端镜像标签发生变化，请重新打包')
-        run(['docker','tag',expected_images[dest],dest])
+        # containerd 的平台检查可能返回子清单 ID，docker tag 需要本地索引 ID。
+        local_id=json.loads(subprocess.check_output(['docker','image','inspect',source],text=True))[0]['Id']
+        run(['docker','tag',local_id,dest])
+        tagged_id=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,dest],text=True))[0]['Id']
+        if tagged_id!=expected_images[dest]:
+            raise RuntimeError('打标签期间平台镜像身份变化，未导出混合版本：'+source)
     if args.migration_receiver_image:
         dest='gitea-migration-receiver:offline'
         expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,args.migration_receiver_image],text=True))[0]['Id']
