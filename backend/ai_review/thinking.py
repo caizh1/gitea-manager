@@ -11,8 +11,8 @@ def codex_effort(config):
     if not config.get('thinking_enabled', False):
         return 'none'
     effort = config.get('reasoning_effort', 'high')
-    if effort not in ('low', 'medium', 'high', 'max'):
-        raise ReviewError('Codex 思考档位必须为 low、medium、high 或 max')
+    if effort not in ('low', 'high', 'max'):
+        raise ReviewError('Codex 思考档位必须为 low、high 或 max')
     return effort
 
 
@@ -21,8 +21,8 @@ def validate(config):
         raise ReviewError('请选择受支持的思考控制协议')
     if type(config.get('thinking_enabled')) is not bool:
         raise ReviewError('深度思考开关必须为布尔值')
-    if 'reasoning_effort' in config and config['reasoning_effort'] not in ('low', 'medium', 'high', 'max'):
-        raise ReviewError('Codex 思考档位必须为 low、medium、high 或 max')
+    if 'reasoning_effort' in config and config['reasoning_effort'] not in ('low', 'high', 'max'):
+        raise ReviewError('Codex 思考档位必须为 low、high 或 max')
     for key, low, high in [('thinking_token_budget', 128, 32768), ('context_retrieval_budget', 1, 200)]:
         if type(config.get(key)) is not int or not low <= config[key] <= high:
             raise ReviewError(f'{key} 超出允许范围 {low} 至 {high}')

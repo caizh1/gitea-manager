@@ -1484,7 +1484,7 @@ class NativeSessions:
             raise NativeError('execute_deadline_invalid')
         if data.get('thinking_protocol', 'provider_default') not in ('provider_default', 'qwen_vllm', 'deepseek', 'reasoning_effort') or type(data.get('thinking_enabled', False)) is not bool:
             raise NativeError('execute_model_limit_invalid')
-        if 'reasoning_effort' in data and data['reasoning_effort'] not in ('none', 'low', 'medium', 'high', 'max'):
+        if 'reasoning_effort' in data and data['reasoning_effort'] not in ('none', 'low', 'high', 'max'):
             raise NativeError('execute_model_limit_invalid')
         workspace = Path(data['workspace']).resolve()
         runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))

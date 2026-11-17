@@ -11,8 +11,6 @@ class ThinkingTests(unittest.TestCase):
     def test_codex_reasoning_effort(self):
         self.assertEqual(codex_effort({"thinking_enabled": True}), "high")
         self.assertEqual(codex_effort({"thinking_enabled": True, "reasoning_effort": "low"}), "low")
-        self.assertEqual(codex_effort({"thinking_enabled": True, "reasoning_effort": "medium"}), "medium")
-        validate(dict(DEFAULTS, reasoning_effort="medium"))
         self.assertEqual(codex_effort({"thinking_enabled": False, "reasoning_effort": "low"}), "none")
         with self.assertRaises(ReviewError):
             validate(dict(DEFAULTS, reasoning_effort="invalid"))

@@ -35,10 +35,6 @@
       "description": "思考强度 low"
     },
     {
-      "effort": "medium",
-      "description": "思考强度 medium"
-    },
-    {
       "effort": "high",
       "description": "思考强度 high"
     },

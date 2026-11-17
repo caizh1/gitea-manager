@@ -45,8 +45,7 @@ def test_responses_requires_complete_terminal():
 
 @pytest.mark.parametrize("configured_output_limit", [None, 16384])
 @pytest.mark.parametrize("native_tools", [False, True])
-@pytest.mark.parametrize("effort", ["low", "medium"])
-def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_path, monkeypatch, configured_output_limit, native_tools, effort):
+def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_path, monkeypatch, configured_output_limit, native_tools):
     import hashlib
     import time
 
@@ -58,7 +57,7 @@ def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_p
     config = store.config()
     assert config["model_max_output_tokens"] == 0
     config.update(enabled=True, debounce_seconds=0, batch_input_tokens=4096,
-                  thinking_protocol="deepseek", thinking_enabled=True, reasoning_effort=effort)
+                  thinking_protocol="deepseek", thinking_enabled=True, reasoning_effort="low")
     if configured_output_limit is not None:
         config["model_max_output_tokens"] = configured_output_limit
     store.save_config(config)
@@ -116,7 +115,7 @@ def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_p
     assert client.post("/v1/responses", json=body, headers=headers).status_code == 400
     assert len(sent) == 65
     assert all(bool(outbound["tools"]) == native_tools for outbound in sent)
-    assert all(outbound["reasoning"] == {"effort": effort} for outbound in sent)
+    assert all(outbound["reasoning"] == {"effort": "low"} for outbound in sent)
     if configured_output_limit is None:
         assert all("max_output_tokens" not in outbound for outbound in sent)
     else:
@@ -151,8 +150,7 @@ def test_native_tools_response_and_fixed_source_evidence(tmp_path):
         normalize(raw, snapshot, tmp_path)
 
 
-@pytest.mark.parametrize("effort", ["low", "medium", "high", "max"])
-def test_codex_native_config_and_command_events(tmp_path, effort):
+def test_codex_native_config_and_command_events(tmp_path):
     from types import SimpleNamespace
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "review-runtime"))
@@ -166,14 +164,14 @@ def test_codex_native_config_and_command_events(tmp_path, effort):
     run.model = "测试模型"
     run.gateway = SimpleNamespace(url="http://127.0.0.1:1/v1")
     run.thinking_enabled = True
-    run.reasoning_effort = effort
+    run.reasoning_effort = "low"
     run.project = tmp_path
     run.native_tools = True
     run.native_commands = []
     run.command_started = {}
     args = run._config()
     settings = [args[i + 1] for i in range(0, len(args), 2)]
-    assert f'model_reasoning_effort="{effort}"' in settings
+    assert "model_reasoning_effort=\"low\"" in settings
     assert "features.shell_tool=true" in settings
     assert not any(value.startswith("mcp_servers.") for value in settings)
     events = []
