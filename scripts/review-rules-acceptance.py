@@ -59,6 +59,8 @@ def module(name, filename):
 
 
 def run(output, rows, limit):
+    if (output / 'runs.json').exists():
+        raise RuntimeError('输出目录已有运行记录，请指定新的 --output 保留首次结果')
     # 复用专用本机环境，拒绝在没有既有隔离配置的情况下初始化新服务。
     state = Path(os.environ.get('REVIEW_STATE_DIR', ROOT / 'work/review-rules-environment'))
     if not (state / '.env').is_file():
@@ -101,6 +103,10 @@ def run(output, rows, limit):
             results.append(record)
             write(output / 'runs.json', results)
             task, elapsed = real.wait_task(harness, configured['id'], pr['number'], head, timeout=3600)
+            if (task.get('configuration') or {}).get('revision') != config['revision']:
+                record.update(状态='配置变化', 任务=task['id'])
+                write(output / 'runs.json', results)
+                raise RuntimeError('验收期间模型配置发生变化，已停止混合配置对照')
             record.update(任务=task['id'], 状态=task['status'], 耗时秒=elapsed, 结果=task.get('result'),
                           Token=task.get('model_usage'), 规则=task.get('review_rules'),
                           人工核验=None, 人工基线秒=None, 人工复核秒=None)
