@@ -272,3 +272,14 @@ def test_delayed_patch_receipt_keeps_newer_state_pending(case):
     assert case.store.job(case.job['id'])['status'] == 'succeeded'
     assert '仍存在' in case.client.code[1][0]['body']
     assert len(case.client.reviews) == 1
+
+
+def test_history_confirmed_p1_overrides_primary_pass(case):
+    result(case)
+    send(case)
+    next_version(case, False, 'present')
+    assert case.job['result']['report_markdown'].startswith('VERDICT: FAIL')
+    send(case)
+    assert 'VERDICT: FAIL' in case.client.summaries[0]['body']
+    assert '仍存在' in case.client.code[1][0]['body']
+    assert len(case.client.reviews) == 1

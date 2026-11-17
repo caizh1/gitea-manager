@@ -293,6 +293,17 @@ def reconcile(store, client, job, repo, snapshot, result, runner=None):
                 publish_ids.add(ident)
         lifecycle['publish_ids'] = sorted(publish_ids)
         result = dict(result, findings=candidates, lifecycle=lifecycle)
+        if snapshot.get('engine') == 'codex_cli':
+            blockers = c.execute('''SELECT count(*) FROM review_issue_observations o
+                JOIN review_issues i ON i.id=o.issue WHERE o.job=?
+                AND json_extract(o.value,'$.status')='present'
+                AND json_extract(i.finding,'$.severity') IN ('P0','P1')''', (job['id'],)).fetchone()[0]
+            if blockers:
+                report = result.get('report_markdown', '')
+                if report.startswith('VERDICT: '):
+                    report = report.partition('\n')[2]
+                result['report_markdown'] = ('VERDICT: FAIL\n\n当前版本仍存在 '
+                    + str(blockers) + ' 项已确认的 P0/P1 问题。\n' + report)
         c.execute('UPDATE jobs SET result=?,units_completed=?,units_total=?,updated=? WHERE id=?',
                   (encode(result), len(issues), len(issues), time.time(), job['id']))
     return result
