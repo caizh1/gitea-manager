@@ -118,8 +118,7 @@
       <template #footer><el-button @click="hookVisible = false">取消</el-button><el-button type="primary" :loading="busy" @click="installHook">安装并验证</el-button></template>
     </el-dialog>
     <el-dialog append-to-body v-model="manualVisible" title="人工触发 PR 审查" width="min(460px, 95vw)"><el-alert v-if="manualError" :title="manualError" type="error" show-icon :closable="false" /><el-form label-position="top"><el-form-item label="仓库"><el-select v-model="manualRepo" value-key="id" aria-label="发起审查的仓库" class="full"><el-option v-for="r in availableRepos" :key="r.id" :value="r" :label="`${r.server_name} / ${r.repo_name}`" /></el-select></el-form-item><el-form-item label="PR 编号"><el-input-number v-model="manualNumber" :min="1" /></el-form-item></el-form><template #footer><el-button @click="manualVisible = false">取消</el-button><el-button type="primary" :loading="rerunning" :disabled="rerunning || !manualRepo" @click="rerun(manualRepo?.id, manualNumber)">开始审查</el-button></template></el-dialog>
-  </div>
-    <el-dialog v-model="publicationVisible" title="确认发布审查意见" width="min(860px, 95vw)">
+    <el-dialog append-to-body v-model="publicationVisible" title="确认发布审查意见" width="min(860px, 95vw)">
       <p v-if="publication">本次确认将发布所选问题及状态，并同步该版本总览。</p>
       <p v-if="publication">提交 {{ publication.head }}</p>
       <el-checkbox-group v-model="publicationSelected" class="publication-choices">
@@ -128,7 +127,7 @@
       <div v-for="finding in publication?.findings || []" :key="finding.issue_id" class="glass-card panel"><strong>{{ finding.severity }} {{ finding.title }}</strong><p>{{ finding.explanation }}</p><p>{{ finding.path }} · {{ finding.anchor ? '可发布行内意见' : '意见保留在 Manager' }}</p></div>
       <template #footer><el-button @click="publicationVisible = false">取消</el-button><el-button type="primary" :loading="publicationBusy" @click="approvePublication">确认发布所选结果</el-button></template>
     </el-dialog>
-
+  </div>
 </template>
 
 <script setup>
