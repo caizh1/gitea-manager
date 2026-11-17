@@ -28,9 +28,11 @@ _INTEGERS = {
     'input_bytes', 'input_limit_bytes', 'body_limit_bytes', 'configured_output_tokens',
     'error_bytes', 'captured_bytes', 'declared_error_bytes', 'thinking_token_budget', 'reasoning_chars', 'content_chars',
     'finding_index', 'input_tokens', 'input_limit',
+    'completed_calls', 'pending_bytes', 'stderr_bytes',
 }
 _BOOLEANS = {'completion_complete', 'done_seen', 'stream_closed', 'normalized_response',
-             'error_truncated', 'thinking_enabled'}
+             'error_truncated', 'thinking_enabled', 'turn_completed',
+             'final_response_received', 'final_text_received'}
 _FLOATS = {'task_remaining_seconds', 'elapsed_seconds', 'timeout_seconds', 'first_data_elapsed_seconds',
            'last_data_elapsed_seconds', 'headers_elapsed_seconds', 'request_started_at'}
 _SENSITIVE = re.compile(r'(?i)(authorization|bearer|api[_ -]?key|token|secret|password|prompt|源码|正文)')
@@ -144,6 +146,11 @@ def message_for(code, reason=None):
         }
         return details.get(reason, 'Git 源码操作失败，原因未识别，请查看失败阶段、退出码和错误摘要')
     by_reason = {
+        'responses_failed': '模型服务返回失败或未完成的 Responses 事件，请查看上游错误代码和结束原因',
+        'missing_terminal': '模型响应流已结束，但缺少完整结束事件',
+        'duplicate_terminal': '模型响应流包含重复的结束事件',
+        'event_shape': '模型 Responses 事件结构无效',
+        'unauthorized_tool': '模型返回了当前审查未启用的工具调用',
         'source_phase_mismatch': '模型返回了其他审查阶段的格式，审查未完成',
         'missing_structured_output': '模型未通过结构化结果工具提交审查结果，审查未完成',
         'structured_output_error': '模型提交的结构化审查结果不符合固定格式，审查未完成',
@@ -189,6 +196,17 @@ def message_for(code, reason=None):
         'MODEL_HTTP_ERROR': '模型服务返回错误，审查未完成',
         'MODEL_UPSTREAM_ERROR': '模型服务在响应中返回错误，审查未完成',
         'MODEL_TIMEOUT': '模型请求超时，审查未完成',
+        'MODEL_TRANSPORT_ERROR': '模型响应传输失败，请查看传输阶段和已接收长度',
+        'MODEL_GATEWAY_REJECTED': '模型网关拒绝本次请求，请查看任务授权及调用记录',
+        'codex_failed': 'Codex 回合执行失败，具体事件已保存到原始诊断包',
+        'codex_exit_failed': 'Codex 进程异常退出，请查看退出码及原始诊断包中的 stderr',
+        'codex_response_incomplete': 'Codex 未返回完整审查结果，请查看模型完成次数与回合状态',
+        'codex_review_json_invalid': 'Codex 审查结果无法解析为唯一完整 JSON，原文已保存在诊断包',
+        'codex_event_json_invalid': 'Codex 执行事件格式无效，原文已保存在诊断包',
+        'codex_review_shape_invalid': 'Codex 审查结果字段不符合约定，原文已保存在诊断包',
+        'codex_output_limit': 'Codex 执行输出超过本任务上限，请查看已接收长度与上限',
+        'codex_runtime_failed': 'Codex 运行时发生异常，请查看异常类型及执行器位置',
+        'deadline_exceeded': 'Codex 审查达到任务期限',
         'cli_exit': '原生审查进程异常退出',
         'aborted': '原生审查会话已中止',
         'unknown': '原生审查会话结果不确定',

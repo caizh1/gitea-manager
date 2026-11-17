@@ -1,4 +1,4 @@
-const scalarFields = ['thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'reasoning_chars', 'content_chars', 'task_remaining_seconds', 
+const scalarFields = ['completed_calls', 'turn_completed', 'final_response_received', 'final_text_received', 'pending_bytes', 'stderr_bytes', 'thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'reasoning_chars', 'content_chars', 'task_remaining_seconds',
   'diagnostic_version', 'status', 'error_code', 'message', 'source', 'stage', 'phase', 'branch', 'cause_stage',
   'rejection_branch', 'category', 'job', 'job_id', 'unit', 'model_phase', 'session_id', 'call_id', 'request_id', 'time_utc',
   'native_session_id', 'exception_type', 'reason', 'expected_output', 'received_output', 'extraction_path', 'parser_reason', 'parser_message',
@@ -17,6 +17,7 @@ const scalarFields = ['thinking_protocol', 'thinking_enabled', 'thinking_token_b
 ]
 
 const labels = {
+  completed_calls: '已完成模型调用', turn_completed: 'Codex 回合已结束', final_response_received: '已收到最终响应', final_text_received: '已收到审查文本', pending_bytes: '未完成事件长度', stderr_bytes: '进程错误日志长度',
   thinking_protocol: '思考控制协议', thinking_enabled: '请求启用思考', thinking_token_budget: '配置思考额度', reasoning_chars: '已接收思考字符数', content_chars: '已接收正文字数', task_remaining_seconds: '模型会话剩余秒数',
   error_code: '错误代码', source: '错误来源', stage: '失败层级', phase: '失败阶段',
   branch: '具体分支', cause_stage: '原因阶段', rejection_branch: '拒绝分支', category: '错误类别',
@@ -105,6 +106,8 @@ export function diagnosticLocation(value) {
   if (!safe) return ''
   const source = String(safe.source || '')
   if (source === 'git_source') return 'Git 源码准备'
+  if (source === 'codex') return 'Codex 执行器'
+  if (source === 'codex_protocol') return 'Codex Responses 协议'
   if (source === 'batch_result') return '分批结果校验'
   if (source === 'native_result') return '模型结果解析'
   if (source === 'model_upstream') return safe.phase === 'response_headers' ? '模型服务响应头' : '模型服务响应流'

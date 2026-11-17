@@ -3,6 +3,7 @@
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -14,7 +15,8 @@ import threading
 
 import requests
 
-from native_session import SessionRun, NativeError, atomic_json
+from native_session import SessionRun, NativeError, atomic_json, drain_redacted
+from runtime_diagnostics import safe_exception, safe_token
 
 VERSION = "0.169.0"
 
@@ -110,14 +112,22 @@ class Gateway:
                         self.send_header("Connection", "close")
                         self.end_headers()
                         if response.status_code != 200:
-                            gateway.failure = "模型网关拒绝请求，HTTP " + str(response.status_code)
+                            gateway.failure = "codex_gateway_failed"
+                            diagnostic = {"source": "model_gateway", "phase": "response_headers",
+                                          "reason": "broker_http_error", "http_status": response.status_code}
                             try:
-                                reason = response.json().get("error", {}).get("message", "")
-                                run.diagnostic = {"source": "model_gateway", "reason": str(reason)[:500]}
-                            except ValueError:
+                                value = response.json()
+                                if isinstance(value, dict) and isinstance(value.get("diagnostic"), dict):
+                                    diagnostic.update(value["diagnostic"])
+                            except (ValueError, requests.RequestException):
                                 pass
+                            run.diagnostic = diagnostic
                             return
+                        call_id = response.headers.get("X-Review-Call-ID") or secrets.token_hex(16)
+                        run.raw_diagnostics.model_response_start({"call_id": call_id, "stream": True,
+                                                                  "broker_http_status": response.status_code})
                         for chunk in response.iter_content(4096):
+                            run.raw_diagnostics.model_response_chunk(call_id, chunk)
                             collector.feed(chunk)
                             self.wfile.write(chunk)
                             self.wfile.flush()
@@ -134,8 +144,12 @@ class Gateway:
                             payload={"usage": final.get("usage", {})},
                         )
                 except Exception as exc:
-                    gateway.failure = "Responses 协议或传输失败 " + type(exc).__name__
+                    gateway.failure = "codex_gateway_failed"
+                    run.diagnostic = run.diagnostic or getattr(exc, "diagnostic", None) or safe_exception(
+                        exc, source="model_transport", phase="response_stream", reason="response_stream_failed")
                 finally:
+                    if 'call_id' in locals():
+                        run.raw_diagnostics.model_response_end(call_id, "failed" if gateway.failure else "completed")
                     self.close_connection = True
                     client.close()
                     gateway.idle.set()
@@ -163,6 +177,7 @@ class CodexRun(SessionRun):
         self.native_tools = data.get("codex_native_tools", False)
         self.native_commands = []
         self.command_started = {}
+        self.stderr_bytes = 0
         self.git_workspace = data.get('workspace_layout') in ('git-worktree-v1', 'git-worktree-v2')
         self.git_objects = self.project.parents[1] / 'objects.git' if self.project.parent.name == 'worktrees' else self.project.parent / 'objects.git'
         self.source_head = data.get('source_head')
@@ -266,9 +281,12 @@ class CodexRun(SessionRun):
             self.native_session_id = event.get("thread_id")
         elif kind in ("error", "turn.failed"):
             error = event.get("error") or {}
-            message = error.get("message") if isinstance(error, dict) else str(error)
-            self.diagnostic = {"source": "codex", "event_type": kind,
-                               "reason": str(message or event.get("message") or kind)[:2000]}
+            error_type = (error.get("code") or error.get("type")) if isinstance(error, dict) else None
+            error_type = error_type or event.get("code")
+            self.diagnostic = self.diagnostic or {
+                "source": "codex", "phase": "cli_turn", "event_type": kind,
+                "reason": "codex_failed", "native_error_type": safe_token(error_type),
+            }
             raise NativeError("codex_failed")
         elif kind == "item.started" and event.get("item", {}).get("type") == "command_execution":
             self.command_started[event["item"]["id"]] = time.monotonic()
@@ -310,7 +328,11 @@ class CodexRun(SessionRun):
         if not self.gateway.idle.wait(timeout=min(10, self.remaining())):
             raise NativeError("codex_response_incomplete")
         if self.gateway.failure or not self.gateway.final or not self.final_review or not self.turn_completed:
-            raise NativeError("codex_response_incomplete")
+            raise NativeError("codex_response_incomplete", {
+                "source": "codex", "phase": "result_collection", "reason": "codex_response_incomplete",
+                "completed_calls": self.gateway.completed_calls, "turn_completed": self.turn_completed,
+                "final_response_received": bool(self.gateway.final), "final_text_received": bool(self.final_review),
+            })
         final = self.gateway.final
         texts = [
             part.get("text", "")
@@ -339,6 +361,30 @@ class CodexRun(SessionRun):
         if audit.exists():
             result["_codex_reads"] = [json.loads(line) for line in audit.read_text().splitlines()]
         return result
+
+    def _drain_codex_stderr(self):
+        """保留受限原始错误日志，精确移除本次执行器的认证值。"""
+        capture_failed = False
+
+        def consume(raw):
+            nonlocal capture_failed
+            self.stderr_bytes += len(raw)
+            try:
+                self.raw_diagnostics.process_log(raw, engine="codex")
+            except Exception as exc:
+                if not capture_failed:
+                    logging.error("Codex 错误日志保存失败，异常=%s", type(exc).__name__)
+                    capture_failed = True
+
+        try:
+            drain_redacted(self.process.stderr, (self.capability, self.gateway.token), consume)
+        except (OSError, ValueError) as exc:
+            logging.error("Codex 错误日志采集失败，异常=%s", type(exc).__name__)
+        finally:
+            try:
+                self.raw_diagnostics.finish_process_log(engine="codex")
+            except Exception as exc:
+                logging.error("Codex 错误日志收尾失败，异常=%s", type(exc).__name__)
 
     def run(self):
         try:
@@ -393,6 +439,8 @@ class CodexRun(SessionRun):
                 stderr=subprocess.PIPE,
                 start_new_session=True,
             )
+            self.process_log_thread = threading.Thread(target=self._drain_codex_stderr, daemon=True)
+            self.process_log_thread.start()
 
             def submit():
                 try:
@@ -410,7 +458,6 @@ class CodexRun(SessionRun):
             output_bytes = 0
             with selectors.DefaultSelector() as selector:
                 selector.register(self.process.stdout, selectors.EVENT_READ, "stdout")
-                selector.register(self.process.stderr, selectors.EVENT_READ, "stderr")
                 while selector.get_map():
                     if self.cancel_requested.is_set() or self.remaining() <= 0:
                         raise NativeError("deadline_exceeded" if self.remaining() <= 0 else "user_cancelled")
@@ -421,9 +468,9 @@ class CodexRun(SessionRun):
                             continue
                         output_bytes += len(chunk)
                         if output_bytes > self.response_limit:
-                            raise NativeError("codex_output_limit")
-                        if key.data == "stderr":
-                            continue
+                            raise NativeError("codex_output_limit", {"source": "codex", "phase": "cli_output",
+                                              "reason": "codex_output_limit", "received_bytes": output_bytes,
+                                              "limit_bytes": self.response_limit})
                         pending.extend(chunk)
                         if len(pending) > self.response_limit:
                             raise NativeError("codex_output_limit")
@@ -431,15 +478,34 @@ class CodexRun(SessionRun):
                             line, _, rest = pending.partition(b"\n")
                             pending = bytearray(rest)
                             if line.strip():
-                                self._consume(json.loads(line))
-            if self.process.wait(timeout=5) != 0 or pending.strip():
-                raise NativeError("codex_exit_failed")
+                                safe_line = bytes(line)
+                                for secret in (self.capability, self.gateway.token):
+                                    if secret:
+                                        safe_line = safe_line.replace(secret.encode(), "[已脱敏]".encode())
+                                try:
+                                    event = json.loads(line)
+                                    if not isinstance(event, dict):
+                                        raise ValueError("事件必须为对象")
+                                except (ValueError, UnicodeError):
+                                    self.raw_diagnostics.event_payload(safe_line, "error")
+                                    raise NativeError("codex_event_json_invalid", {
+                                        "source": "codex", "phase": "cli_output", "reason": "json_syntax",
+                                        "received_bytes": len(line)}) from None
+                                self.raw_diagnostics.event_payload(
+                                    safe_line, "error" if event.get("type") in ("error", "turn.failed") else "accepted")
+                                self._consume(event)
+            exit_code = self.process.wait(timeout=5)
+            if exit_code != 0 or pending.strip():
+                raise NativeError("codex_exit_failed", {"source": "codex", "phase": "process_exit",
+                                  "reason": "codex_exit_failed", "exit_code": exit_code,
+                                  "pending_bytes": len(pending)})
             result = self._result()
             self.result_sha256 = hashlib.sha256(
                 json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest()
             atomic_json(self.result_path, result)
             self.result = result
+            self._finalize_raw_diagnostics()
             self.emit_terminal(
                 "session.completed",
                 status="completed",
@@ -454,12 +520,15 @@ class CodexRun(SessionRun):
             self.status = "completed"
         except Exception as exc:
             self.error_code = exc.code if isinstance(exc, NativeError) else "codex_runtime_failed"
-            self.status = "aborted" if self.cancel_requested.is_set() else "failed"
-            self.diagnostic = self.diagnostic or {
-                "source": "codex",
-                "reason": self.error_code,
-                "exception_type": type(exc).__name__,
-            }
+            terminal_status = "aborted" if self.cancel_requested.is_set() else "failed"
+            details = getattr(exc, "diagnostic", None) or safe_exception(
+                exc, source="codex", phase="cli_execution", reason=self.error_code)
+            self.diagnostic = self._diagnostic(self.diagnostic or details)
+            self.diagnostic.setdefault("stderr_bytes", self.stderr_bytes)
+            self._log_failure()
+            # 失败状态一旦可见，Worker 即会结束轮询，因此先固定诊断包。
+            self._finalize_raw_diagnostics()
+            self.status = terminal_status
             self.emit_terminal(
                 "session.error",
                 status=self.status,

@@ -1,4 +1,4 @@
-"""受限保存 OpenCode 原始协议证据；从采集源头排除认证信息。"""
+"""受限保存审查执行器原始协议证据；从采集源头排除认证信息。"""
 from datetime import datetime, timedelta, timezone
 from collections import deque
 import hashlib
@@ -447,14 +447,15 @@ class RawDiagnostics:
             if not self._append('model-responses.jsonl', encoded, observed=False):
                 self._append_reserve('model-responses-metadata.jsonl', encoded.encode())
 
-    def process_log(self, raw):
-        """有界保存已由调用方精确剔除本地认证值的 OpenCode ERROR 日志。"""
+    def process_log(self, raw, engine='opencode'):
+        """有界保存已由调用方精确剔除本地认证值的执行器日志。"""
+        engine = 'codex' if engine == 'codex' else 'opencode'
         raw = bytes(raw)
         self.process_log_observed += len(raw)
         remaining = max(0, PROCESS_LOG_PREFIX - self.process_log_saved)
         prefix = raw[:remaining]
         if prefix:
-            if self._append('opencode-stderr.raw', prefix):
+            if self._append(engine + '-stderr.raw', prefix):
                 self.process_log_saved += len(prefix)
             else:
                 self.process_log_truncated = True
@@ -465,12 +466,13 @@ class RawDiagnostics:
             if len(self.process_log_tail) > PROCESS_LOG_TAIL:
                 del self.process_log_tail[:-PROCESS_LOG_TAIL]
 
-    def finish_process_log(self):
+    def finish_process_log(self, engine='opencode'):
+        engine = 'codex' if engine == 'codex' else 'opencode'
         tail_saved = False
         if self.process_log_tail:
-            tail_saved = self._append('opencode-stderr-tail.raw', self.process_log_tail,
+            tail_saved = self._append(engine + '-stderr-tail.raw', self.process_log_tail,
                                       observed=False)
-        self._record('causality.jsonl', {'kind': 'opencode_stderr_complete',
+        self._record('causality.jsonl', {'kind': engine + '_stderr_complete',
             'observed_bytes': self.process_log_observed,
             'prefix_saved_bytes': self.process_log_saved,
             'tail_saved_bytes': len(self.process_log_tail) if tail_saved else 0,
@@ -508,7 +510,7 @@ class RawDiagnostics:
                 return self.status()
             self.finalized = True
             try:
-                manifest = {'version': 1, 'description': 'OpenCode 原始协议诊断证据',
+                manifest = {'version': 1, 'description': '审查执行器原始协议诊断证据',
                     'job_id': self.job_id, 'session_id': self.session_id,
                     'native_session_id': self.native_session_id, 'call_ids': sorted(self.calls),
                     'created_at': self.created_at, 'finalized_at': utc_now(),

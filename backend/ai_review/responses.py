@@ -3,12 +3,20 @@
 import hashlib
 import contextlib
 import json
+import logging
 import time
 
 from flask import Response, jsonify, request, stream_with_context
 
 from .common import ReviewError, encode, endpoint
-from .model_transport import open_model_stream
+from .model_transport import ModelTransportError, open_model_stream
+
+
+def protocol_error(message, reason, **details):
+    error = ReviewError(message)
+    error.error_code = "CODEX_RESPONSE_PROTOCOL"
+    error.diagnostic = dict(source="codex_protocol", reason=reason, **details)
+    return error
 
 
 class ResponseStream:
@@ -18,6 +26,7 @@ class ResponseStream:
         self.limit = limit
         self.completed = None
         self.failed = False
+        self.failure_details = {}
         self.probe = probe
         self.native_tools = native_tools
 
@@ -36,12 +45,13 @@ class ResponseStream:
             and item.get("name") == "read_probe"
         )
         if not allowed:
-            raise ReviewError("模型返回未授权工具调用")
+            raise protocol_error("模型返回未授权工具调用", "unauthorized_tool", event_type=kind)
 
     def feed(self, chunk):
         self.total += len(chunk)
         if self.total > self.limit:
-            raise ReviewError("Responses 输出超过限制")
+            raise protocol_error("Responses 输出超过限制", "output_too_large",
+                                 received_bytes=self.total, limit_bytes=self.limit)
         self.pending.extend(chunk)
         import re
 
@@ -54,16 +64,39 @@ class ResponseStream:
             data = b"\n".join(line[5:].strip() for line in raw.splitlines() if line.startswith(b"data:"))
             if not data:
                 continue
-            event = json.loads(data)
+            try:
+                event = json.loads(data)
+            except (ValueError, UnicodeError) as exc:
+                raise protocol_error("Responses 事件格式无效", "json_syntax",
+                                     received_bytes=self.total,
+                                     json_line=getattr(exc, "lineno", None),
+                                     json_column=getattr(exc, "colno", None)) from None
+            if not isinstance(event, dict) or not isinstance(event.get("item") or {}, dict):
+                raise protocol_error("Responses 事件结构无效", "event_shape")
             self.validate_item(event.get("item") or {})
             if event.get("type") == "response.completed":
                 if self.completed:
-                    raise ReviewError("Responses 返回重复结束事件")
-                self.completed = event["response"]
+                    raise protocol_error("Responses 返回重复结束事件", "duplicate_terminal")
+                self.completed = event.get("response")
+                if not isinstance(self.completed, dict) or not isinstance(self.completed.get("output", []), list):
+                    raise protocol_error("Responses 结束事件结构无效", "event_shape")
                 for item in self.completed.get("output", []):
+                    if not isinstance(item, dict):
+                        raise protocol_error("Responses 输出结构无效", "event_shape")
                     self.validate_item(item)
             if event.get("type") in ("response.failed", "response.incomplete", "error"):
                 self.failed = True
+                response = event.get("response") or {}
+                response = response if isinstance(response, dict) else {}
+                failure = response.get("error") or event.get("error") or {}
+                failure = failure if isinstance(failure, dict) else {}
+                incomplete = response.get("incomplete_details") or {}
+                self.failure_details = {
+                    "event_type": event.get("type"),
+                    "upstream_error_code": failure.get("code") or event.get("code"),
+                    "upstream_error_type": failure.get("type"),
+                    "finish_reason": incomplete.get("reason") if isinstance(incomplete, dict) else None,
+                }
 
     def finish(self):
         if (
@@ -72,8 +105,42 @@ class ResponseStream:
             or not self.completed
             or self.completed.get("status") != "completed"
         ):
-            raise ReviewError("Responses 未完整结束，未接受审查结论")
+            reason = "responses_failed" if self.failed else "missing_terminal"
+            raise protocol_error("Responses 未完整结束，未接受审查结论", reason,
+                                 received_bytes=self.total, **self.failure_details)
         return self.completed
+
+
+def record_failure(store, job, call_id, exc, transport, phase):
+    """记录本次调用的首个原因，确保随后 CLI 退出仍能定位上游。"""
+    from .diagnostics import message_for, safe_frames, safe_remote
+
+    diagnostic = safe_remote(getattr(transport, "metrics", {}))
+    diagnostic.update(safe_remote(getattr(exc, "diagnostic", {})))
+    code = getattr(exc, "error_code", "MODEL_GATEWAY_REJECTED")
+    if isinstance(exc, ModelTransportError):
+        code = "MODEL_TIMEOUT" if exc.kind in ("Timeout", "ReadTimeout", "ConnectTimeout") else "MODEL_TRANSPORT_ERROR"
+        diagnostic.update(source="model_transport", reason=exc.kind)
+        diagnostic.update(safe_remote(exc.details))
+    elif not isinstance(exc, (ReviewError, ValueError, KeyError)):
+        code = "REVIEW_INTERNAL_ERROR"
+        diagnostic.update(source="model_gateway", reason="runtime_exception")
+    diagnostic.update(status="failed", error_code=code, phase=phase,
+                      call_id=call_id, exception_type=type(exc).__name__, frames=safe_frames(exc))
+    diagnostic.setdefault("source", "model_gateway")
+    diagnostic.setdefault("reason", "request_rejected")
+    if job:
+        diagnostic.update(job=job["id"], session_id=job.get("session_id"))
+    diagnostic["message"] = message_for(code, diagnostic.get("reason"))
+    logging.error("Codex 模型调用失败 %s", encode(diagnostic))
+    if job and call_id:
+        try:
+            current = store.job(job["id"], evidence=False).get("diagnostic") or {}
+            if current.get("call_id") != call_id or current.get("status") != "failed":
+                store.update(job["id"], job["owner"], diagnostic=diagnostic)
+        except ReviewError:
+            pass
+    return diagnostic
 
 
 def register(app, store):
@@ -84,6 +151,7 @@ def register(app, store):
 
         transport = None
         call_id = None
+        job = None
         try:
             body = request.get_json(silent=True)
             token = request.headers.get("Authorization", "").removeprefix("Bearer ")
@@ -127,6 +195,7 @@ def register(app, store):
                 row = c.execute(
                     "SELECT model_calls,session_id,repository FROM jobs WHERE id=?", (cap["job"],)
                 ).fetchone()
+                job["session_id"] = row["session_id"]
                 if row["session_id"] != request.headers.get("X-Review-Session"):
                     raise ReviewError("模型调用与任务当前会话不匹配")
                 # 相同会话与完整请求禁止重放，包括流中断后的 CLI 自动重试。
@@ -199,7 +268,11 @@ def register(app, store):
                 heartbeat=guard,
             )
             if transport.status != 200:
-                raise ReviewError(f"Responses 服务返回 HTTP {transport.status}")
+                error = ReviewError(f"Responses 服务返回 HTTP {transport.status}")
+                error.error_code = "MODEL_HTTP_ERROR"
+                error.diagnostic = {"source": "model_upstream", "reason": "upstream_http_error",
+                                    "upstream_http_status": transport.status}
+                raise error
             collector = ResponseStream(config.get("model_response_max_mib", 8) * 1024 * 1024,
                                        native_tools=native_tools)
 
@@ -235,6 +308,11 @@ def register(app, store):
                             "usage": usage,
                         },
                     )
+                except Exception as exc:
+                    diagnostic = record_failure(store, job, call_id, exc, transport, "response_stream")
+                    yield "data: " + encode({"type": "error", "error": {
+                        "code": diagnostic["error_code"], "message": diagnostic["message"]},
+                        "diagnostic": diagnostic}) + "\n\n"
                 finally:
                     transport.close()
                     with store.tx() as c:
@@ -243,8 +321,9 @@ def register(app, store):
                             (state, time.time(), call_id),
                         )
 
-            return Response(generate(), content_type="text/event-stream")
-        except (ReviewError, ValueError, KeyError) as exc:
+            return Response(generate(), content_type="text/event-stream", headers={"X-Review-Call-ID": call_id})
+        except Exception as exc:
+            diagnostic = record_failure(store, job, call_id, exc, transport, "response_headers")
             if transport:
                 transport.close()
             if call_id:
@@ -253,7 +332,8 @@ def register(app, store):
                         "UPDATE review_native_calls SET status='failed',updated=? WHERE call_id=?",
                         (time.time(), call_id),
                     )
-            return jsonify(error={"message": str(exc)}), 400
+            return jsonify(error={"code": diagnostic["error_code"], "message": diagnostic["message"]},
+                           diagnostic=diagnostic), 400
 
 
 def verify_connection(store, config):

@@ -12,3 +12,13 @@ test('Git 失败显示源码阶段与退出码', () => {
   assert.equal(diagnosticRows(value).find(row => row.key === 'git_error').value, 'fatal: Authentication failed')
   assert.equal(safeDiagnostic({ ...value, raw_stderr: '私有内容' }).raw_stderr, undefined)
 })
+
+test('Codex 失败显示终态、调用次数和响应阶段', () => {
+  const value = { source: 'codex', phase: 'result_collection', reason: 'codex_response_incomplete',
+    completed_calls: 3, turn_completed: false, final_response_received: true, final_text_received: false }
+  assert.equal(diagnosticLocation(value), 'Codex 执行器')
+  assert.equal(safeDiagnostic(value).completed_calls, 3)
+  assert.equal(safeDiagnostic(value).turn_completed, false)
+  assert.equal(diagnosticRows(value).find(row => row.key === 'completed_calls').label, '已完成模型调用')
+  assert.equal(diagnosticLocation({source: 'codex_protocol'}), 'Codex Responses 协议')
+})
