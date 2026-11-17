@@ -602,7 +602,8 @@ class SessionRun:
             raise NativeError('session_state_exists')
         if self.remaining() <= 0:
             raise NativeError('deadline_exceeded')
-        for path in self.source_workspace.rglob('*'):
+        paths = () if getattr(self, 'git_workspace', False) else self.source_workspace.rglob('*')
+        for path in paths:
             if self.cancel_requested.is_set():
                 raise NativeError('authorization_revoked')
             if self.remaining() <= 0:
@@ -1444,6 +1445,11 @@ class NativeSessions:
         if not path.is_absolute() or not path.exists() or not path.is_dir():
             raise NativeError('workspace_invalid')
         resolved = path.resolve()
+        if data.get('workspace_layout') == 'git-worktree-v1' and data.get('engine') == 'codex_cli':
+            if (resolved.name != 'worktree' or resolved.parent.parent != root / '.repositories'
+                    or not re.fullmatch(r'[0-9a-f]{64}', resolved.parent.name)):
+                raise NativeError('workspace_outside_repository')
+            return resolved
         if resolved.parent != root or resolved.name != data['job_id']:
             raise NativeError('workspace_outside_job')
         return resolved
@@ -1477,6 +1483,8 @@ class NativeSessions:
         if not 20 <= data['timeout'] <= 7200 or not time.time() < data['deadline_at'] <= time.time() + data['timeout'] + 5:
             raise NativeError('execute_deadline_invalid')
         if data.get('thinking_protocol', 'provider_default') not in ('provider_default', 'qwen_vllm', 'deepseek', 'reasoning_effort') or type(data.get('thinking_enabled', False)) is not bool:
+            raise NativeError('execute_model_limit_invalid')
+        if 'reasoning_effort' in data and data['reasoning_effort'] not in ('none', 'low', 'high', 'max'):
             raise NativeError('execute_model_limit_invalid')
         workspace = Path(data['workspace']).resolve()
         runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))
@@ -1528,7 +1536,7 @@ class NativeSessions:
                 raise NativeError('job_session_conflict')
             workspace = self._workspace(data)
             atomic_json(binding_path, {'job_id': data['job_id'], 'session_id': data['session_id'],
-                                       'model': data['model'], 'deadline_at': data['deadline_at']})
+                                       'model': data['model'], 'deadline_at': data['deadline_at'], 'workspace': str(workspace)})
             if batched:
                 atomic_json(batch_path, {'job_id': data['job_id'], 'session_id': data['session_id'], 'cancelled': False})
             run_type = SessionRun
@@ -1613,7 +1621,15 @@ class NativeSessions:
                     for binding in bindings:
                         value = json.loads(binding.read_text())
                         allowed_dirs.add((runtime / value['session_id']).resolve())
+                        if value.get('workspace'):
+                            allowed_dirs.add(Path(value['workspace']).resolve())
                     if cwd not in allowed_dirs or b'review' not in command:
+                        continue
+                    environment = (folder / 'environ').read_bytes().split(b'\0')
+                    session_homes = {os.fsencode(str(runtime / json.loads(binding.read_text())['session_id'] / 'config'))
+                                     for binding in bindings}
+                    if not any(entry.startswith(b'CODEX_HOME=') and entry[11:] in session_homes
+                               for entry in environment):
                         continue
                 elif not native_command:
                     continue

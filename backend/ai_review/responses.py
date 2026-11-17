@@ -188,7 +188,9 @@ def register(app, store):
             if body.get("previous_response_id"):
                 raise ReviewError("审查请求必须携带完整会话上下文")
             if config.get("thinking_protocol") == "deepseek":
-                outbound["reasoning"] = {"effort": "high" if config.get("thinking_enabled") else "none"}
+                from .thinking import codex_effort
+
+                outbound["reasoning"] = {"effort": codex_effort(config)}
             transport = open_model_stream(
                 endpoint(config["api_base_url"], "AI_REVIEW_MODEL_HOSTS") + "/responses",
                 outbound,

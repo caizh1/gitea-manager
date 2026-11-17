@@ -124,9 +124,12 @@ def inventory(store, repos):
     rows = []
     for repo in repos:
         folder = root / cache_key(repo)
-        if not folder.is_dir():
+        from .git_workspace import repository_root
+        native = repository_root(repo)
+        if not folder.is_dir() and not native.is_dir():
             continue
-        rows.append({"repository": repo["id"], "bytes": _size(folder)})
+        rows.append({"repository": repo["id"], "bytes": (_size(folder) if folder.is_dir() else 0)
+                     + (_size(native) if native.is_dir() else 0)})
     return {
         "limit_bytes": int(os.environ.get("AI_REVIEW_GIT_CACHE_BYTES", 8 * 1024**3)),
         "bytes": sum(row["bytes"] for row in rows),
@@ -135,7 +138,14 @@ def inventory(store, repos):
 
 
 def clear(store, repo):
-    with store.lock("git-cache-" + cache_key(repo)):
+    from .git_workspace import repository_root
+
+    with store.lock("git-workspace-" + cache_key(repo)), store.lock("git-cache-" + cache_key(repo)):
+        active = repository_root(repo) / "active.json"
+        if active.exists():
+            from .git_workspace import release_previous
+            release_previous(store, repository_root(repo))
+        shutil.rmtree(repository_root(repo), ignore_errors=True)
         shutil.rmtree(cache_root(store) / cache_key(repo), ignore_errors=True)
 
 

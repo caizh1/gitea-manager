@@ -112,7 +112,7 @@ def save_config():
     state, data = store(), body()
     allowed = {'revision', 'enabled', 'engine', 'api_base_url', 'model', 'api_key',
                'debounce_seconds', 'max_files', 'max_calls', 'task_timeout_seconds', 'review_timeout_seconds',
-               'model_request_timeout_seconds', 'model_max_output_tokens', 'model_response_max_mib', 'max_findings', 'thinking_protocol', 'thinking_enabled', 'thinking_token_budget', 'context_retrieval_budget', 'model_context_tokens', 'compaction_threshold_tokens'}
+               'model_request_timeout_seconds', 'model_max_output_tokens', 'model_response_max_mib', 'max_findings', 'thinking_protocol', 'thinking_enabled', 'reasoning_effort', 'thinking_token_budget', 'context_retrieval_budget', 'model_context_tokens', 'compaction_threshold_tokens'}
     from ai_review.token_budget import DEFAULTS as batch_defaults, validate as validate_batch
     allowed.update(batch_defaults)
     if set(data)-allowed:

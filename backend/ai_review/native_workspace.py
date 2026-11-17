@@ -348,7 +348,8 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
 
     root = Path(workspace)
     diff_path = root / 'change.diff' if (root / 'change.diff').exists() else root / '变更.diff'
-    raw = _read_fixed(diff_path, deadline_at, store, job)
+    git_layout = snapshot.get('workspace_layout') == 'git-worktree-v1'
+    raw = snapshot['diff'].encode() if git_layout else _read_fixed(diff_path, deadline_at, store, job)
     patches = parse_diff(raw)
     files, anchors, skipped = [], {}, []
     with store.tx() as c:
@@ -367,8 +368,13 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
                 continue
             old_path = root / 'before' / patch.old_path if patch.old_path else None
             new_path = root / 'after' / patch.new_path if patch.new_path else None
-            old = _read_fixed(old_path, deadline_at, store, job)
-            new = _read_fixed(new_path, deadline_at, store, job)
+            if git_layout:
+                from .git_workspace import read_blob
+                old = read_blob(root, snapshot['merge_base'], patch.old_path) if patch.old_path else b''
+                new = read_blob(root, snapshot['head'], patch.new_path) if patch.new_path else b''
+            else:
+                old = _read_fixed(old_path, deadline_at, store, job)
+                new = _read_fixed(new_path, deadline_at, store, job)
             try:
                 found = validate_patch(patch, old, new, snapshot['id'])
             except ReviewError as exc:

@@ -1,13 +1,20 @@
 """思考协议、冻结配置和持续流进度的回归。"""
 import json
 import unittest
-from ai_review.thinking import DEFAULTS, parameters, validate
+from ai_review.thinking import DEFAULTS, parameters, validate, codex_effort
 from ai_review.common import ReviewError
 from ai_review.broker import NativeSSEEnd
 from tests.test_ai_review_time_budgets import TimeBudgetTests
 
 
 class ThinkingTests(unittest.TestCase):
+    def test_codex_reasoning_effort(self):
+        self.assertEqual(codex_effort({"thinking_enabled": True}), "high")
+        self.assertEqual(codex_effort({"thinking_enabled": True, "reasoning_effort": "low"}), "low")
+        self.assertEqual(codex_effort({"thinking_enabled": False, "reasoning_effort": "low"}), "none")
+        with self.assertRaises(ReviewError):
+            validate(dict(DEFAULTS, reasoning_effort="invalid"))
+
     def test_protocol_parameters(self):
         for enabled in (False, True):
             config = dict(DEFAULTS, thinking_protocol='qwen_vllm', thinking_enabled=enabled)

@@ -56,7 +56,8 @@ def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_p
     store = Store(tmp_path / "review.db")
     config = store.config()
     assert config["model_max_output_tokens"] == 0
-    config.update(enabled=True, debounce_seconds=0, batch_input_tokens=4096)
+    config.update(enabled=True, debounce_seconds=0, batch_input_tokens=4096,
+                  thinking_protocol="deepseek", thinking_enabled=True, reasoning_effort="low")
     if configured_output_limit is not None:
         config["model_max_output_tokens"] = configured_output_limit
     store.save_config(config)
@@ -114,6 +115,7 @@ def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_p
     assert client.post("/v1/responses", json=body, headers=headers).status_code == 400
     assert len(sent) == 65
     assert all(bool(outbound["tools"]) == native_tools for outbound in sent)
+    assert all(outbound["reasoning"] == {"effort": "low"} for outbound in sent)
     if configured_output_limit is None:
         assert all("max_output_tokens" not in outbound for outbound in sent)
     else:
@@ -162,11 +164,14 @@ def test_codex_native_config_and_command_events(tmp_path):
     run.model = "测试模型"
     run.gateway = SimpleNamespace(url="http://127.0.0.1:1/v1")
     run.thinking_enabled = True
+    run.reasoning_effort = "low"
     run.project = tmp_path
     run.native_tools = True
     run.native_commands = []
+    run.command_started = {}
     args = run._config()
     settings = [args[i + 1] for i in range(0, len(args), 2)]
+    assert "model_reasoning_effort=\"low\"" in settings
     assert "features.shell_tool=true" in settings
     assert not any(value.startswith("mcp_servers.") for value in settings)
     events = []
@@ -457,3 +462,94 @@ def test_current_source_can_prove_repair_with_empty_diff():
         "anchor_id": None,
     }
     assert validate_check(raw, payload, {"id": "fixed"})["status"] == "fixed"
+
+
+def test_native_git_workspace_reuses_repository_and_fixed_evidence(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from cryptography.fernet import Fernet
+    from ai_review import git_workspace, native_workspace
+    from ai_review.store import Store
+    from ai_review.codex_review import normalize, prompt
+
+    key = tmp_path / 'master.key'
+    key.write_bytes(Fernet.generate_key())
+    monkeypatch.setenv('AI_REVIEW_MASTER_KEY_FILE', str(key))
+    monkeypatch.setattr(native_workspace, 'WORKSPACE_ROOT', tmp_path / 'workspaces')
+    monkeypatch.setattr('ai_review.authorization.authorize', lambda *args: None)
+    monkeypatch.setattr('ai_review.gitea.assert_version', lambda *args: None)
+    source = tmp_path / 'source'
+    source.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(source), *args], stderr=subprocess.DEVNULL).decode().strip()
+
+    git('init', '-b', 'custom-main')
+    git('config', 'user.name', '测试')
+    git('config', 'user.email', 'test@example.invalid')
+    (source / 'a.py').write_text('a=1\n')
+    (source / '.gitattributes').write_text('a.py export-ignore text eol=crlf\n')
+    (source / 'link').symlink_to('/etc/passwd')
+    git('add', '.')
+    git('commit', '-m', '基线')
+    base = git('rev-parse', 'HEAD')
+    (source / 'a.py').write_text('a=2\n')
+    git('commit', '-am', '修改')
+    head = git('rev-parse', 'HEAD')
+    original = git_workspace.run_git
+    fetches = []
+
+    def local_git(args, **kwargs):
+        if 'fetch' in args:
+            fetches.append(1)
+            return subprocess.check_output(['git', '-c', 'protocol.file.allow=always', '-C', str(kwargs['cwd']),
+                                            'fetch', str(source), '+refs/heads/*:refs/remotes/origin/*'], stderr=subprocess.DEVNULL)
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(git_workspace, 'run_git', local_git)
+    client = SimpleNamespace(url='http://test', repository=lambda: None, check_active=lambda: None)
+    store = Store(tmp_path / 'review.db')
+    config = store.config()
+    config.update(enabled=True, debounce_seconds=0)
+    store.save_config(config)
+    saved = store.save_repo(1, 1, {'enabled': True, 'gitea_url': 'http://test', 'repo_name': 'owner/repo',
+                                  'bot_token': store.seal('test')})
+    repo = store.repo(saved['id'])
+    paths = []
+    for number in (1, 2, 3):
+        if number == 3:
+            (source / 'a.py').write_text('a=3\n')
+            git('commit', '-am', '后续修改')
+            head = git('rev-parse', 'HEAD')
+        job_id = store.enqueue(repo['id'], number, {'base': base, 'head': head})
+        job = store.claim()
+        snapshot = {'id': head, 'base': base, 'head': head, 'merge_base': base,
+                    'workspace_layout': 'git-worktree-v1', 'codex_tools': 'native', 'diff': git('diff', base, head) + '\n'}
+        workspace, info = git_workspace.prepare(store, client, repo, job, snapshot)
+        paths.append(workspace)
+        assert info['mode'] == {1: '首次获取', 2: '缓存复用', 3: '增量更新'}[number]
+        assert len(fetches) == (1 if number < 3 else 2)
+        assert not (Path(workspace) / 'before').exists()
+        assert (Path(workspace) / 'link').read_text() == '/etc/passwd'
+        assert not (Path(workspace) / 'link').is_symlink()
+        assert git_workspace.read_blob(workspace, base, 'a.py') == b'a=1\n'
+        bound = native_workspace.bind_snapshot_evidence(store, job, snapshot, workspace)
+        raw = {'findings': [{'priority': 1, 'title': '测试问题', 'body': '固定版本定位',
+                            'code_location': {'absolute_file_path': str(Path(workspace) / 'a.py'),
+                                              'line_range': {'start': 1, 'end': 1}}}]}
+        result = normalize(raw, bound, workspace)
+        assert result[0]['support'][0]['quote'] == ('a=3' if number == 3 else 'a=2')
+        assert 'before/' not in prompt(snapshot)
+        store.finish(job_id, job['owner'], 'succeeded')
+        if number == 2:
+            (Path(workspace) / 'a.py').write_text('被中断任务改动\n')
+    assert len(set(paths)) == 1
+    assert (Path(workspace) / 'a.py').read_bytes() == b'a=3\n'
+    oid = git('rev-parse', 'HEAD:a.py')
+    blob = git_workspace.repository_root(repo) / 'objects.git' / 'objects' / oid[:2] / oid[2:]
+    blob.chmod(0o600)
+    blob.write_bytes('损坏对象'.encode())
+    job_id = store.enqueue(repo['id'], 4, {'base': base, 'head': head})
+    job = store.claim()
+    workspace, info = git_workspace.prepare(store, client, repo, job, snapshot)
+    assert info['mode'] == '缓存重建'
+    assert (Path(workspace) / 'a.py').read_bytes() == b'a=3\n'

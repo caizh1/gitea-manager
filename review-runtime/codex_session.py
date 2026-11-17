@@ -9,6 +9,7 @@ import secrets
 import selectors
 import subprocess
 import sys
+import time
 import threading
 
 import requests
@@ -161,6 +162,10 @@ class CodexRun(SessionRun):
         self.final_review = None
         self.native_tools = data.get("codex_native_tools", False)
         self.native_commands = []
+        self.command_started = {}
+        self.git_workspace = data.get('workspace_layout') == 'git-worktree-v1'
+        self.source_head = data.get('source_head')
+        self.reasoning_effort = data.get('reasoning_effort', 'high' if self.thinking_enabled else 'none')
 
     def authorize(self, data):
         with self.lock:
@@ -212,7 +217,7 @@ class CodexRun(SessionRun):
             "project_doc_max_bytes": 0,
             "model_context_window": self.model_context_tokens,
             "model_auto_compact_token_limit": compact_at,
-            "model_reasoning_effort": "high" if self.thinking_enabled else "none",
+            "model_reasoning_effort": self.reasoning_effort,
             "features.shell_tool": False,
             "features.apply_patch_freeform": False,
             "features.multi_agent": False,
@@ -264,11 +269,16 @@ class CodexRun(SessionRun):
             self.diagnostic = {"source": "codex", "event_type": kind,
                                "reason": str(message or event.get("message") or kind)[:2000]}
             raise NativeError("codex_failed")
+        elif kind == "item.started" and event.get("item", {}).get("type") == "command_execution":
+            self.command_started[event["item"]["id"]] = time.monotonic()
         elif kind == "item.completed":
             item = event.get("item", {})
             if item.get("type") == "command_execution" and self.native_tools:
                 command = {key: item.get(key) for key in
                            ("id", "command", "aggregated_output", "exit_code", "status")}
+                started = self.command_started.pop(item.get("id"), None)
+                if started is not None:
+                    command["duration_seconds"] = round(time.monotonic() - started, 3)
                 self.native_commands.append(command)
                 self.emit("tool.completed", summary="Codex 原生命令完成",
                           payload={"tool": "exec_command", "call_id": item.get("id"),
@@ -335,6 +345,10 @@ class CodexRun(SessionRun):
                 raise NativeError("user_cancelled")
             self.status = "starting"
             self.emit("session.starting", summary="启动 Codex 原生 review")
+            if self.git_workspace:
+                head = subprocess.check_output(["git", "-c", "safe.directory=" + str(self.project), "-c", "safe.directory=" + str(self.project.parent / "objects.git"), "rev-parse", "HEAD"], cwd=self.project, text=True, timeout=30).strip()
+                if head != self.source_head:
+                    raise NativeError("workspace_version_changed")
             self._prepare_workspace()
             (self.root / "config").mkdir(exist_ok=True)
             version = subprocess.check_output([self.binary, "--version"], timeout=30, text=True).strip()
@@ -359,6 +373,15 @@ class CodexRun(SessionRun):
                 "CODEX_HOME": str(self.root / "config"),
                 "LANG": "C.UTF-8",
                 "REVIEW_CODEX_TOKEN": self.gateway.token,
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_COUNT": "2",
+                "GIT_CONFIG_KEY_0": "safe.directory",
+                "GIT_CONFIG_VALUE_0": str(self.project),
+                "GIT_CONFIG_KEY_1": "safe.directory",
+                "GIT_CONFIG_VALUE_1": str(self.project.parent / "objects.git"),
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
             }
             self.process = subprocess.Popen(
                 args,

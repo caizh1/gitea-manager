@@ -6,6 +6,7 @@ RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels flask==3.0.0 
 FROM ${BASE_IMAGE}
 WORKDIR /opt/review
 COPY --from=dependencies /usr/local /usr/local
+RUN apt-get update && apt-get install -y --no-install-recommends git=1:2.47.3-0+deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 10001 --create-home reviewer
 COPY --chmod=555 review-runtime/vendor/opencode-linux-x64 /opt/review/opencode
 COPY --chmod=555 review-runtime/vendor/codex-linux-x64 /opt/review/codex
