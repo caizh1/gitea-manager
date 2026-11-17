@@ -13,7 +13,7 @@ const scalarFields = ['thinking_protocol', 'thinking_enabled', 'thinking_token_b
   'http_status', 'upstream_http_status', 'upstream_error_type', 'upstream_error_code',
   'upstream_request_id', 'upstream_trace_id', 'error_bytes', 'declared_error_bytes', 'error_sha256', 'error_truncated',
   'captured_bytes', 'captured_sha256', 'secondary_exception_type',
-  'executor_error_code', 'secondary_http_status'
+  'executor_error_code', 'secondary_http_status', 'git_error'
 ]
 
 const labels = {
@@ -31,7 +31,7 @@ const labels = {
   result_type: '结果类型', limit_bytes: '长度上限', response_limit_bytes: '响应上限', reserved_bytes: '保留空间', input_bytes: '输入长度', input_limit_bytes: '输入上限', body_limit_bytes: '正文上限',
   model_call: '模型调用序号', transfer_phase: '传输阶段', request_started_at: '请求开始时间', elapsed_seconds: '已耗时', timeout_seconds: '超时上限',
   headers_elapsed_seconds: '响应头耗时', first_data_elapsed_seconds: '首段数据耗时', last_data_elapsed_seconds: '末段数据耗时',
-  exit_code: '退出码', finish: '原生结束原因', finish_reason: '结束原因', http_status: 'HTTP 状态',
+  exit_code: '退出码', git_error: 'Git 错误详情（已脱敏）', finish: '原生结束原因', finish_reason: '结束原因', http_status: 'HTTP 状态',
   model_context_tokens: '模型上下文额度', upstream_output_tokens: '上游输出额度', errno: '系统错误码', event_type: '事件类型', error_type: '错误类型',
   tls_errno: 'TLS 系统错误码', tls_exception_type: 'TLS 异常类型', tls_phase: 'TLS 阶段', tls_verify_code: 'TLS 校验码',
   upstream_http_status: '上游 HTTP 状态', upstream_error_type: '上游错误类型', upstream_error_code: '上游错误代码',
@@ -104,6 +104,7 @@ export function diagnosticLocation(value) {
   const safe = safeDiagnostic(value)
   if (!safe) return ''
   const source = String(safe.source || '')
+  if (source === 'git_source') return 'Git 源码准备'
   if (source === 'batch_result') return '分批结果校验'
   if (source === 'native_result') return '模型结果解析'
   if (source === 'model_upstream') return safe.phase === 'response_headers' ? '模型服务响应头' : '模型服务响应流'

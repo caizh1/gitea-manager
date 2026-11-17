@@ -23,6 +23,10 @@ const servers = [{ id: 1, name: '隔离测试服务器', host: '127.0.0.1', role
 const repositories = [{ id: 1, server_id: 1, server_name: servers[0].name, repo_name: '隔离导航仓库', enabled: true }]
 const publicationTask = { id: 'navigation-publication', repository: 1, number: 1, status: 'awaiting_publication',
   stage: '等待确认发布', created: 1700000000, updated: 1700000000 }
+const gitFailureTask = { id: 'navigation-git-failure', repository: 1, number: 2, status: 'failed',
+  error: 'Git 仓库认证失败，请核对审查机器人凭据及仓库读取权限',
+  diagnostic: { source: 'git_source', error_code: 'GIT_SOURCE_FAILED', phase: 'fetch',
+    reason: 'authentication', exit_code: 128, git_error: 'fatal: Authentication failed for [仓库地址]' } }
 const datasetItem = { id: 'navigation-sample', revision: 1, status: 'active', reference_ready: true,
   label: 'confirmed_defect', original: { title: '隔离导航样本', explanation: '固定样本用于核对页面加载与切换。' },
   path: 'example.py', correction: '隔离验证说明' }
@@ -46,6 +50,7 @@ function fixture(url, method) {
   if (p === '/api/ai-review/servers') return servers
   if (p === '/api/ai-review/statistics') return null
   if (p === '/api/ai-review/tasks') return { items: [publicationTask], total: 1 }
+  if (p === '/api/ai-review/tasks/navigation-git-failure') return gitFailureTask
   if (p === '/api/ai-review/tasks/navigation-publication/publication-preview') return {
     job: publicationTask.id, head: 'a'.repeat(40), preview_hash: '隔离预览摘要',
     status_changes: [{ issue: 'navigation-issue', title: '隔离发布意见', status: 'active', reason: '核对弹窗显示' }],
@@ -191,6 +196,14 @@ async function main() {
   await dialog.getByText('固定预览用于核对弹窗功能。', { exact: true }).waitFor()
   await dialog.getByRole('button', { name: '取消', exact: true }).click()
   await dialog.waitFor({ state: 'hidden' })
+  await navigate(page, '/ai-reviews?tab=tasks&task=navigation-git-failure')
+  const failure = page.getByLabel('任务失败详情', { exact: true })
+  await failure.locator(':scope > summary').click()
+  await failure.getByText('fetch', { exact: true }).waitFor()
+  await failure.getByText('128', { exact: true }).waitFor()
+  await failure.getByText(gitFailureTask.diagnostic.git_error, { exact: true }).waitFor()
+  results.push({ 场景: '真实任务详情显示 Git 失败阶段、退出码和脱敏原因', 结果: '通过' })
+  await page.getByRole('button', { name: '返回完整列表', exact: true }).click()
   await navigate(page, '/ai-reviews/settings'); await reviewReady(page, '/ai-reviews/settings')
   await navigate(page, '/servers'); await serverReady(page)
   assert.equal(documentLoads, initialLoads, '弹窗关闭后的导航不能刷新页面')

@@ -5,12 +5,11 @@ import json
 import os
 from pathlib import Path
 import shutil
-import tempfile
 import time
 from urllib.parse import quote
 
 from .common import ReviewError, safe_path, valid_sha
-from .git_cache import cache_key, cache_root, run_git, write_json, _size
+from .git_cache import cache_key, cache_root, run_git, write_json, _size, git_credentials
 
 
 def repository_root(repo):
@@ -132,11 +131,7 @@ def prepare(store, client, repo, job, snapshot):
     fetch_seconds = 0
     if not all(exists(sha) for sha in required):
         fetch_started = time.monotonic()
-        with tempfile.TemporaryDirectory(prefix="git-auth-") as temp:
-            askpass = Path(temp) / "askpass.py"
-            askpass.write_text('#!/usr/bin/env python3\nimport os,sys\nprint("oauth2" if "username" in sys.argv[1].lower() else os.environ["REVIEW_GIT_SECRET"])\n')
-            askpass.chmod(0o700)
-            env = {"GIT_ASKPASS": str(askpass), "REVIEW_GIT_SECRET": store.unseal(repo["bot_token"])}
+        with git_credentials(store.unseal(repo["bot_token"])) as env:
             refs = ["+refs/heads/*:refs/remotes/origin/*", f'+refs/pull/{job["number"]}/head:refs/review/{job["number"]}']
             run_git(["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "origin", *refs], cwd=folder, env=env, check=check, timeout=max(1, deadline-time.monotonic()))
             for sha in required:

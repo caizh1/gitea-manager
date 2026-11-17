@@ -6,10 +6,13 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import selectors
+import shlex
 import subprocess
+import sys
 import tempfile
 import time
 from urllib.parse import quote
@@ -28,7 +31,53 @@ def cache_key(repo):
 
 
 class GitFailure(ReviewError):
-    pass
+    def __init__(self, operation, returncode, stderr, secrets=()):
+        from .diagnostics import message_for
+
+        text = stderr.decode('utf-8', 'replace').lower()
+        causes = [
+            ('credential_helper', ('unable to run', 'cannot run', 'cannot exec', 'unable to fork')),
+            ('authentication', ('authentication failed', 'could not read username', 'could not read password', 'access denied', 'error: 401', 'error: 403')),
+            ('tls_certificate', ('ssl certificate problem', 'server certificate verification failed', 'unable to get local issuer certificate')),
+            ('dns', ('could not resolve host', 'name or service not known')),
+            ('connection', ('failed to connect', 'connection refused', 'connection timed out', 'connection reset')),
+            ('unsafe_directory', ('dubious ownership', 'unsafe repository')),
+            ('permission_denied', ('permission denied', 'read-only file system')),
+            ('missing_ref', ("couldn't find remote ref", 'not our ref', 'unadvertised object', 'bad object', 'invalid object name', 'not a valid object')),
+            ('repository_not_found', ('repository not found', 'not found', 'does not appear to be a git repository')),
+            ('repository_corrupt', ('not a git repository', 'object file', 'is corrupt', 'bad object header')),
+            ('disk_full', ('no space left on device',)),
+            ('redirect', ('redirect',)),
+        ]
+        reason = next((name for name, matches in causes if any(value in text for value in matches)), 'unknown')
+        detail = stderr.decode('utf-8', 'replace')
+        for secret in sorted((value for value in secrets if value), key=len, reverse=True):
+            detail = detail.replace(secret, '[已脱敏]')
+        detail = re.sub(r'https?://[^\s\'"<>]+', '[仓库地址]', detail)
+        detail = re.sub(r'(?im)^.*(?:authorization|bearer|password|secret|token)\s*[:=].*$', '[认证内容已脱敏]', detail)
+        detail = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', detail).strip()[:1800]
+        self.error_code = 'GIT_SOURCE_FAILED'
+        self.diagnostic = {'error_code': self.error_code, 'source': 'git_source', 'phase': operation, 'reason': reason,
+                           'exit_code': returncode, 'error_bytes': len(stderr),
+                           'error_sha256': hashlib.sha256(stderr).hexdigest(), 'git_error': detail}
+        super().__init__(message_for(self.error_code, reason))
+
+
+@contextlib.contextmanager
+def git_credentials(token):
+    """通过解释器读取凭据助手，兼容 Worker 的 noexec 临时目录。"""
+    with tempfile.TemporaryDirectory(prefix='git-auth-') as temp:
+        helper = Path(temp) / 'credential.py'
+        helper.write_text(
+            'import os, sys\n'
+            'if sys.argv[-1] == "get":\n'
+            '    sys.stdin.read()\n'
+            '    print("username=oauth2")\n'
+            '    print("password=" + os.environ["REVIEW_GIT_SECRET"])\n'
+        )
+        helper.chmod(0o600)
+        yield {'REVIEW_GIT_CREDENTIAL_HELPER': '!' + shlex.join([sys.executable, str(helper)]),
+               'REVIEW_GIT_SECRET': token}
 
 
 @contextlib.contextmanager
@@ -48,6 +97,9 @@ def cache_lock(store, key, check):
 
 
 def run_git(args, *, cwd=None, env=None, check=None, timeout=120, output_limit=32 * 1024 * 1024):
+    operations = {'init', 'fsck', 'cat-file', 'config', 'fetch', 'merge-base', 'update-ref',
+                  'worktree', 'status', 'reset', 'clean', 'checkout', 'ls-tree', 'show', 'rev-parse'}
+    operation = next((value for value in args if value in operations), 'git')
     clean = {key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "SSH_"))}
     clean = {
         key: value
@@ -62,6 +114,7 @@ def run_git(args, *, cwd=None, env=None, check=None, timeout=120, output_limit=3
         LC_ALL="C.UTF-8",
     )
     clean.update(env or {})
+    credential_helper = clean.pop('REVIEW_GIT_CREDENTIAL_HELPER', '')
     command = [
         "git",
         "-c",
@@ -76,8 +129,10 @@ def run_git(args, *, cwd=None, env=None, check=None, timeout=120, output_limit=3
         "credential.helper=",
         "-c",
         "gc.auto=0",
-        *args,
     ]
+    if credential_helper:
+        command.extend(['-c', 'credential.helper=' + credential_helper])
+    command.extend(args)
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         process = subprocess.Popen(
             command,
@@ -103,7 +158,10 @@ def run_git(args, *, cwd=None, env=None, check=None, timeout=120, output_limit=3
             if check:
                 check()
             if process.returncode:
-                raise GitFailure("Git 源码操作失败，退出码 " + str(process.returncode))
+                err.seek(0)
+                secrets = [value for key, value in clean.items()
+                           if re.search('secret|token|password', key, re.I)]
+                raise GitFailure(operation, process.returncode, err.read(output_limit + 1), secrets)
             out.seek(0)
             value = out.read(output_limit + 1)
             if len(value) > output_limit:
@@ -360,13 +418,7 @@ def prepare(store, client, repo, job, snapshot):
             mode = "缓存复用"
         else:
             url = client.url + "/" + quote(repo["repo_name"], safe="/") + ".git"
-            with tempfile.TemporaryDirectory(prefix="git-auth-") as temp:
-                askpass = Path(temp) / "askpass.py"
-                askpass.write_text(
-                    '#!/usr/bin/env python3\nimport os,sys\nprint("oauth2" if "username" in sys.argv[1].lower() else os.environ["REVIEW_GIT_SECRET"])\n'
-                )
-                askpass.chmod(0o700)
-                env = {"GIT_ASKPASS": str(askpass), "REVIEW_GIT_SECRET": store.unseal(repo["bot_token"])}
+            with git_credentials(store.unseal(repo["bot_token"])) as env:
                 refs = [
                     "+refs/heads/*:refs/heads/*",
                     f'+refs/pull/{job["number"]}/head:refs/review/{job["number"]}',

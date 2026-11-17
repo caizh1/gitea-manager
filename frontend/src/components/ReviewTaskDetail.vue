@@ -190,7 +190,7 @@ const connectionLabel = computed(() => eventError.value ? '日志连接异常' :
 const connectionClass = computed(() => eventError.value ? 'dot error' : connectionOk.value ? 'dot online' : 'dot waiting')
 const safeDiagnostic = computed(() => toSafeDiagnostic(props.task?.diagnostic))
 const diagnosticRows = computed(() => { const rows = toDiagnosticRows(props.task?.diagnostic); if (props.task?.session?.id && !rows.some(row => row.key === 'session_id')) rows.push({ key: 'session_id', label: '会话标识', value: props.task.session.id }); return rows })
-const primaryDiagnosticKeys = new Set(['source', 'phase', 'reason', 'upstream_http_status', 'upstream_error_type', 'call_id', 'upstream_request_id', 'upstream_trace_id', 'session_id', 'native_session_id', 'json_line', 'json_column', 'json_offset'])
+const primaryDiagnosticKeys = new Set(['source', 'phase', 'reason', 'exit_code', 'git_error', 'upstream_http_status', 'upstream_error_type', 'call_id', 'upstream_request_id', 'upstream_trace_id', 'session_id', 'native_session_id', 'json_line', 'json_column', 'json_offset'])
 const primaryDiagnosticRows = computed(() => diagnosticRows.value.filter(row => primaryDiagnosticKeys.has(row.key)).slice(0, 8))
 const moreDiagnosticRows = computed(() => { const shown = new Set(primaryDiagnosticRows.value.map(row => row.key)); return diagnosticRows.value.filter(row => !shown.has(row.key)) })
 const diagnosticText = computed(() => toDiagnosticText({ ...(props.task?.diagnostic || {}), ...(props.task?.session?.id && !props.task?.diagnostic?.session_id ? { session_id: props.task.session.id } : {}) }))

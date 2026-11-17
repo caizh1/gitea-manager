@@ -57,6 +57,10 @@ def safe_remote(value):
     if not isinstance(value, dict):
         return {}
     result = {}
+    if value.get('source') == 'git_source' and value.get('error_code') == 'GIT_SOURCE_FAILED':
+        detail = value.get('git_error')
+        if isinstance(detail, str) and len(detail) <= 1800:
+            result['git_error'] = detail
     for key in _TEXT_ENUMS:
         item = value.get(key)
         if isinstance(item, str) and _IDENTIFIER.fullmatch(item):
@@ -123,6 +127,22 @@ def safe_frames(exc):
 
 
 def message_for(code, reason=None):
+    if code == 'GIT_SOURCE_FAILED':
+        details = {
+            'credential_helper': 'Git 凭据助手无法运行，请核对 Worker 临时目录和运行环境',
+            'authentication': 'Git 仓库认证失败，请核对审查机器人凭据及仓库读取权限',
+            'tls_certificate': 'Git HTTPS 证书校验失败，请核对 Worker 的内网 CA 配置',
+            'dns': 'Git 无法解析仓库主机名，请核对 Worker 的 DNS 和仓库地址',
+            'connection': 'Git 无法连接仓库服务，请核对 Worker 到 Gitea 的网络和端口',
+            'unsafe_directory': 'Git 拒绝读取所有权不匹配的仓库目录，请核对缓存目录属主',
+            'permission_denied': 'Git 仓库目录不可写或执行权限不足，请核对 Worker 挂载权限',
+            'missing_ref': 'Git 仓库缺少本次 PR 所需的引用或提交，请核对远端 PR 版本',
+            'repository_not_found': 'Git 仓库地址不存在或不可读取，请核对仓库路径和读取权限',
+            'repository_corrupt': 'Git 本地仓库或对象损坏，请在 Manager 清理该仓库缓存后重试',
+            'disk_full': 'Git 源码存储空间不足，请清理磁盘或缓存',
+            'redirect': 'Git 仓库地址发生重定向，请配置 Gitea 的实际访问地址',
+        }
+        return details.get(reason, 'Git 源码操作失败，原因未识别，请查看失败阶段、退出码和错误摘要')
     by_reason = {
         'source_phase_mismatch': '模型返回了其他审查阶段的格式，审查未完成',
         'missing_structured_output': '模型未通过结构化结果工具提交审查结果，审查未完成',
