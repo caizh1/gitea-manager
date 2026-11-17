@@ -42,7 +42,7 @@ def payload_for(repo, state, job, enabled, pr, now=None):
         progress.update(status='outdated', label=LABELS['outdated'], detail='下方任务属于历史版本，当前提交等待审查')
     result = job.get('result') or {}
     coverage = result.get('coverage') or (job.get('snapshot') or {}).get('coverage')
-    diff_only = bool(coverage and coverage.get('scope') == 'diff')
+    diff_only = progress['review_scope'] == 'diff'
     coverage = ({k: coverage.get(k) for k in ('complete', 'files_reviewed', 'files_total', 'source_read_tracking')}
                 if coverage and (not diff_only or job.get('batch_protocol')) else None)
     return dict(progress, attention=job.get('attention'), version=1, repository_id=repo['repo_id'], repository=repo['repo_name'], number=job['number'],

@@ -12,7 +12,7 @@ from unittest.mock import patch
 import test_ai_review as core
 from ai_review.common import PublishUnknown, ReviewError, Stale, WriteRejected
 from ai_review.engine import review
-from ai_review.progress import ProgressSync, SUMMARY_MARK, DATA_PREFIX, state_for, payload_for
+from ai_review.progress import ProgressSync, SUMMARY_MARK, DATA_PREFIX, comment_body, state_for, payload_for
 from ai_review.progress_assets import build_assets
 from ai_review.store import Store
 
@@ -96,6 +96,28 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(payload['status'], 'queued')
         self.assertNotIn('bot_token', payload)
         self.assertEqual(self.client.writes, ['POST'])
+
+    def test_codex_scope_uses_execution_and_result_instead_of_legacy_diff_coverage(self):
+        from ai_review.publication import overview
+
+        job = self.store.claim()
+        coverage = {'scope': 'diff', 'files_total': 1, 'files_reviewed': 0, 'complete': True}
+        snapshot = {'head': 'a' * 40, 'engine': 'codex_cli', 'coverage': coverage}
+        self.store.update(self.id, job['owner'], snapshot=snapshot)
+        task = self.store.job(self.id, public=True)
+        self.assertEqual(task['progress']['review_scope'], 'repository')
+
+        result = {'review_scope': 'repository', 'coverage': coverage, 'findings': [],
+                  'report_markdown': 'VERDICT: PASS'}
+        self.store.update(self.id, job['owner'], result=result)
+        self.store.finish(self.id, job['owner'], 'succeeded')
+        task = self.store.job(self.id, public=True)
+        state, stored = state_for(self.store, self.repo, 1)
+        self.assertEqual(task['progress']['review_scope'], 'repository')
+        self.assertEqual(stored['result']['coverage']['scope'], 'diff')
+        payload = payload_for(self.store.repo(self.repo), state, stored, True, self.client.pr(1))
+        self.assertNotIn('仅审查 PR diff', comment_body(payload))
+        self.assertIn('按需检索固定版本仓库中的相关源码', overview(self.store, stored, result))
 
     def test_superseded_list_matches_detail_without_rewriting_stored_stage(self):
         self.store.enqueue(self.repo, 1, {'head': 'c' * 40, 'base': 'b' * 40})

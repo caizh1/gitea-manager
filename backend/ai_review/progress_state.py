@@ -78,6 +78,11 @@ def job_progress(job, now=None):
     progress['target_exceeded']=bool(progress['elapsed_seconds'] is not None and progress['elapsed_seconds']>TARGET_SECONDS)
     progress['queue_seconds']=max(0,int((start or end or now)-job['created']))
     result = job.get('result') or {}
+    coverage = result.get('coverage') or snapshot.get('coverage') or {}
+    # 历史 Codex 快照可能继承 diff 采集器的范围标记，以任务执行路径和结果为准。
+    progress['review_scope'] = result.get('review_scope') or (
+        'repository' if snapshot.get('engine') == 'codex_cli' else coverage.get('scope')
+    )
     progress['units_failed'] = result.get('units_failed',0)
     progress['units_processed'] = result.get('units_processed',job.get('units_completed',0))
     if job.get('session_id') and not job.get('batch_protocol'):

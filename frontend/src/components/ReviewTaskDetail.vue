@@ -94,6 +94,7 @@
 
         <el-tab-pane :label="diffOnly ? '审查报告' : `审查结果（${findings.length}）`" name="result">
           <el-alert v-if="diffOnly" title="仅审查 PR diff" description="仅使用 PR 标题、描述和 diff 中的变更与相邻上下文；未读取完整文件或工程，未执行构建与测试。" type="info" :closable="false" />
+          <el-alert v-else-if="reviewScope === 'repository' && task.configuration?.engine === 'codex_cli'" title="完整 PR diff，按需检索相关源码" description="Codex 可在固定版本的仓库中查阅相关文件。实际检索范围以任务日志为准。" type="info" :closable="false" />
           <el-alert v-if="partial" title="本次审查存在未覆盖或未完成内容，请结合覆盖范围查看。" type="warning" show-icon :closable="false" />
           <ReviewIssueLedger :task="task" :open="open" />
           <details v-if="task.result?.refutation?.length"><summary>独立会话反证结果</summary><section v-for="(check, index) in task.result.refutation" :key="index"><strong>{{ check.candidate }} · {{ check.retained ? '保留' : '排除' }}</strong><p>{{ check.reason }}</p></section></details>
@@ -179,7 +180,8 @@ const continuing = computed(() => ['queued','running','cancelling','publishing',
 const shouldPollEvents = computed(() => hasNativeEvents.value && props.task?.status !== 'cancelled' && props.task?.log_sync?.complete !== true)
 const findings = computed(() => Array.isArray(props.task?.result?.findings) ? props.task.result.findings : [])
 const coverage = computed(() => props.task?.result?.coverage || props.task?.snapshot?.coverage || {})
-const diffOnly = computed(() => coverage.value.scope === 'diff')
+const reviewScope = computed(() => props.task?.progress?.review_scope ?? props.task?.result?.review_scope ?? coverage.value.scope)
+const diffOnly = computed(() => reviewScope.value === 'diff')
 const reportText = computed(() => props.task?.result?.report_markdown || '')
 const groups = computed(() => coverageGroups(coverage.value))
 const retrieval = computed(() => props.task?.result?.context_retrieval || {})

@@ -23,9 +23,10 @@ def read_coverage(snapshot, reads):
     """用各审查阶段的实际读取记录统计覆盖，不把可访问文件当成已读取。"""
     from .diff import parse_diff
 
+    coverage = dict(snapshot["coverage"], scope="repository")
     if snapshot.get("codex_tools") == "native":
-        return dict(snapshot["coverage"], files_reviewed=0, source_files_read=None,
-                    diff_files_provided=snapshot["coverage"]["files_total"],
+        return dict(coverage, files_reviewed=0, source_files_read=None,
+                    diff_files_provided=coverage["files_total"],
                     source_read_tracking="native_commands")
     paths = {row["path"] for row in reads}
     reviewed = sum(
@@ -35,7 +36,7 @@ def read_coverage(snapshot, reads):
         )
         for patch in parse_diff(snapshot["diff"].encode())
     )
-    return dict(snapshot["coverage"], files_reviewed=reviewed, source_files_read=len(paths))
+    return dict(coverage, files_reviewed=reviewed, source_files_read=len(paths))
 
 
 def prompt(snapshot, phase="primary", candidates=None):
