@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from flask import Flask
 from models import Backup, GiteaServer, db
+import git_migration.models
 from routes.backup_routes import backup_bp
 from svn_migration.guards import install, target_guard
 

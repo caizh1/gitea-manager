@@ -142,14 +142,21 @@ class Journal:
                            '原源': identity(source), '原PG': identity(database), '操作标识': marker})
         self.save('原实例已核实')
 
-    def before_helper(self, source, network):
+    def before_helper(self, source, network, spool=None):
         self.value['助手网络'] = network
+        if spool:
+            self.value['站点备份卷'] = spool
         self.value['助手环境SHA256'] = hashlib.sha256(json.dumps(source.attrs['Config'].get('Env'), sort_keys=True).encode()).hexdigest()
         self.save('创建本次助手')
 
     def validate_helper(self, helper):
         helper.reload()
         attrs = helper.attrs
+        if self.value.get('站点备份卷'):
+            from services.backup_staging import MOUNT
+            mounts = [m for m in attrs['Mounts'] if m['Destination'] == MOUNT]
+            require(len(mounts) == 1 and mounts[0].get('Name') == self.value['站点备份卷']
+                    and mounts[0].get('RW'), '源端备份卷挂载不符')
         require(helper.name == self.value['操作标识'] and attrs['Image'] == self.value['原源']['Image']
                 and (attrs['Config'].get('Labels') or {}).get('gitea.manager.operation') == self.value['操作标识']
                 and attrs['Config']['Entrypoint'] == ['sleep'] and attrs['Config']['Cmd'] == ['infinity']
@@ -261,7 +268,7 @@ def execution(backup):
             try:
                 current = db.session.get(Backup, backup.id)
                 if current is not None and current.status in ('success', 'failed') and (
-                        journal.value['源收尾已完成'] or not journal.value.get('原源')):
+                        journal.value['源收尾已完成'] or not journal.value.get('原源')) and journal.value.get('传输收尾完成', True):
                     current.recovery_pending = False
                     journal.value['事务完成'] = True; journal.save('完成')
                     db.session.commit()
@@ -308,6 +315,10 @@ def install_guards(app):
         if request.endpoint in ('servers.update_server', 'servers.delete_server'):
             try:
                 ensure_ready(request.view_args['sid'])
+                from models import BackupExport
+                retained = BackupExport.query.filter(BackupExport.source_server_id == request.view_args['sid'],
+                    BackupExport.state.notin_(('cleaned', 'discarded'))).first()
+                require(retained is None, '该实例仍保留源端固定副本，请先重新接收或清理副本再修改服务器登记')
             except RuntimeError as exc:
                 return jsonify(error=str(exc)), 409
 
@@ -371,9 +382,11 @@ def _clear_lock(client, source, journal):
     helper.remove()
 
 
-def recover_source(client, server, journal):
+def recover_source(client, server, journal, progress=None):
     from docker.errors import NotFound
     value = journal.value
+    if value.get('源收尾已完成'):
+        return
     require({key: getattr(server, key) for key in SERVER_FIELDS} == value['服务器'], '服务器登记信息已变化，不自动接管')
     source = client.containers.get(value['原源']['Id'])
     database = client.containers.get(value['原PG']['Id'])
@@ -384,7 +397,7 @@ def recover_source(client, server, journal):
         require(now['Status'] in ('running', 'exited') and not any(now[k] for k in ('Paused', 'Restarting', 'Dead', 'OOMKilled')),
                 '源状态不属于本次受控停止或启动，不自动修改')
         if now['Running'] and now['StartedAt'] != before['StartedAt']:
-            require(value['源启动请求已持久化'] and ('恢复后源' not in value or actual == value['恢复后源']),
+            require(value['源启动请求已持久化'] and ('恢复后源' not in value or same_lifecycle(actual, value['恢复后源'])),
                     '源存在未知的新启动，拒绝再次启停')
         elif now['Running']:
             require('实际停止源' in value or value.get('源收尾已完成'),
@@ -423,12 +436,25 @@ def recover_source(client, server, journal):
             journal.before_remove_helper(); helper.remove(force=True)
     if before['Running'] and not now['Running']:
         require(value['停止请求已持久化'], '没有本任务停源授权')
-        journal.resume(source)
+        if progress:
+            with progress.container_state(source, 'resume_source', '等待源 Gitea 容器启动'):
+                journal.resume(source)
+        else:
+            journal.resume(source)
     journal.recovered(source)
     if before['Running']:
         from services.commit_service import _require_target_health
-        _require_target_health(server)
+        if progress:
+            progress.show('resume_source', '等待源 Gitea 健康检查通过', force=True)
+            def health(attempt, maximum):
+                progress.show('resume_source', f'等待源 Gitea 健康检查通过（第 {attempt}/{maximum} 次）',
+                              force=True, heartbeat=True)
+            _require_target_health(server, observation=health)
+        else:
+            _require_target_health(server)
     if value.get('实例锁请求已持久化'):
+        if progress:
+            progress.show('resume_source', '释放备份事务锁', force=True)
         _clear_lock(client, source, journal)
     journal.complete_source()
 
@@ -455,9 +481,18 @@ def recover_pending():
                     journal = Journal.load(path, identifier, token, task.source_server_id)
                 if journal.value['事务完成']:
                     task.recovery_pending = False; db.session.commit(); continue
-                if journal.value['源收尾已完成'] and task.status == 'success':
-                    journal.value['事务完成'] = True; journal.save('完成')
-                    task.recovery_pending = False; db.session.commit(); continue
+                if task.status == 'success' and journal.value.get('源收尾已完成'):
+                    from services.backup_staging import cleanup_reader
+                    if journal.value.get('导出读取助手') and not journal.value.get('传输收尾完成'):
+                        source = db.session.get(GiteaServer, task.source_server_id)
+                        from contextlib import closing
+                        with closing(managed_client(source)) as client:
+                            cleanup_reader(client, journal)
+                    task.recovery_pending = False
+                    journal.value['事务完成'] = True
+                    journal.save('完成')
+                    db.session.commit()
+                    continue
                 task.status = 'failed'; task.completed_at = datetime.utcnow()
                 task.error_msg = '备份执行进程已中断，正在核实原源并恢复运行状态；归档未验证，不可用于恢复'
                 task.progress_stage = 'recovery_source'; task.progress_label = '正在收尾中断备份'
@@ -465,7 +500,9 @@ def recover_pending():
                 source = db.session.get(GiteaServer, task.source_server_id)
                 server = SimpleNamespace(**{key: getattr(source, key) for key in (*SERVER_FIELDS, 'api_token', 'name')}) if source else None
                 db.session.commit()
-                if journal.value.get('原源'):
+                from services.backup_staging import restore_export_index, cleanup_reader
+                restore_export_index(task, journal)
+                if journal.value.get('原源') and not journal.value.get('源收尾已完成'):
                     require(server is not None, '原源登记已不存在，不自动操作')
                     client = managed_client(server)
                     instance_lock = None
@@ -479,6 +516,11 @@ def recover_pending():
                         finally:
                             if instance_lock is not None:
                                 instance_lock.close()
+                if journal.value.get('导出读取助手') and not journal.value.get('传输收尾完成'):
+                    require(server is not None, '缺少源连接，无法清理读取助手')
+                    from contextlib import closing
+                    with closing(managed_client(server)) as client:
+                        cleanup_reader(client, journal)
                 journal.value['事务完成'] = True; journal.save('完成')
                 task = db.session.get(Backup, identifier)
                 task.status = 'failed'; task.recovery_pending = False
@@ -507,6 +549,8 @@ def start(app):
                         from services.upgrade_maintenance import active
                         if not active():
                             recover_pending()
+                            from services.backup_staging import recover_exports
+                            recover_exports()
                 except Exception as exc:
                     logging.error('备份恢复巡检未完成：%s', type(exc).__name__)
                 time.sleep(10)

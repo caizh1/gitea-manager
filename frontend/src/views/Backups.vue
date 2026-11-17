@@ -30,7 +30,15 @@
           </template>
         </el-table-column>
         <el-table-column label="状态与进度" min-width="300">
-          <template #default="{ row }"><OperationProgress :task="row" kind="backup" /></template>
+          <template #default="{ row }">
+            <OperationProgress :task="row" kind="backup" />
+            <div v-if="row.source_export_state" class="text-muted">
+              {{ exportState(row) }} · 源端 {{ formatSize(row.source_export_size) }}
+            </div>
+            <div v-if="row.source_restored_at" class="text-muted">
+              源站已恢复 · 停机 {{ downtime(row) }}
+            </div>
+          </template>
         </el-table-column>
         <el-table-column prop="filename" label="文件名" min-width="280" />
         <el-table-column label="大小" width="100">
@@ -72,6 +80,16 @@
                 <a class="backup-action backup-action-link" :href="`/api/management/diagnostics/operation/${row.diagnostic_id}`" aria-label="诊断包">
                   <FileHeart :size="16" aria-hidden="true" />
                 </a>
+              </el-tooltip>
+              <el-tooltip v-if="row.can_retry_transfer" content="重新接收固定副本" placement="top">
+                <el-button class="backup-action" size="small" aria-label="重新接收固定副本" @click="retryTransfer(row)">
+                  <RotateCw :size="16" aria-hidden="true" />
+                </el-button>
+              </el-tooltip>
+              <el-tooltip v-if="row.can_cleanup_export" content="清理源端副本" placement="top">
+                <el-button class="backup-action" size="small" aria-label="清理源端副本" @click="cleanupExport(row)">
+                  <FolderX :size="16" aria-hidden="true" />
+                </el-button>
               </el-tooltip>
               <el-popconfirm title="确定删除此备份?" @confirm="deleteBackup(row)">
                 <template #reference>
@@ -118,8 +136,8 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Download, Archive, FileHeart, Trash2 } from '@lucide/vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Download, Archive, FileHeart, Trash2, RotateCw, FolderX } from '@lucide/vue'
 import { api } from '../api'
 import { notifyApiError } from '../api/errors.js'
 import OperationProgress from '../components/OperationProgress.vue'
@@ -127,7 +145,7 @@ import { useOperationPolling } from '../composables/useOperationPolling'
 import { operationActive, utcTime } from '../components/operationDisplay'
 
 export default {
-  components: { OperationProgress, Download, Archive, FileHeart, Trash2 },
+  components: { OperationProgress, Download, Archive, FileHeart, Trash2, RotateCw, FolderX },
   setup() {
     const backups = ref([])
     const servers = ref([])
@@ -182,6 +200,34 @@ export default {
       return false
     }
 
+    async function retryTransfer(row) {
+      try {
+        await api.post(`/backups/${row.id}/retry-transfer`)
+        ElMessage.success('已创建重新接收任务')
+        await load()
+      } catch (e) { notifyApiError(e, '重新接收失败') }
+    }
+
+    async function cleanupExport(row) {
+      try {
+        await ElMessageBox.confirm('清理后无法再从这份源端副本重新接收。若尚无成功备份，这将丢弃唯一固定副本。', '清理源端副本', { type: 'warning' })
+        await api.delete(`/backups/${row.id}/source-export`, { data: { confirm_discard: true }, timeout: 0 })
+        await load()
+      } catch (e) {
+        if (e !== 'cancel' && e !== 'close') notifyApiError(e, '清理失败')
+      }
+    }
+
+    function exportState(row) {
+      return { building: '源端导出中', ready: '源端副本已保留', cleanup_pending: '清理待重试',
+        discard_pending: '清理待重试', cleaned: '源端副本已清理', discarded: '源端副本已丢弃' }[row.source_export_state] || row.source_export_state
+    }
+
+    function downtime(row) {
+      if (!row.source_stopped_at) return '0 秒'
+      return Math.max(0, Math.round((new Date(row.source_restored_at) - new Date(row.source_stopped_at)) / 1000)) + ' 秒'
+    }
+
     function deleteBackup(row) {
       api.delete(`/backups/${row.id}`).then(() => { load() })
     }
@@ -233,7 +279,7 @@ export default {
 
     return { backups, pollError, loading, creating, importing, importBackup, exporting, exportBundle, showCreateDialog, selectedServerId, primaryServers,
              errorDialogVisible, selectedErrorBackup,
-             load, createBackup, downloadBackup, deleteBackup, shortError, showError,
+             load, createBackup, downloadBackup, deleteBackup, retryTransfer, cleanupExport, exportState, downtime, shortError, showError,
              formatSize, statusType, snapshotText, snapshotType, fmt }
   },
 }

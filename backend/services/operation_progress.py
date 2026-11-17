@@ -1,4 +1,5 @@
 """备份和恢复共用的阶段计量；复用现有业务会话，仅在安全的提交边界调用。"""
+from contextlib import ExitStack, contextmanager
 import json
 import logging
 from datetime import datetime
@@ -18,30 +19,48 @@ def progress_for_response(task):
     return result
 
 
-def update_progress(task, stage, label, percent, detail='', *, current=None, total=None, unit='', item=''):
+@contextmanager
+def _short_progress_connection(engine):
+    # 避免 SQLite 的业务写锁让停写链路在进度记录上额外等待 30 秒。
+    with engine.connect() as connection:
+        original = connection.exec_driver_sql('PRAGMA busy_timeout').scalar_one()
+        connection.exec_driver_sql('PRAGMA busy_timeout = 250')
+        connection.rollback()
+        try:
+            yield connection
+        finally:
+            connection.exec_driver_sql(f'PRAGMA busy_timeout = {original}')
+
+
+def update_progress(task, stage, label, percent, detail='', *, current=None, total=None, unit='', item='',
+                    activity=None, force=False, previous_failed=False):
     if task is None:
         return
     now = datetime.utcnow()
     previous = task.progress_stage or ''
     changed = previous != stage
     terminal = stage in ('completed', 'failed') or ('failed' in stage and task.status == 'failed')
-    if not changed and not terminal and current is not None and task.progress_updated_at:
+    if not force and not changed and not terminal and current is not None and task.progress_updated_at:
         if (now - task.progress_updated_at).total_seconds() < 1 and (total is None or current < total):
             return
     # 先完成调用者原有的业务提交，再隔离非关键的进度写入故障。
     db.session.commit()
     original = task
-    session = Session(db.engine)
+    resources = ExitStack()
     model = BackupStepLog if isinstance(task, Backup) else RestoreStepLog
     foreign_key = 'backup_id' if isinstance(task, Backup) else 'restore_task_id'
     detail, label, item = redact(detail or '')[:2000], redact(label)[:100], redact(item or '')[:1000]
     try:
+        engine = db.engine
+        bind = (resources.enter_context(_short_progress_connection(engine))
+                if activity is not None and engine.dialect.name == 'sqlite' else engine)
+        session = resources.enter_context(Session(bind, expire_on_commit=False))
         task = session.get(type(original), original.id)
         if task is None:
             return
         if changed:
             for step in session.query(model).filter_by(**{foreign_key: task.id, 'step_key': previous, 'status': 'running'}).all():
-                step.status = 'failed' if 'failed' in stage or stage == 'rollback' or 'failed' in previous else 'success'
+                step.status = 'failed' if previous_failed or 'failed' in stage or stage == 'rollback' or 'failed' in previous else 'success'
                 if stage == 'failed': step.detail = detail or step.detail
                 step.completed_at = now
                 step.elapsed_ms = max(0, int((now - step.started_at).total_seconds() * 1000))
@@ -53,7 +72,10 @@ def update_progress(task, stage, label, percent, detail='', *, current=None, tot
                 session.add(step)
             step.label = label
             step.detail = detail
-            step.metrics_json = json.dumps({'当前数量': current, '总数量': total, '单位': unit, '处理对象': item}, ensure_ascii=False)
+            metrics = {'当前数量': current, '总数量': total, '单位': unit, '处理对象': item}
+            if activity is not None:
+                metrics['实时'] = activity
+            step.metrics_json = json.dumps(metrics, ensure_ascii=False)
             step.elapsed_ms = max(0, int((now - step.started_at).total_seconds() * 1000))
         else:
             for step in session.query(model).filter_by(**{foreign_key: task.id, 'status': 'running'}).all():
@@ -83,10 +105,9 @@ def update_progress(task, stage, label, percent, detail='', *, current=None, tot
             if changed or terminal:
                 report.event('进度', detail or label, 阶段=stage)
     except Exception:
-        session.rollback()
         logging.warning('步骤进度暂时无法保存，继续原业务流程', exc_info=True)
     finally:
-        session.close()
+        resources.close()
 
 
 def update_backup_progress(task_or_id, stage, label, percent, detail='', **counts):
@@ -94,13 +115,13 @@ def update_backup_progress(task_or_id, stage, label, percent, detail='', **count
     update_progress(task, stage, label, percent, detail, **counts)
 
 
-def finish_current_step(task, detail=''):
+def finish_current_step(task, detail='', *, stage=None):
     """成功回退/清理是已完成的步骤，不能因整个任务失败而显示为步骤失败。"""
     model = BackupStepLog if isinstance(task, Backup) else RestoreStepLog
     key = 'backup_id' if isinstance(task, Backup) else 'restore_task_id'
     try:
         with Session(db.engine) as session:
-            for step in session.query(model).filter_by(**{key: task.id, 'step_key': task.progress_stage, 'status': 'running'}).all():
+            for step in session.query(model).filter_by(**{key: task.id, 'step_key': stage or task.progress_stage, 'status': 'running'}).all():
                 step.status = 'success'
                 step.completed_at = datetime.utcnow()
                 step.elapsed_ms = max(0, int((step.completed_at - step.started_at).total_seconds() * 1000))

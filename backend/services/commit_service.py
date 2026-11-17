@@ -90,7 +90,7 @@ def _api_get_json(server, path, params=None, timeout=30, repo='Gitea API', page=
         )
 
 
-def _require_target_health(server, require_auth=True):
+def _require_target_health(server, require_auth=True, observation=None):
     last_error = None
     for attempt in range(1, RESTORE_HEALTH_CHECK_ATTEMPTS + 1):
         try:
@@ -99,6 +99,8 @@ def _require_target_health(server, require_auth=True):
                 _api_get_json(server, '/api/v1/user', timeout=10)
             return
         except RestoreValidationError as e:
+            if observation:
+                observation(attempt, RESTORE_HEALTH_CHECK_ATTEMPTS)
             last_error = e
             if not e.retryable or attempt >= RESTORE_HEALTH_CHECK_ATTEMPTS:
                 break

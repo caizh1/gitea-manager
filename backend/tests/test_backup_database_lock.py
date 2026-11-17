@@ -56,6 +56,8 @@ class BackupDatabaseLockTests(unittest.TestCase):
                     database.attrs = {'NetworkSettings':{'Networks':{'network':{}}}}
                     client.containers.get.side_effect = [source, database]
                     client.containers.create.return_value = helper
+                    helper.client.api.exec_start.return_value = b''
+                    helper.client.api.exec_inspect.return_value = {'ExitCode': 0}
                     helper.get_archive.return_value = ((block for block in [raw.getvalue()]), {})
                     source.get_archive.return_value = ((block for block in [b'keys']), {})
                     phases = []
@@ -82,11 +84,9 @@ class BackupDatabaseLockTests(unittest.TestCase):
                             _ = server.host  # 与外置密钥的 managed_client 配置读取一致。
                         login_write('密钥文件处理期间')
                         backup.file_size = 123
-                    def artifact_stage(*args):
+                    def artifact_stage(*args, **kwargs):
                         _ = server.pg_user  # 与制品数据库采集读取配置一致，可能触发自动刷写。
                         login_write('制品传输与校验期间')
-                    def progress(*args, **kwargs):
-                        db.session.commit()  # 真实进度更新同样会使 ORM 实例过期。
                     with ExitStack() as stack:
                         stack.enter_context(patch('config.BACKUP_DIR', str(root/'backups')))
                         stack.enter_context(patch('services.docker_service.managed_client', return_value=client))
@@ -98,12 +98,24 @@ class BackupDatabaseLockTests(unittest.TestCase):
                             stack.enter_context(patch('services.backup_manifest.'+name, return_value={}))
                         stack.enter_context(patch('services.backup_dependencies.capture_startup_files', return_value={}))
                         stack.enter_context(patch('services.backup_dependencies.append_startup_files'))
-                        stack.enter_context(patch('services.restore_secrets.capture_backup_secret', side_effect=secret_stage))
-                        stack.enter_context(patch('services.restore_archive.validate_ssh_archive'))
-                        stack.enter_context(patch('services.backup_actions.append_artifacts', side_effect=artifact_stage))
-                        stack.enter_context(patch('services.operation_progress.update_backup_progress', side_effect=progress))
-                        journal = MagicMock(value={'原源': {'说明': '此用例只隔离验证SQLite写锁；进程恢复另有真实跨进程用例'}})
-                        stack.enter_context(patch('services.backup_recovery.recover_source', side_effect=lambda *args: source.start()))
+                        from types import SimpleNamespace
+                        export = SimpleNamespace(id=1, volume='固定卷')
+                        stack.enter_context(patch('services.backup_staging.create_export', return_value=export))
+                        stack.enter_context(patch('services.backup_staging.spool_mount'))
+                        stack.enter_context(patch('services.backup_staging.prepare_export', return_value='/tmp/export'))
+                        stack.enter_context(patch('services.backup_staging.freeze_metadata', side_effect=secret_stage))
+                        def receive(*args):
+                            artifact_stage()
+                            target = Path(args[2])
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_bytes(body.getvalue())
+                        stack.enter_context(patch('services.backup_staging.receive_export', side_effect=receive))
+                        stack.enter_context(patch('services.backup_staging.cleanup_reader'))
+                        journal = MagicMock(value={'原源': {'State': {'Running': True}}})
+                        def restore(*args, **kwargs):
+                            source.start()
+                            journal.value['源收尾已完成'] = True
+                        stack.enter_context(patch('services.backup_recovery.recover_source', side_effect=restore))
                         consistent_backup(server, backup, journal=journal)
                     self.assertEqual(phases, ['密钥文件处理期间','制品传输与校验期间'])
                     source.start.assert_called_once()

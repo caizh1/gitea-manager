@@ -64,9 +64,20 @@ class BackupStreamTests(unittest.TestCase):
             stack.enter_context(patch('services.backup_manifest.identity', return_value={}))
             stack.enter_context(patch('services.backup_consistency.read_file', return_value=(b'', None)))
             stack.enter_context(patch('services.backup_dependencies.capture_startup_files', return_value={}))
-            stack.enter_context(patch('services.operation_progress.update_backup_progress'))
+            stack.enter_context(patch('services.backup_activity.BackupActivity'))
+            stack.enter_context(patch('services.backup_staging.create_export'))
+            stack.enter_context(patch('services.backup_staging.spool_mount'))
+            stack.enter_context(patch('services.backup_staging.prepare_export'))
+            stack.enter_context(patch('services.backup_staging.cleanup_reader'))
+            from flask import Flask
+            from models import db
+            app = Flask('清理异常测试')
+            app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+            db.init_app(app)
+            stack.enter_context(app.app_context())
+            stack.enter_context(patch.object(db.session, 'commit'))
             stack.enter_context(patch('services.backup_consistency.repository_snapshot', side_effect=primary))
-            stack.enter_context(patch('services.backup_recovery.recover_source', side_effect=lambda *args: helper.remove(force=True)))
+            stack.enter_context(patch('services.backup_recovery.recover_source', side_effect=lambda *args, **kwargs: helper.remove(force=True)))
             with self.assertRaises(RuntimeError) as error:
                 consistent_backup(SimpleNamespace(gitea_container='源', pg_container='数据库', name='隔离实例'), MagicMock(),
                                   journal=MagicMock(value={'原源': {'说明': '此用例验证清理错误不得遮蔽归档首败'}}))

@@ -24,3 +24,17 @@ test('旧 UTC 时间与带时区时间产生相同耗时', async () => {
   assert.equal(d.utcTime('2026-09-21T12:00:00'), d.utcTime('2026-09-21T20:00:00+08:00'))
   assert.equal(d.elapsedText('2026-09-21T12:00:00', Date.parse('2026-09-21T12:01:05Z')), '1 分 5 秒')
 })
+
+test('区分真实活动、导出暂时无增长与观测中断', async () => {
+  const d = await display
+  const observed = '2026-09-21T12:00:00Z'
+  const now = Date.parse(observed)
+  const sample = { observed_at: observed, state: 'running', zip_bytes: 42, zip_delta: 0 }
+  assert.equal(d.backupObservationText(sample, now + 10_000), '运行中，归档大小暂无变化')
+  assert.equal(d.backupObservationText({ ...sample, zip_delta: 10 }, now), '导出进程运行中')
+  assert.equal(d.backupObservationText(sample, now + 21_000), '状态暂无法确认')
+  assert.equal(d.backupObservationText(sample, now, true), '状态暂无法确认')
+  assert.equal(d.backupObservationText({ action_started_at: observed }, now), '等待下一次活动观测')
+  assert.equal(d.backupObservationText({ action_started_at: observed }, now + 21_000), '状态暂无法确认')
+  assert.equal(d.backupObservationText({}, now), '状态暂无法确认')
+})

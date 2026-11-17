@@ -83,6 +83,22 @@ class GiteaServer(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
+class BackupExport(db.Model):
+    """所有接收尝试共享的源端固定导出。"""
+    __tablename__ = 'backup_exports'
+    id = db.Column(db.Integer, primary_key=True)
+    source_server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    marker = db.Column(db.String(100), nullable=False, unique=True)
+    volume = db.Column(db.String(100), nullable=False)
+    context_json = db.Column(db.Text, nullable=False)
+    digest = db.Column(db.String(64), default='')
+    size = db.Column(db.BigInteger, default=0)
+    state = db.Column(db.String(30), nullable=False, default='building')
+    error_msg = db.Column(db.Text, default='')
+    exported_at = db.Column(db.DateTime)
+    cleaned_at = db.Column(db.DateTime)
+
+
 class Backup(db.Model):
     __tablename__ = 'backups'
 
@@ -97,6 +113,11 @@ class Backup(db.Model):
     recovery_token = db.Column(db.String(32), nullable=False, default=lambda: __import__('uuid').uuid4().hex)
     recovery_pending = db.Column(db.Boolean, nullable=False,
         default=lambda context: (context.get_current_parameters().get('status') or 'running') in ('running', 'pending'))
+    source_export_id = db.Column(db.Integer, db.ForeignKey('backup_exports.id'), index=True)
+    source_export = db.relationship('BackupExport', foreign_keys=[source_export_id])
+    transfer_origin_id = db.Column(db.Integer)
+    source_stopped_at = db.Column(db.DateTime)
+    source_restored_at = db.Column(db.DateTime)
     source_api_token = db.Column(db.String(200), default='')
     source_server_name = db.Column(db.String(100), default='')
     commit_snapshot_status = db.Column(db.String(20), default='')

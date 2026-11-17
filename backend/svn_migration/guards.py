@@ -82,11 +82,14 @@ def install(app):
         endpoint = request.endpoint
         # 全局钩子只处理实际互斥的接口，不能预先消耗 Webhook 等接口的原始正文。
         if endpoint not in ('servers.update_server', 'servers.delete_server',
-                            'backups.create_backup', 'restore.execute_restore', 'restore.recover_restore'):
+                            'backups.create_backup', 'backups.retry_transfer', 'backups.cleanup_source_export', 'restore.execute_restore', 'restore.recover_restore'):
             return None
         ids = []
         if endpoint in ('servers.update_server', 'servers.delete_server'):
             ids = [request.view_args['sid']]
+        elif endpoint in ('backups.retry_transfer', 'backups.cleanup_source_export'):
+            backup = db.session.get(Backup, request.view_args['bid'])
+            ids = [backup.source_server_id] if backup else []
         elif endpoint == 'backups.create_backup':
             data = request.get_json(silent=True) or {}
             ids = [data.get('source_server_id')]

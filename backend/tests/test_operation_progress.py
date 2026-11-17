@@ -1,7 +1,10 @@
 """实际 SQLite 会话验证进度、事务隔离、错误及传输计量。"""
 import io
+import json
+import threading
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -27,8 +30,77 @@ class OperationProgressTests(unittest.TestCase):
         db.create_all()
         self.server = GiteaServer(name='测试源', host='测试主机', ssh_user='root', gitea_port=3000, gitea_url='http://test.invalid', api_token='秘密测试值')
         db.session.add(self.server); db.session.commit()
-        self.backup = Backup(source_server_id=self.server.id, filename='sample.zip', file_path='', status='running')
+        # 使用确实存在且没有停写快照的旧 ZIP，覆盖旧备份仍走 API 采集的路径。
+        sample = Path(self.directory.name) / 'sample.zip'
+        with zipfile.ZipFile(sample, 'w'):
+            pass
+        self.backup = Backup(source_server_id=self.server.id, filename=sample.name, file_path=str(sample), status='running')
         db.session.add(self.backup); db.session.commit()
+
+    def test_live_probe_records_observation_without_committing_business_fields(self):
+        from services.backup_activity import BackupActivity
+        progress = BackupActivity(self.backup)
+        progress.source = 'paused'
+        self.backup.file_size = 12345
+        publish = progress.show('dump', '生成备份归档')
+        seen = threading.Event()
+
+        def observed(**sample):
+            publish(**sample)
+            seen.set()
+
+        with patch('services.backup_activity.INTERVAL', .01):
+            with progress.observe(observed, lambda: {'state': 'running', 'zip_bytes': 123456}):
+                self.assertTrue(seen.wait(3), '没有接收到后台进程观测')
+        with Session(db.engine) as reader:
+            self.assertNotEqual(reader.get(Backup, self.backup.id).file_size, 12345)
+            activity = json.loads(reader.query(BackupStepLog).one().metrics_json)['实时']
+            self.assertEqual((activity['zip_bytes'], activity['source_state']), (123456, 'paused'))
+            self.assertTrue(activity['observed_at'].endswith('Z'))
+        self.assertEqual(self.backup.file_size, 12345)
+
+    def test_late_docker_observation_cannot_overwrite_next_stage(self):
+        from services.backup_activity import BackupActivity
+        progress = BackupActivity(self.backup)
+        publish = progress.show('dump', '生成备份归档')
+        entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+
+        def slow_probe():
+            entered.set()
+            release.wait(3)
+            returned.set()
+            return {'state': 'running', 'zip_bytes': 10}
+
+        threads = []
+        def start_thread(**kwargs):
+            thread = threading.Thread(**kwargs)
+            threads.append(thread)
+            return thread
+
+        with patch('services.backup_activity.INTERVAL', .01), patch('services.backup_activity.Thread', side_effect=start_thread):
+            with progress.observe(publish, slow_probe):
+                self.assertTrue(entered.wait(3))
+            progress.show('snapshot_verify', '复核仓库')
+            release.set()
+            self.assertTrue(returned.wait(3))
+        threads[0].join(3)
+        self.assertFalse(threads[0].is_alive())
+        with Session(db.engine) as reader:
+            self.assertEqual(reader.get(Backup, self.backup.id).progress_stage, 'snapshot_verify')
+            dump = reader.query(BackupStepLog).filter_by(step_key='dump').one()
+            self.assertNotIn('zip_bytes', json.loads(dump.metrics_json)['实时'])
+
+    def test_recovery_after_failed_export_preserves_both_step_results(self):
+        from services.backup_activity import BackupActivity
+        from services.operation_progress import finish_current_step
+        progress = BackupActivity(self.backup)
+        progress.show('dump', '生成备份归档')
+        progress.show('resume_source', '恢复源站服务', previous_failed=True)
+        finish_current_step(self.backup)
+        self.backup.status = 'failed'
+        update_backup_progress(self.backup, 'failed', '备份失败', 85, '导出失败')
+        results = {step.step_key: step.status for step in BackupStepLog.query.all()}
+        self.assertEqual(results, {'dump': 'failed', 'resume_source': 'success'})
 
     def test_independent_reader_sees_progress_and_utc(self):
         update_backup_progress(self.backup, 'collect', '正在采集', 70, current=3, total=60, unit='repos', item='团队/仓库')

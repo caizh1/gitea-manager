@@ -219,6 +219,21 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.task.status, 'success'); self.assertEqual(self.task.diagnostic_id, '原已完成诊断')
         self.managed.assert_not_called()
 
+    def test_interrupted_transfer_does_not_revisit_restored_source(self):
+        journal = self.journal()
+        journal.before_stop(self.source)
+        self.source.stop()
+        journal.stopped(self.source)
+        recovery.recover_source(self.client, self.server, journal)
+        journal.instance_lock.close()
+        self.source.attrs['State']['StartedAt'] = '用户后续合法重启时间'
+        self.source.save()
+        self.managed.reset_mock()
+        recovery.recover_pending()
+        self.managed.assert_not_called()
+        self.assertFalse(db.session.get(Backup, self.task.id, populate_existing=True).recovery_pending)
+        self.assertEqual(self.source.starts, 1)
+
     def test_legacy_schema_migration_does_not_adopt_old_rows(self):
         import ast, sqlite3
         tree = ast.parse((Path(__file__).resolve().parents[1] / 'app.py').read_text())

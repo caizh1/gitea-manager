@@ -74,7 +74,17 @@ def import_backup():
 def backup_to_dict(b):
     server_exists = b.source_server is not None
     server_name = b.source_server_name or (b.source_server.name if server_exists else '未知服务器')
+    export = b.source_export
+    export_ready = bool(export and export.state == 'ready' and export.exported_at)
     return {
+        'source_export_state': export.state if export else '',
+        'source_export_size': export.size if export else 0,
+        'source_export_error': export.error_msg if export else '',
+        'source_stopped_at': b.source_stopped_at.isoformat() + 'Z' if b.source_stopped_at else None,
+        'source_restored_at': b.source_restored_at.isoformat() + 'Z' if b.source_restored_at else None,
+        'can_retry_transfer': bool(export_ready and b.status == 'failed' and not b.recovery_pending and server_exists),
+        'can_cleanup_export': bool(export and export.state not in ('cleaned', 'discarded')
+                                   and b.status not in ('running', 'pending') and not b.recovery_pending and server_exists),
         'id': b.id,
         'source_server_id': b.source_server_id,
         'source_server_name': server_name,
@@ -155,6 +165,8 @@ def delete_backup(bid):
     b = Backup.query.get_or_404(bid)
     if b.status in ('running', 'pending') or b.recovery_pending:
         return jsonify(error='备份仍在运行或尚未完成中断收尾，不能删除恢复凭据'), 409
+    if b.source_export and b.source_export.state not in ('cleaned', 'discarded'):
+        return jsonify(error='请先清理源端固定副本，再删除备份记录'), 409
     if b.file_path and os.path.exists(b.file_path):
         os.remove(b.file_path)
     from pathlib import Path
@@ -215,3 +227,54 @@ def get_backup_steps(bid):
     Backup.query.get_or_404(bid)
     steps = BackupStepLog.query.filter_by(backup_id=bid).order_by(BackupStepLog.id).all()
     return jsonify([restore_step_to_dict(step) for step in steps])
+
+
+@backup_bp.route('/backups/<int:bid>/retry-transfer', methods=['POST'])
+@login_required
+def retry_transfer(bid):
+    import uuid
+    from services.backup_staging import export_lease
+    original = Backup.query.get_or_404(bid)
+    try:
+        if not backup_to_dict(original)['can_retry_transfer']:
+            return jsonify(error='仅支持重收已完成源站收尾且保留固定副本的失败任务'), 409
+        with export_lease(original.source_export_id):
+            db.session.refresh(original.source_export)
+            if original.source_export.state != 'ready':
+                return jsonify(error='固定副本已被清理或正在清理'), 409
+            if Backup.query.filter(Backup.source_server_id == original.source_server_id,
+                    db.or_(Backup.status.in_(('running', 'pending')), Backup.recovery_pending.is_(True))).first():
+                return jsonify(error='该源站还有备份任务未完成'), 409
+            row = Backup(source_server_id=original.source_server_id, source_api_token=original.source_api_token,
+                source_server_name=original.source_server_name, source_export_id=original.source_export_id,
+                transfer_origin_id=original.id, source_stopped_at=original.source_stopped_at,
+                source_restored_at=original.source_restored_at, filename='gitea-received-' + uuid.uuid4().hex + '.zip',
+                file_path='', status='running', commit_snapshot_status='pending')
+            db.session.add(row)
+            db.session.commit()
+        task_manager.run_backup(row.id)
+        return jsonify(backup_to_dict(row)), 201
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 409
+
+
+@backup_bp.route('/backups/<int:bid>/source-export', methods=['DELETE'])
+@login_required
+def cleanup_source_export(bid):
+    from services.backup_staging import export_lease, cleanup_export
+    b = Backup.query.get_or_404(bid)
+    if not b.source_export:
+        return jsonify(error='该历史备份没有独立固定副本'), 409
+    data = request.get_json(silent=True) or {}
+    try:
+        with export_lease(b.source_export_id):
+            db.session.refresh(b.source_export)
+            if Backup.query.filter(Backup.source_export_id == b.source_export_id,
+                    db.or_(Backup.status.in_(('running', 'pending')), Backup.recovery_pending.is_(True))).first():
+                return jsonify(error='该副本仍有任务运行或等待收尾'), 409
+            cleanup_export(b.source_export, b.source_server, discard=data.get('confirm_discard') is True)
+        return jsonify(backup_to_dict(b))
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 409
+    except Exception:
+        return jsonify(error='源端副本清理未完成，请检查连接后重试'), 502

@@ -20,7 +20,11 @@ INSTANCE_LOCK = '/data/.manager-restore-lock'
 
 def execute(container, args, user=None):
     code, raw = container.exec_run(args, user=user)
-    if code:
+    return command_output(code, raw)
+
+
+def command_output(code, raw):
+    if code != 0:
         from services.diagnostics import redact
         raise RuntimeError('隔离数据操作失败：' + redact(raw.decode(errors='replace')[-2000:]))
     return raw.decode('utf-8').strip()
@@ -95,21 +99,37 @@ def inventory(database, server):
     return json.loads(database_sql(database, server, query))
 
 
-def repository_snapshot(helper, database, server):
+def repository_snapshot(helper, database, server, progress=None, stage='snapshot'):
+    if progress:
+        progress.show(stage, '读取数据库仓库清单')
     rows = inventory(database, server)
     root = repository_root(helper)
-    paths = execute(helper, ['find', root, '-type', 'd', '-name', '*.git', '-prune']).splitlines()
+    find = ['find', root, '-type', 'd', '-name', '*.git', '-prune']
+    paths = (progress.execute(helper, find, stage=stage, action='扫描 Git 仓库')
+             if progress else execute(helper, find)).splitlines()
     repositories = {}
+    total = len(paths)
     for path in sorted(paths):
         relative = str(PurePosixPath(path).relative_to(root))
         if '\n' in relative or '..' in PurePosixPath(relative).parts:
             raise RuntimeError('仓库路径无法安全记录')
         command = ['git', '--git-dir', path]
-        execute(helper, command + ['fsck', '--full', '--no-reflogs'], user='git')
-        refs = execute(helper, command + ['for-each-ref', '--format=%(refname) %(objectname)'], user='git').splitlines()
-        head = execute(helper, ['cat', path + '/HEAD'])
-        commits = execute(helper, command + ['log', '-100', '--format=%H', 'HEAD'], user='git').splitlines() if refs else []
+
+        def read(container, args, action, user=None):
+            if progress:
+                return progress.execute(container, args, stage=stage, action=action, user=user,
+                                        current=len(repositories), total=total, unit='repos', item=relative)
+            return execute(container, args, user=user)
+
+        read(helper, command + ['fsck', '--full', '--no-reflogs'], '检查 Git 对象完整性', user='git')
+        refs = read(helper, command + ['for-each-ref', '--format=%(refname) %(objectname)'],
+                    '读取分支和标签引用', user='git').splitlines()
+        head = read(helper, ['cat', path + '/HEAD'], '读取仓库 HEAD')
+        commits = (read(helper, command + ['log', '-100', '--format=%H', 'HEAD'],
+                        '读取最近提交', user='git').splitlines() if refs else [])
         repositories[relative] = {'引用': refs, 'HEAD': head, '提交': commits}
+    if progress:
+        progress.show(stage, '核对数据库与磁盘仓库', current=total, total=total, unit='repos', force=True)
     for row in rows:
         path = (row['storage_owner'] + '/' + row['storage_name'] + '.git').lower()
         if path not in repositories:
@@ -157,8 +177,13 @@ def consistent_backup(server, backup, journal=None):
             return consistent_backup(server, backup, journal=current)
     from config import BACKUP_DIR
     from services.docker_service import managed_client
-    from services.operation_progress import update_backup_progress
-    from services.restore_secrets import capture_backup_secret
+    from services.backup_activity import BackupActivity
+    from services.operation_progress import finish_current_step
+    from services import backup_staging
+    from models import db
+    from datetime import datetime
+    progress = BackupActivity(backup, server)
+    progress.show('prepare', '连接源实例并检查备份条件')
     client = managed_client(server)
     helper = None
     was_running = False
@@ -178,82 +203,81 @@ def consistent_backup(server, backup, journal=None):
                 raise RuntimeError(label + ' 已禁用但仍有对象记录；dump 会跳过正文，拒绝生成不完整备份')
         was_running = gitea.status == 'running'
         network = sorted(set(gitea.attrs['NetworkSettings']['Networks']) & set(database.attrs['NetworkSettings']['Networks']))[0]
-        journal.before_helper(gitea, network)
+        progress.show('prepare', '准备备份辅助容器和实例锁', force=True)
+        export = backup_staging.create_export(client, gitea, server, backup, journal)
+        journal.before_helper(gitea, network, export.volume)
         helper = client.containers.create(gitea.attrs['Image'], name=marker, entrypoint=['sleep'], command=['infinity'],
             environment=gitea.attrs['Config'].get('Env'), volumes_from=[gitea.id], network=network,
+            mounts=[backup_staging.spool_mount(export.volume)],
             labels={'gitea.manager.operation': marker})
         journal.helper(helper)
         helper.start()
+        export_root = backup_staging.prepare_export(helper, database, server, marker)
         journal.before_lock()
         journal.lock(helper)
-        update_backup_progress(backup, 'stop_source', '正在停止源 Gitea，建立一致性备份点', 5, server.name)
+        progress.show('stop_source', '检查源容器与停写条件')
         if was_running:
             journal.before_stop(gitea)
-            gitea.stop(timeout=60)
+            with progress.container_state(gitea, 'stop_source', '等待源 Gitea 容器停止'):
+                gitea.stop(timeout=60)
         journal.stopped(gitea)
+        if was_running:
+            backup.source_stopped_at = datetime.utcnow()
+            db.session.commit()
+        progress.show('stop_source', '确认数据库已停写', force=True)
         require_quiet(database, server)
+        progress.source = 'paused'
+        progress.show('stop_source', '采集启动配置', force=True)
         from services.backup_dependencies import capture_startup_files, append_startup_files
         from services.backup_actions import append_artifacts
         source_config = read_file(gitea, '/data/gitea/conf/app.ini')[0]
+        requirements = identity(gitea, database, server)
         startup_files = capture_startup_files(gitea, helper, source_config)
-        update_backup_progress(backup, 'snapshot', '正在记录停写状态下的仓库与引用', 10, server.name)
-        snapshot = repository_snapshot(helper, database, server)
-        tables = table_snapshot(database, server)
-        path = '/tmp/' + marker + '.zip'
-        update_backup_progress(backup, 'dump', '正在导出同一停写点的数据库和文件', 20, server.name)
-        execute(helper, ['/usr/local/bin/gitea', 'dump', '-c', '/data/gitea/conf/app.ini', '--tempdir', '/tmp', '-f', path], user='git')
+        snapshot = repository_snapshot(helper, database, server, progress)
+        tables = table_snapshot(database, server, progress)
+        path = export_root + '/gitea.zip'
+        progress.execute(helper, ['/usr/local/bin/gitea', 'dump', '-c', '/data/gitea/conf/app.ini',
+                                  '--tempdir', export_root, '-f', path], stage='dump',
+                         action='生成备份归档', user='git', archive=path)
+        progress.show('snapshot_verify', '确认导出期间数据库保持停写')
         require_quiet(database, server)
-        if repository_snapshot(helper, database, server) != snapshot:
+        if repository_snapshot(helper, database, server, progress, stage='snapshot_verify') != snapshot:
             raise RuntimeError('停写期间仓库状态发生变化，拒绝发布备份')
-        os.makedirs(BACKUP_DIR, exist_ok=True)
+        progress.show('freeze_export', '固化 Actions 制品、密钥与校验基准')
+        backup_staging.freeze_metadata(helper, gitea, database, server, export,
+            snapshot, tables, requirements, startup_files, source_config, journal)
+        require_quiet(database, server)
+        from services.backup_recovery import recover_source
+        progress.source = 'recovering' if was_running else 'stopped'
+        recover_source(client, server, journal, progress=progress)
+        if was_running:
+            backup.source_restored_at = datetime.utcnow()
+            db.session.commit()
+        progress.source = 'available' if was_running else 'stopped'
+        finish_current_step(backup, stage='resume_source')
         local = os.path.join(BACKUP_DIR, backup.filename)
-        update_backup_progress(backup, 'transfer', '正在保存一致性备份', 50, backup.filename)
-        with tempfile.TemporaryFile() as stream:
-            with closing(helper.get_archive(path)[0]) as blocks:
-                for block in blocks: stream.write(block)
-            stream.seek(0)
-            with tarfile.open(fileobj=stream) as archive:
-                members = archive.getmembers()
-                if len(members) != 1 or not members[0].isfile():
-                    raise RuntimeError('Docker 备份归档结构异常')
-                with archive.extractfile(members[0]) as source, open(local + '.partial', 'wb') as output:
-                    os.chmod(local + '.partial', 0o600)
-                    import shutil
-                    shutil.copyfileobj(source, output)
-        os.replace(local + '.partial', local)
+        with backup_staging.export_lease(export.id):
+            backup_staging.receive_export(client, export, local, backup, journal, progress)
         backup.file_path = local
-        # ORM 读取过期的服务器配置会自动刷写备份记录；先提交，避免在耗时 I/O 期间占用写锁。
-        from models import db
+        final_size = os.path.getsize(local)
         db.session.commit()
-        capture_backup_secret(server, backup)
-        # 密钥快照更新 file_size；后续制品读取和清单哈希同样不能携带未提交写入。
-        db.session.commit()
-        append_startup_files(local, startup_files)
-        append_artifacts(local, helper, database, server, source_config)
-        from services.restore_archive import validate_ssh_archive
-        blocks, size = [], 0
-        with closing(gitea.get_archive('/data/ssh')[0]) as stream:
-            for block in stream:
-                size += len(block)
-                if size > 2 * 1024 * 1024:
-                    raise RuntimeError('SSH 主机身份归档超出支持上限')
-                blocks.append(block)
-        host_keys = b''.join(blocks)
-        validate_ssh_archive(host_keys)
-        with zipfile.ZipFile(local, 'a') as archive:
-            archive.writestr(SNAPSHOT_FILE, json.dumps(snapshot, ensure_ascii=False))
-            archive.writestr('manager-ssh-hostkeys.tar', host_keys)
-        append_manifest(local, requirements, tables, server)
-        backup.file_size = os.path.getsize(local)
     finally:
         original_error = sys.exc_info()[1]
         cleanup_error = None
         try:
-            if journal.value.get('原源'):
+            if journal.value.get('原源') and not journal.value.get('源收尾已完成'):
                 from services.backup_recovery import recover_source
-                recover_source(client, server, journal)
-            else:
+                if progress.source == 'paused' and was_running:
+                    progress.source = 'recovering'
+                progress.show('resume_source', '核对源容器并清理备份现场',
+                              previous_failed=original_error is not None)
+                recover_source(client, server, journal, progress=progress)
+                progress.source = 'available' if journal.value['原源']['State']['Running'] else 'stopped'
+                progress.show('resume_source', '源站收尾已完成', force=True)
+                finish_current_step(backup, stage='resume_source')
+            elif not journal.value.get('原源'):
                 journal.complete_source()
+            backup_staging.cleanup_reader(client, journal)
         except BaseException as exc:
             cleanup_error = exc
             try:
@@ -273,3 +297,5 @@ def consistent_backup(server, backup, journal=None):
                     pass
             else:
                 raise cleanup_error
+    backup.file_size = final_size
+    db.session.commit()

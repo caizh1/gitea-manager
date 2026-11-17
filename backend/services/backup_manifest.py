@@ -70,9 +70,11 @@ def identity(gitea, database, server):
             '存储': storage_profile(raw), '功能配置': behavior}
 
 
-def table_snapshot(database, server):
+def table_snapshot(database, server, progress=None):
     """在启动恢复服务之前逐表流式哈希，包含增强业务、权限、审批和审计数据。"""
     from services.backup_consistency import database_sql, execute
+    if progress:
+        progress.show('snapshot_tables', '读取数据库表清单')
     names = json.loads(database_sql(database, server,
         "SELECT coalesce(json_agg(tablename ORDER BY tablename),'[]') FROM pg_tables WHERE schemaname='public'"))
     commands = []
@@ -81,27 +83,42 @@ def table_snapshot(database, server):
         query = f'COPY (SELECT to_jsonb(t)::text AS row FROM public.{quoted} t ORDER BY to_jsonb(t)::text COLLATE "C") TO STDOUT'
         command = ['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', server.pg_user, '-d', server.pg_dbname, '-c', query]
         commands.append(shlex.join(command) + ' | sha256sum')
-    output = execute(database, ['bash', '-e', '-o', 'pipefail', '-c', '\n'.join(commands)], user='postgres')
+    args = ['bash', '-e', '-o', 'pipefail', '-c', '\n'.join(commands)]
+    output = (progress.execute(database, args, stage='snapshot_tables', action=f'计算 {len(names)} 张数据表的摘要',
+                               user='postgres') if progress else execute(database, args, user='postgres'))
     hashes = [line.split()[0] for line in output.splitlines()]
     if len(hashes) != len(names):
         raise RuntimeError('数据表校验结果数量异常')
+    if progress:
+        progress.show('snapshot_tables', '数据表摘要已记录', current=len(hashes), total=len(names), unit='tables', force=True)
     return dict(zip(names, hashes))
 
 
-def append_manifest(path, requirements, tables, server):
+def append_manifest(path, requirements, tables, server, progress=None):
     with zipfile.ZipFile(path, 'a') as archive:
         files = {}
-        for entry in archive.infolist():
+        entries = archive.infolist()
+        total = sum(entry.file_size for entry in entries)
+        current = 0
+        if progress:
+            progress.show('manifest', '计算归档文件摘要', current=current, total=total, unit='bytes')
+        for entry in entries:
             with archive.open(entry) as stream:
                 digest = hashlib.sha256()
                 for block in iter(lambda: stream.read(1024 * 1024), b''):
                     digest.update(block)
+                    current += len(block)
+                    if progress:
+                        progress.show('manifest', '计算归档文件摘要', current=current, total=total,
+                                      unit='bytes', item=entry.filename, heartbeat=True)
             files[entry.filename] = {'摘要': digest.hexdigest(), '权限': entry.external_attr >> 16, '系统': entry.create_system}
         payload = json.dumps({'版本': 2, '准入': requirements, '数据表': tables,
             '文件': files, '来源名称': server.name, 'API令牌': server.api_token,
             '边界': '同镜像、同 PostgreSQL 主版本、本地持久存储；不包含镜像及 Manager 的其他业务状态'}, ensure_ascii=False).encode()
         if len(payload) > 64 * 1024 * 1024:
             raise RuntimeError('灾备清单超出当前恢复器的支持上限，拒绝发布成功备份')
+        if progress:
+            progress.show('manifest', '写入备份清单', current=current, total=total, unit='bytes', force=True)
         archive.writestr(MANIFEST, payload)
 
 

@@ -1,6 +1,6 @@
 """补齐独立 Actions 制品目录，并与数据库、主数据目录一起切换和回退。"""
 import configparser
-from contextlib import closing
+from contextlib import closing, nullcontext
 import hashlib
 import json
 from pathlib import PurePosixPath
@@ -61,32 +61,56 @@ def external_path(raw):
     return path if not path.startswith('/data/gitea/') else None
 
 
-def append_artifacts(path, source, database, server, raw):
+def _digest_artifact(stream, progress, item):
+    if not progress:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+    digest = hashlib.sha256()
+    current = 0
+    for block in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(block)
+        current += len(block)
+        progress.show('assemble', '校验 Actions 制品', current=current, unit='bytes', item=item, heartbeat=True)
+    return digest.hexdigest()
+
+
+def append_artifacts(path, source, database, server, raw, progress=None, staged=None):
     from docker.errors import NotFound
     from services.backup_consistency import database_sql, execute
-    directory = actions_path(raw)
-    records = json.loads(database_sql(database, server,
+    directory = staged['directory'] if staged else actions_path(raw)
+    if progress:
+        progress.show('assemble', '读取 Actions 制品清单', force=True)
+    records = staged['records'] if staged else json.loads(database_sql(database, server,
         "SELECT coalesce(json_agg(storage_path),'[]') FROM action_artifact WHERE status=2"))
     inventory = {}
     with zipfile.ZipFile(path, 'a') as archive:
         sql = next(name for name in archive.namelist() if name.endswith('gitea-db.sql'))
         inside = directory.startswith('/data/gitea/')
         prefix = str(PurePosixPath(sql).parent / 'data' / PurePosixPath(directory).relative_to('/data/gitea')) if inside else ARCHIVE_ROOT
+        if progress:
+            progress.show('assemble', '接收 Actions 制品目录', force=True)
         try:
-            blocks, _ = source.get_archive(directory)
+            if staged:
+                if not staged.get('archive_path'):
+                    raise NotFound('固定导出无制品目录')
+                blocks = None
+            else:
+                blocks, _ = source.get_archive(directory)
         except NotFound:
             if records:
                 raise RuntimeError('Actions 制品表存在有效记录，但正文目录不存在') from None
             if not inside:
                 archive.writestr(prefix + '/', '')
         else:
-            with tempfile.TemporaryFile() as stream:
+            with (open(staged['archive_path'], 'rb') if staged else tempfile.TemporaryFile()) as stream:
                 # Docker 归档尚未消费时，同一容器的 exec 创建会被阻塞。
                 # 先结束传输；写入失败时也关闭响应，才能执行后续清理命令。
-                with closing(blocks):
-                    for block in blocks:
+                with closing(blocks) if blocks is not None else nullcontext():
+                    for block in blocks or ():
                         stream.write(block)
-                if execute(source, ['readlink', '-f', directory]) != directory:
+                        if progress:
+                            progress.show('assemble', '接收 Actions 制品目录', current=stream.tell(),
+                                          unit='bytes', heartbeat=True)
+                if not staged and execute(source, ['readlink', '-f', directory]) != directory:
                     raise RuntimeError('Actions 制品目录不能通过符号链接指向其他目录')
                 stream.seek(0)
                 with tarfile.open(fileobj=stream) as contents:
@@ -100,15 +124,17 @@ def append_artifacts(path, source, database, server, raw):
                         relative = str(PurePosixPath(*item.parts[1:]))
                         name = prefix + ('/' + relative if relative != '.' else '') + ('/' if member.isdir() else '')
                         if member.isfile():
+                            if progress:
+                                progress.show('assemble', '校验 Actions 制品', item=relative)
                             with contents.extractfile(member) as body:
-                                digest = hashlib.file_digest(body, 'sha256').hexdigest()
+                                digest = _digest_artifact(body, progress, relative)
                             inventory[relative] = digest
                         if inside:
                             if member.isfile():
                                 if name not in archive.namelist():
                                     raise RuntimeError('dump 遗漏 Actions 制品正文：' + relative)
                                 with archive.open(name) as body:
-                                    if hashlib.file_digest(body, 'sha256').hexdigest() != digest:
+                                    if _digest_artifact(body, progress, relative) != digest:
                                         raise RuntimeError('Actions 制品正文与停写点不一致')
                             continue
                         info = zipfile.ZipInfo(name)
@@ -118,7 +144,15 @@ def append_artifacts(path, source, database, server, raw):
                             archive.writestr(info, '')
                         else:
                             with contents.extractfile(member) as body, archive.open(info, 'w', force_zip64=True) as output:
-                                shutil.copyfileobj(body, output)
+                                if progress:
+                                    current = 0
+                                    for block in iter(lambda: body.read(1024 * 1024), b''):
+                                        output.write(block)
+                                        current += len(block)
+                                        progress.show('assemble', '写入 Actions 制品', current=current, total=member.size,
+                                                      unit='bytes', item=relative, heartbeat=True)
+                                else:
+                                    shutil.copyfileobj(body, output)
         for record in records:
             if record not in inventory:
                 raise RuntimeError('有效 Actions 制品缺少正文：' + str(record))

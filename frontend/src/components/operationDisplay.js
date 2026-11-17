@@ -19,5 +19,23 @@ export function quantityText(task) {
   if (current == null) return ''
   const bytes = value => value >= 1073741824 ? `${(value / 1073741824).toFixed(2)} GB` : value >= 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${value} B`
   if (task.progress_unit === 'bytes') return `${bytes(current)}${total != null ? ' / ' + bytes(total) : ' 已传输'}`
-  return `${current}${total != null ? ' / ' + total : ''} ${{ repos: '仓库', files: '文件' }[task.progress_unit] || '项'}`
+  return `${current}${total != null ? ' / ' + total : ''} ${{ repos: '个仓库', files: '个文件', tables: '张数据表' }[task.progress_unit] || '项'}`
+}
+
+export function backupObservationStale(activity, now) {
+  const observed = utcTime(activity.observed_at || activity.action_started_at)
+  return !Number.isFinite(observed) || now - observed > 20_000
+}
+
+export function backupObservationText(activity, now, disconnected = false, stage = '') {
+  if (disconnected || backupObservationStale(activity, now)) return '状态暂无法确认'
+  if (activity.state === 'running') {
+    if (activity.zip_delta === 0) return '运行中，归档大小暂无变化'
+    return stage === 'dump' || activity.zip_bytes != null ? '导出进程运行中' : '命令进程运行中'
+  }
+  if (activity.state === 'container') {
+    const state = { running: '运行中', exited: '已停止', created: '已创建', restarting: '重启中' }[activity.container_state]
+    return state ? `最近观测到容器${state}` : '已观测容器状态'
+  }
+  return activity.state === 'active' ? '最近观测到处理活动' : '等待下一次活动观测'
 }

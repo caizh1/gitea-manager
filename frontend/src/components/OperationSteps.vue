@@ -1,6 +1,16 @@
 <template>
-  <el-dialog append-to-body :model-value="true" @update:model-value="$emit('close')" title="执行步骤" style="background: #f7f9fc; --el-dialog-bg-color: #f7f9fc" width="min(880px, 95vw)">
+  <el-dialog append-to-body :model-value="true" @update:model-value="$emit('close')" title="执行步骤" :show-close="kind !== 'backup'" style="background: #f7f9fc; --el-dialog-bg-color: #f7f9fc"
+             :width="kind === 'backup' ? 'min(960px, 95vw)' : 'min(880px, 95vw)'"
+             :align-center="kind === 'backup'">
+    <template v-if="kind === 'backup'" #header="{ close, titleId }">
+      <div class="backup-dialog-header">
+        <h3 :id="titleId">执行步骤</h3>
+        <el-button text circle aria-label="关闭执行步骤" @click="close"><X :size="20" aria-hidden="true" /></el-button>
+      </div>
+    </template>
     <el-alert v-if="error" :title="error" type="warning" :closable="false" />
+    <BackupExecutionSteps v-if="kind === 'backup'" :task="task" :steps="steps" :error="error" />
+    <template v-else>
     <p>任务 #{{ task.id }} · {{ task.filename || task.backup_filename }}</p>
     <el-empty v-if="!steps.length" description="暂无历史步骤记录" />
     <section v-for="step in steps" :key="step.id" class="operation-step">
@@ -10,10 +20,13 @@
       <div v-if="step.metrics" class="step-metrics"><span v-for="(value, key) in step.metrics" :key="key" v-show="value !== null && value !== ''">{{ key }}：{{ value === 'bytes' ? '字节' : value === 'repos' ? '仓库' : value }}</span></div>
       <details v-if="step.stdout_tail || step.stderr_tail"><summary>查看日志摘要</summary><pre>{{ step.stdout_tail }}{{ step.stderr_tail }}</pre></details>
     </section>
+    </template>
   </el-dialog>
 </template>
 <script setup>
 import { ref } from 'vue'
+import { X } from '@lucide/vue'
+import BackupExecutionSteps from './BackupExecutionSteps.vue'
 import { api } from '../api'
 import { useOperationPolling } from '../composables/useOperationPolling'
 import { operationActive, operationStatus, utcTime } from './operationDisplay'
@@ -24,5 +37,8 @@ const { error } = useOperationPolling(config => api.get(`/${props.kind === 'back
 const fmt = value => value ? new Date(utcTime(value)).toLocaleString() : '—'
 </script>
 <style scoped>
+.backup-dialog-header { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.backup-dialog-header .el-button { flex: 0 0 auto; }
+.backup-dialog-header h3 { margin: 0; color: #16233b; font-size: 24px; }
 .operation-step{padding:14px 0;border-bottom:1px solid var(--glass-border, #ddd);overflow-wrap:anywhere}.step-heading,.step-metrics{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.step-time,.step-metrics{font-size:12px;color:var(--text-secondary)}pre{white-space:pre-wrap;max-height:220px;overflow:auto}p{margin:8px 0}
 </style>

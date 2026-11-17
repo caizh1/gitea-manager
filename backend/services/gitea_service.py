@@ -269,7 +269,12 @@ def do_backup(backup_id):
         return
     from services.backup_recovery import execution
     with execution(backup) as journal:
-        return _perform_backup(backup_id, journal)
+        result = _perform_backup(backup_id, journal)
+    backup = db.session.get(Backup, backup_id)
+    if backup and backup.status == 'success':
+        from services.backup_staging import cleanup_success
+        cleanup_success(backup)
+    return result
 
 
 @tracked_operation("备份", Backup)
@@ -298,21 +303,33 @@ def _perform_backup(backup_id, journal):
     update_backup_progress(backup, 'prepare', '正在准备备份任务', 0, server.name)
 
     try:
-        if server.is_local:
+        if backup.transfer_origin_id:
+            from services.backup_staging import retry_export
+            retry_export(server, backup, journal)
+        elif server.is_local:
             _backup_local(server, backup, journal=journal)
         else:
             _backup_remote(server, backup, journal=journal)
-        _collect_backup_commit_snapshot(backup_id)
-        update_backup_progress(backup, 'checksum', '正在生成备份校验信息', 95, backup.filename)
+        from services.backup_activity import BackupActivity
+        progress = BackupActivity(backup)
+        progress.show('commit_snapshot', '整理并保存停写点的 Commit 记录')
+        count = _collect_backup_commit_snapshot(backup_id)
+        db.session.commit()
+        progress.show('commit_snapshot', 'Commit 校验记录已保存',
+                      current=count, total=count, unit='repos', force=True)
         digest = hashlib.sha256()
         size = os.path.getsize(backup.file_path)
         count = 0
+        progress.show('checksum', '计算备份 ZIP 的 SHA-256', current=count, total=size,
+                      unit='bytes', item=backup.filename)
         with open(backup.file_path, 'rb') as stream:
             for block in iter(lambda: stream.read(1024 * 1024), b''):
                 digest.update(block)
                 count += len(block)
-                update_backup_progress(backup, 'checksum', '正在生成备份校验信息', 95,
-                                       backup.filename, current=count, total=size, unit='bytes', item=backup.filename)
+                progress.show('checksum', '计算备份 ZIP 的 SHA-256', current=count, total=size,
+                              unit='bytes', item=backup.filename, heartbeat=True)
+        progress.show('checksum', '备份 ZIP 的 SHA-256 已计算', current=count, total=size,
+                      unit='bytes', item=backup.filename, force=True)
         if CURRENT.get():
             CURRENT.get().write('artifact.json', {'文件大小': size, 'SHA256': digest.hexdigest()})
         backup = Backup.query.get(backup_id)

@@ -112,7 +112,7 @@ def archive_secret(root):
     return secret
 
 
-def capture_backup_secret(server, backup):
+def capture_backup_secret(server, backup, snapshot=None):
     """外置 Secret 不一定在 dump 中，备份必须显式携带密钥而非只携带路径。"""
     from services.docker_service import managed_client
     from services.diagnostics import register_secret
@@ -123,7 +123,11 @@ def capture_backup_secret(server, backup):
             raise RuntimeError('备份必须包含唯一的 Gitea 主配置')
         raw = archive.read(configs[0])
         secret, uri = security_values(raw)
-        if uri:
+        if snapshot is not None:
+            if snapshot.get('配置摘要') != hashlib.sha256(raw).hexdigest():
+                raise RuntimeError('固定密钥快照与备份配置不一致')
+            secret = snapshot['数据加密密钥']
+        elif uri:
             client = managed_client(server)
             try:
                 secret = read_file(client.containers.get(server.gitea_container), uri_path(uri))[0].decode().strip()

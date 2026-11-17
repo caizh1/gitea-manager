@@ -17,7 +17,7 @@ PLATFORM = {
     'git_migration': 'status sources source rotate_credentials rotate_target_credentials discoveries discovery inventories inventory runs run_detail resume_run abandon_run target_groups principals principal_details account_mappings account_mapping mapping_accounts preflights preflight_detail start_preflight acknowledge_preflight_compatibility cancel_preflight preflight_target_credentials resume_preflight',
     'svn_migration': 'status targets target_groups target_paths create_target_group sources source test_source discover_projects discovery_result enroll_projects detect_layouts layout_detection repositories repository plans plan preflight preflight_detail runs run control events report cleanup',
     'servers': 'get_server add_server delete_info update_server delete_server check_server refresh_server get_server_detail_route',
-    'backups': 'list_backups create_backup import_backup delete_backup download_backup export_disaster_bundle download_disaster_bundle get_backup_steps',
+    'backups': 'retry_transfer cleanup_source_export list_backups create_backup import_backup delete_backup download_backup export_disaster_bundle download_disaster_bundle get_backup_steps',
     'restore': 'list_restore_tasks get_restore_steps execute_restore recover_restore get_verification trigger_verify get_backup_commits',
     'schedule': 'list_schedules create_schedule update_schedule delete_schedule run_schedule get_schedule_logs',
     'mirror': 'list_mirrors create_mirror update_mirror delete_mirror setup_mirror sync_mirror mirror_status mirror_audit_logs sync_repo',
