@@ -16,7 +16,7 @@ from .budgets import TIME_FIELDS, CONTEXT_DEFAULTS, CODEX_CONTEXT_DEFAULTS, DEFA
 import json
 
 DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CODEX_CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': DEFAULT_CODEX_MODEL,
-            'api_key': '', 'revision': 1, 'debounce_seconds': 20, 'max_files': 40,
+            'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20, 'max_files': 40,
             'max_calls': 32, 'task_timeout_seconds': 1200, 'review_timeout_seconds': REVIEW_TIMEOUT_DEFAULT,
             'model_request_timeout_seconds': MODEL_TIMEOUT_DEFAULT,
             'execution_revision': 1, 'model_max_output_tokens': 0, 'model_response_max_mib': 8, 'max_findings': 20}
@@ -28,10 +28,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 21:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 22:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 21:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 22:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -104,7 +104,9 @@ class Store:
             migrate_publication(c)
             from .repository_rules import migrate as migrate_rules
             migrate_rules(c)
-            c.execute('PRAGMA user_version=21')
+            from .concurrency import migrate as migrate_concurrency
+            migrate_concurrency(c)
+            c.execute('PRAGMA user_version=22')
             c.commit()
         os.chmod(self.path, 0o600)
 
@@ -191,6 +193,7 @@ class Store:
         result.setdefault('model_request_timeout_seconds', MODEL_TIMEOUT_DEFAULT)
         result.setdefault('review_timeout_seconds', result.get('task_timeout_seconds', REVIEW_TIMEOUT_DEFAULT))
         result.setdefault('model_max_output_tokens', 0)
+        result.setdefault('max_concurrent_reviews', 5)
         # 新安装已完整写入 DEFAULTS；旧配置缺字段时保留原来的隐含预算。
         result.setdefault('batch_input_tokens', 32768)
         result.setdefault('batch_splitting_enabled', False)
@@ -230,6 +233,7 @@ class Store:
         result.setdefault('model_request_timeout_seconds', MODEL_TIMEOUT_DEFAULT)
         result.setdefault('review_timeout_seconds', result.get('task_timeout_seconds', REVIEW_TIMEOUT_DEFAULT))
         result.setdefault('model_max_output_tokens', 0)
+        result.setdefault('max_concurrent_reviews', 5)
         result.setdefault('model_response_max_mib', 8)
         result.setdefault('execution_revision', saved['revision'])
         return result
@@ -244,13 +248,15 @@ class Store:
 
     def save_config(self, data):
         data = dict(data)
+        if 'max_concurrent_reviews' in data and (type(data['max_concurrent_reviews']) is not int or not 1 <= data['max_concurrent_reviews'] <= 5):
+            raise ReviewError('并发数必须为 1 至 5 的整数')
         with self.tx() as c:
             old = self.config(connection=c)
             if data.pop('revision', None) != old['revision']:
                 raise ReviewError('配置已变化，请刷新后保存')
             data.pop('execution_revision', None)
             changes = {key for key, value in data.items() if old.get(key) != value}
-            invalidate = bool(changes - TIME_FIELDS)
+            invalidate = bool(changes - TIME_FIELDS - {'max_concurrent_reviews'})
             old.update(data); old['revision'] += 1
             if invalidate:
                 old['execution_revision'] = old['revision']
@@ -514,20 +520,20 @@ class Store:
             c.execute("INSERT INTO review_batch_intervals(job,state,started,ended,verified_until) SELECT i.job,'unknown',i.verified_until,?,? FROM review_batch_intervals i JOIN jobs j ON j.id=i.job WHERE i.ended IS NULL AND j.status IN ('running','publishing','recovering') AND j.lease<?", (now, now, now))
             c.execute("UPDATE review_batch_intervals SET ended=verified_until WHERE ended IS NULL AND job IN (SELECT id FROM jobs WHERE status IN ('running','publishing','recovering') AND lease<?)", (now,))
             # 发布中的请求可能已经生效，中断后只能进入核对流程。
-            c.execute("UPDATE jobs SET status='publish_unknown',owner='',updated=?,error='执行中断，等待核对实际发布结果' WHERE status IN ('publishing','recovering') AND lease<?", (now, now))
-            c.execute("UPDATE jobs SET status='failed',stage='中断次数达到上限',error='已中断三次，请排查环境后人工重审',updated=? WHERE status='running' AND lease<? AND attempts>=3", (now, now))
-            c.execute("UPDATE jobs SET status='queued',owner='',available=?,updated=?,stage='中断后重新领取' WHERE status='running' AND lease<?", (now, now, now))
+            c.execute("UPDATE jobs SET status='publish_unknown',owner='',updated=?,error='执行中断，等待核对实际发布结果' WHERE status IN ('publishing','recovering') AND lease<? AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=jobs.id)", (now, now))
+            c.execute("UPDATE jobs SET status='failed',stage='中断次数达到上限',error='已中断三次，请排查环境后人工重审',updated=? WHERE status='running' AND lease<? AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=jobs.id) AND attempts>=3", (now, now))
+            c.execute("UPDATE jobs SET status='queued',owner='',available=?,updated=?,stage='中断后重新领取' WHERE status='running' AND lease<? AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=jobs.id)", (now, now, now))
             if not self.config(connection=c)['enabled']:
                 return None
-            if c.execute("SELECT 1 FROM jobs WHERE status='cancelling' LIMIT 1").fetchone():
-                return None
-            if c.execute("SELECT 1 FROM jobs WHERE status IN ('running','publishing','recovering') AND lease>=? LIMIT 1", (now,)).fetchone():
-                return None
             row = c.execute("""SELECT j.id FROM jobs j WHERE j.status='queued' AND j.available<=?
+                               AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.repository=j.repository AND s.number=j.number AND NOT (s.job=j.id AND s.owner=''))
                                AND (json_extract((SELECT value FROM configuration_history WHERE revision=j.config_revision),'$.engine')='codex_cli' OR NOT EXISTS
                                    (SELECT 1 FROM jobs x WHERE x.repository=j.repository AND x.number=j.number AND x.status='publish_unknown'))
-                               ORDER BY j.available,j.created LIMIT 1""", (now,)).fetchone()
+                               ORDER BY CASE WHEN EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=j.id AND s.owner='') THEN 0 ELSE 1 END,j.available,j.created LIMIT 1""", (now,)).fetchone()
             if not row:
+                return None
+            from .concurrency import reserve
+            if not reserve(self, c, row[0], owner):
                 return None
             c.execute("UPDATE jobs SET status='running',stage='读取固定版本',owner=?,lease=?,updated=?,attempts=attempts+1 WHERE id=?", (owner, now+90, now, row[0]))
         return self.job(row[0])

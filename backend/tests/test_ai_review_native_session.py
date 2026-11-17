@@ -195,6 +195,8 @@ class NativeStoreTests(unittest.TestCase):
             c.execute('INSERT INTO review_native_bindings VALUES (?,?,?,?,?,1)',
                       (old_hash, self.ident, session_id, '测试模型', deadline-40))
             c.execute('UPDATE jobs SET lease=? WHERE id=?', (time.time()-1, self.ident))
+        from ai_review.concurrency import reap
+        reap(self.store)
         replacement = self.store.claim()
         self.assertNotEqual(replacement['owner'], self.job['owner'])
         with patch('ai_review.native_review.abort') as abort, patch('ai_review.native_workspace.cleanup') as cleanup:

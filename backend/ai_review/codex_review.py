@@ -44,7 +44,7 @@ def prompt(snapshot, phase="primary", candidates=None):
 
 
 def _prompt(snapshot, phase="primary", candidates=None):
-    if snapshot.get("workspace_layout") == "git-worktree-v1":
+    if snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2"):
         text = (
             "源码已由 Manager 准备完成，当前目录为完整 Git 仓库，HEAD 固定在 PR Head。\n"
             "使用 Codex 原生工具及 git diff、git show、git log、rg 调查源码。"
@@ -108,7 +108,7 @@ def normalize(raw, snapshot, workspace):
         root = Path(workspace)
         if path.startswith(str(root) + "/"):
             path = path[len(str(root)) + 1 :]
-        git_layout = snapshot.get("workspace_layout") == "git-worktree-v1"
+        git_layout = snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2")
         if git_layout:
             from .git_workspace import read_blob
             from .common import safe_path
@@ -303,16 +303,17 @@ def process(store, job):
         if not snapshot:
             snapshot = capture(client, job["number"], config, batched=True)
             snapshot["codex_tools"] = "native"
-            snapshot["workspace_layout"] = "git-worktree-v1"
+            snapshot["workspace_layout"] = "git-worktree-v2"
         snapshot.pop("batch_protocol", None)
         snapshot["engine"] = "codex_cli"
         validate_single_size(snapshot)
         store.update(job["id"], job["owner"], snapshot=snapshot, stage="准备 Git 增量缓存")
-        if snapshot.get("workspace_layout") == "git-worktree-v1":
+        if snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2"):
             from .git_workspace import prepare
             from .git_cache import cache_key
 
-            workspace_lock.enter_context(store.lock("git-workspace-" + cache_key(repo)))
+            if snapshot.get("workspace_layout") == "git-worktree-v1":
+                workspace_lock.enter_context(store.lock("git-workspace-" + cache_key(repo)))
         preparation_started = time.monotonic()
         workspace, info = prepare(store, client, repo, job, snapshot)
         from .repository_rules import freeze, check_phase
@@ -418,7 +419,7 @@ def process(store, job):
                 return
             payload = json.loads(row["input"])
             finding = payload.get("original_finding", {})
-            source_root = Path(workspace) if snapshot.get("workspace_layout") == "git-worktree-v1" else Path(workspace) / "after"
+            source_root = Path(workspace) if snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2") else Path(workspace) / "after"
             source = (source_root / finding.get("path", "")).resolve()
             if (
                 source.is_relative_to(source_root.resolve())

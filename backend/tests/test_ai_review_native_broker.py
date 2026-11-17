@@ -237,6 +237,8 @@ class NativeBrokerFailureTests(unittest.TestCase):
             'bot_token': self.store.seal('机器人凭据'), 'webhook_secret': self.store.seal('签名秘密'),
             'repo_name': f'test/native-broker-{repository_id}', 'bot_id': 9})['id']
         job_id = self.store.enqueue(repository, 1, {'head': 'a' * 40, 'base': 'b' * 40})
+        from ai_review.concurrency import reap
+        reap(self.store)
         job = self.store.claim()
         # 验证旧单会话协议；分批协议另有成本与恢复测试。
         with self.store.tx() as c: c.execute("UPDATE jobs SET batch_protocol=0 WHERE id=?", (job["id"],))

@@ -45,6 +45,8 @@ def overview(store, job, result):
     body = SUMMARY_MARK + '\n<!-- ai-review:auto-summary:' + job['id'] + ' -->'
     body += '\n### AI Code Review\n\n审查版本 `' + job['snapshot']['head'] + '`。'
     body += '\n\n' + (result.get('report_markdown', '').splitlines() or [''])[0]
+    if result.get('review_scope') == 'repository':
+        body += '\n\n审查范围：完整 PR diff，按需检索固定版本仓库中的相关源码。'
     frozen_ids = result.get('_approved_issue_ids')
     for row in observations(store, job):
         if frozen_ids is not None and row['issue'] not in frozen_ids:
@@ -277,12 +279,24 @@ def recover_obsolete(store, client, job, repo):
 
 
 def resume(store, job):
+    # 发布恢复与普通执行使用同一任务锁，回收器必须等待此调用退出。
+    with store.lock('execution-' + job['id']):
+        return _resume(store, job)
+
+
+def _resume(store, job):
     import secrets
     from .common import Stale, AccessRevoked
     from .worker import client_for, refresh_pr
     now = time.time()
     owner = secrets.token_hex(16)
     with store.tx() as c:
+        from .concurrency import reserve
+        current = c.execute("SELECT status,available FROM jobs WHERE id=?", (job['id'],)).fetchone()
+        if not current or current['status'] != 'publish_unknown' or current['available'] > now:
+            return
+        if not reserve(store, c, job['id'], owner):
+            return
         if not c.execute("""UPDATE jobs SET status='recovering',owner=?,lease=?,available=?,
             reconcile_state='checking',reconcile_started_at=?,reconcile_message='后台自动核对发布回执'
             WHERE id=? AND status='publish_unknown' AND available<=?""",

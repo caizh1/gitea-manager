@@ -187,7 +187,7 @@ def configuration(state, manifest, root):
             services['frontend']['volumes'] = [f'{root}/state/tls/cert.pem:/etc/nginx/tls/cert.pem:ro',
                                                f'{root}/state/tls/key.pem:/etc/nginx/tls/key.pem:ro']
 
-        for name, memory in [('worker', '1g'), ('progress', '256m'), ('feedback', '256m')]:
+        for name, memory in [('worker', '2g'), ('progress', '256m'), ('feedback', '256m')]:
             worker_env = {k: v for k, v in env.items() if k.startswith('AI_REVIEW_')}
             worker_env['PYTHONDONTWRITEBYTECODE'] = '1'
             service = spec(images['backend']['tag'], command=['python', '-m', 'ai_review.' + name],
@@ -209,8 +209,8 @@ def configuration(state, manifest, root):
             'AI_REVIEW_WORKSPACE_ROOT':'/app/review-workspaces',
             'AI_REVIEW_NATIVE_ROOT': '/app/review-native'}, volumes=['executor-data:/app/review-native','review-workspaces:/app/review-workspaces:ro'],
             secrets=['review_executor'], networks=['review-execution'], dns=['127.0.0.1'],
-            read_only=True, tmpfs=['/tmp:size=384m,mode=1777'], cap_drop=['ALL'],
-            security_opt=['no-new-privileges:true'], pids_limit=128, mem_limit='2g', cpus=2.0)
+            read_only=True, tmpfs=['/tmp:size=768m,mode=1777'], cap_drop=['ALL'],
+            security_opt=['no-new-privileges:true'], pids_limit=512, mem_limit='4g', cpus=4.0)
         common['networks'] = {'review-execution': {'internal': True}}
         common['volumes'] = {'manager-data': {}, 'review-data': {}, 'executor-data': {}, 'review-workspaces': {}, 'diagnostic-data': {}}
         common['secrets'] = {'review_master': {'file': str(root / 'state/master.key')},

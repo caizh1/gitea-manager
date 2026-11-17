@@ -8,6 +8,7 @@
     <el-alert v-if="isPlatformAdmin && workerStale" title="Review 工作进程尚未就绪或心跳已过期，自动审查可能暂停。" type="warning" show-icon :closable="false" />
     <el-alert v-if="isPlatformAdmin && progressStale" title="PR 进度同步进程尚未就绪或心跳已过期，审查仍可执行，但 Gitea 页面状态可能延迟。" type="warning" show-icon :closable="false" />
     <el-alert v-if="isPlatformAdmin && feedbackStale" title="人工反馈同步进程尚未就绪或心跳已过期，样本来源超过有效期后将暂停参考；自动审查仍可执行。" type="warning" show-icon :closable="false" />
+    <p v-if="isPlatformAdmin && concurrency" data-testid="review-concurrency" class="muted">执行中 {{ concurrency.running }} · 等待回收 {{ concurrency.recovering }} · 排队 {{ concurrency.queued }} · 并发上限 {{ concurrency.limit }}</p>
     <section v-if="tab === 'tasks'">
       <div class="review-filters glass-card">
         <el-select v-model="filterRepo" clearable filterable placeholder="全部仓库" aria-label="筛选仓库" class="selector" @change="changeFilters"><el-option v-for="r in repositories" :key="r.id" :value="r.id" :label="`${r.server_name} / ${r.repo_name}${r.access_archived ? '（已归档）' : ''}`" /></el-select>
@@ -61,6 +62,10 @@
             <el-alert :title="config.engine === 'codex_cli' ? 'Codex 自主检索审查，总变更最多 1200 行' : '新任务单次审查，新增与删除合计最多 1200 行'" :description="config.engine === 'codex_cli' ? '首次获取仓库，后续增量更新。P0/P1 独立反证，审查完成后自动发布行内评论与总览。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
             <div class="review-grid">
               <el-form-item label="源码缓存"><div><el-button @click="loadSourceCache">查看缓存</el-button><span v-if="sourceCache"> {{ Math.round(sourceCache.bytes/1048576) }} / {{ Math.round(sourceCache.limit_bytes/1048576) }} MiB</span><div v-for="row in sourceCache?.repositories || []" :key="row.repository">{{ repoName(row.repository) }} · {{ Math.round(row.bytes/1048576) }} MiB <el-button link type="danger" @click="clearSourceCache(row.repository)">清理</el-button></div></div></el-form-item>
+              <el-form-item v-if="config.engine === 'codex_cli'" label="同时审查 PR 数量">
+                <el-input-number v-model="config.max_concurrent_reviews" :min="1" :max="5" :precision="0" aria-label="同时审查 PR 数量" />
+                <span class="secondary">保存后立即生效。调低上限时，已启动的审查继续完成。</span>
+              </el-form-item>
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
               <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎"><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /><el-option label="原生 OpenCode 会话（已弃用）" value="opencode_native" /></el-select><span v-if="config.engine === 'opencode_native'" class="secondary">OpenCode 执行器已弃用，后续新功能仅支持 Codex。</span></el-form-item>
               <el-form-item label="内部 New API 地址"><el-input v-model="config.api_base_url" placeholder="填写包含 API 前缀的内网地址" autocomplete="off" /></el-form-item>
@@ -151,7 +156,8 @@ const tab = computed(() => route.meta.reviewSection || 'tasks')
 const sectionTitle = computed(() => ({ tasks:'AI Code Review', repositories:'审查仓库', dataset:'审查经验数据集', config:'模型与设置' })[tab.value])
 const refreshing = ref(false)
 const error = ref(''), tasksError = ref(''), busy = ref(false), testing = ref(false), csrf = ref('')
-const config = ref({ enabled: false }), apiKey = ref(''), health = ref([]), servers = ref([]), repositories = ref([])
+const concurrency = ref(null)
+const config = ref({ enabled: false, max_concurrent_reviews: 5 }), apiKey = ref(''), health = ref([]), servers = ref([]), repositories = ref([])
 const reasoningOptions = [
   { value: 'low', title: '快速', description: '较少思考开销' },
   { value: 'high', title: '深入', description: '增加推理投入' },
@@ -234,8 +240,8 @@ async function write(method, path, data) {
   return api.request({ method, url: '/ai-review'+path, data, headers: { 'X-Review-CSRF': csrf.value } })
 }
 async function loadTasks(silent = false) { lastTasksPoll = Date.now(); const current = ++taskGeneration; tasksController?.abort(); tasksController = new AbortController(); try { const r = await api.get('/ai-review/tasks', { params: { ...scopeParams(), page: page.value, status: filterStatus.value || undefined }, signal: tasksController.signal, notifyError: !silent }); if (!disposed && current === taskGeneration) { tasks.value = r.data.items; total.value = r.data.total; tasksError.value = '' } } catch (e) { if (!disposed && current === taskGeneration && e.code !== 'ERR_CANCELED') tasksError.value = errorMessage(e) } }
-async function refresh() { if (refreshing.value) return; refreshing.value = true; try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } finally { refreshing.value = false } }
-async function saveConfig() { if (busy.value) return; configError.value = ''; busy.value = true; try { const { api_key_configured, ...payload } = config.value; if (apiKey.value) payload.api_key = apiKey.value; config.value = (await write('put', '/config', payload)).data; apiKey.value = ''; ElMessage.success('设置已保存；资源预算与压缩阈值仅对后续新任务生效') } catch (e) { configError.value = errorMessage(e) } finally { busy.value = false } }
+async function refresh() { if (refreshing.value) return; refreshing.value = true; try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; concurrency.value = c.data?.concurrency || null; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } finally { refreshing.value = false } }
+async function saveConfig() { if (busy.value) return; configError.value = ''; busy.value = true; try { const { api_key_configured, ...payload } = config.value; if (apiKey.value) payload.api_key = apiKey.value; config.value = (await write('put', '/config', payload)).data; apiKey.value = ''; ElMessage.success('设置已保存，并发上限已生效；资源预算用于新任务') } catch (e) { configError.value = errorMessage(e) } finally { busy.value = false } }
 async function testTokens() { testing.value = true; connectionMessage.value = ''; try { const r = await write('post', '/connection-test', { token_samples: 4 }); connectionMessage.value = r.data.calibration.message + ' ' + r.data.calibration.samples.map((v, i) => `样本 ${i+1}：本地 ${v.local} / 服务 ${v.server ?? '未提供'}，差值 ${v.difference ?? '未知'}`).join('；'); connectionOk.value = r.data.calibration.samples.every(v => v.difference === 0) } catch(e) { connectionOk.value = false; connectionMessage.value = errorMessage(e) } finally { testing.value = false } }
 async function testConnection() { testing.value = true; connectionMessage.value = ''; connectionDiagnostic.value = null; try { const r = await write('post', '/connection-test', {}); connectionMessage.value = r.data.message; connectionOk.value = r.data.ok } catch (e) { connectionOk.value = false; connectionMessage.value = errorMessage(e); connectionDiagnostic.value = e.response?.data?.diagnostic || null } finally { testing.value = false } }
 function editRepo(row) { repoGeneration++; repoError.value = ''; repoForm.value = row ? { ...row, bot_token: '' } : { server_id: servers.value[0]?.id, repo_name: '', bot_token: '', enabled: false }; catalog.value = []; repoVisible.value = true; if (!row && repoForm.value.server_id) searchCatalog('') }
@@ -320,7 +326,7 @@ async function poll() {
   }
   if (tab.value === 'tasks' && Date.now() - lastTasksPoll >= 5000) await loadTasks(true)
   if (tab.value === 'tasks' && Date.now() - lastStatisticsPoll >= 30000) await loadStatistics(true)
-  if (isPlatformAdmin.value && Date.now() - lastHealthPoll >= 5000) { lastHealthPoll = Date.now(); try { health.value = (await api.get('/ai-review/config', { notifyError: false })).data.health } catch {} }
+  if (isPlatformAdmin.value && Date.now() - lastHealthPoll >= 5000) { lastHealthPoll = Date.now(); try { const { data } = await api.get('/ai-review/config', { notifyError: false }); health.value = data.health; concurrency.value = data.concurrency || null } catch {} }
   if (!disposed) timer = setTimeout(poll, detailVisible.value ? (document.hidden ? 5000 : 1000) : 5000)
 }
 

@@ -530,7 +530,7 @@ class Upgrade:
         else:
             execution['internal'] = True
         current['networks'][execution_key] = execution
-        for name, module, memory in [('review-worker', 'worker', '1g'), ('review-progress', 'progress', '256m'), ('review-feedback', 'feedback', '256m')]:
+        for name, module, memory in [('review-worker', 'worker', '2g'), ('review-progress', 'progress', '256m'), ('review-feedback', 'feedback', '256m')]:
             service_env = dict(common); mounts = [review, master, authorization] + gate_mounts
             networks = dict(default_networks) if isinstance(default_networks, dict) else {k: None for k in default_networks}
             if name == 'review-worker':
@@ -546,14 +546,14 @@ class Upgrade:
             spec = dict(image=images['backend'], platform='linux/amd64', pull_policy='never', restart='unless-stopped',
                         command=['python', '-m', 'ai_review.' + module], environment=service_env, volumes=mounts,
                         networks=networks, read_only=True, tmpfs=['/tmp:size=128m,mode=1777'], cap_drop=['ALL'],
-                        security_opt=['no-new-privileges:true'], mem_limit=memory, cpus=1.0 if module == 'worker' else 0.5)
+                        security_opt=['no-new-privileges:true'], mem_limit=memory, cpus=2.0 if module == 'worker' else 0.5)
             if name in self.info['original']: spec['container_name'] = self.info['original'][name]['Name'].lstrip('/')
             current['services'][name] = spec
         spec = dict(image=images['executor'], platform='linux/amd64', pull_policy='never', restart='unless-stopped',
                     environment={'AI_REVIEW_EXECUTOR_TOKEN_FILE': '/run/secrets/review_executor', 'AI_REVIEW_BROKER_URL': 'http://review-worker:5051/v1', 'PYTHONDONTWRITEBYTECODE': '1',
                                  'AI_REVIEW_WORKSPACE_ROOT': '/app/review-workspaces', 'AI_REVIEW_NATIVE_ROOT': '/app/review-native'},
                     volumes=[executor, native, dict(workspace, read_only=True)], networks=[execution_key], dns=['127.0.0.1'], read_only=True,
-                    tmpfs=['/tmp:size=384m,mode=1777'], cap_drop=['ALL'], security_opt=['no-new-privileges:true'], pids_limit=128, mem_limit='2g', cpus=2.0)
+                    tmpfs=['/tmp:size=768m,mode=1777'], cap_drop=['ALL'], security_opt=['no-new-privileges:true'], pids_limit=512, mem_limit='4g', cpus=4.0)
         if 'review-executor' in self.info['original']: spec['container_name'] = self.info['original']['review-executor']['Name'].lstrip('/')
         current['services']['review-executor'] = spec
         # 展示复用实际 Manager 数据卷，参与升级冻结和恢复。

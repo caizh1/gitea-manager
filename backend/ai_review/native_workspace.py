@@ -348,7 +348,7 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
 
     root = Path(workspace)
     diff_path = root / 'change.diff' if (root / 'change.diff').exists() else root / '变更.diff'
-    git_layout = snapshot.get('workspace_layout') == 'git-worktree-v1'
+    git_layout = snapshot.get('workspace_layout') in ('git-worktree-v1', 'git-worktree-v2')
     raw = snapshot['diff'].encode() if git_layout else _read_fixed(diff_path, deadline_at, store, job)
     patches = parse_diff(raw)
     files, anchors, skipped = [], {}, []

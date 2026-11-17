@@ -163,7 +163,8 @@ class CodexRun(SessionRun):
         self.native_tools = data.get("codex_native_tools", False)
         self.native_commands = []
         self.command_started = {}
-        self.git_workspace = data.get('workspace_layout') == 'git-worktree-v1'
+        self.git_workspace = data.get('workspace_layout') in ('git-worktree-v1', 'git-worktree-v2')
+        self.git_objects = self.project.parents[1] / 'objects.git' if self.project.parent.name == 'worktrees' else self.project.parent / 'objects.git'
         self.source_head = data.get('source_head')
         self.reasoning_effort = data.get('reasoning_effort', 'high' if self.thinking_enabled else 'none')
 
@@ -346,7 +347,7 @@ class CodexRun(SessionRun):
             self.status = "starting"
             self.emit("session.starting", summary="启动 Codex 原生 review")
             if self.git_workspace:
-                head = subprocess.check_output(["git", "-c", "safe.directory=" + str(self.project), "-c", "safe.directory=" + str(self.project.parent / "objects.git"), "rev-parse", "HEAD"], cwd=self.project, text=True, timeout=30).strip()
+                head = subprocess.check_output(["git", "-c", "safe.directory=" + str(self.project), "-c", "safe.directory=" + str(self.git_objects), "rev-parse", "HEAD"], cwd=self.project, text=True, timeout=30).strip()
                 if head != self.source_head:
                     raise NativeError("workspace_version_changed")
             self._prepare_workspace()
@@ -379,7 +380,7 @@ class CodexRun(SessionRun):
                 "GIT_CONFIG_KEY_0": "safe.directory",
                 "GIT_CONFIG_VALUE_0": str(self.project),
                 "GIT_CONFIG_KEY_1": "safe.directory",
-                "GIT_CONFIG_VALUE_1": str(self.project.parent / "objects.git"),
+                "GIT_CONFIG_VALUE_1": str(self.git_objects),
                 "GIT_OPTIONAL_LOCKS": "0",
                 "GIT_TERMINAL_PROMPT": "0",
             }

@@ -1439,12 +1439,22 @@ class NativeSessions:
         self.lock = threading.Lock()
         self.sessions = {}
 
+    def capacity(self):
+        with self.lock:
+            return {'limit': 5, 'active': sum(not row.done.is_set() for row in self.sessions.values())}
+
     def _workspace(self, data):
         root = Path(os.environ.get('AI_REVIEW_WORKSPACE_ROOT', '/app/review-workspaces')).resolve()
         path = Path(data['workspace'])
         if not path.is_absolute() or not path.exists() or not path.is_dir():
             raise NativeError('workspace_invalid')
         resolved = path.resolve()
+        if data.get('workspace_layout') == 'git-worktree-v2' and data.get('engine') == 'codex_cli':
+            if (resolved.name != data['job_id'] or resolved.parent.name != 'worktrees'
+                    or resolved.parents[2] != root / '.repositories'
+                    or not re.fullmatch(r'[0-9a-f]{64}', resolved.parents[1].name)):
+                raise NativeError('workspace_outside_repository')
+            return resolved
         if data.get('workspace_layout') == 'git-worktree-v1' and data.get('engine') == 'codex_cli':
             if (resolved.name != 'worktree' or resolved.parent.parent != root / '.repositories'
                     or not re.fullmatch(r'[0-9a-f]{64}', resolved.parent.name)):
@@ -1534,6 +1544,8 @@ class NativeSessions:
                 raise NativeError('session_state_unknown')
             if any(row.job_id == data['job_id'] and (not batched or not row.done.is_set()) for row in self.sessions.values()):
                 raise NativeError('job_session_conflict')
+            if sum(not row.done.is_set() for row in self.sessions.values()) >= 5:
+                raise NativeError('executor_capacity')
             workspace = self._workspace(data)
             atomic_json(binding_path, {'job_id': data['job_id'], 'session_id': data['session_id'],
                                        'model': data['model'], 'deadline_at': data['deadline_at'], 'workspace': str(workspace)})

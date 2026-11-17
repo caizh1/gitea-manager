@@ -64,12 +64,16 @@ class TimeBudgetTests(unittest.TestCase):
         for field, value in [('model','另一个模型'), ('api_key',self.store.seal('新密钥')), ('enabled',False)]:
             with self.subTest(字段=field):
                 self.change(enabled=True)
+                from ai_review.concurrency import reap
+                reap(self.store)
                 ident = self.store.enqueue(self.repo, 20, {'manual':field}, manual=True)
                 job = self.store.claim()
                 self.change(**{field:value})
                 with self.assertRaises(Stale):self.store.active(ident, job['owner'])
                 with self.assertRaises(Stale):self.store.job_config(ident)
         self.change(enabled=True)
+        from ai_review.concurrency import reap
+        reap(self.store)
         ident = self.store.enqueue(self.repo, 21, {'head':'a','base':'b'})
         job = self.store.claim(); repo = self.store.repo(self.repo)
         self.store.save_repo(repo['server_id'], repo['repo_id'], dict(repo, revision=repo['revision'], enabled=False), self.repo)
@@ -185,6 +189,8 @@ class TimeBudgetTests(unittest.TestCase):
         for mode in ('非JSON错误页', '执行器等待超时', '后续403'):
             with self.subTest(场景=mode):
                 ident=self.store.enqueue(self.repo,30,{'manual':mode},manual=True)
+                from ai_review.concurrency import reap
+                reap(self.store)
                 job=self.store.claim(); config=self.store.job_config(ident)
                 session=Mock()
                 def post(*args,**kwargs):

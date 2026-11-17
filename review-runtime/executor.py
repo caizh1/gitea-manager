@@ -301,7 +301,7 @@ threading.Thread(target=initialize_runtime, daemon=True, name='运行时自检')
 
 @app.get('/health')
 def health():
-    return jsonify(ok=runtime_status.get('ready', False), **runtime_status), (200 if runtime_status.get('ready') else 503)
+    return jsonify(ok=runtime_status.get('ready', False), capacity=native_sessions.capacity(), **runtime_status), (200 if runtime_status.get('ready') else 503)
 
 
 def executor_authorized():

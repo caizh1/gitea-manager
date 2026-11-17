@@ -451,6 +451,8 @@ def test_native_git_workspace_reuses_repository_and_fixed_evidence(tmp_path, mon
         assert result[0]['support'][0]['quote'] == ('a=3' if number == 3 else 'a=2')
         assert 'before/' not in prompt(snapshot)
         store.finish(job_id, job['owner'], 'succeeded')
+        from ai_review.concurrency import reap
+        reap(store)
         if number == 2:
             (Path(workspace) / 'a.py').write_text('被中断任务改动\n')
     assert len(set(paths)) == 1

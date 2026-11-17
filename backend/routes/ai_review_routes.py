@@ -104,13 +104,14 @@ def csrf():
 @ai_review_bp.get('/config')
 def config():
     state = store()
-    return jsonify(config=state.config(public=True), health=state.health_status(), supported_version='1.26.4', trial_versions=['1.27.3'])
+    from ai_review.concurrency import status
+    return jsonify(config=state.config(public=True), health=state.health_status(), concurrency=status(state), supported_version='1.26.4', trial_versions=['1.27.3'])
 
 
 @ai_review_bp.put('/config')
 def save_config():
     state, data = store(), body()
-    allowed = {'revision', 'enabled', 'engine', 'api_base_url', 'model', 'api_key',
+    allowed = {'revision', 'max_concurrent_reviews', 'enabled', 'engine', 'api_base_url', 'model', 'api_key',
                'debounce_seconds', 'max_files', 'max_calls', 'task_timeout_seconds', 'review_timeout_seconds',
                'model_request_timeout_seconds', 'model_max_output_tokens', 'model_response_max_mib', 'max_findings', 'thinking_protocol', 'thinking_enabled', 'reasoning_effort', 'thinking_token_budget', 'context_retrieval_budget', 'model_context_tokens', 'compaction_threshold_tokens'}
     from ai_review.token_budget import DEFAULTS as batch_defaults, validate as validate_batch
@@ -121,7 +122,7 @@ def save_config():
     value = dict(old, **data)
     if not isinstance(value['enabled'], bool) or value['engine'] not in ('opencode_native', 'codex_cli'):
         raise ReviewError('开关或执行引擎无效')
-    for key, low, high in [('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
+    for key, low, high in [('max_concurrent_reviews', 1, 5), ('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
                            ('task_timeout_seconds', 60, 3600), ('review_timeout_seconds', 60, 3600),
                            ('model_request_timeout_seconds', 60, 3600), ('max_findings', 1, 30),
                            ('model_max_output_tokens', 0, 1048576), ('model_response_max_mib', 1, 64)]:

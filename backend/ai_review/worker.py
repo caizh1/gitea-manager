@@ -445,6 +445,21 @@ def main():
     cancellation_thread = threading.Thread(target=cancellation_loop, args=(store, stop),
                                            daemon=True, name='单任务取消核对')
     cancellation_thread.start()
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix='review')
+    futures = set()
+    recovery_future = None
+    def recycle():
+        from .concurrency import reap
+        while not stop.is_set():
+            try:
+                from services.upgrade_maintenance import active
+                if not active():
+                    reap(store)
+            except Exception:
+                logging.exception('审查占位核对失败')
+            stop.wait(2)
+    threading.Thread(target=recycle, daemon=True, name='审查占位回收').start()
     last_prune = 0
     while not stop.is_set():
         try:
@@ -454,23 +469,33 @@ def main():
                 stop.wait(1)
                 continue
             # 只读回查 Gitea 不依赖模型执行器；维护期间仍禁止更新核对状态。
-            reconcile_unknown(store)
+            for future in list(futures):
+                if future.done():
+                    futures.remove(future)
+                    try:
+                        future.result()
+                    except Exception:
+                        logging.exception('审查线程异常退出，保留占位等待恢复')
+            if recovery_future is None or recovery_future.done():
+                recovery_future = pool.submit(reconcile_unknown, store)
             from .runtime_status import available
             if not available():
                 stop.wait(2)
                 continue
             reconcile_repositories(store)
-            job = store.claim()
-            if job:
-                process(store, job)
-            else:
-                stop.wait(2)
+            if len(futures) < 5:
+                job = store.claim()
+                if job:
+                    futures.add(pool.submit(process, store, job))
+                    continue
+            stop.wait(1)
             if time.time()-last_prune > 3600:
                 store.prune(); last_prune = time.time()
         except Exception as exc:
             from .diagnostics import describe
             describe(exc, phase='审查工作循环')
             stop.wait(5)
+    pool.shutdown(wait=True)
     server.shutdown()
 
 

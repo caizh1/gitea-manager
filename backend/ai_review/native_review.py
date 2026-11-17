@@ -254,12 +254,14 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                     # 终态与日志完整落库是两件事。等到执行器固定的尾序号已连续 ACK，
                     # 才用工具回执计算覆盖；等待不超过原总期限，也不重发模型请求。
                     result_value = value['result']
+                    execution_stopped = value.get('execution_stopped') is True
+                    wait_for_exit = (diff_snapshot or {}).get('workspace_layout') == 'git-worktree-v2'
                     sync_until = min(session_deadline, time.time() + 10)
                     while time.time() < sync_until:
                         synced = store.job(job['id'], evidence=False)
                         runtime_synced = (type(acked_seq) is int and final_seq is not None
                                           and acked_seq >= final_seq and stream_closed is True)
-                        if runtime_synced and synced.get('event_count', 0) >= final_seq:
+                        if runtime_synced and synced.get('event_count', 0) >= final_seq and (not wait_for_exit or execution_stopped):
                             result_sha256 = _verify_terminal_result(
                                 store, job['id'], current['session_id'], final_seq, result_value)
                             return dict(result_value, _event_log_complete=True,
@@ -270,6 +272,7 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                             latest_response = _request(session, 'GET', '/sessions/' + current['session_id'])
                             if latest_response.status_code == 200:
                                 latest = _response(latest_response, response_limit)
+                                execution_stopped = latest.get('execution_stopped') is True
                                 if isinstance(latest.get('result'), dict):
                                     result_value = latest['result']
                                 final_seq, acked_seq, stream_closed = _persist_log_watermark(

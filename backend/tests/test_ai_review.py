@@ -184,6 +184,8 @@ class StoreTests(unittest.TestCase):
         self.enqueue(); self.store.enqueue(self.repo, 2, {'head': 'c'})
         first = self.store.claim(); self.assertIsNone(self.store.claim())
         with self.store.tx() as c: c.execute('UPDATE jobs SET lease=0 WHERE id=?', (first['id'],))
+        from ai_review.concurrency import reap
+        reap(self.store)
         second = self.store.claim()
         self.assertNotEqual(first['owner'], second['owner'])
         with self.assertRaises(Stale): self.store.active(first['id'], first['owner'])
@@ -198,6 +200,8 @@ class StoreTests(unittest.TestCase):
         capability(self.store, old, '测试模型')
         with self.store.tx() as c:
             c.execute('UPDATE jobs SET lease=0 WHERE id=?', (old['id'],))
+        from ai_review.concurrency import reap
+        reap(self.store)
         current = self.store.claim()
         token = capability(self.store, current, '测试模型')
         self.store.finish(old['id'], old['owner'], 'superseded')
@@ -251,6 +255,8 @@ class StoreTests(unittest.TestCase):
         self.store.update(job['id'], job['owner'], status='publishing')
         with self.store.tx() as c: c.execute('UPDATE jobs SET lease=0 WHERE id=?', (job['id'],))
         self.enqueue('c'); self.store.enqueue(self.repo, 2, {'head': 'd'})
+        from ai_review.concurrency import reap
+        reap(self.store)
         next_job = self.store.claim()
         self.assertEqual(next_job['number'], 2)
         self.assertEqual(self.store.job(job['id'])['status'], 'publish_unknown')

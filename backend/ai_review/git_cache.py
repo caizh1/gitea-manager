@@ -199,6 +199,9 @@ def clear(store, repo):
     from .git_workspace import repository_root
 
     with store.lock("git-workspace-" + cache_key(repo)), store.lock("git-cache-" + cache_key(repo)):
+        from .git_workspace import in_use
+        if in_use(store, repository_root(repo)):
+            raise ReviewError('仓库仍有运行或待回收的审查任务，请结束后清理')
         active = repository_root(repo) / "active.json"
         if active.exists():
             from .git_workspace import release_previous

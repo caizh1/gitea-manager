@@ -228,9 +228,12 @@ class PublicationTests(unittest.TestCase):
         job=self.job
         for _ in range(2):
             with self.store.tx() as c:c.execute('UPDATE jobs SET lease=0 WHERE id=?',(job['id'],))
+            from ai_review.concurrency import reap
+            reap(self.store)
             job=self.store.claim()
         self.assertEqual(job['attempts'],3)
         with self.store.tx() as c:c.execute('UPDATE jobs SET lease=0 WHERE id=?',(job['id'],))
+        reap(self.store)
         self.assertIsNone(self.store.claim())
         self.assertEqual(self.store.job(job['id'])['status'],'failed')
 
@@ -239,6 +242,8 @@ class PublicationTests(unittest.TestCase):
             self.result['findings'][0]['existing_review_id']=73
             with self.store.tx() as c:
                 c.execute("UPDATE jobs SET status='succeeded',review_id=99,result=? WHERE id=?",(core.encode(self.result),self.job['id']))
+            from ai_review.concurrency import reap
+            reap(self.store)
             self.store.enqueue(self.repo,1,{'head':'a'*40},manual=True)
             self.job=self.store.claim()
         current=copy.deepcopy(self.result);current['findings'][0].pop('existing_review_id')

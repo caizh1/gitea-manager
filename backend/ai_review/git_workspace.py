@@ -1,5 +1,6 @@
 """复用原生 Git 工作目录，固定版本证据按需读取。"""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -65,6 +66,29 @@ def release_previous(store, root):
 
 
 def prepare(store, client, repo, job, snapshot):
+    if snapshot.get('workspace_layout') != 'git-worktree-v2':
+        return _prepare(store, client, repo, job, snapshot)
+    deadline = time.monotonic() + store.job_config(job['id']).get('batch_preprocess_seconds', 120)
+    while True:
+        store.active(job['id'], job['owner'])
+        try:
+            with store.lock('git-workspace-' + cache_key(repo)):
+                return _prepare(store, client, repo, job, snapshot)
+        except WorkspaceBusy:
+            raise
+        except ReviewError as exc:
+            if str(exc) != '该 PR 正在由其他执行者发布':
+                raise
+            if time.monotonic() >= deadline:
+                raise ReviewError('等待 Git 缓存锁超过预处理时限') from None
+            time.sleep(0.1)
+
+
+class WorkspaceBusy(ReviewError):
+    pass
+
+
+def _prepare(store, client, repo, job, snapshot):
     from .authorization import authorize
     from .gitea import assert_version
 
@@ -86,8 +110,17 @@ def prepare(store, client, repo, job, snapshot):
     client.repository()
     root = repository_root(repo)
     root.mkdir(parents=True, exist_ok=True, mode=0o755)
-    release_previous(store, root)
-    folder, workspace = root / "objects.git", root / "worktree"
+    concurrent = snapshot.get('workspace_layout') == 'git-worktree-v2'
+    if not concurrent or (root / 'active.json').exists():
+        release_previous(store, root)
+        if concurrent:
+            (root / 'active.json').unlink(missing_ok=True)
+    folder = root / 'objects.git'
+    workspace = root / 'worktrees' / job['id'] if concurrent else root / 'worktree'
+    workspace.parent.mkdir(exist_ok=True)
+    if concurrent:
+        store.update(job['id'], job['owner'], workspace_path=str(workspace), snapshot=snapshot)
+
     state_path = root / "state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
     mode = "缓存复用"
@@ -109,6 +142,10 @@ def prepare(store, client, repo, job, snapshot):
             run_git(["fsck", "--full", "--no-dangling"], cwd=folder, check=check, timeout=max(1, deadline-time.monotonic()))
         except GitFailure:
             check()
+            with contextlib.closing(store.connect()) as connection:
+                other = connection.execute('SELECT 1 FROM review_execution_slots WHERE repository=? AND job!=? LIMIT 1', (repo['id'], job['id'])).fetchone()
+            if other:
+                raise WorkspaceBusy('Git 缓存损坏且其他任务仍占用，已保留现场，待其他任务结束后重试')
             shutil.rmtree(folder)
             shutil.rmtree(workspace, ignore_errors=True)
             folder.mkdir(mode=0o755)
@@ -144,7 +181,7 @@ def prepare(store, client, repo, job, snapshot):
     if required[2] not in bases:
         raise ReviewError("Gitea 比较基点与 Git 对象不一致")
     for index, sha in enumerate(required):
-        run_git(["update-ref", f"refs/review-active/{index}", sha], cwd=folder, check=check)
+        run_git(["update-ref", f"refs/review-active/{job['id']}/{index}" if concurrent else f"refs/review-active/{index}", sha], cwd=folder, check=check)
     checkout_started = time.monotonic()
     # info/attributes 优先于仓库规则，保持工作目录文本与 Git blob 一致。
     attributes = folder / "info" / "attributes"
@@ -176,7 +213,9 @@ def prepare(store, client, repo, job, snapshot):
     assert_version(client, job["number"], snapshot)
     check()
     write_json(state_path, {"objects": object_signature(folder), "head": required[1]})
-    write_json(root / "active.json", {"job": job["id"], "snapshot_id": snapshot["id"]})
+    marker = root / 'active' / (job['id'] + '.json') if concurrent else root / 'active.json'
+    marker.parent.mkdir(exist_ok=True)
+    write_json(marker, {'job': job['id'], 'snapshot_id': snapshot['id']})
     size = _size(root)
     if size > int(os.environ.get("AI_REVIEW_GIT_CACHE_BYTES", 8 * 1024**3)):
         raise ReviewError("Git 仓库与工作目录超过缓存容量")
@@ -202,6 +241,8 @@ def prune(store, protected):
                 continue
             try:
                 with store.lock("git-workspace-" + folder.name):
+                    if in_use(store, folder):
+                        continue
                     release_previous(store, folder)
                     shutil.rmtree(folder)
                     total -= size
@@ -209,3 +250,29 @@ def prune(store, protected):
                 continue
         if total > limit:
             raise ReviewError("Git 仓库缓存达到总容量限制")
+
+
+def in_use(store, folder):
+    with contextlib.closing(store.connect()) as connection:
+        rows = connection.execute('SELECT j.workspace_path FROM review_execution_slots s JOIN jobs j ON j.id=s.job').fetchall()
+    return any(row[0] and Path(row[0]).is_relative_to(folder) for row in rows) or any((folder / 'active').glob('*.json'))
+
+
+def release_task(store, job):
+    """调用者已经核对执行停止并持有任务执行锁。"""
+    snapshot = job.get('snapshot') or {}
+    if snapshot.get('workspace_layout') != 'git-worktree-v2' or not job.get('workspace_path'):
+        return
+    repo = store.repo(job['repository'])
+    root = repository_root(repo)
+    workspace = root / 'worktrees' / job['id']
+    if str(workspace) != job['workspace_path']:
+        raise ReviewError('任务工作目录与冻结记录不一致')
+    with store.lock('git-workspace-' + cache_key(repo)):
+        folder = root / 'objects.git'
+        if workspace.exists():
+            run_git(['worktree', 'remove', '--force', str(workspace)], cwd=folder)
+        if folder.exists():
+            for index in range(3):
+                run_git(['update-ref', '-d', f"refs/review-active/{job['id']}/{index}"], cwd=folder)
+        (root / 'active' / (job['id'] + '.json')).unlink(missing_ok=True)

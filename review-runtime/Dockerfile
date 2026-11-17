@@ -20,4 +20,4 @@ RUN test "$(/opt/review/codex --version)" = "codex-cli 0.169.0"
 RUN rg --version | grep -q '^ripgrep 14.1.1'
 USER 10001:10001
 EXPOSE 5052
-CMD ["gunicorn", "--bind", "0.0.0.0:5052", "--workers", "1", "--threads", "2", "--timeout", "190", "--access-logfile", "/dev/null", "executor:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5052", "--workers", "1", "--threads", "32", "--timeout", "190", "--access-logfile", "/dev/null", "executor:app"]

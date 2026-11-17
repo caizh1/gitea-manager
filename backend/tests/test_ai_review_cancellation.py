@@ -65,6 +65,8 @@ class CancellationTests(unittest.TestCase):
 
     def test_cancel_and_publish_are_mutually_exclusive(self):
         request_cancel(self.store, self.ident, '测试管理员')
+        from ai_review.concurrency import reap
+        reap(self.store)
         for number in range(2, 32):
             ident = self.store.enqueue(self.repo, number, self.signature)
             job = self.store.claim()
@@ -81,6 +83,9 @@ class CancellationTests(unittest.TestCase):
                 publishing = pool.submit(publish)
                 code, published = cancel.result(), publishing.result()
             self.assertEqual((code, published), (409, True) if published else (202, False))
+            if published:
+                self.store.finish(target, job['owner'], 'succeeded')
+            reap(self.store)
             if published: self.store.finish(target, job['owner'], 'succeeded')
             else: self.assertTrue(reconcile_cancel(self.store, {'id': target, 'session_id': ''}))
 
