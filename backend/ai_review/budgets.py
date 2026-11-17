@@ -4,6 +4,12 @@ TIME_FIELDS = frozenset({'batch_splitting_enabled', 'tokenizer_profile', 'batch_
 CONTEXT_DEFAULTS = {'model_context_tokens': 262144, 'compaction_threshold_tokens': 210000}
 DEFAULT_CODEX_MODEL = 'DeepSeek- V4.1-Flash'
 CODEX_CONTEXT_DEFAULTS = {'model_context_tokens': 1_000_000, 'compaction_threshold_tokens': 800_000}
+INITIAL_TIMEOUTS = {
+    'task_timeout_seconds': 2400,
+    'review_timeout_seconds': 1200,
+    'model_request_timeout_seconds': 900,
+}
+# 旧配置和任务历史缺少字段时沿用原有隐含时限。
 MODEL_TIMEOUT_DEFAULT = 600
 MODEL_TIMEOUT_MAX = 3600
 REVIEW_TIMEOUT_DEFAULT = 600

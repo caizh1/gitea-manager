@@ -12,13 +12,14 @@ from cryptography.fernet import Fernet, InvalidToken
 from .token_budget import DEFAULTS as BATCH_DEFAULTS
 from .thinking import DEFAULTS as THINKING_DEFAULTS
 from .common import ReviewError, Stale, encode, secret_file
-from .budgets import TIME_FIELDS, CONTEXT_DEFAULTS, CODEX_CONTEXT_DEFAULTS, DEFAULT_CODEX_MODEL, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision
+from .budgets import (TIME_FIELDS, CONTEXT_DEFAULTS, CODEX_CONTEXT_DEFAULTS, DEFAULT_CODEX_MODEL,
+                      INITIAL_TIMEOUTS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision)
 import json
 
-DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CODEX_CONTEXT_DEFAULTS, 'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': DEFAULT_CODEX_MODEL,
+DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CODEX_CONTEXT_DEFAULTS, **INITIAL_TIMEOUTS,
+            'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': DEFAULT_CODEX_MODEL,
             'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20, 'max_files': 40,
-            'max_calls': 32, 'task_timeout_seconds': 1200, 'review_timeout_seconds': REVIEW_TIMEOUT_DEFAULT,
-            'model_request_timeout_seconds': MODEL_TIMEOUT_DEFAULT,
+            'max_calls': 32,
             'execution_revision': 1, 'model_max_output_tokens': 0, 'model_response_max_mib': 8, 'max_findings': 20}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
 

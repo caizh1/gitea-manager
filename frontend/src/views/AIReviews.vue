@@ -93,14 +93,14 @@
               <el-form-item label="预处理超时（秒）"><el-input-number v-model="config.batch_preprocess_seconds" :min="10" :max="3600" /></el-form-item>
               <el-form-item v-if="config.engine !== 'codex_cli'" label="计数进程内存上限（MiB）"><el-input-number v-model="config.batch_memory_mib" :min="256" :max="8192" /></el-form-item>
               <el-form-item v-if="config.engine === 'codex_cli'" label="整个任务时限（秒）"><el-input-number v-model="config.task_timeout_seconds" :min="60" :max="3600" /></el-form-item>
-              <el-form-item label="每会话审查上限（秒）"><el-input-number v-model="config.review_timeout_seconds" :min="60" :max="3600" :precision="0" /><span class="secondary">首次默认 600 秒；旧配置沿用原任务预算。仅对保存后创建的新任务生效。</span></el-form-item>
+              <el-form-item label="每会话审查上限（秒）"><el-input-number v-model="config.review_timeout_seconds" :min="60" :max="3600" :precision="0" /><span class="secondary">新安装默认 1200 秒。Codex 主审、独立反证和历史复核各有会话上限，共用任务总时限。</span></el-form-item>
               <el-form-item v-if="config.engine !== 'codex_cli'" label="每会话源码检索额度"><el-input-number v-model="config.context_retrieval_budget" :min="1" :max="200" :precision="0" /></el-form-item>
               <el-form-item label="模型上下文窗口（Token）"><el-input-number v-model="config.model_context_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">新安装的默认 DeepSeek 模型预填 1,000,000。请按服务实际开放的窗口配置。</span></el-form-item>
               <el-form-item :label="config.engine === 'codex_cli' ? '自动压缩启动阈值（Token）' : '历史会话压缩阈值（Token）'"><el-input-number v-model="config.compaction_threshold_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">{{ config.engine === 'codex_cli' ? '由 Codex 发起原生压缩。阈值与输出预留之和应在模型窗口内。' : '新任务按固定 diff 分批处理，此项用于历史会话。' }}</span></el-form-item>
               <el-form-item label="单次模型请求超时（秒）"><el-input-number v-model="config.model_request_timeout_seconds" :min="60" :max="3600" :precision="0" /></el-form-item>
               <el-form-item label="模型输出额度（Token）"><el-input-number v-model="config.model_max_output_tokens" :min="0" :max="1048576" :precision="0" /><span class="secondary">{{ config.engine === 'codex_cli' ? '新安装默认 0，由模型服务决定输出额度。填写正数时限制单次模型输出，包含思考与正文。' : '设为 0 时分批任务使用 8192。正数额度可能包含思考与正文。' }}</span></el-form-item>
               <el-form-item label="正文大小上限（MiB）"><el-input-number v-model="config.model_response_max_mib" :min="1" :max="64" :precision="0" /><span class="secondary">限制审查报告正文，不累计心跳和进度事件。</span></el-form-item>
-            </div><p class="muted" data-testid="time-budget-help">初始单次等待上限：{{ effectiveModelTimeout }} 秒，即单次模型请求上限与整次审查剩余期限减去 40 秒收尾时间中的较小值。实际可用时间会随准备耗时和后续调用递减。资源配置仅对新创建的任务生效，已排队和运行中的任务沿用原预算。</p></el-collapse-item></el-collapse>
+            </div><p class="muted" data-testid="time-budget-help">初始单次等待上限 {{ effectiveModelTimeout }} 秒。每次调用还受会话剩余时间限制，Codex 会话同时受整个任务剩余时间限制，并预留 40 秒收尾。保存预算后，新任务使用新配置，已排队和运行中的任务沿用创建时的预算。</p></el-collapse-item></el-collapse>
             <div class="review-actions footer"><el-button type="primary" :loading="busy" native-type="submit">保存设置</el-button><el-button :loading="testing" @click="testConnection">检查已保存的连接</el-button><el-button :loading="testing" @click="testTokens">核对 Token 计数（4 次请求）</el-button></div>
           </el-form>
           <el-alert v-if="connectionMessage" :title="connectionMessage" :type="connectionOk ? 'success' : 'warning'" :closable="false" />
@@ -227,7 +227,12 @@ const repoName = id => { const r = repositories.value.find(r => r.id === id); re
 const repoArchived = id => Boolean(repositories.value.find(row => row.id === id)?.access_archived)
 const statusLabel = s => ({ awaiting_publication: '历史待发布', awaiting_cost: '等待成本确认', budget_paused: '预算暂停', incomplete: '审查未完成', cancelling: '取消中', cancelled: '已取消', queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '自动核对发布结果', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
 
-const effectiveModelTimeout = computed(() => Math.max(0, Math.min(config.value.model_request_timeout_seconds ?? 600, (config.value.review_timeout_seconds ?? 600) - 40)))
+const effectiveModelTimeout = computed(() => {
+  const { engine, task_timeout_seconds, review_timeout_seconds, model_request_timeout_seconds } = config.value
+  const session = review_timeout_seconds ?? 1200
+  const limit = engine === 'codex_cli' ? Math.min(session, task_timeout_seconds ?? 2400) : session
+  return Math.max(0, Math.min(model_request_timeout_seconds ?? 900, limit - 40))
+})
 const showError = e => { if (e.code === 'ERR_CANCELED') return; error.value = errorMessage(e); if (detailVisible.value) detailError.value = error.value }
 async function downloadProgress(serverId) { try { const response = await api.get(`/ai-review/servers/${serverId}/progress-assets`, { responseType: 'blob' }); const url = URL.createObjectURL(response.data); const a = document.createElement('a'); a.href = url; a.download = `gitea-review-progress-${serverId}.zip`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); ElMessage.success('组件已下载；解压后按安装说明接入已有 Gitea 容器') } catch (e) { showError(e) } }
 let csrfPromise

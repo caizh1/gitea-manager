@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch, Mock
 
 from tests import test_ai_review as foundation
-from ai_review.budgets import model_timeout
+from ai_review.budgets import call_reservation, model_timeout
 from ai_review.common import ReviewError, Stale
 from ai_review.engine import capability
 from ai_review.broker import create_broker
@@ -23,24 +23,28 @@ class TimeBudgetTests(unittest.TestCase):
     def test_old_configuration_defaults_do_not_overwrite_batch_budget(self):
         with self.store.tx() as c:
             old = json.loads(c.execute('SELECT value FROM settings').fetchone()[0])
-            old.pop('model_request_timeout_seconds', None); old.pop('execution_revision', None)
+            old.pop('model_request_timeout_seconds', None); old.pop('review_timeout_seconds', None)
+            old.pop('execution_revision', None)
             old['task_timeout_seconds'] = 777
             c.execute('UPDATE settings SET value=?', (json.dumps(old),))
         config = self.store.config()
         self.assertEqual(config['model_request_timeout_seconds'], 600)
         self.assertEqual(config['task_timeout_seconds'], 777)
+        self.assertEqual(config['review_timeout_seconds'], 777)
         self.assertEqual(config['execution_revision'], config['revision'])
 
     def test_budget_edit_preserves_running_queued_and_finished_pr_identity(self):
+        self.change(task_timeout_seconds=1200, review_timeout_seconds=120, model_request_timeout_seconds=600)
         running_id = self.enqueue(); running = self.store.claim()
         queued_id = self.store.enqueue(self.repo, 2, {'head':'c','base':'b'})
         original = self.store.job_config(running_id)
-        changed = self.change(task_timeout_seconds=2400, model_request_timeout_seconds=900)
+        changed = self.change(task_timeout_seconds=2400, review_timeout_seconds=1200, model_request_timeout_seconds=900)
         self.store.active(running_id, running['owner'])
         self.assertEqual(self.store.job(running_id)['status'], 'running')
         self.assertEqual(self.store.job(queued_id)['status'], 'queued')
         self.assertEqual(self.store.job_config(running_id), original)
         self.assertEqual(self.store.job_config(queued_id)['model_request_timeout_seconds'], 600)
+        self.assertEqual(self.store.job_config(queued_id)['review_timeout_seconds'], 120)
         self.assertIsNone(self.enqueue())
         self.assertIsNone(self.store.enqueue(self.repo, 2, {'head':'c','base':'b'}))
         self.store.finish(running_id, running['owner'], 'failed', '保留原失败')
@@ -48,6 +52,7 @@ class TimeBudgetTests(unittest.TestCase):
         new_id = self.store.enqueue(self.repo, 3, {'head':'d','base':'b'})
         self.assertEqual(self.store.job_config(new_id)['model_request_timeout_seconds'], 900)
         self.assertEqual(self.store.job_config(new_id)['task_timeout_seconds'], 2400)
+        self.assertEqual(self.store.job_config(new_id)['review_timeout_seconds'], 1200)
         self.assertEqual(self.store.job(new_id)['config_revision'], changed['revision'])
 
     def test_snapshot_refresh_does_not_rewrite_signature_to_budget_edit_version(self):
@@ -97,8 +102,9 @@ class TimeBudgetTests(unittest.TestCase):
         self.enqueue(); job = self.store.claim(); config = self.store.job_config(job['id'])
         rows = prepare(self.store, job, [{'path':'x.c'}])
         first = begin_phase(self.store, job, config, rows[0]['id'], 'analyzing')
+        elapsed = config['task_timeout_seconds'] - call_reservation(config) + 1
         with self.store.tx() as c:
-            c.execute('UPDATE jobs SET batch_started=? WHERE id=?',(time.time()-600,job['id']))
+            c.execute('UPDATE jobs SET batch_started=? WHERE id=?',(time.time()-elapsed,job['id']))
         second = begin_phase(self.store, job, config, rows[0]['id'], 'analyzing')
         self.assertEqual(second, first+1)
 
@@ -114,15 +120,15 @@ class TimeBudgetTests(unittest.TestCase):
         self.assertEqual((a.status_code,b.status_code),(502,403));transport.assert_called_once()
         actual = self.store.job(job['id'])
         self.assertEqual(actual['diagnostic']['error_code'], 'MODEL_TOTAL_TIMEOUT')
-        self.assertIn('600 秒',actual['error']);self.assertNotIn('403',actual['error'])
+        self.assertIn('900 秒',actual['error']);self.assertNotIn('403',actual['error'])
         self.assertNotIn(token,json.dumps(actual['diagnostic']))
 
     def test_broker_uses_frozen_deadline_and_distinguishes_upstream_403(self):
         self.enqueue(); job = self.store.claim(); token = capability(self.store, job, '测试模型')
-        self.change(model_request_timeout_seconds=900)
+        self.change(model_request_timeout_seconds=1000)
         client = create_broker(self.store).test_client()
         def upstream(*args, **kwargs):
-            self.assertEqual(kwargs['timeout'],600)
+            self.assertEqual(kwargs['timeout'],900)
             kwargs['diagnostics']['upstream_http_status'] = 403
             return 403,b''
         with patch('ai_review.broker.endpoint',return_value='http://model.invalid/v1'), \
@@ -144,7 +150,9 @@ class TimeBudgetTests(unittest.TestCase):
         self.assertEqual(client.get('/api/ai-review/config').status_code,401)
         login_platform(client)
         initial=client.get('/api/ai-review/config').json['config']
-        self.assertEqual(initial['model_request_timeout_seconds'],600)
+        self.assertEqual(initial['task_timeout_seconds'],2400)
+        self.assertEqual(initial['review_timeout_seconds'],1200)
+        self.assertEqual(initial['model_request_timeout_seconds'],900)
         self.assertEqual(client.put('/api/ai-review/config',json={'revision':initial['revision'],'model_request_timeout_seconds':900}).status_code,403)
         headers={'X-Review-CSRF':client.get('/api/ai-review/csrf').json['token']}
         self.assertEqual(client.put('/api/ai-review/config',json={},headers={'X-Review-CSRF':'é'}).status_code,403)
