@@ -45,12 +45,12 @@
             </template></el-table-column>
             <el-table-column label="执行耗时 / 批次" min-width="150"><template #default="{ row }">{{ row.timing ? Math.round(row.timing.execution_seconds) + ' 秒' : '历史记录' }}<div class="muted" v-if="row.batch_protocol">{{ row.progress?.units_completed || 0 }} / {{ row.progress?.units_total ?? '预检中' }}</div></template></el-table-column>
             <el-table-column label="创建时间 ↓" min-width="195"><template #default="{ row }">{{ fmt(row.created) }}<div class="muted">更新：{{ fmt(row.updated) }}</div></template></el-table-column>
-            <el-table-column label="操作" min-width="250"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-button v-if="row.status === 'awaiting_publication'" link type="primary" @click="openPublication(row)">确认发布</el-button><el-button v-if="!repoArchived(row.repository) && ['queued', 'running'].includes(row.status)" link type="danger" :loading="cancellingId === row.id" :disabled="Boolean(cancellingId)" @click="cancelTask(row)">强制取消</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><template v-else-if="row.status === 'publish_unknown'"><el-button link type="warning" @click="reconcile(row)">核对发布</el-button><el-button link type="warning" @click="confirmUnpublished(row)">确认未发布</el-button></template><el-button v-else link :disabled="!config.enabled || row.status === 'cancelling'" @click="rerun(row.repository, row.number)">重新审查</el-button></div></template></el-table-column>
+            <el-table-column label="操作" min-width="250"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-button v-if="!repoArchived(row.repository) && ['queued', 'running'].includes(row.status)" link type="danger" :loading="cancellingId === row.id" :disabled="Boolean(cancellingId)" @click="cancelTask(row)">强制取消</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><el-button link :disabled="!config.enabled || row.status === 'cancelling'" @click="rerun(row.repository, row.number)">重新审查</el-button></div></template></el-table-column>
             <template #empty><el-empty description="启用仓库后，创建或更新 PR 即可自动审查。" /></template>
           </el-table>
           <el-pagination v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next, total" @current-change="changePage" />
         </div>
-    <ReviewTaskDetail v-if="detailVisible" :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :cancelling="cancellingId === detail?.id" :can-cancel="!repoArchived(detail?.repository)" @cancel="cancelTask(detail)" @refresh="fetchDetail(selectedTask)" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail"><template #actions><template v-if="detail && !repoArchived(detail.repository)"><el-button v-if="detail.status === 'awaiting_publication'" type="primary" size="small" @click="openPublication(detail)">预览并确认发布</el-button><template v-if="detail.status === 'publish_unknown'"><el-button size="small" type="warning" plain @click="reconcile(detail)">核对发布</el-button><el-button size="small" @click="confirmUnpublished(detail)">确认未发布</el-button></template><el-button v-else size="small" :disabled="!config.enabled || detail.status === 'cancelling'" :loading="rerunning" @click="rerun(detail.repository, detail.number)">重新审查</el-button></template></template></ReviewTaskDetail>
+    <ReviewTaskDetail v-if="detailVisible" :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :cancelling="cancellingId === detail?.id" :can-cancel="!repoArchived(detail?.repository)" @cancel="cancelTask(detail)" @refresh="fetchDetail(selectedTask)" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail"><template #actions><template v-if="detail && !repoArchived(detail.repository)"><el-button size="small" :disabled="!config.enabled || detail.status === 'cancelling'" :loading="rerunning" @click="rerun(detail.repository, detail.number)">重新审查</el-button></template></template></ReviewTaskDetail>
       </div>
     </section>
     <ReviewRepositories v-else-if="tab === 'repositories'" :repositories="repositories" :servers="servers" :config="config" :refreshing="refreshing" @refresh="refresh" @configure="editRepo" @webhook="row => { hookRepo = row; hookVisible = true }" @review="row => { manualRepo = row; manualVisible = true }" @download="row => downloadProgress(row.server_id)" />
@@ -58,11 +58,11 @@
     <section v-else-if="tab === 'config' && isPlatformAdmin">
         <div class="glass-card panel">
           <el-alert v-if="configError" :title="configError" type="error" show-icon :closable="false" /><el-form label-position="top" @submit.prevent="saveConfig">
-            <el-alert :title="config.engine === 'codex_cli' ? 'Codex 自主检索审查，总变更最多 1200 行' : '新任务单次审查，新增与删除合计最多 1200 行'" :description="config.engine === 'codex_cli' ? '首次获取仓库，后续增量更新。P0/P1 独立反证，意见确认后发布。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
+            <el-alert :title="config.engine === 'codex_cli' ? 'Codex 自主检索审查，总变更最多 1200 行' : '新任务单次审查，新增与删除合计最多 1200 行'" :description="config.engine === 'codex_cli' ? '首次获取仓库，后续增量更新。P0/P1 独立反证，审查完成后自动发布行内评论与总览。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
             <div class="review-grid">
               <el-form-item label="源码缓存"><div><el-button @click="loadSourceCache">查看缓存</el-button><span v-if="sourceCache"> {{ Math.round(sourceCache.bytes/1048576) }} / {{ Math.round(sourceCache.limit_bytes/1048576) }} MiB</span><div v-for="row in sourceCache?.repositories || []" :key="row.repository">{{ repoName(row.repository) }} · {{ Math.round(row.bytes/1048576) }} MiB <el-button link type="danger" @click="clearSourceCache(row.repository)">清理</el-button></div></div></el-form-item>
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
-              <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎"><el-option label="原生 OpenCode 会话" value="opencode_native" /><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /></el-select></el-form-item>
+              <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎"><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /><el-option label="原生 OpenCode 会话（已弃用）" value="opencode_native" /></el-select><span v-if="config.engine === 'opencode_native'" class="secondary">OpenCode 执行器已弃用，后续新功能仅支持 Codex。</span></el-form-item>
               <el-form-item label="内部 New API 地址"><el-input v-model="config.api_base_url" placeholder="填写包含 API 前缀的内网地址" autocomplete="off" /></el-form-item>
               <el-form-item label="模型"><el-input v-model="config.model" placeholder="填写内部实际可用的模型标识" autocomplete="off" /></el-form-item>
               <el-form-item :label="config.api_key_configured ? 'API Key（已配置，留空保留）' : 'API Key（尚未配置）'"><el-input v-model="apiKey" type="password" autocomplete="new-password" placeholder="仅在新增或更换密钥时填写" /></el-form-item>
@@ -117,6 +117,7 @@
         <el-form-item label="仓库"><el-select v-model="repoForm.repo_name" :disabled="!!repoForm.id" filterable remote :remote-method="searchCatalog" :loading="catalogLoading" placeholder="搜索所有者或仓库名称" class="full"><el-option v-for="r in catalog" :key="r.id" :value="r.name" :label="r.full_path || r.name" /><el-option v-if="repoForm.id" :label="repoForm.repo_name" :value="repoForm.repo_name" /></el-select></el-form-item>
         <el-form-item v-if="isPlatformAdmin" label="专用机器人 Token（编辑时留空保留）"><el-input v-model="repoForm.bot_token" type="password" autocomplete="new-password" /></el-form-item>
         <div v-if="isPlatformAdmin" class="permission-guide"><strong>账号与 Token 的权限分别配置</strong><dl><dt>机器人账号</dt><dd>独立非管理员；仓库协作者选择 Read／只读。组织和团队也不能授予代码写入或管理权限。</dd><dt>Token 权限</dt><dd><code>read:user</code>、<code>write:repository</code>、<code>write:issue</code>。私有仓库不能选择仅公开资源。</dd></dl><p>Token 的写权限用于发布审查和进度评论，账号自身仍保持代码只读。已有 Token 满足要求时，可以继续使用。</p></div>
+        <p class="secondary">Codex 自定义审查规则由仓库中的 .gitea/review-rules.md 提供，读取本次任务固定的目标分支版本，合并后生效。</p>
         <el-form-item label="启用该仓库"><el-switch v-model="repoForm.enabled" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="repoVisible = false">取消</el-button><el-button type="primary" :loading="busy" @click="saveRepo">保存仓库</el-button></template>
@@ -127,15 +128,7 @@
       <template #footer><el-button @click="hookVisible = false">取消</el-button><el-button type="primary" :loading="busy" @click="installHook">安装并验证</el-button></template>
     </el-dialog>
     <el-dialog append-to-body v-model="manualVisible" title="人工触发 PR 审查" width="min(460px, 95vw)"><el-alert v-if="manualError" :title="manualError" type="error" show-icon :closable="false" /><el-form label-position="top"><el-form-item label="仓库"><el-select v-model="manualRepo" value-key="id" aria-label="发起审查的仓库" class="full"><el-option v-for="r in availableRepos" :key="r.id" :value="r" :label="`${r.server_name} / ${r.repo_name}`" /></el-select></el-form-item><el-form-item label="PR 编号"><el-input-number v-model="manualNumber" :min="1" /></el-form-item></el-form><template #footer><el-button @click="manualVisible = false">取消</el-button><el-button type="primary" :loading="rerunning" :disabled="rerunning || !manualRepo" @click="rerun(manualRepo?.id, manualNumber)">开始审查</el-button></template></el-dialog>
-    <el-dialog append-to-body v-model="publicationVisible" title="确认发布审查意见" width="min(860px, 95vw)">
-      <p v-if="publication">本次确认将发布所选问题及状态，并同步该版本总览。</p>
-      <p v-if="publication">提交 {{ publication.head }}</p>
-      <el-checkbox-group v-model="publicationSelected" class="publication-choices">
-        <el-checkbox v-for="item in publication?.status_changes || []" :key="item.issue" :label="item.issue">{{ item.issue.slice(0, 12) }} · {{ item.title }} · {{ item.status }} · {{ item.reason }}</el-checkbox>
-      </el-checkbox-group>
-      <div v-for="finding in publication?.findings || []" :key="finding.issue_id" class="glass-card panel"><strong>{{ finding.severity }} {{ finding.title }}</strong><p>{{ finding.explanation }}</p><p>{{ finding.path }} · {{ finding.anchor ? '可发布行内意见' : '意见保留在 Manager' }}</p></div>
-      <template #footer><el-button @click="publicationVisible = false">取消</el-button><el-button type="primary" :loading="publicationBusy" @click="approvePublication">确认发布所选结果</el-button></template>
-    </el-dialog>
+
   </div>
 </template>
 
@@ -182,26 +175,7 @@ const availableRepos = computed(() => repositories.value.filter(r => r.enabled &
 const sourceCache = ref(null)
 async function loadSourceCache() { try { sourceCache.value = (await api.get('/ai-review/source-cache')).data } catch(e) { showError(e) } }
 async function clearSourceCache(id) { try { await write('delete', '/source-cache/'+id); await loadSourceCache() } catch(e) { showError(e) } }
-const publicationVisible = ref(false), publication = ref(null), publicationSelected = ref([]), publicationBusy = ref(false)
-async function openPublication(task) {
-  try {
-    publication.value = (await api.get('/ai-review/tasks/' + task.id + '/publication-preview')).data
-    publicationSelected.value = publication.value.status_changes.map(item => item.issue)
-    publicationVisible.value = true
-  } catch (e) { showError(e) }
-}
-async function approvePublication() {
-  if (publicationBusy.value) return
-  publicationBusy.value = true
-  try {
-    await write('post', '/tasks/' + publication.value.job + '/approve-publication', { preview_hash: publication.value.preview_hash, selected: publicationSelected.value })
-    publicationVisible.value = false
-    await refresh()
-  } catch (e) { showError(e) }
-  finally { publicationBusy.value = false }
-}
-
-const taskStates = { awaiting_publication:'等待确认发布', awaiting_cost:'等待成本确认', budget_paused:'预算暂停', incomplete:'审查未完成', queued:'等待执行', running:'分析中', publishing:'发布中', recovering:'核对中', succeeded:'已完成', failed:'执行失败', cancelled:'已取消', cancelling:'取消中', superseded:'版本已过期', publish_unknown:'发布待核对' }
+const taskStates = { awaiting_publication:'历史待发布', awaiting_cost:'等待成本确认', budget_paused:'预算暂停', incomplete:'审查未完成', queued:'等待执行', running:'分析中', publishing:'发布中', recovering:'核对中', succeeded:'已完成', failed:'执行失败', cancelled:'已取消', cancelling:'取消中', superseded:'版本已过期', publish_unknown:'自动核对发布结果' }
 let statisticsController, tasksController, statisticsGeneration = 0, lastStatisticsPoll = 0
 function scopeParams() { return { start: dates.value?.[0], end: dates.value?.[1], timezone, repository: filterRepo.value || undefined } }
 function listQuery() { return { ...scopeParams(), period: preset.value, last_task: lastSelected.value || undefined, page: String(page.value), status: filterStatus.value || undefined } }
@@ -245,7 +219,7 @@ const progressStale = computed(() => config.value.enabled && (!health.value.find
 const fmt = value => value ? new Date(value*1000).toLocaleString('zh-CN') : '尚无'
 const repoName = id => { const r = repositories.value.find(r => r.id === id); return r ? `${r.server_name} / ${r.repo_name}${r.access_archived ? '（已归档）' : ''}` : `仓库 ${id ?? ''}` }
 const repoArchived = id => Boolean(repositories.value.find(row => row.id === id)?.access_archived)
-const statusLabel = s => ({ awaiting_publication: '等待确认发布', awaiting_cost: '等待成本确认', budget_paused: '预算暂停', incomplete: '审查未完成', cancelling: '取消中', cancelled: '已取消', queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '发布待核对', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
+const statusLabel = s => ({ awaiting_publication: '历史待发布', awaiting_cost: '等待成本确认', budget_paused: '预算暂停', incomplete: '审查未完成', cancelling: '取消中', cancelled: '已取消', queued: '等待执行', running: '分析中', publishing: '发布与核对', recovering: '核对发布结果', publish_unknown: '自动核对发布结果', succeeded: '已完成', superseded: '版本已过期', failed: '执行失败' }[s] || s)
 
 const effectiveModelTimeout = computed(() => Math.max(0, Math.min(config.value.model_request_timeout_seconds ?? 600, (config.value.review_timeout_seconds ?? 600) - 40)))
 const showError = e => { if (e.code === 'ERR_CANCELED') return; error.value = errorMessage(e); if (detailVisible.value) detailError.value = error.value }
@@ -316,7 +290,7 @@ async function cancelTask(row) {
   } finally { cancellingId.value = '' }
 }
 
-async function reconcile(row) { try { await write('post', `/tasks/${row.id}/reconcile`, {}); ElMessage.success('已请求核对，不会盲目重发评论') } catch (e) { showError(e) } }
+
 async function closeDetail() {
   await router.push({ path: '/ai-reviews', query: listQuery() })
 }
@@ -350,14 +324,7 @@ async function poll() {
   if (!disposed) timer = setTimeout(poll, detailVisible.value ? (document.hidden ? 5000 : 1000) : 5000)
 }
 
-async function confirmUnpublished(row) {
-  try {
-    await ElMessageBox.confirm('仅当你已确认 Gitea 不再处理原请求、没有正式 Review，并已处理机器人残留草稿时使用。此操作不删除 Gitea 评论；确认后可人工重新审查。', '确认原任务未发布', { confirmButtonText: '已核对，确认未发布', cancelButtonText: '取消', type: 'warning' })
-    await write('post', `/tasks/${row.id}/reconcile`, { confirm_unpublished: true })
-    await loadTasks()
-    ElMessage.success('已记录未发布，可人工重新审查')
-  } catch (e) { if (e !== 'cancel' && e !== 'close') showError(e) }
-}
+
 onMounted(async () => { await refresh(); if (!disposed && tab.value === 'tasks' && selectedTask.value) await fetchDetail(selectedTask.value); if (!disposed) timer = setTimeout(poll, 5000) })
 onUnmounted(() => { disposed = true; statisticsGeneration++; statisticsController?.abort(); tasksController?.abort(); taskGeneration++; detailGeneration++; detailController?.abort(); repoGeneration++; catalogGeneration++; clearTimeout(timer); apiKey.value = ''; repoForm.value.bot_token = '' })
 </script>
@@ -403,6 +370,4 @@ onUnmounted(() => { disposed = true; statisticsGeneration++; statisticsControlle
 </style>
 
 <style scoped>
-.publication-choices { display: flex; flex-direction: column; gap: 12px; }
-.publication-choices :deep(.el-checkbox) { height: auto; white-space: normal; align-items: flex-start; }
 </style>

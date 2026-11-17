@@ -351,6 +351,10 @@ def reconcile_unknown(store):
         if not row:
             return
     job = store.job(row['id'])
+    if (job.get('configuration') or {}).get('engine') == 'codex_cli':
+        from .publication import resume
+        resume(store, job)
+        return
     client, repo = None, None
     completed = False
     started = None
@@ -371,13 +375,6 @@ def reconcile_unknown(store):
                 raise PublishUnknown('缺少原任务发布快照或结果，需要管理员核对原请求已经结束且未发布')
             repo = store.repo(job['repository'])
             client = client_for(store, repo)
-            if store.job_config(job['id']).get('engine') == 'codex_cli':
-                from .publication import recover_confirmed
-                reference = recover_confirmed(store, client, job, repo)
-                with store.tx() as c:
-                    completed = bool(c.execute("UPDATE jobs SET status='succeeded',stage='发布回执已核对',error='',review_id=?,review_fragment=?,updated=?,lease=0 WHERE id=? AND status='publish_unknown'",
-                        (reference['review_id'], reference['review_fragment'], time.time(), job['id'])).rowcount)
-                return
             publisher = Publisher(store, client, job, repo, job['snapshot'], job['result'])
             if job['result'].get('lifecycle'):
                 from .issue_publication import recover
@@ -417,39 +414,6 @@ def reconcile_unknown(store):
             with store.tx() as c:
                 c.execute("UPDATE jobs SET available=? WHERE id=? AND status='publish_unknown' AND available<=?",
                           (time.time()+5, job['id'], now))
-    finally:
-        if client:
-            client.close()
-
-
-
-def confirm_unpublished(store, job_id, actor='共享管理员'):
-    """管理员已核对原请求结束且没有发布；再次只读确认后解除本 PR 阻塞。"""
-    job = store.job(job_id)
-    client = None
-    try:
-        with store.lock(f"发布-{job['repository']}-{job['number']}"):
-            actual = store.job(job_id)
-            if actual['status'] in ('succeeded', 'failed'):
-                return  # 已由另一个会话处理，重复确认不产生新的副作用。
-            if actual['status'] != 'publish_unknown':
-                raise ReviewError('该任务不需要核对发布结果')
-            job = actual
-            repo = store.repo(job['repository'])
-            client = client_for(store, repo)
-            client.repository()
-            publisher = Publisher(store, client, job, repo, job.get('snapshot') or {}, job.get('result') or {})
-            rows = client.pages(publisher.path)
-            if any(publisher.owned(r) or r.get('id') == job.get('review_id') for r in rows):
-                raise ReviewError('仍存在本任务 Review，请先核对实际结果，不能确认未发布')
-            if any(r.get('state') == 'PENDING' and r.get('user', {}).get('id') == repo['bot_id'] for r in rows):
-                raise ReviewError('机器人仍有未完成草稿，请在 Gitea 核对处理后再确认')
-            with store.tx() as c:
-                if not c.execute("UPDATE jobs SET status='failed',stage='已确认未发布',error=?,updated=?,lease=0 WHERE id=? AND status='publish_unknown'",
-                                 (actor + '确认原请求已经结束且未发布，可人工重新审查', time.time(), job_id)).rowcount:
-                    raise ReviewError('任务状态已变化，请刷新后查看')
-                c.execute('UPDATE jobs SET reconcile_requested_by=? WHERE id=?', (actor, job_id))
-                c.execute('DELETE FROM capabilities WHERE job=?', (job_id,))
     finally:
         if client:
             client.close()

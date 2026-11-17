@@ -337,50 +337,6 @@ def test_defaults_preserve_explicit_model(tmp_path):
     assert store.config()["model"] == "existing-model"
 
 
-def test_publication_requires_frozen_confirmation():
-    from test_ai_review_issue_lifecycle import LifecycleTests
-    from ai_review.issue_lifecycle import reconcile
-    from ai_review.publication import await_publication, preview, approve, publish_approved
-
-    case = LifecycleTests()
-    case.setUp()
-    try:
-        store, job = case.store, case.job
-        with store.tx() as c:
-            config = json.loads(
-                c.execute(
-                    "SELECT value FROM configuration_history WHERE revision=?", (job["config_revision"],)
-                ).fetchone()[0]
-            )
-            config["engine"] = "codex_cli"
-            c.execute(
-                "UPDATE configuration_history SET value=? WHERE revision=?",
-                (json.dumps(config), job["config_revision"]),
-            )
-        result = reconcile(store, case.client, job, case.repo_value, case.snapshot, case.report())
-        await_publication(store, job, result)
-        view = preview(store, store.job(job["id"]))
-        assert not case.client.calls
-        approve(
-            store,
-            case.client,
-            job,
-            {"preview_hash": view["preview_hash"], "selected": [view["findings"][0]["issue_id"]]},
-            "测试管理员",
-        )
-        claimed = store.claim()
-        with patch("ai_review.publication.publish_overview"):
-            publish_approved(store, case.client, claimed, case.repo_value)
-        assert store.job(job["id"])["status"] == "succeeded"
-        assert sum(method == "POST" for method, _, _ in case.client.calls) == 1
-        with pytest.raises(ReviewError):
-            approve(
-                store, case.client, job, {"preview_hash": view["preview_hash"], "selected": []}, "测试管理员"
-            )
-    finally:
-        case.tearDown()
-
-
 def test_responses_rejects_hidden_native_tool_at_terminal():
     parser = ResponseStream(4096)
     terminal = {
@@ -392,53 +348,6 @@ def test_responses_rejects_hidden_native_tool_at_terminal():
     }
     with pytest.raises(ReviewError):
         parser.feed(("data: " + json.dumps(terminal) + "\n\n").encode())
-
-
-def test_unselected_findings_stay_in_manager():
-    from test_ai_review_issue_lifecycle import LifecycleTests
-    from ai_review.issue_lifecycle import reconcile
-    from ai_review.publication import (
-        await_publication,
-        preview,
-        approve,
-        publish_approved,
-        confirmed_overview,
-    )
-
-    case = LifecycleTests()
-    case.setUp()
-    try:
-        with case.store.tx() as c:
-            config = json.loads(
-                c.execute(
-                    "SELECT value FROM configuration_history WHERE revision=?", (case.job["config_revision"],)
-                ).fetchone()[0]
-            )
-            config["engine"] = "codex_cli"
-            c.execute(
-                "UPDATE configuration_history SET value=? WHERE revision=?",
-                (json.dumps(config), case.job["config_revision"]),
-            )
-        result = reconcile(case.store, case.client, case.job, case.repo_value, case.snapshot, case.report())
-        await_publication(case.store, case.job, result)
-        view = preview(case.store, case.store.job(case.job["id"]))
-        approve(
-            case.store,
-            case.client,
-            case.job,
-            {"preview_hash": view["preview_hash"], "selected": []},
-            "测试管理员",
-        )
-        job = case.store.claim()
-        with patch("ai_review.publication.publish_overview"):
-            publish_approved(case.store, case.client, job, case.repo_value)
-        assert not case.client.calls
-        saved = case.store.job(job["id"])
-        assert len(saved["result"]["findings"]) == 1
-        assert saved["result"]["publication"]["findings"] == []
-        assert result["findings"][0]["issue_id"][:12] not in confirmed_overview(case.store, saved)
-    finally:
-        case.tearDown()
 
 
 def test_current_source_can_prove_repair_with_empty_diff():

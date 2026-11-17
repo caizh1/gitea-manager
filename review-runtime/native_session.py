@@ -1,4 +1,4 @@
-"""每个审查任务一个 OpenCode 1.18.7 原生会话。"""
+"""已弃用的 OpenCode 1.18.7 执行器：保留既有会话兼容，后续新功能仅支持 Codex。"""
 from collections import deque
 from datetime import datetime, timezone
 import base64

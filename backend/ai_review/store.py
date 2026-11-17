@@ -28,10 +28,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 19:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 21:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 19:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= 21:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -102,7 +102,9 @@ class Store:
             migrate_batches(c)
             from .publication import migrate as migrate_publication
             migrate_publication(c)
-            c.execute('PRAGMA user_version=19')
+            from .repository_rules import migrate as migrate_rules
+            migrate_rules(c)
+            c.execute('PRAGMA user_version=21')
             c.commit()
         os.chmod(self.path, 0o600)
 
@@ -401,7 +403,7 @@ class Store:
             c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=8 WHERE id=?',
                       (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
             if config.get('engine') == 'codex_cli':
-                c.execute('UPDATE jobs SET batch_protocol=0 WHERE id=?', (job,))
+                c.execute('UPDATE jobs SET batch_protocol=0,rules_protocol=1 WHERE id=?', (job,))
             return job
 
     def job(self, job, public=False, evidence=True):
@@ -419,6 +421,8 @@ class Store:
         with contextlib.closing(self.connect()) as c:
             value['attention'] = blocking(c,row['repository'],row['number'])
             value['reconciliation'] = reconciliation(value,worker_state(c))
+        from .publication import status as publication_status
+        value['publication_status'] = publication_status(self, value)
         if value['status'] == 'superseded': value['stage'] = '版本已过期'
         value['configuration'] = json.loads(cfg[0]) if cfg else None
         for key in ('snapshot', 'result', 'diagnostic', 'raw_diagnostics', 'session_counters'):
@@ -434,6 +438,8 @@ class Store:
             from .review_state import aggregate
             value['result'] = aggregate(self, value, evidence=evidence)
         if public:
+            from .repository_rules import public as public_rules
+            value['review_rules'] = public_rules(value)
             if value.get('batch_protocol'):
                 from .batch_store import get, timing
                 value['batch'] = get(self, job)
@@ -518,8 +524,9 @@ class Store:
             if c.execute("SELECT 1 FROM jobs WHERE status IN ('running','publishing','recovering') AND lease>=? LIMIT 1", (now,)).fetchone():
                 return None
             row = c.execute("""SELECT j.id FROM jobs j WHERE j.status='queued' AND j.available<=?
-                               AND NOT EXISTS (SELECT 1 FROM jobs x WHERE x.repository=j.repository AND x.number=j.number
-                                               AND x.status='publish_unknown') ORDER BY j.available,j.created LIMIT 1""", (now,)).fetchone()
+                               AND (json_extract((SELECT value FROM configuration_history WHERE revision=j.config_revision),'$.engine')='codex_cli' OR NOT EXISTS
+                                   (SELECT 1 FROM jobs x WHERE x.repository=j.repository AND x.number=j.number AND x.status='publish_unknown'))
+                               ORDER BY j.available,j.created LIMIT 1""", (now,)).fetchone()
             if not row:
                 return None
             c.execute("UPDATE jobs SET status='running',stage='读取固定版本',owner=?,lease=?,updated=?,attempts=attempts+1 WHERE id=?", (owner, now+90, now, row[0]))

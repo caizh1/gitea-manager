@@ -97,7 +97,9 @@ class Gitea:
                     if method not in ('GET', 'HEAD') and response.status_code >= 500:
                         raise PublishUnknown('Gitea 写入返回服务错误，需要核对实际结果')
                     if method not in ('GET', 'HEAD') and 400 <= response.status_code < 500:
-                        raise WriteRejected(f'Gitea 明确拒绝写入：HTTP {response.status_code}')
+                        error = WriteRejected(f'Gitea 明确拒绝写入：HTTP {response.status_code}')
+                        error.retryable = response.status_code in (408, 425, 429)
+                        raise error
                     raise ReviewError(f'Gitea 请求失败：HTTP {response.status_code}')
                 parts, size = [], 0
                 for part in response.iter_content(65536):

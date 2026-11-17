@@ -39,6 +39,11 @@ def read_coverage(snapshot, reads):
 
 
 def prompt(snapshot, phase="primary", candidates=None):
+    from .repository_rules import instructions
+    return _prompt(snapshot, phase, candidates) + instructions(snapshot)
+
+
+def _prompt(snapshot, phase="primary", candidates=None):
     if snapshot.get("workspace_layout") == "git-worktree-v1":
         text = (
             "源码已由 Manager 准备完成，当前目录为完整 Git 仓库，HEAD 固定在 PR Head。\n"
@@ -221,6 +226,10 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
             + "\n"
             + encode(candidates["payload"])
         )
+    if job.get("rules_protocol"):
+        from .repository_rules import check_input, validate
+        validate(snapshot)
+        check_input(instructions, config)
     store.update(
         job["id"],
         job["owner"],
@@ -241,6 +250,8 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
             snapshot, _codex_phase=phase, _batch_messages=[{"content": ""}, {"content": instructions}]
         ),
     )
+    if job.get("rules_protocol"):
+        raw["_rules_identity"] = snapshot["rules_identity"]
     with store.tx() as c:
         store._active(c, job["id"], job["owner"])
         c.execute(
@@ -263,7 +274,7 @@ def process(store, job):
     from .native_workspace import bind_snapshot_evidence
     from .issue_lifecycle import reconcile
     from .gitea import assert_version
-    from .publication import await_publication, publish_approved
+    from .publication import publish
 
     repo, config = store.repo(job["repository"]), store.job_config(job["id"])
     job = dict(job, _codex_deadline=(job.get("started_at") or time.time()) + config["task_timeout_seconds"])
@@ -282,22 +293,10 @@ def process(store, job):
     thread.start()
     workspace_lock = contextlib.ExitStack()
     try:
-        if job["status"] == "recovering":
-            from .publication import recover_confirmed
-
-            reference = recover_confirmed(store, client, job, repo)
-            store.update(job["id"], job["owner"], **reference)
-            store.finish(job["id"], job["owner"], "succeeded")
-            return
         if job.get("result") and job["result"].get("lifecycle"):
-            with contextlib.closing(store.connect()) as c:
-                approved = c.execute(
-                    "SELECT 1 FROM review_publication_approvals WHERE job=?", (job["id"],)
-                ).fetchone()
-            if approved:
-                publish_approved(store, client, job, repo)
-            else:
-                await_publication(store, job, job["result"])
+            if job["result"].get("analysis_complete") is not True:
+                raise IncompleteReview("保存的审查结果尚未完整结束")
+            publish(store, client, job, repo)
             return
         snapshot = job.get("snapshot")
         if not snapshot:
@@ -315,6 +314,8 @@ def process(store, job):
             workspace_lock.enter_context(store.lock("git-workspace-" + cache_key(repo)))
         preparation_started = time.monotonic()
         workspace, info = prepare(store, client, repo, job, snapshot)
+        from .repository_rules import freeze, check_phase
+        snapshot = freeze(store, job, snapshot, workspace)
         evidence_started = time.monotonic()
         snapshot = bind_snapshot_evidence(store, job, snapshot, workspace)
         info["evidence_seconds"] = round(time.monotonic() - evidence_started, 3)
@@ -329,6 +330,7 @@ def process(store, job):
         from .native_review import acknowledge_result
 
         for phase_result in phases.values():
+            check_phase(snapshot, phase_result)
             if incomplete_result(phase_result):
                 raise IncompleteReview("已保存阶段存在未完成范围，不能继续发布")
             with contextlib.closing(store.connect()) as c:
@@ -496,14 +498,15 @@ def process(store, job):
         if unresolved_blocker and result["report_markdown"].startswith("VERDICT: PASS"):
             result["report_markdown"] = result["report_markdown"].replace("VERDICT: PASS", "VERDICT: FAIL", 1)
         assert_version(client, job["number"], snapshot)
-        await_publication(store, job, result)
+        publish(store, client, dict(job, result=result, snapshot=snapshot), repo)
     except Stale as exc:
         store.finish(job["id"], job["owner"], "superseded", str(exc))
     except Exception as exc:
-        from .common import PublishUnknown
+        from .common import PublishUnknown, AccessRevoked, WriteRejected
 
         current = store.job(job["id"], evidence=False)
-        uncertain = isinstance(exc, PublishUnknown) or current["status"] == "publishing"
+        permanent = isinstance(exc, AccessRevoked) or isinstance(exc, WriteRejected) and not getattr(exc, "retryable", False)
+        uncertain = not permanent and (isinstance(exc, PublishUnknown) or current["status"] == "publishing")
         state = (
             "publish_unknown"
             if uncertain
@@ -533,6 +536,12 @@ def process(store, job):
                 cancel_session(job["id"], current["session_id"])
             except ReviewError:
                 pass
+        if current['status'] == 'publish_unknown':
+            with store.tx() as c:
+                c.execute('UPDATE jobs SET available=? WHERE id=?', (time.time()+5, job['id']))
+        if current['status'] in ('succeeded', 'superseded'):
+            from .worker import refresh_pr
+            refresh_pr(store, repo, job)
         workspace_lock.close()
         if current["status"] in ("succeeded", "superseded", "failed", "incomplete", "cancelled"):
             from .native_workspace import cleanup

@@ -50,6 +50,8 @@ def freeze(c, snapshot):
     if not snapshot or 'diff' not in snapshot:
         return None
     value = {k: snapshot[k] for k in ('id', 'head', 'base', 'merge_base', 'diff', 'anchors')}
+    if snapshot.get('review_rules'):
+        value['review_rules'] = snapshot['review_rules']
     c.execute('INSERT OR IGNORE INTO review_issue_snapshots VALUES (?,?)', (value['id'], encode(value)))
     return value['id']
 
@@ -167,6 +169,7 @@ def check_input(issue, origin, snapshot, candidates):
         return selected
     return {'issue_id': issue['id'], 'snapshot_id': snapshot['id'],
             'original_finding': finding, 'previous_status': issue['status'],
+            'historical_review_rules': origin.get('review_rules') if origin else None,
             'historical_version': {k: origin[k] for k in ('head', 'base', 'merge_base')} if origin else None,
             'current_version': {k: snapshot[k] for k in ('head', 'base', 'merge_base')},
             'historical_diff': relevant(origin, 'H'),

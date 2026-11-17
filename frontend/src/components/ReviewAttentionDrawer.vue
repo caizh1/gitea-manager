@@ -1,59 +1,50 @@
 <template>
-  <el-drawer append-to-body v-model="visible" :title="selected ? '处理 Review 待办' : '全部 Review 待办'" size="min(760px, 96vw)">
+  <el-drawer append-to-body v-model="visible" :title="selected ? '自动发布状态' : '全部自动发布任务'" size="min(760px, 96vw)">
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="selected">
-      <div class="drawer-heading"><div><h3>{{ group?.repo_name || `仓库 ${repository}` }} #{{ number }}</h3><p>{{ pendingTotal }} 项发布结果待核对，{{ waitingTotal }} 条后续审查正在等待</p></div><el-button link type="primary" @click="router.push(attentionRoute())">全部待办</el-button></div>
+      <div class="drawer-heading"><div><h3>{{ group?.repo_name || `仓库 ${repository}` }} #{{ number }}</h3><p>{{ pendingTotal }} 项发布结果自动核对中，{{ waitingTotal }} 条后续任务已排队</p></div><el-button link type="primary" @click="router.push(attentionRoute())">全部任务</el-button></div>
       <el-alert v-if="worker && !worker.available" :title="worker.message" type="warning" :closable="false" />
       <el-alert v-if="loaded && !pendingTotal && !error" title="该 PR 的待核对事项已处理完毕" description="关联排队任务将由工作进程按正常顺序领取。" type="success" :closable="false" />
-      <p class="drawer-help">先读取 Gitea 的实际发布结果。只有确认原请求已经结束且未发布，才可以确认未发布并解除阻塞。</p>
+      <p class="drawer-help">后台持续读取 Gitea 回执，并自动继续尚未完成的发布操作。</p>
       <div v-loading="loading && !loaded" class="pending-tasks">
         <article v-for="task in pendingTasks" :key="task.id" class="pending-task">
           <div class="task-heading"><strong>版本 {{ task.progress?.head?.slice(0, 12) || '尚未读取' }}</strong><el-tag :type="task.reconciliation?.state === 'failed' ? 'danger' : 'warning'">{{ reconcileLabel(task) }}</el-tag></div>
           <p class="task-id">任务 {{ task.id }}</p>
-          <p class="task-message">{{ actionErrors[task.id] || task.reconciliation?.message || task.error || '需要核对前次发布结果' }}</p>
+          <p class="task-message">{{ task.reconciliation?.message || task.error || '后台正在核对前次发布结果' }}</p>
           <div class="task-times"><span>请求核对：{{ fmt(task.reconciliation?.requested_at) }}</span><span>最近完成：{{ fmt(task.reconciliation?.finished_at) }}</span></div>
-          <div class="task-actions"><el-button type="primary" :loading="!!actionBusy[task.id]" :disabled="['queued', 'checking'].includes(task.reconciliation?.state)" @click="check(task)">核对发布</el-button><el-button :loading="!!actionBusy[task.id]" @click="confirm(task)">确认未发布</el-button><el-button link @click="detailTask = task">任务详情</el-button></div>
+          <div class="task-actions"><el-button link @click="detailTask = task">任务详情</el-button></div>
         </article>
       </div>
       <el-pagination v-if="pendingTotal > 20" v-model:current-page="pendingPage" :page-size="20" :total="pendingTotal" layout="prev, pager, next, total" @current-change="load(true)" />
       <section v-if="waitingTotal" class="waiting-tasks"><h4>关联等待任务 · {{ waitingTotal }}</h4><div v-for="task in waitingTasks" :key="task.id" class="waiting-row"><code>{{ task.progress?.head?.slice(0, 12) || '尚未读取' }}</code><span>{{ task.progress?.detail || task.stage }}</span></div><el-pagination v-if="waitingTotal > 20" v-model:current-page="waitingPage" :page-size="20" :total="waitingTotal" layout="prev, next, total" @current-change="load()" /></section>
     </template>
     <template v-else>
-      <p class="drawer-help">按 PR 汇总全部未解决事项，优先显示正在阻塞后续审查的 PR。</p>
-      <div v-loading="loading && !loaded"><article v-for="item in items" :key="`${item.repository}-${item.number}`" class="pending-task"><div class="task-heading"><strong>{{ item.repo_name }} #{{ item.number }}</strong><el-tag type="danger">{{ item.blocked_count ? `阻塞 ${item.blocked_count} 条审查` : '需要核对' }}</el-tag></div><p class="task-message">{{ item.pending_count }} 项发布结果待核对 · 已等待 {{ attentionWait(item.since) }}</p><el-button type="primary" @click="router.push(attentionRoute(item))">立即处理</el-button></article></div>
-      <el-empty v-if="loaded && !items.length && !error" description="当前没有需要处理的 Review 待办" />
+      <p class="drawer-help">按 PR 汇总自动发布的未决回执，最新版本继续进入审查队列。</p>
+      <div v-loading="loading && !loaded"><article v-for="item in items" :key="`${item.repository}-${item.number}`" class="pending-task"><div class="task-heading"><strong>{{ item.repo_name }} #{{ item.number }}</strong><el-tag type="danger">自动核对中</el-tag></div><p class="task-message">{{ item.pending_count }} 项发布结果待核对 · 已等待 {{ attentionWait(item.since) }}</p><el-button type="primary" @click="router.push(attentionRoute(item))">查看状态</el-button></article></div>
+      <el-empty v-if="loaded && !items.length && !error" description="当前没有未决发布回执" />
       <el-pagination v-if="total > 20" v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next, total" @current-change="load()" />
     </template>
     <el-dialog v-model="detailVisible" title="待核对任务详情" width="min(620px, 94vw)" append-to-body><template v-if="detailTask"><p class="task-id">任务 {{ detailTask.id }}</p><p class="task-id">Head：{{ detailTask.progress?.head || '尚未读取' }}</p><p>接收时间：{{ fmt(detailTask.created) }}</p><p>结束时间：{{ fmt(detailTask.progress?.finished_at) }}</p><p>阶段：{{ detailTask.stage }}</p><p class="task-message">{{ detailTask.error }}</p></template></el-dialog>
   </el-drawer>
 </template>
 <script setup>
-import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
-import { attentionRoute, attentionWait, refreshReviewAttention } from '../composables/useReviewAttention'
-const props = defineProps({ write: { type: Function, required: true } })
-const emit = defineEmits(['changed'])
+import { attentionRoute, attentionWait } from '../composables/useReviewAttention'
 const route = useRoute(), router = useRouter()
 const repository = computed(() => Number(route.query.repository)), number = computed(() => Number(route.query.number))
 const selected = computed(() => Number.isSafeInteger(repository.value) && repository.value > 0 && Number.isSafeInteger(number.value) && number.value > 0)
 const visible = computed({ get: () => route.query.attention === '1', set: value => { if (!value) { const query = { ...route.query }; delete query.attention; delete query.repository; delete query.number; router.replace({ query }) } } })
 const page = ref(1), pendingPage = ref(1), waitingPage = ref(1), items = ref([]), total = ref(0)
 const pendingTasks = ref([]), waitingTasks = ref([]), pendingTotal = ref(0), waitingTotal = ref(0), group = ref(null), worker = ref(null)
-const loading = ref(false), loaded = ref(false), error = ref(''), actionBusy = reactive({}), actionErrors = reactive({}), detailTask = ref(null)
+const loading = ref(false), loaded = ref(false), error = ref(''), detailTask = ref(null)
 const detailVisible = computed({ get: () => !!detailTask.value, set: v => { if (!v) detailTask.value = null } })
-let generation = 0, timer = null, busyGeneration = null, seen = new Set()
+let generation = 0, timer = null, busyGeneration = null
 const fmt = value => value ? new Date(value * 1000).toLocaleString('zh-CN') : '尚无'
 const message = e => e.response?.data?.error || '核对请求失败，请检查服务状态'
-function reconcileLabel(task) { return ({ queued: '等待执行核对', checking: '核对中', needs_confirmation: '需要人工确认', failed: '核对失败', resolved: '已解决' })[task.reconciliation?.state] || '需要人工确认' }
+function reconcileLabel(task) { return ({ queued: '等待执行核对', checking: '核对中', needs_confirmation: '历史未决回执', failed: '核对失败', resolved: '已解决' })[task.reconciliation?.state] || '自动核对中' }
 
-async function requestCheck(task, current) {
-  actionBusy[task.id] = true; delete actionErrors[task.id]
-  try { await props.write('post', `/tasks/${task.id}/reconcile`, {}) }
-  catch (e) { if (current === generation) actionErrors[task.id] = message(e) }
-  finally { if (current === generation) actionBusy[task.id] = false }
-}
 async function load(auto = false) {
   if (!visible.value || busyGeneration === generation) return
   const current = generation
@@ -75,38 +66,9 @@ async function load(auto = false) {
       if (waitingPage.value > Math.max(1, Math.ceil(waitingTotal.value / 20))) { waitingPage.value = Math.max(1, Math.ceil(waitingTotal.value / 20)); reloadPage = true }
     } else if (page.value > Math.max(1, Math.ceil(total.value / 20))) { page.value = Math.max(1, Math.ceil(total.value / 20)); reloadPage = true }
     loaded.value = true; error.value = ''
-    if (auto && selected.value) {
-      for (const task of pendingTasks.value) {
-        if (current !== generation) break
-        if (seen.has(task.id)) continue
-        seen.add(task.id)
-        if (!['queued', 'checking'].includes(task.reconciliation?.state)) await requestCheck(task, current)
-      }
-    }
   } catch (e) { if (current === generation) error.value = message(e) }
   finally { if (current === generation) { loading.value = false; busyGeneration = null } }
   if (reloadPage && current === generation) await load(auto)
-}
-async function check(task) {
-  const current = generation
-  await requestCheck(task, current)
-  if (current !== generation) return
-  await Promise.all([load(), refreshReviewAttention(true)])
-  emit('changed')
-}
-async function confirm(task) {
-  const current = generation
-  try {
-    await ElMessageBox.confirm('请先在 Gitea 核对：原请求已经结束、没有本任务的正式 Review，并已处理机器人残留草稿。确认后系统会再次读取远端结果，符合条件才解除阻塞。', '确认原任务未发布', { confirmButtonText: '已核对，确认未发布', cancelButtonText: '返回核对', type: 'warning' })
-    if (current !== generation) return
-    actionBusy[task.id] = true; delete actionErrors[task.id]
-    await props.write('post', `/tasks/${task.id}/reconcile`, { confirm_unpublished: true })
-    if (current !== generation) return
-    ElMessage.success('任务核对结果已更新')
-    pendingPage.value = 1
-    await Promise.all([load(), refreshReviewAttention(true)]); emit('changed')
-  } catch (e) { if (current === generation && e !== 'cancel' && e !== 'close') actionErrors[task.id] = message(e) }
-  finally { if (current === generation) actionBusy[task.id] = false }
 }
 async function tick(current) {
   if (current !== generation || !visible.value) return
@@ -115,11 +77,9 @@ async function tick(current) {
 }
 function onVisible() { if (!document.hidden && visible.value) load() }
 watch(() => [route.query.attention, route.query.repository, route.query.number], async () => {
-  const current = ++generation; clearTimeout(timer); seen = new Set()
+  const current = ++generation; clearTimeout(timer)
   page.value = pendingPage.value = waitingPage.value = 1; loaded.value = false; error.value = ''; group.value = null
   items.value = []; pendingTasks.value = []; waitingTasks.value = []; pendingTotal.value = waitingTotal.value = 0; detailTask.value = null
-  for (const key of Object.keys(actionErrors)) delete actionErrors[key]
-  for (const key of Object.keys(actionBusy)) delete actionBusy[key]
   if (!visible.value) return
   await load(true)
   if (current === generation) { await load(); if (current === generation) timer = setTimeout(() => tick(current), 5000) }

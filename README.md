@@ -166,6 +166,8 @@ gitea-manager/
 [MIT](LICENSE)
 # AI Code Review
 
+Codex 完整审查结束后自动发布行内评论与总览，后台持续核对异常回执。使用方式见 [自动发布说明](docs/automatic-review-publication.md)。
+
 新增独立 Worker、OpenCode / New API HTTP 执行器和 PR 行内审查管理入口，默认全局关闭。使用前阅读 [技术与部署说明](docs/AIReview技术与部署说明.md) 和 [直接发布验收报告](docs/AIReview直接发布验收报告.md) 和 [历史模型质量记录](docs/AIReview验收报告.md)。模型质量未达到验收门槛时不得将工程链路通过等同于生产效果通过。
 
 行内意见在本地校验后直接通过 REST API 发布，官方 Gitea 1.26.4 无需补丁。发布处理中恰好 Push 的位置竞争暂未纳入本轮保证；不可靠锚点仍降级为普通意见。

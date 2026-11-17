@@ -216,24 +216,6 @@ class PublicationTests(unittest.TestCase):
             self.assertTrue(self.store.job(self.job['id'])['error'])
             self.assertFalse(any(m != 'GET' for m, _, _ in self.client.calls[before:]))
 
-    def test_confirm_unpublished_requires_no_owned_review_or_bot_draft(self):
-        from ai_review.worker import confirm_unpublished
-        self.store.finish(self.job['id'], self.job['owner'], 'publish_unknown')
-        self.client.close = lambda: None
-        self.client.repository = lambda: {'id': 7}
-        for row in (
-            {'id': 7, 'state': 'COMMENT', 'body': marker(self.job), 'user': {'id': 9}},
-            {'id': 8, 'state': 'PENDING', 'body': '其他草稿', 'user': {'id': 9}},
-        ):
-            self.client.reviews = [row]; self.client.code[row['id']] = []
-            with patch('ai_review.worker.client_for', return_value=self.client), self.assertRaises(core.ReviewError):
-                confirm_unpublished(self.store, self.job['id'])
-            self.assertEqual(self.store.job(self.job['id'])['status'], 'publish_unknown')
-        self.client.reviews = []
-        with patch('ai_review.worker.client_for', return_value=self.client):
-            confirm_unpublished(self.store, self.job['id'])
-        self.assertEqual(self.store.job(self.job['id'])['status'], 'failed')
-        self.assertFalse(any(m != 'GET' for m, _, _ in self.client.calls))
 
     def test_cpp_methods_include_class_and_namespace(self):
         from ai_review.snapshot import functions

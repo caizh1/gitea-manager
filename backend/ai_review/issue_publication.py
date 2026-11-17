@@ -3,7 +3,7 @@ import contextlib
 import json
 import time
 
-from .common import ReviewError, Stale, AccessRevoked, PublishUnknown, encode
+from .common import ReviewError, Stale, AccessRevoked, PublishUnknown, WriteRejected, encode
 from .gitea import assert_version
 from .issue_lifecycle import LABELS, issue_marker, snapshot_for
 from .publish import finding_body, marker, prose, verify_hunk
@@ -52,7 +52,7 @@ def check_review(publisher, review, payload):
     return by_body
 
 
-def publish_new(publisher, recovery):
+def plan_new(publisher):
     store, job, snapshot = publisher.store, publisher.job, publisher.snapshot
     result = publisher.full_result
     new_ids = set(result['lifecycle'].get('publish_ids', result['lifecycle']['new_ids']))
@@ -75,6 +75,8 @@ def publish_new(publisher, recovery):
             body = original + status_block(ident, value['status'], value['reason'], snapshot, finding['anchor'])
             # 超长单条意见只保留台账和报告，不能拆成重复问题评论。
             if len(body) > 12000:
+                finding['anchor'] = None
+                finding['fallback_reason'] = '意见正文过长，已转为总览摘要'
                 continue
             a = finding['anchor']
             comments.append({'body': body, 'path': a['path'], 'old_position': a['line'] if a['side'] == 'old' else 0,
@@ -85,10 +87,20 @@ def publish_new(publisher, recovery):
         payload = {'body': mark + f'\n新增 {len(comments)} 个问题；完整报告与历次状态见 Manager，当前状态见固定总览。',
                    'comments': comments, 'commit_id': snapshot['head']}
         planned.append(operation(store, job, key, 'create', payload))
+    return planned
+
+
+def publish_new(publisher, recovery):
+    store, job, snapshot = publisher.store, publisher.job, publisher.snapshot
+    planned = plan_new(publisher)
     # 所有页面在首个 POST 前冻结，恢复时能区分未发送页面和回执未知页面。
+    first = None
+    unresolved = False
     for op in planned:
         key = op['key']
         payload = op['payload']
+        if op['state'] == 'done' and json.loads(op.get('receipt') or '{}').get('reused'):
+            continue
         mark = marker(job) + '\n<!-- ai-review:publication:' + job['id'] + ':' + key + ' -->'
         reviews = publisher.client.pages(publisher.path)
         mine = [r for r in reviews if mark in r.get('body', '') and r.get('user', {}).get('id') == publisher.repo['bot_id']]
@@ -97,6 +109,10 @@ def publish_new(publisher, recovery):
         if mine:
             published = mine[0]
         else:
+            previous = prior_create_pending(publisher, key, payload, reviews)
+            if previous != 'ready':
+                unresolved = unresolved or previous == 'pending'
+                continue
             if recovery or op['state'] != 'queued':
                 raise PublishUnknown('新增问题创建结果尚未找到，未重复发送')
             if any(r.get('state') == 'PENDING' and r.get('user', {}).get('id') == publisher.repo['bot_id'] for r in reviews):
@@ -104,17 +120,51 @@ def publish_new(publisher, recovery):
             assert_version(publisher.client, job['number'], snapshot)
             store.update(job['id'], job['owner'], status='publishing', stage='发布首次问题意见')
             change_operation(store, job, key, 'started')
-            published = publisher.client.request('POST', publisher.path, {
-                'event': 'COMMENT', 'commit_id': snapshot['head'], 'body': payload['body'],
-                'comments': [{k: r[k] for k in ('path', 'body', 'old_position', 'new_position')} for r in payload['comments']]})
+            try:
+                published = publisher.client.request('POST', publisher.path, {
+                    'event': 'COMMENT', 'commit_id': snapshot['head'], 'body': payload['body'],
+                    'comments': [{k: r[k] for k in ('path', 'body', 'old_position', 'new_position')} for r in payload['comments']]})
+            except WriteRejected as exc:
+                change_operation(store, job, key, 'queued', error=str(exc))
+                raise
         by_body = check_review(publisher, published, payload)
         save_comments(publisher, published, payload, by_body)
-        change_operation(store, job, key, 'done', {'review_id': published['id']})
+        change_operation(store, job, key, 'done', {'review_id': published['id'], 'comment_ids': [r['id'] for r in by_body.values()]})
         assert_version(publisher.client, job['number'], snapshot)
         first = first or published
     if first:
         store.update(job['id'], job['owner'], **publisher.reference(first))
+    if unresolved:
+        raise PublishUnknown('同一问题的历史写入仍在自动核对，其他问题已继续发布')
     return first
+
+
+def prior_create_pending(publisher, key, payload, reviews):
+    """同一稳定问题在旧代可能已创建时，先接回原回执。"""
+    from .publish import Publisher
+    ids = {row['issue'] for row in payload['comments']}
+    with contextlib.closing(publisher.store.connect()) as c:
+        rows = c.execute('''SELECT o.* FROM review_issue_operations o JOIN jobs j ON j.id=o.job
+            WHERE j.repository=? AND j.number=? AND o.job!=? AND o.kind='create'
+              AND o.state IN ('started','unknown')''',
+            (publisher.repo['id'], publisher.job['number'], publisher.job['id'])).fetchall()
+    for row in rows:
+        previous = json.loads(row['payload'])
+        if not ids.intersection(item['issue'] for item in previous['comments']):
+            continue
+        matches = [r for r in reviews if r.get('body') == previous['body'] and r.get('user', {}).get('id') == publisher.repo['bot_id']]
+        if len(matches) != 1:
+            return 'pending'
+        old = publisher.store.job(row['job'])
+        old_publisher = Publisher(publisher.store, publisher.client, old, publisher.repo, old['snapshot'], old['result'])
+        checked = check_review(old_publisher, matches[0], previous)
+        save_comments(old_publisher, matches[0], previous, checked)
+        change_operation(publisher.store, old, row['key'], 'done', {'review_id': matches[0]['id']})
+        # 本代尚未发送的同一问题转为复用旧讨论，下一轮按原讨论更新状态。
+        change_operation(publisher.store, publisher.job, key, 'done',
+            {'review_id': matches[0]['id'], 'reused': True})
+        return 'reused'
+    return 'ready'
 
 
 def save_comments(publisher, review, payload, by_body):
@@ -133,8 +183,8 @@ def recover(publisher):
     first, incomplete = None, False
     reviews = publisher.client.pages(publisher.path)
     for op in operations:
-        if op['state'] == 'queued':
-            incomplete = True
+        if op['state'] in ('queued', 'abandoned'):
+            incomplete = incomplete or op['state'] == 'queued'
             continue
         payload = json.loads(op['payload'])
         matches = [r for r in reviews if r.get('body') == payload['body'] and r.get('user', {}).get('id') == publisher.repo['bot_id']]
@@ -151,24 +201,40 @@ def recover(publisher):
     return reference, incomplete
 
 
-def sync_comments(publisher):
+def plan_edits(publisher):
     store, client, job, snapshot = publisher.store, publisher.client, publisher.job, publisher.snapshot
     with contextlib.closing(store.connect()) as c:
         rows = [dict(r) for r in c.execute('''SELECT x.*,o.value FROM review_issue_comments x
             JOIN review_issue_observations o ON o.issue=x.issue AND o.job=?
             WHERE x.repository=? AND x.number=? ORDER BY x.review_id,x.comment_id''',
             (job['id'], job['repository'], job['number']))]
+    frozen_ids = publisher.full_result.get('_approved_issue_ids')
+    rows = [row for row in rows if frozen_ids is None or row['issue'] in frozen_ids]
     for link in rows:
-        approved = publisher.full_result.get('_approved_issue_ids')
-        if approved is not None and link['issue'] not in approved:
-            continue
-        store.active(job['id'], job['owner'])
         value = json.loads(link['value'])
         desired = link['original_body'] + status_block(link['issue'], value['status'], value['reason'], snapshot,
                                                        snapshot.get('anchors', {}).get(value.get('anchor_id')))
-        op = operation(store, job, 'edit-' + str(link['comment_id']), 'edit',
+        operation(store, job, 'edit-' + str(link['comment_id']), 'edit',
                        {'comment_id': link['comment_id'], 'review_id': link['review_id'],
                         'before': link['last_body'], 'body': desired})
+    return rows
+
+
+def sync_comments(publisher):
+    store, client, job, snapshot = publisher.store, publisher.client, publisher.job, publisher.snapshot
+    with contextlib.closing(store.connect()) as c:
+        frozen = c.execute('SELECT 1 FROM review_publication_plans WHERE job=?', (job['id'],)).fetchone()
+        rows = [dict(row) for row in c.execute('''SELECT x.* FROM review_issue_comments x
+            JOIN review_issue_operations o ON o.key='edit-' || x.comment_id AND o.job=?
+            WHERE x.repository=? AND x.number=?''', (job['id'], job['repository'], job['number']))] if frozen else []
+    if not frozen:
+        rows = plan_edits(publisher)
+    for link in rows:
+        store.active(job['id'], job['owner'])
+        with contextlib.closing(store.connect()) as c:
+            op = dict(c.execute('SELECT * FROM review_issue_operations WHERE job=? AND key=?',
+                               (job['id'], 'edit-' + str(link['comment_id']))).fetchone())
+        op['payload'] = json.loads(op['payload'])
         if op['state'] == 'done':
             continue
         desired = op['payload']['body']
@@ -211,7 +277,11 @@ def sync_comments(publisher):
                 assert_version(client, job['number'], snapshot)
                 change_operation(store, job, op['key'], 'started')
                 op['state'] = 'started'
-                client.request('PATCH', client.prefix + '/issues/comments/' + str(link['comment_id']), {'body': desired})
+                try:
+                    client.request('PATCH', client.prefix + '/issues/comments/' + str(link['comment_id']), {'body': desired})
+                except WriteRejected:
+                    op['state'] = 'queued'
+                    raise
                 actual = next((r for r in client.pages(path) if r['id'] == link['comment_id']), None)
                 if not actual or actual.get('body') != desired or actual.get('user', {}).get('id') != publisher.repo['bot_id']:
                     raise ReviewError('状态评论回读不一致，待核对')
@@ -222,6 +292,11 @@ def sync_comments(publisher):
             assert_version(client, job['number'], snapshot)
         except (Stale, AccessRevoked):
             raise
+        except WriteRejected as exc:
+            change_operation(store, job, op['key'], 'queued' if getattr(exc, 'retryable', False) else 'conflict', error=str(exc))
+            with store.tx() as c:
+                c.execute('UPDATE review_issue_comments SET error=? WHERE repository=? AND comment_id=?',
+                          (str(exc), job['repository'], link['comment_id']))
         except ReviewError as exc:
             error = str(exc)
             change_operation(store, job, op['key'], 'unknown' if op['state'] == 'started' else 'conflict', error=error)

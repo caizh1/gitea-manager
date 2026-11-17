@@ -38,6 +38,14 @@
       </section>
       <el-alert v-if="task.progress?.sync_error" :title="'PR 进度同步：' + task.progress.sync_error" type="warning" :closable="false" />
       </section>
+      <section v-if="task.publication_status?.total_operations" class="glass-card publication-status" aria-label="自动发布状态">
+        <strong>自动发布</strong>
+        <p>已完成 {{ task.publication_status.completed_operations }} / {{ task.publication_status.total_operations }} 项写入，已发布 {{ task.publication_status.comments_published }} 条行内评论。</p>
+        <p v-if="task.reconciliation?.finished_at">上次核对 {{ new Date(task.reconciliation.finished_at * 1000).toLocaleString() }}</p>
+        <p v-if="task.publication_status.next_retry_at">下次自动核对 {{ new Date(task.publication_status.next_retry_at * 1000).toLocaleString() }}</p>
+        <el-alert v-if="task.publication_status.alert" :title="task.publication_status.alert" type="warning" :closable="false" />
+        <p v-for="message in task.publication_status.errors" :key="message">{{ message }}</p>
+      </section>
       <el-alert v-if="task.cancel_requested_at" :title="task.status === 'cancelling' ? '正在强制取消；确认执行停止后显示已取消' : '本次审查已人工取消，当前版本不会自动重跑'" :description="[task.cancel_requested_by, task.cancel_error].filter(Boolean).join(' · ')" type="info" show-icon :closable="false" />
       <details v-if="isPlatformAdmin && task.error" class="failure-card" aria-label="任务失败详情"><summary>失败原因：{{ errorSummary }} · 展开诊断</summary>
         <div class="failure-heading"><WarningFilled /><div><strong>{{ errorSummary }}</strong><details v-if="String(task.error).length > 100" class="full-error"><summary>查看完整错误信息</summary><pre>{{ task.error }}</pre></details><p>{{ diagnosticSummary }}</p></div></div>
@@ -123,6 +131,7 @@
           <div class="runtime-health"><div><span>日志连接</span><strong>{{ connectionLabel }}</strong></div><div><span>执行器心跳</span><strong>{{ heartbeatLabel }}</strong></div><div><span>模型等待</span><strong>{{ modelWaitLabel }}</strong></div></div>
           <section v-if="!hasNativeEvents"><h4>历史阶段耗时</h4><p class="secondary">准备、分析、发布为不同阶段。模型传输、执行器及检索耗时属于分析阶段内的明细，不能重复相加；进行中的阶段在结束后记录。</p><dl class="runtime" data-testid="performance-stages"><template v-for="[key, label] in performanceStages" :key="key"><dt>{{ label }}</dt><dd>{{ seconds(task.performance?.stages_seconds?.[key]) }}</dd></template><dt>排队等待</dt><dd>{{ seconds(task.progress?.queue_seconds) }}</dd></dl><details v-if="task.performance"><summary>历史分析明细与执行器调用（{{ task.performance.recorded_calls }} 次）</summary><dl class="runtime"><dt>检索与保存</dt><dd>{{ seconds(task.performance.analysis_detail_seconds?.retrieval) }}</dd><dt>等待执行器</dt><dd>{{ seconds(task.performance.analysis_detail_seconds?.call) }}</dd><dt>其中模型传输</dt><dd>{{ seconds(task.performance.analysis_detail_seconds?.model) }}</dd><dt>其余调用开销</dt><dd>{{ seconds(task.performance.analysis_detail_seconds?.overhead) }}</dd></dl><p class="secondary">其余调用开销含进程启动、协议处理及内部传输。只统计实际发起的上游请求；有调用缺失模型耗时记录时不推算该项；中断前未落盘的阶段不补造时间。</p><div v-for="call in (task.performance.calls || []).slice(0, callLimit)" :key="call.call_id" class="call-timing"><code>{{ call.call_id }}</code><span>调用 {{ seconds(call.call_seconds) }} · 执行器 {{ seconds(call.executor_seconds) }} · 模型 {{ seconds(call.model_seconds) }}</span></div><el-button v-if="(task.performance.calls || []).length > callLimit" link @click="callLimit += 50">显示后续 50 次调用</el-button></details></section>
           <section v-if="task.diagnostic?.call_id"><h4>当前模型调用</h4><p>{{ ({waiting:'等待模型响应', thinking:'模型正在思考', answering:'模型正在生成正文', tool_call:'模型正在请求工具'})[task.diagnostic.model_phase] || '查看下方传输状态' }}</p><dl class="runtime"><template v-for="row in diagnosticRows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl><p class="secondary">字符数不是 Token 数；请求参数被接受不代表服务实际执行。心跳不会延长总期限。</p></section>
+          <ReviewRules :task="task" />
           <h4>执行配置</h4><dl class="runtime"><dt>任务编号</dt><dd>{{ task.id }}</dd><dt>审查提交</dt><dd>{{ task.progress?.head || task.snapshot?.head || '未读取' }}</dd><dt>比较基点</dt><dd>{{ task.snapshot?.merge_base || '未读取' }}</dd><dt>执行模型</dt><dd>{{ modelName }}</dd><dt>执行引擎</dt><dd>{{ task.configuration?.engine || '历史任务未记录' }}</dd><dt>整次审查上限</dt><dd>{{ task.configuration?.review_timeout_seconds ?? task.configuration?.task_timeout_seconds ?? '历史任务未记录' }} 秒</dd><dt>模型上下文窗口</dt><dd>{{ task.configuration?.model_context_tokens ?? '历史任务未配置' }} Token</dd><dt>上下文压缩阈值</dt><dd>{{ task.configuration?.compaction_threshold_tokens ?? '历史任务使用原生默认' }} Token</dd><dt>单次模型请求超时</dt><dd>{{ task.configuration?.model_request_timeout_seconds ?? '历史任务未记录' }} 秒</dd><template v-if="!hasNativeEvents"><dt>已处理／失败单元</dt><dd>{{ task.result?.units_processed ?? task.progress?.units_completed ?? 0 }} / {{ task.result?.units_failed ?? 0 }}</dd></template><dt>配置版本</dt><dd>{{ task.config_revision }}</dd><dt>更新时间</dt><dd>{{ fmt(task.updated) }}</dd></dl>
         </el-tab-pane>
       </el-tabs>
@@ -136,6 +145,7 @@ import { ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Check, Clock, Cpu, Timer, Ci
 import { api } from '../api'
 import ReviewIssueLedger from './ReviewIssueLedger.vue'
 import ReviewBatchPlan from './ReviewBatchPlan.vue'
+import ReviewRules from './ReviewRules.vue'
 import ReviewFailureChecks from './ReviewFailureChecks.vue'
 import { isPlatformAdmin } from '../composables/accessState.js'
 import { coverageGroups, statusType } from './reviewDisplay'
@@ -256,7 +266,7 @@ const visibleEvents = computed(() => {
 const beforeSpace = computed(() => visibleEvents.value[0]?.top || 0)
 const afterSpace = computed(() => visibleEvents.value.length ? Math.max(0,virtualHeight.value-visibleEvents.value.at(-1).top-visibleEvents.value.at(-1).height) : virtualHeight.value)
 
-const statusLabel = s => ({awaiting_publication:'等待确认发布',awaiting_cost:'等待成本确认',budget_paused:'预算暂停',incomplete:'审查未完成',cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'发布待核对',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
+const statusLabel = s => ({awaiting_publication:'历史待发布',awaiting_cost:'等待成本确认',budget_paused:'预算暂停',incomplete:'审查未完成',cancelling:'取消中',cancelled:'已取消',queued:'等待执行',running:'分析中',publishing:'发布与核对',recovering:'核对发布结果',publish_unknown:'自动核对发布结果',succeeded:'已完成',superseded:'版本已过期',failed:'执行失败'}[s]||s||'状态未记录')
 const seconds = value => Number.isFinite(value) ? `${value} 秒` : '未记录'
 const duration = value => Number.isFinite(Number(value)) ? `${String(Math.floor(Number(value)/60)).padStart(2,'0')}:${String(Math.floor(Number(value)%60)).padStart(2,'0')}` : '—'
 const fmt = value => value ? new Date(Number(value)>1e12?Number(value):Number(value)*1000).toLocaleString('zh-CN') : '尚无'

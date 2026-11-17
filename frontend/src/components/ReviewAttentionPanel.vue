@@ -1,9 +1,9 @@
 <template>
   <section v-if="attention.summary?.pr_count" class="glass-card attention-panel" aria-labelledby="review-attention-heading">
-    <div class="attention-heading"><div><h4 id="review-attention-heading">需要你处理 <span class="attention-count">{{ attention.summary.pr_count }}</span></h4><p>完成核对后，对应 PR 的后续审查将继续。</p></div><el-button link type="primary" @click="$emit('open')">查看全部待办<el-icon><ArrowRight /></el-icon></el-button></div>
+    <div class="attention-heading"><div><h4 id="review-attention-heading">自动发布状态 <span class="attention-count">{{ attention.summary.pr_count }}</span></h4><p>后台持续核对发布回执，最新版本审查继续执行。</p></div><el-button link type="primary" @click="$emit('open')">查看任务<el-icon><ArrowRight /></el-icon></el-button></div>
     <div v-for="item in attention.items.slice(0, 3)" :key="`${item.repository}-${item.number}`" class="attention-row">
-      <div class="attention-identity"><strong>{{ item.repo_name }} <span>#{{ item.number }}</span></strong><p>前次发布结果待核对<span v-if="item.pending_count > 1"> · {{ item.pending_count }} 项</span></p></div>
-      <div class="attention-impact"><el-tag type="danger" effect="light">{{ item.blocked_count ? `阻塞 ${item.blocked_count} 条审查` : '需要核对' }}</el-tag></div>
+      <div class="attention-identity"><strong>{{ item.repo_name }} <span>#{{ item.number }}</span></strong><p>发布结果自动核对中<span v-if="item.pending_count > 1"> · {{ item.pending_count }} 项</span></p></div>
+      <div class="attention-impact"><el-tag type="danger" effect="light">{{ Date.now()/1000 - item.since > 1800 ? '核对超过 30 分钟' : '自动核对中' }}</el-tag></div>
       <span class="attention-wait">已等待 {{ attentionWait(item.since) }}</span>
       <el-button type="primary" @click="$emit('open', item)">立即处理</el-button>
     </div>

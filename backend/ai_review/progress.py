@@ -153,14 +153,7 @@ class ProgressSync:
                 if not job or state['progress_next'] > time.time():
                     return False
                 if (job.get('configuration') or {}).get('engine') == 'codex_cli':
-                    with self.store.connect() as c:
-                        confirmed = c.execute('SELECT 1 FROM review_publication_approvals WHERE job=?',(job['id'],)).fetchone()
-                    if confirmed and job['status'] == 'publishing':
-                        pass
-                    else:
-                        with self.store.tx() as c:
-                            c.execute('UPDATE pr_state SET progress_synced=progress_seq,progress_next=? WHERE repository=? AND number=?', (time.time()+30, repository, number))
-                        return False
+                    return False
                 repo = self.store.repo(repository)
                 client = self.factory(repo)
                 client.repository()
@@ -169,18 +162,10 @@ class ProgressSync:
                 # 在联网读取后重新取任务，避免用之前的执行代次覆盖新状态。
                 state, job = state_for(self.store, repository, number)
                 seq, generation = state['progress_seq'], state['generation']
-                if (job.get('configuration') or {}).get('engine') == 'codex_cli' and job['status'] != 'publishing':
-                    return False
                 payload = payload_for(repo, state, job, self.store.config()['enabled'], pr)
-                if (job.get('configuration') or {}).get('engine') == 'codex_cli':
-                    from .gitea import assert_version
-                    assert_version(client, number, job['snapshot'])
-                    from .publication import confirmed_overview
-                    body = confirmed_overview(self.store, job)
-                else:
-                    body = comment_body(payload)
-                    from .issue_lifecycle import overview
-                    body += overview(self.store, repo, job, pr)
+                body = comment_body(payload)
+                from .issue_lifecycle import overview
+                body += overview(self.store, repo, job, pr)
                 comment = None
                 if state['summary_id']:
                     comment = client.request('GET', client.prefix + '/issues/comments/' + str(state['summary_id']), missing=True)

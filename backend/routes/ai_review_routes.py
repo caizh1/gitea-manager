@@ -446,6 +446,14 @@ def task(job):
     return jsonify(store().job(job, public=True, evidence=request.args.get('evidence', '1') != '0'))
 
 
+@ai_review_bp.get('/tasks/<job>/rules')
+def task_rules(job):
+    from ai_review.repository_rules import public
+    state = store()
+    current = state.job(job, evidence=False)
+    return jsonify(public(current, state.repo(current['repository']), content=True))
+
+
 @ai_review_bp.get('/tasks/<job>/failure-checks')
 def task_failure_checks(job):
     from ai_review.failure_checks import analyze
@@ -632,20 +640,7 @@ def rerun(repository):
 
 @ai_review_bp.post('/tasks/<job>/reconcile')
 def reconcile(job):
-    state = store()
-    data = body()
-    if data.get('confirm_unpublished') is True:
-        from ai_review.worker import confirm_unpublished
-        from access.scopes import actor_name
-        confirm_unpublished(state, job, actor_name())
-        return jsonify(ok=True, task=state.job(job, public=True))
-    if data.get('confirm_unpublished') is not None and data['confirm_unpublished'] is not False:
-        raise ReviewError('确认字段需要布尔值')
-    from ai_review.attention import request_reconciliation
-    from access.scopes import actor_name
-    requested = request_reconciliation(state, job, actor_name())
-    return jsonify(ok=True, requested=requested, task=state.job(job, public=True)), 202
-
+    return jsonify(error='发布结果由后台自动核对，请刷新页面', code='AUTOMATIC_PUBLICATION'), 410
 
 
 @ai_review_bp.post('/webhooks/<int:repository>')
@@ -731,28 +726,9 @@ def attention():
 
 
 @ai_review_bp.get('/tasks/<job>/publication-preview')
-def publication_preview(job):
-    from ai_review.publication import preview
-    state = store()
-    task = state.job(job)
-    state.repo(task['repository'])
-    return jsonify(preview(state, task))
-
-
 @ai_review_bp.post('/tasks/<job>/approve-publication')
-def approve_publication(job):
-    from ai_review.publication import approve
-    from access.scopes import actor_name
-    from ai_review.worker import client_for
-    state = store()
-    task = state.job(job)
-    repo = state.repo(task['repository'])
-    client = client_for(state, repo)
-    try:
-        approve(state, client, task, body(), actor_name())
-    finally:
-        client.close()
-    return jsonify(ok=True)
+def retired_publication(job):
+    return jsonify(error='审查结果已改为自动发布，请刷新页面', code='AUTOMATIC_PUBLICATION'), 410
 
 
 @ai_review_bp.get('/source-cache')

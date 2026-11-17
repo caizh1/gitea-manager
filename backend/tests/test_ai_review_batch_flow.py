@@ -234,7 +234,7 @@ def test_schema_17_upgrade_preserves_old_flow(state):
     assert reopened.job(job['id'])['batch_flow_version'] == 2
     assert reopened.job(job['id'])['owner'] == job['owner']
     with reopened.connect() as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0] == 19
+        assert db.execute('PRAGMA user_version').fetchone()[0] == 21
 
 
 def test_v3_vendor_window_failure_does_not_apply_legacy_midpoint_rewrite(state):

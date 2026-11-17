@@ -1,11 +1,11 @@
-"""发布预览与一次性确认，绑定结果内容和 PR 固定版本。"""
-
-import json
+"""固定发布计划、自动写入与逐项回执恢复。"""
 import contextlib
 from copy import deepcopy
+import json
+import threading
 import time
 
-from .common import ReviewError, PublishUnknown, digest, encode
+from .common import ReviewError, PublishUnknown, WriteRejected, encode
 
 
 def migrate(c):
@@ -19,221 +19,287 @@ def migrate(c):
     CREATE TABLE IF NOT EXISTS review_publication_approvals (
       job TEXT PRIMARY KEY, preview_hash TEXT NOT NULL, selected TEXT NOT NULL,
       approved_by TEXT NOT NULL, approved_at REAL NOT NULL);
+    CREATE TABLE IF NOT EXISTS review_publication_plans (
+      job TEXT PRIMARY KEY, value TEXT NOT NULL, created REAL NOT NULL);
+    CREATE TABLE IF NOT EXISTS review_publication_alerts (
+      job TEXT PRIMARY KEY, message TEXT NOT NULL, created REAL NOT NULL);
     """)
+    # 保留历史确认记录；待发布任务由新 Worker 校验版本后自动接续。
+    c.execute("""UPDATE jobs SET status='queued',available=0,stage='等待自动发布',owner='',lease=0
+                 WHERE status='awaiting_publication'""")
+    c.execute("UPDATE jobs SET reconcile_state='checking' WHERE status='publish_unknown' AND reconcile_state='needs_confirmation'")
 
 
-def preview(store, job):
-    if store.job_config(job["id"]).get("engine") != "codex_cli" or not (job.get("result") or {}).get(
-        "lifecycle"
-    ):
-        raise ReviewError("该任务尚未生成发布预览")
-    result = job["result"]
+def observations(store, job):
     with contextlib.closing(store.connect()) as c:
-        rows = c.execute(
-            "SELECT o.issue,o.value,i.finding FROM review_issue_observations o JOIN review_issues i ON i.id=o.issue WHERE o.job=? ORDER BY o.issue",
-            (job["id"],),
-        ).fetchall()
-    changes = [
-        {
-            "issue": row["issue"],
-            "title": json.loads(row["finding"]).get("title", ""),
-            **json.loads(row["value"]),
-        }
-        for row in rows
-    ]
-    value = {
-        "job": job["id"],
-        "snapshot_id": job["snapshot"]["id"],
-        "head": job["snapshot"]["head"],
-        "findings": result["findings"],
-        "status_changes": changes,
-        "report": result.get("report_markdown", ""),
-    }
-    value["preview_hash"] = digest(value)
-    return value
+        rows = c.execute("""SELECT o.issue,o.value,i.finding FROM review_issue_observations o
+            JOIN review_issues i ON i.id=o.issue WHERE o.job=? ORDER BY o.issue""", (job['id'],)).fetchall()
+    return [dict(issue=row['issue'], title=json.loads(row['finding']).get('title', ''),
+                 **json.loads(row['value'])) for row in rows]
 
 
-def await_publication(store, job, result):
-    store.update(job["id"], job["owner"], result=result, stage="等待确认发布")
-    with store.tx() as c:
-        store._active(c, job["id"], job["owner"])
-        c.execute(
-            "UPDATE jobs SET status='awaiting_publication',owner='',lease=0,updated=? WHERE id=?",
-            (time.time(), job["id"]),
-        )
-        c.execute("DELETE FROM capabilities WHERE job=?", (job["id"],))
-
-
-def approve(store, client, job, data, actor):
-    from .gitea import assert_version
-    from .authorization import authorize
-
-    with store.lock(f"发布-{job['repository']}-{job['number']}"):
-        current = store.job(job["id"])
-        view = preview(store, current)
-        if current["status"] != "awaiting_publication" or data.get("preview_hash") != view["preview_hash"]:
-            raise ReviewError("预览已变化或已经确认，请刷新")
-        selected = data.get("selected")
-        allowed = {f["issue_id"] for f in view["findings"] if f.get("issue_id")} | {
-            r["issue"] for r in view["status_changes"]
-        }
-        if (
-            not isinstance(selected, list)
-            or any(not isinstance(i, str) for i in selected)
-            or not set(selected) <= allowed
-        ):
-            raise ReviewError("选择的问题不属于当前预览")
-        authorize(store.repo(job["repository"]), job, "write")
-        assert_version(client, job["number"], current["snapshot"])
-        with store.tx() as c:
-            configured = store.repo(job["repository"], c)
-            current_config = store.config(connection=c)
-            if (
-                not configured["enabled"]
-                or not current_config["enabled"]
-                or configured["revision"] != job["repo_revision"]
-                or store.execution_revision_for(job["config_revision"], c)
-                != current_config["execution_revision"]
-            ):
-                raise ReviewError("仓库权限或配置已变化，请重新审查")
-            row = c.execute("SELECT status FROM jobs WHERE id=?", (job["id"],)).fetchone()
-            if row["status"] != "awaiting_publication":
-                raise ReviewError("任务状态已变化")
-            c.execute(
-                "INSERT INTO review_publication_approvals VALUES (?,?,?,?,?)",
-                (job["id"], view["preview_hash"], encode(sorted(set(selected))), actor, time.time()),
-            )
-            c.execute(
-                "UPDATE jobs SET status='queued',available=?,stage='发布已确认，等待执行',updated=? WHERE id=?",
-                (time.time(), time.time(), job["id"]),
-            )
-
-
-def publish_approved(store, client, job, repo):
-    from .publish import Publisher
-    from .gitea import assert_version
-
-    with contextlib.closing(store.connect()) as c:
-        approved = c.execute(
-            "SELECT * FROM review_publication_approvals WHERE job=?", (job["id"],)
-        ).fetchone()
-    if not approved or approved["preview_hash"] != preview(store, job)["preview_hash"]:
-        raise ReviewError("发布确认缺失或内容已变化")
-    if not job["result"].get("analysis_complete") and job["snapshot"].get("engine") == "codex_cli":
-        raise ReviewError("审查尚未完整结束，禁止确认发布")
-    assert_version(client, job["number"], job["snapshot"])
-    selected = set(json.loads(approved["selected"]))
-    result = deepcopy(job["result"])
-    result.pop("publication", None)
-    result["findings"] = [f for f in result["findings"] if f.get("issue_id") in selected]
-    result["lifecycle"] = dict(
-        result["lifecycle"], publish_ids=[i for i in result["lifecycle"]["publish_ids"] if i in selected]
-    )
-    # 发布器只同步已确认的问题状态。
-    result["_approved_issue_ids"] = sorted(selected)
-    full_result = deepcopy(job["result"])
-    full_result["publication"] = result
-    store.update(job["id"], job["owner"], result=full_result)
-    publishing_job = dict(job)
-    Publisher(store, client, publishing_job, repo, job["snapshot"], result).publish()
-    # 固定总览在本次明确确认后同步。
-    store.update(job["id"], job["owner"], status="publishing")
-    publish_overview(store, client, job, repo, result)
-    store.finish(job["id"], job["owner"], "succeeded")
-
-
-def publish_overview(store, client, job, repo, result):
-    """确认发布时更新固定总览，沿用已有同步器的未知回执保护。"""
-    from .progress import ProgressSync
-
-    # 同步器按确认记录授权写入。
-    with store.tx() as c:
-        c.execute(
-            "UPDATE pr_state SET progress_next=0 WHERE repository=? AND number=?",
-            (job["repository"], job["number"]),
-        )
-    sync = ProgressSync(store, factory=lambda _: client)
-    if not sync.sync(job["repository"], job["number"]):
-        raise PublishUnknown("确认后的总览同步尚未完成，请核对任务状态")
-
-
-def confirmed_overview(store, job):
-    """总览内容只来自本次确认的固定版本和所选问题。"""
+def overview(store, job, result):
     from .progress import SUMMARY_MARK
     from .issue_lifecycle import LABELS
     from .publish import prose
+    body = SUMMARY_MARK + '\n<!-- ai-review:auto-summary:' + job['id'] + ' -->'
+    body += '\n### AI Code Review\n\n审查版本 `' + job['snapshot']['head'] + '`。'
+    body += '\n\n' + (result.get('report_markdown', '').splitlines() or [''])[0]
+    frozen_ids = result.get('_approved_issue_ids')
+    for row in observations(store, job):
+        if frozen_ids is not None and row['issue'] not in frozen_ids:
+            continue
+        body += '\n\n- `' + row['issue'][:12] + '` **' + LABELS[row['status']] + '** ' + prose(row['title'])[:300]
+        body += '\n  ' + prose(row['reason'])[:600]
+    fallback = [f for f in result['findings'] if not f.get('anchor') or len(f.get('comment_markdown', '') + f.get('explanation', '')) > 9000]
+    for finding in fallback:
+        body += '\n\n- **' + prose(finding.get('severity', '')) + ' ' + prose(finding['title'])[:300] + '**'
+        body += '\n  ' + prose(finding.get('explanation') or finding.get('comment_markdown', ''))[:600]
+    callback = store.repo(job['repository']).get('webhook_url', '')
+    base = callback.split('/api/ai-review/webhooks/')[0] if '/api/ai-review/webhooks/' in callback else ''
+    link = ('[查看完整分析与证据](' + base + '/ai-reviews?task=' + job['id'] + ')'
+            if base else '完整分析与证据见 Manager 任务 `' + job['id'] + '`。')
+    return body[:11000] + '\n\n' + link
 
-    with contextlib.closing(store.connect()) as c:
-        approval = c.execute(
-            "SELECT selected FROM review_publication_approvals WHERE job=?", (job["id"],)
-        ).fetchone()
-    if not approval:
-        raise ReviewError("缺少总览发布确认")
-    selected = set(json.loads(approval["selected"]))
-    view = preview(store, job)
-    body = SUMMARY_MARK + "\n### AI Code Review\n\n审查版本 `" + view["head"] + "`。"
-    body += "\n\n" + (job["result"].get("report_markdown", "").splitlines() or [""])[0]
-    for row in view["status_changes"]:
-        if row["issue"] in selected:
-            body += (
-                "\n\n- `" + row["issue"][:12] + "` **" + LABELS[row["status"]] + "** " + prose(row["title"])
-            )
-            body += "\n  " + prose(row["reason"])
-    body += "\n\n完整分析与未发布意见保存在 Manager 任务 `" + job["id"] + "`。"
-    return body
 
-
-def recover_confirmed(store, client, job, repo):
-    """仅回读已确认的写入，所有回执齐全才算发布完成。"""
-    from .publish import Publisher
-    from .issue_publication import recover, change_operation
+def plan_summary(store, client, job, repo, body):
+    from .issue_publication import operation
     from .progress import ProgressSync
-
-    result = job["result"].get("publication")
-    if not result or "_approved_issue_ids" not in result:
-        raise PublishUnknown("缺少已确认的冻结发布内容")
-    publisher = Publisher(store, client, job, repo, job["snapshot"], result)
     with contextlib.closing(store.connect()) as c:
-        creates = c.execute(
-            "SELECT 1 FROM review_issue_operations WHERE job=? AND kind='create'", (job["id"],)
-        ).fetchone()
-        edits = [
-            dict(row)
-            for row in c.execute(
-                "SELECT * FROM review_issue_operations WHERE job=? AND kind='edit'", (job["id"],)
-            )
-        ]
-    reference = {"review_id": job.get("review_id"), "review_fragment": job.get("review_fragment", "")}
-    if creates:
-        reference, incomplete = recover(publisher)
-        if incomplete:
-            raise PublishUnknown("部分确认意见尚未发送，保留未完成发布状态")
-    for op in edits:
-        payload = json.loads(op["payload"])
-        rows = client.pages(publisher.path + "/" + str(payload["review_id"]) + "/comments")
-        actual = next((row for row in rows if row["id"] == payload["comment_id"]), None)
-        if (
-            not actual
-            or actual.get("user", {}).get("id") != repo["bot_id"]
-            or actual.get("body") != payload["body"]
-        ):
-            raise PublishUnknown("历史问题状态写入尚未取得确定回执")
-        change_operation(store, job, op["key"], "done", {"comment_id": payload["comment_id"]})
-        with store.tx() as c:
-            c.execute(
-                "UPDATE review_issue_comments SET last_body=?,error=? WHERE repository=? AND comment_id=?",
-                (payload["body"], "", repo["id"], payload["comment_id"]),
-            )
-    expected = confirmed_overview(store, job)
+        old = c.execute('SELECT summary_id FROM pr_state WHERE repository=? AND number=?',
+                        (repo['id'], job['number'])).fetchone()
+        managed = c.execute('SELECT body,pending FROM review_issue_summaries WHERE repository=? AND number=?',
+                            (repo['id'], job['number'])).fetchone()
     rows = client.pages(client.prefix + f"/issues/{job['number']}/comments")
-    matches = [
-        row for row in rows if row.get("body") == expected and row.get("user", {}).get("id") == repo["bot_id"]
-    ]
-    if len(matches) != 1 or not ProgressSync(store).belongs(matches[0], repo, job["number"]):
-        raise PublishUnknown("版本总览尚未取得唯一确定回执")
+    sync = ProgressSync(store)
+    owned = [row for row in rows if sync.owned(row, repo) and sync.belongs(row, repo, job['number'])]
+    target = next((row for row in owned if old and row['id'] == old['summary_id']), None)
+    if target is None and len(owned) == 1:
+        target = owned[0]
+    editable = target and managed and target['body'] in (managed['body'], managed['pending'])
+    payload = {'body': body, 'comment_id': target['id'] if editable else None,
+               'before': target['body'] if editable else None, 'previous_id': old['summary_id'] if old else None}
+    return operation(store, job, 'summary', 'summary', payload)
+
+
+def prepare(store, client, job, repo):
+    from .publish import Publisher
+    from .issue_publication import plan_new, plan_edits
+    with contextlib.closing(store.connect()) as c:
+        saved = c.execute('SELECT value FROM review_publication_plans WHERE job=?', (job['id'],)).fetchone()
+    if saved:
+        return json.loads(saved['value'])
+    result = deepcopy(job['result'].get('publication') or job['result'])
+    if job['snapshot'].get('engine') == 'codex_cli' and job['result'].get('analysis_complete') is not True:
+        raise ReviewError('审查尚未完整结束，无法自动发布')
+    result.pop('publication', None)
+    if not job['result'].get('publication'):
+        result['_automatic_publication'] = True
+    publisher = Publisher(store, client, job, repo, job['snapshot'], result)
+    if result.get('_automatic_publication'):
+        publisher.page_size = 1
+    publisher.validate_local()
+    # 旧任务已冻结的选择只影响其原发布载荷，新任务发布所有成立意见。
+    plan_new(publisher)
+    plan_edits(publisher)
+    value = {'result': result, 'overview': overview(store, job, result)}
+    plan_summary(store, client, job, repo, value['overview'])
     with store.tx() as c:
-        c.execute(
-            "UPDATE review_issue_summaries SET body=?,pending=NULL WHERE repository=? AND number=?",
-            (expected, repo["id"], job["number"]),
-        )
-    return reference
+        store._active(c, job['id'], job['owner'])
+        c.execute('INSERT OR IGNORE INTO review_publication_plans VALUES (?,?,?)', (job['id'], encode(value), time.time()))
+    store.update(job['id'], job['owner'], result=dict(job['result'], publication=result))
+    return value
+
+
+def publish_summary(store, client, job, repo):
+    from .issue_publication import change_operation
+    from .gitea import assert_version
+    from .progress import ProgressSync
+    with contextlib.closing(store.connect()) as c:
+        op = dict(c.execute("SELECT * FROM review_issue_operations WHERE job=? AND key='summary'", (job['id'],)).fetchone())
+    payload = json.loads(op['payload'])
+    rows = client.pages(client.prefix + f"/issues/{job['number']}/comments")
+    sync = ProgressSync(store)
+    matches = [r for r in rows if r.get('body') == payload['body'] and sync.owned(r, repo) and sync.belongs(r, repo, job['number'])]
+    if len(matches) > 1:
+        raise PublishUnknown('总览回执出现多个匹配，继续自动核对')
+    if matches:
+        actual = matches[0]
+    else:
+        if op['state'] != 'queued':
+            raise PublishUnknown('总览写入回执尚未出现，继续自动核对')
+        with contextlib.closing(store.connect()) as c:
+            older = c.execute("""SELECT o.* FROM review_issue_operations o JOIN jobs j ON j.id=o.job
+                WHERE j.repository=? AND j.number=? AND o.job!=? AND o.kind='summary'
+                  AND o.state IN ('started','unknown')""", (repo['id'], job['number'], job['id'])).fetchall()
+        for previous in older:
+            expected = json.loads(previous['payload'])['body']
+            confirmed = [row for row in rows if row.get('body') == expected and sync.owned(row, repo)
+                         and sync.belongs(row, repo, job['number'])]
+            if len(confirmed) != 1:
+                raise PublishUnknown('旧版本总览写入尚未取得回执，当前总览等待自动核对')
+            change_operation(store, {'id': previous['job']}, previous['key'], 'done', {'comment_id': confirmed[0]['id']})
+        target = next((r for r in rows if r['id'] == payload['comment_id']), None)
+        if payload['comment_id'] and (not target or target.get('body') != payload['before'] or not sync.owned(target, repo)):
+            payload['comment_id'] = None
+            with store.tx() as c:
+                c.execute("UPDATE review_issue_operations SET payload=? WHERE job=? AND key='summary'", (encode(payload), job['id']))
+        assert_version(client, job['number'], job['snapshot'])
+        change_operation(store, job, 'summary', 'started')
+        path = client.prefix + ('/issues/comments/' + str(payload['comment_id']) if payload['comment_id'] else f"/issues/{job['number']}/comments")
+        try:
+            client.request('PATCH' if payload['comment_id'] else 'POST', path, {'body': payload['body']})
+        except WriteRejected as exc:
+            change_operation(store, job, 'summary', 'queued', error=str(exc))
+            raise
+        rows = client.pages(client.prefix + f"/issues/{job['number']}/comments")
+        matches = [r for r in rows if r.get('body') == payload['body'] and sync.owned(r, repo) and sync.belongs(r, repo, job['number'])]
+        if len(matches) != 1:
+            raise PublishUnknown('总览写入后尚无唯一回执')
+        actual = matches[0]
+    change_operation(store, job, 'summary', 'done', {'comment_id': actual['id'], 'previous_id': payload.get('previous_id')})
+    with store.tx() as c:
+        store._active(c, job['id'], job['owner'])
+        c.execute('INSERT INTO review_issue_summaries VALUES (?,?,?,NULL) ON CONFLICT(repository,number) DO UPDATE SET body=excluded.body,pending=NULL',
+                  (repo['id'], job['number'], payload['body']))
+        c.execute('UPDATE pr_state SET summary_id=?,progress_synced=progress_seq,progress_creating=0 WHERE repository=? AND number=?',
+                  (actual['id'], repo['id'], job['number']))
+
+
+def publish(store, client, job, repo):
+    from .gitea import assert_version
+    from .authorization import authorize
+    from .publish import Publisher
+    from .issue_publication import publish_new, sync_comments
+    with store.lock(f"发布-{job['repository']}-{job['number']}"):
+        store.active(job['id'], job['owner'])
+        authorize(repo, job, 'write')
+        assert_version(client, job['number'], job['snapshot'])
+        if job['snapshot'].get('engine') == 'codex_cli' and job['result'].get('analysis_complete') is not True:
+            raise ReviewError('审查尚未完整结束，无法自动发布')
+        store.update(job['id'], job['owner'], status='publishing', stage='自动发布审查结果')
+        plan = prepare(store, client, job, repo)
+        publisher = Publisher(store, client, job, repo, job['snapshot'], plan['result'])
+        if plan['result'].get('_automatic_publication'):
+            publisher.page_size = 1
+        try:
+            publish_new(publisher, recovery=False)
+        except PublishUnknown:
+            pass
+        sync_comments(publisher)
+        publish_summary(store, client, job, repo)
+        with contextlib.closing(store.connect()) as c:
+            pending = c.execute("SELECT 1 FROM review_issue_operations WHERE job=? AND state IN ('queued','started','unknown') LIMIT 1", (job['id'],)).fetchone()
+        if pending:
+            raise PublishUnknown('部分状态写入回执尚未齐全，继续自动核对')
+        assert_version(client, job['number'], job['snapshot'])
+        store.finish(job['id'], job['owner'], 'succeeded')
+
+
+def status(store, job):
+    with contextlib.closing(store.connect()) as c:
+        rows = c.execute('SELECT kind,state,error,receipt FROM review_issue_operations WHERE job=?', (job['id'],)).fetchall()
+        alert = c.execute('SELECT message FROM review_publication_alerts WHERE job=?', (job['id'],)).fetchone()
+    return {'automatic': True, 'completed_operations': sum(r['state'] in ('done', 'conflict') for r in rows),
+            'total_operations': len(rows), 'comments_published': sum(len(json.loads(r['receipt'] or '{}').get('comment_ids', [])) for r in rows),
+            'errors': [r['error'] for r in rows if r['error']], 'alert': alert['message'] if alert and job['status'] == 'publish_unknown' else '',
+            'next_retry_at': job['available'] if job['status'] == 'publish_unknown' else None}
+
+
+def recover_obsolete(store, client, job, repo):
+    """过期任务仅接回已发送操作的回执，未发送操作终止。"""
+    from .issue_publication import recover, change_operation
+    from .publish import Publisher
+    result = job['result'].get('publication') or job['result']
+    publisher = Publisher(store, client, job, repo, job['snapshot'], result)
+    with contextlib.closing(store.connect()) as c:
+        legacy = c.execute('SELECT body,pending FROM review_issue_summaries WHERE repository=? AND number=?',
+                           (repo['id'], job['number'])).fetchone()
+        planned = c.execute("SELECT 1 FROM review_issue_operations WHERE job=? AND kind='summary'", (job['id'],)).fetchone()
+    if legacy and legacy['pending'] and not planned:
+        from .progress import ProgressSync
+        sync = ProgressSync(store)
+        matches = [row for row in client.pages(client.prefix + f"/issues/{job['number']}/comments")
+                   if row.get('body') == legacy['pending'] and sync.owned(row, repo) and sync.belongs(row, repo, job['number'])]
+        if len(matches) != 1:
+            raise PublishUnknown('历史总览写入仍在自动核对')
+        with store.tx() as c:
+            c.execute('UPDATE review_issue_summaries SET body=pending,pending=NULL WHERE repository=? AND number=?',
+                      (repo['id'], job['number']))
+            c.execute('UPDATE pr_state SET summary_id=?,progress_creating=0 WHERE repository=? AND number=?',
+                      (matches[0]['id'], repo['id'], job['number']))
+    with store.tx() as c:
+        c.execute("UPDATE review_issue_operations SET state='abandoned' WHERE job=? AND state='queued'", (job['id'],))
+        rows = [dict(row) for row in c.execute("SELECT * FROM review_issue_operations WHERE job=? AND state IN ('started','unknown')", (job['id'],))]
+    if any(row['kind'] == 'create' for row in rows):
+        recover(publisher)
+    for row in rows:
+        payload = json.loads(row['payload'])
+        if row['kind'] == 'create':
+            continue
+        path = (publisher.path + '/' + str(payload['review_id']) + '/comments' if row['kind'] == 'edit'
+                else client.prefix + f"/issues/{job['number']}/comments")
+        matches = [item for item in client.pages(path) if item.get('body') == payload['body'] and item.get('user', {}).get('id') == repo['bot_id']]
+        if len(matches) != 1:
+            raise PublishUnknown('旧版本写入尚未获得唯一回执，继续自动核对')
+        change_operation(store, job, row['key'], 'done', {'comment_id': matches[0]['id']})
+    with store.tx() as c:
+        c.execute("UPDATE jobs SET status='superseded',stage='旧版本发布回执已核对',lease=0 WHERE id=? AND status='recovering'", (job['id'],))
+
+
+def resume(store, job):
+    import secrets
+    from .common import Stale, AccessRevoked
+    from .worker import client_for, refresh_pr
+    now = time.time()
+    owner = secrets.token_hex(16)
+    with store.tx() as c:
+        if not c.execute("""UPDATE jobs SET status='recovering',owner=?,lease=?,available=?,
+            reconcile_state='checking',reconcile_started_at=?,reconcile_message='后台自动核对发布回执'
+            WHERE id=? AND status='publish_unknown' AND available<=?""",
+            (owner, now+90, now+60, now, job['id'], now)).rowcount:
+            return
+    job = store.job(job['id'])
+    client = None
+    stop = threading.Event()
+
+    def heartbeat():
+        while not stop.wait(10):
+            store.heartbeat(job['id'], owner)
+
+    thread = threading.Thread(target=heartbeat, daemon=True)
+    thread.start()
+    try:
+        repo = store.repo(job['repository'])
+        try:
+            store.active(job['id'], owner)
+        except Stale:
+            client = client_for(store, repo)
+            with store.lock(f"发布-{job['repository']}-{job['number']}"):
+                recover_obsolete(store, client, job, repo)
+            return
+        client = client_for(store, repo, job)
+        publish(store, client, job, repo)
+        refresh_pr(store, repo, job)
+    except Stale:
+        with store.tx() as c:
+            c.execute("UPDATE jobs SET status='publish_unknown',available=?,owner='',lease=0 WHERE id=? AND owner=?", (now+60,job['id'],owner))
+        if 'repo' in locals():
+            refresh_pr(store, repo, job)
+    except Exception as exc:
+        permanent = isinstance(exc, AccessRevoked) or isinstance(exc, WriteRejected) and not getattr(exc, 'retryable', False)
+        with store.tx() as c:
+            c.execute("""UPDATE jobs SET status=?,stage=?,error=?,available=?,owner='',lease=0,
+                reconcile_state=?,reconcile_finished_at=?,reconcile_message=? WHERE id=? AND owner=?""",
+                ('failed' if permanent else 'publish_unknown', '发布失败' if permanent else '自动核对发布结果',
+                 str(exc)[:1000], now+60, 'failed' if permanent else 'checking', now, str(exc)[:1000], job['id'],owner))
+            plan = c.execute('SELECT created FROM review_publication_plans WHERE job=?', (job['id'],)).fetchone()
+            since = plan['created'] if plan else job['created']
+            if not permanent and now-since >= 1800:
+                c.execute('INSERT OR IGNORE INTO review_publication_alerts VALUES (?,?,?)',
+                          (job['id'], '发布结果自动核对已持续超过 30 分钟', now))
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+        if client:
+            client.close()

@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 import requests
-from .common import ReviewError
+from .common import ReviewError, AccessRevoked
 
 
 def authorize(repo, job=None, action='read'):
@@ -22,8 +22,10 @@ def authorize(repo, job=None, action='read'):
             session.trust_env = False
             response = session.post(url, json=payload, headers={'Authorization': 'Bearer ' + token},
                                     timeout=(3, 10), allow_redirects=False)
-        if response.status_code != 200 or response.json().get('allowed') is not True:
-            raise ReviewError('组织权限或仓库归属已失效，已停止后续操作')
+        if response.status_code in (401, 403) or response.status_code == 200 and response.json().get('allowed') is not True:
+            raise AccessRevoked('组织权限或仓库归属已失效，已停止后续操作')
+        if response.status_code != 200:
+            raise ReviewError('组织授权服务暂时不可用')
     except (OSError, KeyError, ValueError, requests.RequestException):
         raise ReviewError('组织授权服务不可用，已停止后续操作') from None
 
