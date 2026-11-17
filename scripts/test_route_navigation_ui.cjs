@@ -4,10 +4,12 @@ const fs = require('node:fs')
 const path = require('node:path')
 const http = require('node:http')
 const { pathToFileURL } = require('node:url')
-const { chromium } = require('playwright')
+const { createRequire } = require('node:module')
+const frontendRequire = createRequire(path.join(__dirname, '../frontend/package.json'))
+const { chromium } = frontendRequire('playwright')
 
 const root = path.resolve(__dirname, '..')
-const output = path.join(root, 'work/route-navigation')
+const output = path.resolve(process.env.NAVIGATION_OUTPUT_DIR || path.join(root, 'work/route-navigation'))
 const sourceMode = process.argv.includes('--source')
 const mode = sourceMode ? '源码' : process.env.NAVIGATION_BASE_URL ? '交付镜像' : '生产构建'
 const capabilities = ['dashboard', 'servers', 'backups', 'restore', 'settings', 'schedules', 'mirrors',
@@ -27,6 +29,7 @@ const datasetItem = { id: 'navigation-sample', revision: 1, status: 'active', re
 let browser, server, vite, session = admin, delayServers = 0, delayReview = 0, failServers = false
 const results = [], unknown = new Set(), errors = [], transitionWarnings = []
 let serverReads = 0, documentLoads = 0
+let completed = false
 
 function fixture(url, method) {
   const p = new URL(url).pathname
@@ -148,6 +151,7 @@ async function main() {
     await route.fulfill({ status: failure ? 503 : 200, contentType: 'application/json', body: JSON.stringify(data) }).catch(() => {})
   })
   const page = await context.newPage()
+  page.setDefaultTimeout(10000)
   page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documentLoads++ })
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => {
@@ -300,12 +304,14 @@ async function main() {
   assert.deepEqual(transitionWarnings, [], '不能出现非元素根节点动画告警')
   assert.deepEqual([...unknown], [], '接口替身必须覆盖所有实际请求')
   assert.ok(serverReads >= paths.length, '返回服务器页面后必须重新查询列表')
+  completed = true
   console.log(`${mode}：全部导航验证通过，服务器列表查询 ${serverReads} 次`)
 }
 
 main().catch(error => { results.push({ 场景: '验收失败', 原因: error.message }); console.error(error); process.exitCode = 1 }).finally(async () => {
   fs.mkdirSync(output, { recursive: true })
   fs.writeFileSync(path.join(output, sourceMode ? 'source.json' : process.env.NAVIGATION_BASE_URL ? 'image.json' : 'build.json'), JSON.stringify({
+    状态: completed ? '通过' : '失败',
     范围: `${mode}、真实页面与路由、隔离接口、后台浏览器；不代表真实业务或生产环境验收`, 场景: results,
     浏览器异常: errors, 动画告警: transitionWarnings, 未覆盖接口: [...unknown], 服务器查询次数: serverReads,
   }, null, 2) + '\n')

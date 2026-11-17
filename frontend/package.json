@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run test:route-roots",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:route-roots": "node --test tests/routeRoots.test.mjs",
+    "test:navigation": "node ../scripts/test_route_navigation_ui.cjs",
+    "test:release": "python3 ../deployment/frontend_release_gate.py"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -19,6 +23,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.5.2",
+    "playwright": "1.62.1",
     "vite": "^5.0.10"
   }
 }

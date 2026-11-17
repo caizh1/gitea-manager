@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tarfile
 from image_identity import archive_image_ids
+from frontend_release_gate import verify_archive, verify_frontend
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,6 +47,7 @@ def main():
     except BlockingIOError:
         raise RuntimeError('另一安装包构建正在运行，未覆盖输出') from None
     products = ['gitea', 'manager'] if args.product == 'both' else [args.product]
+    navigation_report = verify_frontend('gitea-review-frontend:' + args.manager_tag) if 'manager' in products else None
     for product in products:
         directory = args.output_dir / (product + '-ubuntu' + args.ubuntu_version[:2] + '-amd64-installer')
         directory.mkdir(parents=True, exist_ok=True)
@@ -76,12 +78,15 @@ def main():
             images[key] = {'tag': tag, 'ids': [info['Id']]}
         subprocess.run(['docker', 'image', 'save', '--platform', 'linux/amd64', '-o', str(directory / 'images/runtime.tar'), *tags.values()], check=True)
         identities = archive_image_ids(directory / 'images/runtime.tar', images)
+        if product == 'manager':
+            verify_archive(directory / 'images/runtime.tar', navigation_report)
         for key, item in images.items():
             item['ids'] = identities[key]
         if product=='manager':
             provenance=directory/'build-provenance';provenance.mkdir(exist_ok=True)
             for filename in ('base-images.json','source-manifest.json'):
                 shutil.copy2(args.provenance_dir/filename,provenance/filename)
+            (provenance / 'frontend-navigation.json').write_text(json.dumps(navigation_report, ensure_ascii=False, indent=2) + '\n')
         manifest = {'说明': '固定 Linux amd64 镜像；首次安装不构建、不拉取镜像。', 'product': product, 'ubuntu_version': args.ubuntu_version, 'images': images, 'opencode_versions': ['1.18.7','1.1.51'] if product=='manager' else []}
         (directory / 'installer-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
         shutil.copy2(ROOT / 'docs/oneclick-installation.md', directory / 'README.md')
@@ -104,6 +109,8 @@ def main():
         with tarfile.open(temporary, 'w:gz', compresslevel=3) as archive:
             for path in files + [directory / 'SHA256SUMS']:
                 archive.add(path, arcname=str(path.relative_to(directory)), recursive=False)
+        if product == 'manager':
+            verify_archive(directory / 'images/runtime.tar', navigation_report)
         temporary.replace(target)
         Path(str(target) + '.sha256').write_text(sha(target) + '  ' + target.name + '\n')
         print('已生成安装包：' + str(target), flush=True)

@@ -323,6 +323,10 @@ Windows PowerShell 下通配符传给 Python 可能不会自动展开，必要�
 
 项目默认交付规则：每次完成代码或文档修改后，都必须重新构建前端并更新 `gitea-manager.tar.gz` 离线部署包；只有只读侦察、纯问答或未改动文件时才不需要打包。
 
+- `npm run build` 会先执行所有路由页面的根节点静态检查，包含组件根节点和条件分支。检查失败时构建停止。
+- `scripts/review-package.py`（包括 `--upgrade-only` 和复用已有镜像归档）以及 `deployment/build-installers.py` 的 Manager 安装包，必须通过 `deployment/frontend_release_gate.py`。每次使用本次待交付的固定前端镜像，在后台浏览器重新执行全部导航回归，失败、缺少浏览器依赖或验收期间文件变化均停止出包。
+- 发版准备机使用 Node.js 20 或更高版本，执行 `cd frontend && npm ci && npx playwright install chromium` 准备固定版本测试依赖；离线准备机预先准备对应依赖和浏览器缓存。单独复验使用 `python3 deployment/frontend_release_gate.py --image <前端固定镜像>`。测试记录保存到独立 `work/frontend-release-*` 目录，摘要随交付包保存，并核对归档中的镜像身份，不能拿旧测试结果代替本次执行。
+
 代码变更后，如果要交付离线部署包，先构建前端：
 
 ```bash
@@ -330,16 +334,13 @@ cd frontend
 npm run build
 ```
 
-然后在项目目录外或项目目录内打包，包内直接平铺 `frontend/`、`backend/`、`data/` 等目录，不加外层目录：
+固定待交付镜像后，使用带导航门禁的入口生成离线包：
 
 ```bash
-tar czf gitea-manager.tar.gz \
-  --exclude=.git \
-  --exclude=__pycache__ \
-  --exclude=node_modules \
-  -C /path/to/gitea-manager \
-  frontend backend data docker-compose.yml deploy.sh AGENTS.md README.md
+python3 scripts/review-package.py --export-images --source-image-tag <固定标签>
 ```
+
+仅升级包追加 `--upgrade-only`。新安装包使用 `deployment/build-installers.py --product manager`，同样自动执行导航门禁。手动 tar 命令绕过门禁，不能用于发版。
 
 Linux 端部署：
 

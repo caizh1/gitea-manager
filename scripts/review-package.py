@@ -6,10 +6,14 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/'deployment'))
+from frontend_release_gate import verify_archive, verify_frontend
+
 (ROOT/'work').mkdir(exist_ok=True)
 package_lock=(ROOT/'work/review-package.lock').open('a')
 try: fcntl.flock(package_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -28,6 +32,8 @@ images=['gitea-review-backend:offline','gitea-review-frontend:offline','gitea-re
 if args.upgrade_only: images=images[:5]
 if args.include_legacy_executor: images.append('gitea-review-executor-legacy:offline')
 if args.migration_receiver_image: images.append('gitea-migration-receiver:offline')
+frontend_source='gitea-review-frontend:'+args.source_image_tag if args.export_images else 'gitea-review-frontend:offline'
+navigation_report=verify_frontend(frontend_source)
 server_api=tuple(int(v) for v in subprocess.check_output(['docker','version','--format','{{.Server.APIVersion}}'],text=True).strip().split('.'))
 platform_selection=['--platform','linux/amd64'] if server_api >= (1,48) else []
 expected_images={}
@@ -39,13 +45,18 @@ if args.export_images:
                  str(ROOT/'work'/('package-'+component+'-acceptance.json'))])
         dest='gitea-review-'+component+':offline'
         expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,source],text=True))[0]['Id']
-        run(['docker','tag',source,dest])
+        if component=='frontend' and expected_images[dest]!=navigation_report['镜像ID']:
+            raise RuntimeError('导航验收后前端镜像标签发生变化，请重新打包')
+        run(['docker','tag',expected_images[dest],dest])
     if args.migration_receiver_image:
         dest='gitea-migration-receiver:offline'
         expected_images[dest]=json.loads(subprocess.check_output(['docker','image','inspect',*platform_selection,args.migration_receiver_image],text=True))[0]['Id']
         run(['docker','tag',args.migration_receiver_image,dest])
     run(['docker','image','save',*platform_selection,'-o',str(offline/'运行镜像.tar'),*images])
 if not (offline/'运行镜像.tar').is_file():raise RuntimeError('请先用 --export-images 导出已构建的离线镜像')
+archive_report=dict(navigation_report, 镜像='gitea-review-frontend:offline')
+verify_archive(offline/'运行镜像.tar', archive_report)
+(offline/'frontend-navigation.json').write_text(json.dumps(navigation_report,ensure_ascii=False,indent=2)+'\n')
 manifest=[]
 with tarfile.open(offline/'运行镜像.tar') as archive:
     exported=json.load(archive.extractfile('manifest.json'))
@@ -66,7 +77,7 @@ roots=['frontend','backend','review-runtime','docs','scripts','offline','docker-
        'compose.ai-review.images.yml','compose.tls.yml','compose.review-local.yml','compose.local.yml','compose.remote-backup.yml','deploy.sh','upgrade.sh','install.sh','uninstall.sh','deployment','AGENTS.md','README.md','.dockerignore','.gitignore']
 excluded={'node_modules','__pycache__','.git','.DS_Store','.env','work','data'}
 if args.upgrade_only:
-    roots=['offline/运行镜像.tar','offline/镜像清单.json','scripts/upgrade_runtime.py',
+    roots=['offline/运行镜像.tar','offline/镜像清单.json','offline/frontend-navigation.json','scripts/upgrade_runtime.py',
            'scripts/upgrade_volume.py','upgrade.sh']
 files=[]
 for name in roots:
@@ -74,7 +85,7 @@ for name in roots:
     for item in (path.rglob('*') if path.is_dir() else [path]):
         rel=item.relative_to(ROOT)
         if any(p in excluded for p in rel.parts) or not item.is_file():continue
-        if rel.parts[0]=='offline' and str(rel) not in ('offline/运行镜像.tar','offline/镜像清单.json','offline/git-migration-receiver.bundle','offline/git-migration-receiver.json'):continue
+        if rel.parts[0]=='offline' and str(rel) not in ('offline/运行镜像.tar','offline/镜像清单.json','offline/frontend-navigation.json','offline/git-migration-receiver.bundle','offline/git-migration-receiver.json'):continue
         if item.is_symlink() or item.suffix in ('.pyc','.db','.key','.log') or item.name.endswith(('.db-wal','.db-shm')):continue
         files.append(item)
 records=[]
@@ -102,6 +113,7 @@ with tarfile.open(temp) as archive:
             for block in iter(lambda:stream.read(1024*1024),b''):sha.update(block)
         if sha.hexdigest()!=expected[member.name]:
             raise RuntimeError('打包期间源码发生变化，未发布混合版本：'+member.name)
+verify_archive(offline/'运行镜像.tar', archive_report)
 temp.replace(target)
 sha=hashlib.sha256()
 with target.open('rb') as stream:
