@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
 from models import db, GiteaServer, Backup, RestoreTask, RestoreStepLog
+from services.gitea_service import restore_credential_error
 from services.task_manager import task_manager
 
 restore_bp = Blueprint('restore', __name__)
@@ -96,6 +97,8 @@ def execute_restore():
         message = '备份缺少 Commit ID 快照，无法验证恢复一致性'
         if backup.commit_snapshot_error:
             message += f': {backup.commit_snapshot_error[:300]}'
+        return jsonify({'error': message}), 400
+    if message := restore_credential_error(backup, target):
         return jsonify({'error': message}), 400
 
     task = RestoreTask(

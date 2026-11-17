@@ -120,9 +120,20 @@ def containers(data):
     host,port,user=remote_parameters(data)
     if CURRENT.get(): CURRENT.get().event('检查','SSH 接入目标',地址=host,端口=port,账号=user)
     ssh=SSHService(host,port,user)
-    code,out,err=ssh.exec("docker ps -aq | xargs -r docker inspect",timeout=20)
-    if code:raise RuntimeError('远程 Docker 权限检查失败：'+err)
-    return json.loads(out or '[]')
+    inspect_format = (
+        '{"Id":{{json .Id}},"Name":{{json .Name}},"Config":{"Labels":{'
+        '"com.docker.compose.project":{{json (index .Config.Labels "com.docker.compose.project")}},'
+        '"com.docker.compose.service":{{json (index .Config.Labels "com.docker.compose.service")}}}},'
+        '"NetworkSettings":{"Ports":{{json .NetworkSettings.Ports}}},"State":{"Running":{{json .State.Running}}}}'
+    )
+    command = (
+        'ids=$(docker ps -aq --filter label=com.docker.compose.project) && '
+        'printf "%s\\n" "$ids" | xargs -r docker inspect --format ' + shlex.quote(inspect_format)
+    )
+    code, out, err = ssh.exec(command, timeout=20)
+    if code:
+        raise RuntimeError('远程 Docker 权限检查失败：' + err)
+    return [json.loads(line) for line in out.splitlines() if line.strip()]
 
 
 def discover(data):
@@ -183,6 +194,8 @@ def connection_token(data, container):
         if any(character.isspace() for character in token):
             raise ValueError('令牌中不能包含空格或换行')
         return token
+    if data.get('role') == 'backup':
+        return ''
     if data.get('mode') != 'local':
         raise ValueError('请填写目标 Gitea 已有管理员的 API Token')
 
@@ -244,7 +257,7 @@ def connect():
         if not isinstance(raw_token, str):
             raise ValueError('令牌格式无效，请粘贴 API Token 文本')
         register_secret(raw_token.strip())
-        if data['mode'] == 'ssh' and not raw_token.strip():
+        if role != 'backup' and data['mode'] == 'ssh' and not raw_token.strip():
             raise ValueError('请填写目标 Gitea 已有管理员的 API Token')
         selected=next((r for r in discover(data) if r['id']==data.get('instance_id')),None)
         if selected is None:raise ValueError('实例身份已变化，请重新发现')
@@ -256,7 +269,7 @@ def connect():
             raise ValueError('该实例已添加，请使用已有服务器')
         name=selected['name'];config=configparser.ConfigParser(interpolation=None)
         try:
-            config.read_string('[DEFAULT]\n'+exec_container(data,name,['cat','/data/gitea/conf/app.ini']))
+            config.read_string('[DEFAULT]\n'+exec_container(data, selected['id'], ['cat', '/data/gitea/conf/app.ini']))
         except configparser.Error as exc:
             raise RuntimeError('Gitea 配置格式无效：'+type(exc).__name__) from None
         url=str(data.get('gitea_url') or config.get('server','ROOT_URL')).strip()
@@ -273,8 +286,9 @@ def connect():
             instance_identity=identity,gitea_container=name,pg_container=selected['pg_container'],
             pg_dbname=pg_dbname,pg_user=pg_user,
             gitea_port=selected['port'] or parsed.port or (443 if parsed.scheme=='https' else 80),gitea_url=url,api_token=token)
-        with report.stage('验证管理 API 身份'):
-            verify_management_token(url, token)
+        if role != 'backup':
+            with report.stage('验证管理 API 身份'):
+                verify_management_token(url, token)
         server.status='online';db.session.add(server);db.session.commit()
         return {'id':server.id,'ok':True}
     return operation('添加并验证服务器',run)

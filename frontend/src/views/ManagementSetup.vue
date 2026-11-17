@@ -47,11 +47,12 @@
             <span class="field-help">填写带 http:// 或 https:// 的 Web 根地址，包含实际端口和部署子路径。</span>
           </div>
         </el-form-item>
-        <el-form-item label="管理员 API Token" :required="form.mode === 'ssh'">
+        <el-form-item :label="form.role === 'backup' ? 'Gitea API Token' : '管理员 API Token'" :required="requiresAdminToken">
           <div class="field-content">
             <el-input v-model="form.api_token" type="password" show-password autocomplete="off"
-              :placeholder="form.mode === 'ssh' ? '粘贴目标 Gitea 已有管理员的 API Token' : '可选，粘贴已有管理员的 API Token'" />
-            <span class="field-help">{{ form.mode === 'ssh' ? '使用目标 Gitea 管理员在个人设置 → 应用中生成的令牌；接入前会校验管理员身份和管理 API 权限。' : '留空时，为实例中唯一启用的管理员自动生成令牌；有多个管理员时请手动填写。' }}</span>
+              :placeholder="requiresAdminToken ? '粘贴目标 Gitea 管理员的 API Token' : '可留空'" />
+            <span v-if="form.role === 'backup'" class="field-help">接入时检查 Docker 权限和容器身份。恢复后使用备份中的源实例 Token 验证登录。</span>
+            <span v-else class="field-help">{{ form.mode === 'ssh' ? '使用目标 Gitea 管理员在个人设置 → 应用中生成的令牌；接入前会校验管理员身份和管理 API 权限。' : '留空时，为实例中唯一启用的管理员自动生成令牌；有多个管理员时请手动填写。' }}</span>
           </div>
         </el-form-item>
       </el-form>
@@ -141,7 +142,8 @@ const trustedHost = ref(false), connected = ref(false), stepsVisible = ref(false
 const busy = computed(() => Boolean(activeAction.value))
 const sshReady = computed(() => form.value.mode === 'local' || Boolean(form.value.host.trim() && form.value.ssh_user.trim() && form.value.ssh_port))
 const selectedInstance = computed(() => instances.value.find(item => item.id === selected.value && item.running))
-const canConnect = computed(() => !busy.value && Boolean(selectedInstance.value && form.value.role && (form.value.mode === 'local' || form.value.api_token.trim())))
+const requiresAdminToken = computed(() => form.value.mode === 'ssh' && Boolean(form.value.role) && form.value.role !== 'backup')
+const canConnect = computed(() => !busy.value && Boolean(selectedInstance.value && form.value.role && (!requiresAdminToken.value || form.value.api_token.trim())))
 const discoveryHint = computed(() => {
   if (activeAction.value === 'discover') return '正在通过管理连接检查实例…'
   if (!discoveryComplete.value) return '发现实例后，在下方选择要接入的 Gitea。'
@@ -153,7 +155,7 @@ const discoveryHint = computed(() => {
 const connectionHint = computed(() => {
   if (connected.value) return '可前往服务器管理查看连接状态。'
   if (!selectedInstance.value) return '先发现并选择一个运行中的实例。'
-  if (form.value.mode === 'ssh' && !form.value.api_token.trim()) return '请填写已有 Gitea 管理员的 API Token。'
+  if (requiresAdminToken.value && !form.value.api_token.trim()) return '请填写已有 Gitea 管理员的 API Token。'
   if (!form.value.role) return '请选择主服务器或备服务器。'
   return form.value.role === 'primary' ? '主服务器 · 可作为备份来源' : '备服务器 · 可作为恢复目标'
 })

@@ -24,10 +24,10 @@ except ModuleNotFoundError:
 
 from flask import Flask
 
-from models import db, Backup, GiteaServer, ScheduleLog, ScheduledTask
+from models import db, Backup, GiteaServer, RestoreTask, ScheduleLog, ScheduledTask
 from routes.restore_routes import execute_restore as execute_restore_route
 from services import commit_service
-from services.gitea_service import do_backup
+from services.gitea_service import do_backup, do_restore
 from services.schedule_runner import run_schedule_task
 
 
@@ -150,6 +150,30 @@ class BackupCommitSnapshotTestCase(unittest.TestCase):
 
         self.assertEqual(status, 400)
         self.assertIn('备份缺少 Commit ID 快照', response.get_json()['error'])
+
+    def test_backup_target_rejects_missing_source_token_before_touching_docker(self):
+        self.backup.status = 'success'
+        self.backup.commit_snapshot_status = 'success'
+        self.backup.source_api_token = '  '
+        db.session.commit()
+        with self.app.test_request_context('/restore', method='POST', json={
+            'backup_id': self.backup.id,
+            'target_server_id': self.target.id,
+        }):
+            response, status = execute_restore_route.__wrapped__()
+        self.assertEqual(status, 400)
+        self.assertIn('备份缺少源实例 API Token', response.get_json()['error'])
+        self.assertEqual(RestoreTask.query.count(), 0)
+
+        task = RestoreTask(backup_id=self.backup.id, target_server_id=self.target.id, status='running')
+        db.session.add(task)
+        db.session.commit()
+        with patch('services.gitea_service._restore_local') as restore:
+            do_restore.__wrapped__.__wrapped__(task.id)
+        restore.assert_not_called()
+        self.assertEqual(task.status, 'failed')
+        self.assertIn('备份缺少源实例 API Token', task.error_msg)
+        self.assertEqual(self.target.api_token, 'target-token')
 
     def test_schedule_stops_before_restore_when_backup_snapshot_fails(self):
         task = ScheduledTask(

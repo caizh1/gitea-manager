@@ -168,7 +168,7 @@ def main():
                     data = original.read(member.filename)
                     if member.filename.endswith('gitea-db.sql'): data += b'\nTHIS IS NOT VALID SQL;\n'
                     corrupt.writestr(member, data)
-            bad = Backup(source_server_id=source.id, filename='invalid-sql.zip', file_path=str(bad_path), status='success', commit_snapshot_status='success')
+            bad = Backup(source_server_id=source.id, source_api_token=source.api_token, filename='invalid-sql.zip', file_path=str(bad_path), status='success', commit_snapshot_status='success')
             db.session.add(bad); db.session.commit()
             restore(bad, target, expected='failed')
             git = source_container.exec_run(['git', 'ls-remote', target.gitea_url.replace('http://', 'http://progressadmin:'+password+'@')+'/progressadmin/sample-0.git'])

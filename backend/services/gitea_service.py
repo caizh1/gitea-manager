@@ -853,6 +853,12 @@ def _restore_remote(target, backup, task):
     return remote_root
 
 
+def restore_credential_error(backup, target):
+    if target.role == 'backup' and not (backup.source_api_token or '').strip():
+        return '备份缺少源实例 API Token，无法验证恢复后的登录。请配置源实例 Token 后重新备份。'
+    return None
+
+
 def _sync_restored_api_token(target, backup):
     source_token = (backup.source_api_token or '').strip()
     if not source_token:
@@ -885,9 +891,12 @@ def do_restore(task_id):
         db.session.commit()
         return
 
-    if not os.path.exists(backup.file_path):
+    input_error = restore_credential_error(backup, target)
+    if not input_error and not os.path.exists(backup.file_path):
+        input_error = 'Backup file not found'
+    if input_error:
         task.status = 'failed'
-        task.error_msg = 'Backup file not found'
+        task.error_msg = input_error
         task.completed_at = datetime.utcnow()
         update_restore_progress(task, 'failed', '恢复失败', 100, task.error_msg)
         db.session.commit()

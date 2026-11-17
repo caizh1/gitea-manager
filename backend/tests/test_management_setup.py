@@ -64,6 +64,33 @@ class ManagementTests(unittest.TestCase):
         steps=self.client.get('/api/management/diagnostics/operation/'+identifier+'/steps').json['events']
         self.assertTrue(any(x['状态']=='失败' for x in steps))
 
+    def test_remote_discovery_reads_compose_container_identity(self):
+        headers = self.login()
+        label = 'com.docker.compose.'
+        rows = [
+            {'Id': 'gitea-id', 'Name': '/隔离 Gitea',
+             'Config': {'Labels': {label + 'project': 'isolated', label + 'service': 'gitea'}},
+             'NetworkSettings': {'Ports': {'3000/tcp': [{'HostPort': '13000'}]}}, 'State': {'Running': True}},
+            {'Id': 'postgres-id', 'Name': '/隔离 PostgreSQL',
+             'Config': {'Labels': {label + 'project': 'isolated', label + 'service': 'postgres'}},
+             'NetworkSettings': {'Ports': {}}, 'State': {'Running': True}},
+        ]
+        payload = {'mode': 'ssh', 'host': 'backup.example.test'}
+        with patch('routes.management_routes.SSHService') as ssh:
+            execute = ssh.return_value.exec
+            execute.return_value = (0, '\n'.join(map(json.dumps, rows)), '')
+            response = self.client.post('/api/management/discover', json=payload, headers=headers)
+            self.assertEqual(response.status_code, 200, response.json)
+            self.assertEqual(response.json['instances'], [{
+                'id': 'gitea-id', 'name': '隔离 Gitea', 'pg_container': '隔离 PostgreSQL',
+                'port': 13000, 'project': 'isolated', 'running': True,
+            }])
+            self.assertIn('docker inspect --format', execute.call_args.args[0])
+            execute.return_value = (1, '', '测试 Docker 权限拒绝')
+            response = self.client.post('/api/management/discover', json=payload, headers=headers)
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('远程 Docker 权限检查失败', response.json['error'])
+
     def test_connect_requires_valid_role_before_discovery_or_token_creation(self):
         headers=self.login()
         with patch('routes.management_routes.discover') as discover, patch('routes.management_routes.exec_container') as execute:
@@ -88,9 +115,9 @@ class ManagementTests(unittest.TestCase):
                               'pg_container':identity+'-db','port':3000,'running':True}
                     payload={'mode':mode,'host':'gitea.example.test','ssh_port':22,'ssh_user':'root',
                              'instance_id':identity,'name':'隔离实例 '+identity,'role':role}
-                    payload['api_token'] = '已有管理员测试令牌' if mode == 'ssh' else ''
+                    payload['api_token'] = '已有管理员测试令牌' if mode == 'ssh' and role != 'backup' else ''
                     api_response=Mock(status_code=200);api_response.json.return_value={'is_admin':True}
-                    command_results = [config] if mode == 'ssh' else [
+                    command_results = [config] if mode == 'ssh' or role == 'backup' else [
                         config, 'ID Username Email IsActive\n7 existing-admin admin@example.test true\n', '隔离测试令牌',
                     ]
                     with patch('routes.management_routes.discover',return_value=[instance]), \
@@ -106,10 +133,32 @@ class ManagementTests(unittest.TestCase):
                     self.assertEqual(row.role,role)
                     self.assertEqual(row.connection_mode,mode)
                     self.assertEqual(row.is_local,mode=='local')
-                    self.assertEqual(execute.call_count,1 if mode == 'ssh' else 3)
-                    self.assertEqual(row.api_token, payload['api_token'] if mode == 'ssh' else '隔离测试令牌')
-                    if mode == 'local':
-                        self.assertIn('existing-admin', execute.call_args.args[2])
+                    self.assertEqual(execute.call_count, len(command_results))
+                    self.assertEqual(execute.call_args_list[0].args[1], identity)
+                    if role == 'backup':
+                        self.assertEqual(row.api_token, '')
+                        session.assert_not_called()
+                    else:
+                        self.assertEqual(row.api_token, payload['api_token'] or '隔离测试令牌')
+                        self.assertEqual(session.return_value.get.call_count, 2)
+                        if mode == 'local':
+                            self.assertIn('existing-admin', execute.call_args.args[2])
+
+    def test_backup_with_optional_token_uses_only_container_checks(self):
+        headers = self.login()
+        instance = {'id': 'backup-id', 'project': 'isolated', 'name': 'gitea',
+                    'pg_container': 'postgres', 'port': 3000, 'running': True}
+        config = '[server]\nROOT_URL=http://gitea.example.test:3000/\n[database]\nNAME=gitea\nUSER=gitea\n'
+        payload = {'mode': 'ssh', 'host': 'gitea.example.test', 'instance_id': instance['id'],
+                   'role': 'backup', 'api_token': '可选测试令牌'}
+        with patch('routes.management_routes.discover', return_value=[instance]), \
+             patch('routes.management_routes.exec_container', return_value=config) as execute, \
+             patch('requests.Session') as session:
+            response = self.client.post('/api/management/connect', json=payload, headers=headers)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(db.session.get(GiteaServer, response.json['id']).api_token, payload['api_token'])
+        execute.assert_called_once_with(payload, instance['id'], ['cat', '/data/gitea/conf/app.ini'])
+        session.assert_not_called()
 
     def test_remote_requires_token_before_discovery(self):
         headers = self.login()
