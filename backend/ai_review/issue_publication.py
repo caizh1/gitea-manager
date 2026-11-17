@@ -259,7 +259,7 @@ def sync_comments(publisher):
                 if not old_job or old_job['repository'] != job['repository']:
                     continue
                 if actual['body'] != payload['body']:
-                    raise ReviewError('历史版本状态写入仍无确定回执，暂停后续评论修改；以总览为准')
+                    raise PublishUnknown('历史版本状态写入仍无确定回执，等待自动核对；以总览为准')
                 change_operation(store, old_job, previous['key'], 'done', {'comment_id': link['comment_id']})
                 with store.tx() as c:
                     c.execute('UPDATE review_issue_comments SET last_body=? WHERE repository=? AND comment_id=?',
@@ -270,10 +270,12 @@ def sync_comments(publisher):
                         c.execute('UPDATE review_issue_operations SET payload=? WHERE job=? AND key=?',
                                   (encode(op['payload']), job['id'], op['key']))
             if actual['body'] != desired:
+                if op['state'] in ('started', 'unknown'):
+                    raise PublishUnknown('上次状态写入尚无确定回执，继续自动核对')
                 if actual['body'] != op['payload']['before']:
                     raise ReviewError('原评论被人工编辑或已有其他状态，未覆盖；以总览为准')
                 if op['state'] != 'queued':
-                    raise ReviewError('上次状态写入结果未确认，仅回读而不重复写入')
+                    raise PublishUnknown('上次状态写入结果未确认，继续自动核对')
                 assert_version(client, job['number'], snapshot)
                 change_operation(store, job, op['key'], 'started')
                 op['state'] = 'started'
@@ -292,6 +294,12 @@ def sync_comments(publisher):
             assert_version(client, job['number'], snapshot)
         except (Stale, AccessRevoked):
             raise
+        except PublishUnknown as exc:
+            state = 'unknown' if op['state'] in ('started', 'unknown') else 'queued'
+            change_operation(store, job, op['key'], state, error=str(exc))
+            with store.tx() as c:
+                c.execute('UPDATE review_issue_comments SET error=? WHERE repository=? AND comment_id=?',
+                          (str(exc), job['repository'], link['comment_id']))
         except WriteRejected as exc:
             change_operation(store, job, op['key'], 'queued' if getattr(exc, 'retryable', False) else 'conflict', error=str(exc))
             with store.tx() as c:

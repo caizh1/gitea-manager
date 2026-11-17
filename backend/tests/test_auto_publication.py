@@ -246,3 +246,29 @@ def test_new_version_waits_for_old_comment_receipt_then_updates_it(case):
     assert case.store.job(case.job['id'])['status'] == 'succeeded'
     assert len(case.client.reviews) == 1
     assert '已修复' in case.client.code[1][0]['body']
+
+
+def test_delayed_patch_receipt_keeps_newer_state_pending(case):
+    result(case)
+    send(case)
+    original = case.client.code[1][0]['body']
+    next_version(case, False, 'fixed')
+    old_id = case.job['id']
+    case.client.fail_after = 'edit'
+    with pytest.raises(PublishUnknown):
+        send(case)
+    repaired = case.client.code[1][0]['body']
+    case.client.code[1][0]['body'] = original
+    with case.store.tx() as c:
+        c.execute("UPDATE jobs SET status='publish_unknown',owner='',lease=0,available=0 WHERE id=?", (old_id,))
+    next_version(case, True, 'present')
+    with pytest.raises(PublishUnknown):
+        send(case)
+    with case.store.connect() as c:
+        state = c.execute("SELECT state FROM review_issue_operations WHERE job=? AND kind='edit'", (case.job['id'],)).fetchone()[0]
+    assert state == 'queued'
+    case.client.code[1][0]['body'] = repaired
+    retry(case)
+    assert case.store.job(case.job['id'])['status'] == 'succeeded'
+    assert '仍存在' in case.client.code[1][0]['body']
+    assert len(case.client.reviews) == 1
