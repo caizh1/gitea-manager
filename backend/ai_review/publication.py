@@ -84,7 +84,7 @@ def plan_summary(store, client, job, repo, body):
 
 def prepare(store, client, job, repo):
     from .publish import Publisher
-    from .issue_publication import plan_new, plan_edits
+    from .issue_publication import plan_new, plan_edits, operation
     with contextlib.closing(store.connect()) as c:
         saved = c.execute('SELECT value FROM review_publication_plans WHERE job=?', (job['id'],)).fetchone()
     if saved:
@@ -102,6 +102,14 @@ def prepare(store, client, job, repo):
     # 旧任务已冻结的选择只影响其原发布载荷，新任务发布所有成立意见。
     plan_new(publisher)
     plan_edits(publisher)
+    with contextlib.closing(store.connect()) as c:
+        waiting = [row for row in observations(store, job) if not c.execute(
+            'SELECT 1 FROM review_issue_comments WHERE issue=?', (row['issue'],)).fetchone()
+            and c.execute("""SELECT 1 FROM review_issue_operations o,json_each(o.payload,'$.comments') f
+                WHERE o.job!=? AND o.kind='create' AND o.state IN ('started','unknown')
+                  AND json_extract(f.value,'$.issue')=?""", (job['id'], row['issue'])).fetchone()]
+    for row in waiting:
+        operation(store, job, 'link-' + row['issue'], 'link', row)
     value = {'result': result, 'overview': overview(store, job, result)}
     plan_summary(store, client, job, repo, value['overview'])
     with store.tx() as c:
@@ -109,6 +117,26 @@ def prepare(store, client, job, repo):
         c.execute('INSERT OR IGNORE INTO review_publication_plans VALUES (?,?,?)', (job['id'], encode(value), time.time()))
     store.update(job['id'], job['owner'], result=dict(job['result'], publication=result))
     return value
+
+
+def resolve_links(store, job):
+    """旧版本回执出现后，用本任务已经冻结的状态更新该条讨论。"""
+    from .issue_publication import operation, change_operation, status_block
+    with contextlib.closing(store.connect()) as c:
+        pending = c.execute("SELECT * FROM review_issue_operations WHERE job=? AND kind='link' AND state='queued'",
+                            (job['id'],)).fetchall()
+    for row in pending:
+        desired = json.loads(row['payload'])
+        with contextlib.closing(store.connect()) as c:
+            comment = c.execute('SELECT * FROM review_issue_comments WHERE issue=?', (desired['issue'],)).fetchone()
+        if not comment:
+            continue
+        body = comment['original_body'] + status_block(desired['issue'], desired['status'], desired['reason'],
+            job['snapshot'], job['snapshot'].get('anchors', {}).get(desired.get('anchor_id')))
+        operation(store, job, 'edit-' + str(comment['comment_id']), 'edit',
+                  {'comment_id': comment['comment_id'], 'review_id': comment['review_id'],
+                   'before': comment['last_body'], 'body': body})
+        change_operation(store, job, row['key'], 'done', {'comment_id': comment['comment_id']})
 
 
 def publish_summary(store, client, job, repo):
@@ -186,6 +214,7 @@ def publish(store, client, job, repo):
             publish_new(publisher, recovery=False)
         except PublishUnknown:
             pass
+        resolve_links(store, job)
         sync_comments(publisher)
         publish_summary(store, client, job, repo)
         with contextlib.closing(store.connect()) as c:

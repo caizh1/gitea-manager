@@ -223,3 +223,26 @@ def test_unknown_receipt_alert_is_deduplicated(case):
         assert c.execute('SELECT count(*) FROM review_publication_alerts').fetchone()[0] == 1
     assert case.store.job(case.job['id'])['status'] == 'publish_unknown'
     assert case.store.job(case.job['id'])['publication_status']['alert']
+
+
+def test_new_version_waits_for_old_comment_receipt_then_updates_it(case):
+    result(case)
+    old_id = case.job['id']
+    case.client.fail_after = 'COMMENT'
+    with pytest.raises(PublishUnknown):
+        send(case)
+    old_reviews = case.client.reviews
+    case.client.reviews = []
+    with case.store.tx() as c:
+        c.execute("UPDATE jobs SET status='publish_unknown',owner='',lease=0,available=0 WHERE id=?", (old_id,))
+    next_version(case, False, 'fixed')
+    with pytest.raises(PublishUnknown):
+        send(case)
+    assert case.store.job(case.job['id'])['status'] == 'publishing'
+    case.client.reviews = old_reviews
+    with patch('ai_review.worker.client_for', return_value=case.client), patch('ai_review.worker.refresh_pr'):
+        resume(case.store, case.store.job(old_id))
+    retry(case)
+    assert case.store.job(case.job['id'])['status'] == 'succeeded'
+    assert len(case.client.reviews) == 1
+    assert '已修复' in case.client.code[1][0]['body']

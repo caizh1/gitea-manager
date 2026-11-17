@@ -288,7 +288,7 @@ def reconcile(store, client, job, repo, snapshot, result, runner=None):
                 continue
             has_comment = c.execute('SELECT 1 FROM review_issue_comments WHERE issue=?', (ident,)).fetchone()
             attempted = c.execute("""SELECT 1 FROM review_issue_operations p,json_each(p.payload,'$.comments') x
-                WHERE p.kind='create' AND p.state!='queued' AND json_extract(x.value,'$.issue')=? LIMIT 1""", (ident,)).fetchone()
+                WHERE p.kind='create' AND p.state IN ('started','unknown','done') AND json_extract(x.value,'$.issue')=? LIMIT 1""", (ident,)).fetchone()
             if not has_comment and not attempted:
                 publish_ids.add(ident)
         lifecycle['publish_ids'] = sorted(publish_ids)
