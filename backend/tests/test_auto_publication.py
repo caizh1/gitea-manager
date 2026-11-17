@@ -78,12 +78,21 @@ def result(case, findings=True):
 
 
 def send(case):
-    publish(case.store, case.client, case.job, case.repo_value)
+    try:
+        publish(case.store, case.client, case.job, case.repo_value)
+    except PublishUnknown as error:
+        # 模拟 Worker 的失败落盘，以及无原生执行器的测试任务占位回收。
+        case.store.finish(case.job['id'], case.job['owner'], 'publish_unknown', str(error))
+        from ai_review.concurrency import reap
+        reap(case.store)
+        raise
 
 
 def retry(case):
     with case.store.tx() as c:
         c.execute("UPDATE jobs SET status='publish_unknown',owner='',lease=0,available=0 WHERE id=?", (case.job['id'],))
+    from ai_review.concurrency import reap
+    reap(case.store)
     with patch('ai_review.worker.client_for', return_value=case.client), patch('ai_review.worker.refresh_pr'):
         resume(case.store, case.store.job(case.job['id']))
 
@@ -206,6 +215,8 @@ def test_unknown_receipt_allows_new_codex_analysis(case):
     with case.store.tx() as c:
         c.execute("UPDATE jobs SET status='publish_unknown',owner='',lease=0 WHERE id=?", (case.job['id'],))
     new = case.store.enqueue(case.repo, 1, {'head': 'f'*40, 'base': 'b'*40})
+    from ai_review.concurrency import reap
+    reap(case.store)
     assert case.store.claim()['id'] == new
 
 
@@ -238,7 +249,7 @@ def test_new_version_waits_for_old_comment_receipt_then_updates_it(case):
     next_version(case, False, 'fixed')
     with pytest.raises(PublishUnknown):
         send(case)
-    assert case.store.job(case.job['id'])['status'] == 'publishing'
+    assert case.store.job(case.job['id'])['status'] == 'publish_unknown'
     case.client.reviews = old_reviews
     with patch('ai_review.worker.client_for', return_value=case.client), patch('ai_review.worker.refresh_pr'):
         resume(case.store, case.store.job(old_id))

@@ -47,6 +47,8 @@ class LifecycleTests(unittest.TestCase):
         self.calls = 0
 
     def begin(self, new='int f(void) { return 1; }\n'):
+        from ai_review.concurrency import reap
+        reap(self.store)
         self.version += 1
         head = f'{self.version:040x}'
         self.store.enqueue(self.repo, 1, {'head': head, 'base': 'b'*40})

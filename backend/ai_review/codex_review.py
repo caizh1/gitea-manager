@@ -56,7 +56,12 @@ def _prompt(snapshot, phase="primary", candidates=None):
             + "\n完整 PR diff\n" + snapshot["diff"]
         )
         if phase.startswith("refutation-"):
-            text += "\n独立核对以下候选的触发路径、保护条件及严重级别。仅返回仍成立的候选，排除时说明依据。\n" + encode(candidates)
+            text += (
+                "\n本会话只独立核对给定的一个候选，检查其触发路径、根因、保护条件及严重级别，不新增其他问题。"
+                "成立时返回该候选并尽量沿用原代码定位，其他源码证据写入正文；"
+                "可根据影响调整 priority，正文说明级别依据。"
+                "排除时 findings 为空，overall_explanation 说明依据。\n"
+            ) + encode(candidates)
         return text
     if phase == "primary" and snapshot.get("codex_tools") == "native":
         return (
@@ -80,7 +85,7 @@ P0/P1 仅限当前代码、支持范围内可达且有固定源码证据、严�
         ).replace("每项引用先调用 read 实际读取对应行。", "每项引用先通过原生工具实际读取对应行。")
     if phase.startswith("refutation-"):
         text += (
-            "\n独立反证任务。独立核对下列单个候选，搜索调用约束与已有保护。仅返回该候选是否仍然成立，成立时沿用相同代码定位，排除时 findings 为空，overall_explanation 说明依据与反证过程。\n"
+            "\n独立反证任务。独立核对下列单个候选，搜索调用约束与已有保护。仅返回该候选是否仍然成立，成立时尽量沿用相同代码定位并按核对后的影响填写 priority，排除时 findings 为空，overall_explanation 说明依据与反证过程。\n"
             + encode(candidates)
         )
     text += "\n固定版本信息\n" + encode(
@@ -185,6 +190,33 @@ def normalize(raw, snapshot, workspace):
         item["fingerprint"] = digest({"path": relative, "title": title, "body": body})
         rows.append(item)
     return rows
+
+
+def refutation_result(raw, snapshot, workspace, candidate):
+    """核对单个候选，允许同一源码区间的定位细化并采用复核级别。"""
+    verified = normalize(raw, snapshot, workspace)
+    if len(verified) > 1:
+        raise IncompleteReview("独立反证返回多个问题，无法对应当前单个候选")
+    record = {"candidate": candidate["title"], "retained": bool(verified),
+              "reason": raw.get("overall_explanation", ""),
+              "evidence_reads": raw.get("_codex_reads", [])}
+    if not verified:
+        return None, record
+    checked = verified[0]
+    original = candidate["support"][0]
+    support = checked["support"][0]
+    same_source = checked["path"] == candidate["path"] and support["side"] == original["side"]
+    overlap = max(original["line_start"], support["line_start"]) <= min(original["line_end"], support["line_end"])
+    if not same_source or not overlap:
+        raise IncompleteReview("独立反证的源码区间与候选不相交，无法确认是同一问题")
+    # 行内评论沿用已经校验的原定位，复核定位及正文独立留档。
+    updated = dict(candidate, **{key: checked[key] for key in
+                   ("severity", "title", "trigger", "explanation", "impact", "comment_markdown")})
+    updated["fingerprint"] = digest({"path": updated["path"], "title": updated["title"], "body": updated["explanation"]})
+    record.update(original_location=original, reviewed_location=support,
+                  location_adjusted=(original != support), severity_before=candidate["severity"],
+                  severity_after=updated["severity"], finding=checked)
+    return updated, record
 
 
 def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
@@ -358,26 +390,12 @@ def process(store, job):
             checked = phases.get(phase) or run_phase(
                 store, job, config, snapshot, workspace, phase, [candidate]
             )
-            verified = normalize(checked, snapshot, workspace)
-            # 每个独立会话只核对一个候选，避免依赖模型原样保留人工编号。
-            if verified:
-                original = candidate["support"][0]
-                if any(
-                    item["path"] != candidate["path"]
-                    or item["support"][0]["line_start"] != original["line_start"]
-                    for item in verified
-                ):
-                    raise IncompleteReview("独立反证返回了不同位置的问题，保留未完成状态")
-            else:
+            verified, checked_result = refutation_result(checked, snapshot, workspace, candidate)
+            if verified is None:
                 rejected.add(index)
-            refutations.append(
-                {
-                    "candidate": candidate["title"],
-                    "retained": bool(verified),
-                    "reason": checked.get("overall_explanation", ""),
-                    "evidence_reads": checked.get("_codex_reads", []),
-                }
-            )
+            else:
+                findings[index] = verified
+            refutations.append(checked_result)
         findings = [finding for index, finding in enumerate(findings) if index not in rejected]
         store.update(job["id"], job["owner"], snapshot=snapshot)
         report = "VERDICT: " + ("FAIL" if any(f["severity"] in ("P0", "P1") for f in findings) else "PASS")
