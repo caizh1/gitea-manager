@@ -51,6 +51,7 @@ function fixture(url, method) {
   if (p === '/api/ai-review/statistics') return null
   if (p === '/api/ai-review/tasks') return { items: [publicationTask], total: 1 }
   if (p === '/api/ai-review/tasks/navigation-git-failure') return gitFailureTask
+  if (p === '/api/ai-review/tasks/navigation-git-failure/issues') return []
   if (p === '/api/ai-review/tasks/navigation-publication/publication-preview') return {
     job: publicationTask.id, head: 'a'.repeat(40), preview_hash: '隔离预览摘要',
     status_changes: [{ issue: 'navigation-issue', title: '隔离发布意见', status: 'active', reason: '核对弹窗显示' }],
