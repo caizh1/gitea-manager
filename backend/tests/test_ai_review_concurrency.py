@@ -219,3 +219,23 @@ def test_immediate_continuation_keeps_and_adopts_its_slot(setup):
     assert current['id'] == job_id
     assert current['owner'] != old['owner']
     assert concurrency.status(store)['occupied'] == 1
+
+
+def test_push_during_expired_lease_recovery_never_resurrects_old_job(setup, monkeypatch):
+    store, repo = setup
+    ident = enqueue(store, repo, 1)
+    store.claim()
+    with store.tx() as connection:
+        connection.execute('UPDATE jobs SET lease=0 WHERE id=?', (ident,))
+    original = store.job
+    pushed = False
+    def read_then_push(job_id, **kwargs):
+        nonlocal pushed
+        value = original(job_id, **kwargs)
+        if not pushed:
+            pushed = True
+            store.enqueue(repo['id'], 1, {'head': 'new', 'base': '0'})
+        return value
+    monkeypatch.setattr(store, 'job', read_then_push)
+    concurrency.reap(store)
+    assert original(ident)['status'] == 'superseded'

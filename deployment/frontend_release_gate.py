@@ -57,12 +57,14 @@ def verify_frontend(image):
         if info['Architecture'] != 'amd64' or info['Os'] != 'linux':
             raise RuntimeError('前端发版镜像必须为 Linux amd64')
         report['镜像ID'] = info['Id']
+        # Docker containerd 的平台检查返回子清单 ID，启动使用本地可寻址的索引 ID。
+        local_id = json.loads(command(['docker', 'image', 'inspect', image]))[0]['Id']
         container = command([
             'docker', 'run', '-d', '--rm', '--platform', 'linux/amd64',
             '--label', 'io.gitea-manager.frontend-release-test=true',
             '--read-only', '--tmpfs', '/tmp:rw,mode=1777',
             '--tmpfs', '/var/cache/nginx:rw,mode=1777', '--tmpfs', '/var/run:rw,mode=1777',
-            '-p', '127.0.0.1::80', info['Id'],
+            '-p', '127.0.0.1::80', '--pull', 'never', local_id,
         ]).strip()
         runtime = json.loads(command(['docker', 'inspect', container]))[0]
         binding = runtime['NetworkSettings']['Ports']['80/tcp'][0]
