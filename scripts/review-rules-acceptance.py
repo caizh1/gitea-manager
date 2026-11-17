@@ -38,7 +38,8 @@ def corpus():
     rows = []
     for number, (name, rule, args, bad, good, inputs, expected) in enumerate(GROUPS, 1):
         for defect, body in ((True, bad), (False, good)):
-            rows.append({'id': f'r{number:02d}-' + ('defect' if defect else 'control'),
+            ident = 'r' + hashlib.sha256((name + str(defect)).encode()).hexdigest()[:10]
+            rows.append({'id': ident,
                          'group': number, '名称': name, '规则': '# 项目审查要求\n\n' + rule + '\n',
                          '存在缺陷': defect, '原代码': f'def convert({args}):\n    pass\n',
                          '代码': f'def convert({args}):\n    return {body}\n',
