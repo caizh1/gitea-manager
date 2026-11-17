@@ -15,7 +15,7 @@ import pytest
 from ai_review.diagnostics import safe_remote
 from ai_review.common import ReviewError
 from ai_review.model_transport import ModelTransportError
-from ai_review.responses import ResponseStream, register
+from ai_review.responses import ResponseStream, http_error, register
 from ai_review.store import Store
 from ai_review.worker import _failure_diagnostic
 
@@ -25,6 +25,7 @@ from backend_responses import ResponseStream as RuntimeResponseStream
 from codex_session import CodexRun
 from native_session import NativeError
 from raw_diagnostics import RawDiagnostics
+from native_gateway import decode_upstream_error
 
 
 @pytest.mark.parametrize("parser_type", [ResponseStream, RuntimeResponseStream])
@@ -130,6 +131,22 @@ def test_codex_error_and_stderr_are_kept_without_local_credentials(tmp_path):
     assert "private-capability-value" not in saved
     assert "private-gateway-value" not in saved
     assert run.stderr_bytes > 0
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+def test_http_error_body_is_bounded_redacted_and_decodable(oversized):
+    secret = "private-upstream-key"
+    body = json.dumps({"error": {"code": "invalid_parameter", "message": "参数错误 " + secret}},
+                      ensure_ascii=False).encode()
+    if oversized:
+        body += b" " * (256 * 1024)
+    transport = SimpleNamespace(status=400, safe_headers={}, chunks=lambda _: iter([body]))
+    error = http_error(transport, lambda: None, "call-12345678", secret)
+    details, raw = decode_upstream_error({"_review_upstream_error": error.upstream_error}, "call-12345678")
+    assert secret.encode() not in raw
+    assert "参数错误".encode() in raw
+    assert len(raw) <= 128 * 1024
+    assert details["error_truncated"] is oversized
 
 
 def test_codex_finalizes_diagnostics_before_failure_is_visible():

@@ -1,5 +1,6 @@
 """Codex Responses 网关，沿用任务授权并记录完整终态。"""
 
+import base64
 import hashlib
 import contextlib
 import json
@@ -9,7 +10,7 @@ import time
 from flask import Response, jsonify, request, stream_with_context
 
 from .common import ReviewError, encode, endpoint
-from .model_transport import ModelTransportError, open_model_stream
+from .model_transport import ERROR_BODY_LIMIT, ModelTransportError, open_model_stream
 
 
 def protocol_error(message, reason, **details):
@@ -143,6 +144,49 @@ def record_failure(store, job, call_id, exc, transport, phase):
     return diagnostic
 
 
+def http_error(transport, guard, call_id, key):
+    """复用原生网关错误封套，保留受限上游正文供管理员定位。"""
+    from .broker import upstream_error_identity
+    from .diagnostics import safe_remote
+
+    raw = bytearray()
+    secondary = None
+    try:
+        for chunk in transport.chunks(guard):
+            raw.extend(chunk[:max(0, ERROR_BODY_LIMIT + 1 - len(raw))])
+            if len(raw) > ERROR_BODY_LIMIT:
+                break
+    except ModelTransportError as exc:
+        secondary = exc.kind
+    original = bytes(raw)
+    if key:
+        original = original.replace(key.encode(), b"[credential-removed]")
+    captured = original[:ERROR_BODY_LIMIT]
+    try:
+        value = json.loads(captured)
+    except (ValueError, UnicodeError):
+        value = {}
+    error_type, error_code = upstream_error_identity(value.get("error") if isinstance(value, dict) else None, key)
+    envelope = {
+        "call_id": call_id, "error_code": "MODEL_HTTP_ERROR", "source": "model_upstream",
+        "phase": "response_headers", "reason": "upstream_http_error",
+        "upstream_http_status": transport.status, "error_bytes": len(captured),
+        "captured_bytes": len(captured), "error_sha256": hashlib.sha256(captured).hexdigest(),
+        "captured_sha256": hashlib.sha256(captured).hexdigest(),
+        "error_truncated": len(original) > len(captured),
+        "declared_error_bytes": len(original),
+        "raw_b64": base64.b64encode(captured).decode(),
+        "headers": getattr(transport, "safe_headers", {}),
+        "upstream_error_type": error_type, "upstream_error_code": error_code,
+        "secondary_exception_type": secondary,
+    }
+    error = ReviewError("模型服务返回 HTTP 错误")
+    error.error_code = "MODEL_HTTP_ERROR"
+    error.diagnostic = safe_remote(envelope)
+    error.upstream_error = envelope
+    return error
+
+
 def register(app, store):
     @app.post("/v1/responses")
     def responses():
@@ -260,19 +304,16 @@ def register(app, store):
                 from .thinking import codex_effort
 
                 outbound["reasoning"] = {"effort": codex_effort(config)}
+            upstream_key = store.unseal(config["api_key"])
             transport = open_model_stream(
                 endpoint(config["api_base_url"], "AI_REVIEW_MODEL_HOSTS") + "/responses",
                 outbound,
-                store.unseal(config["api_key"]),
+                upstream_key,
                 timeout=min(config["model_request_timeout_seconds"], cap["expires"] - time.time()),
                 heartbeat=guard,
             )
             if transport.status != 200:
-                error = ReviewError(f"Responses 服务返回 HTTP {transport.status}")
-                error.error_code = "MODEL_HTTP_ERROR"
-                error.diagnostic = {"source": "model_upstream", "reason": "upstream_http_error",
-                                    "upstream_http_status": transport.status}
-                raise error
+                raise http_error(transport, guard, call_id, upstream_key)
             collector = ResponseStream(config.get("model_response_max_mib", 8) * 1024 * 1024,
                                        native_tools=native_tools)
 
@@ -332,8 +373,11 @@ def register(app, store):
                         "UPDATE review_native_calls SET status='failed',updated=? WHERE call_id=?",
                         (time.time(), call_id),
                     )
-            return jsonify(error={"code": diagnostic["error_code"], "message": diagnostic["message"]},
-                           diagnostic=diagnostic), 400
+            result = {"error": {"code": diagnostic["error_code"], "message": diagnostic["message"]},
+                      "diagnostic": diagnostic}
+            if getattr(exc, "upstream_error", None):
+                result["_review_upstream_error"] = exc.upstream_error
+            return jsonify(result), 400
 
 
 def verify_connection(store, config):

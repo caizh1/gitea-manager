@@ -119,6 +119,11 @@ class Gateway:
                                 value = response.json()
                                 if isinstance(value, dict) and isinstance(value.get("diagnostic"), dict):
                                     diagnostic.update(value["diagnostic"])
+                                    from native_gateway import decode_upstream_error
+                                    upstream = decode_upstream_error(value, diagnostic.get("call_id"))
+                                    if upstream is not None:
+                                        details, original = upstream
+                                        run.raw_diagnostics.model_upstream_error(original, details)
                             except (ValueError, requests.RequestException):
                                 pass
                             run.diagnostic = diagnostic
