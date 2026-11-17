@@ -79,8 +79,9 @@ def reap(store):
                 if current['status'] == 'running' and current['attempts'] < 3:
                     # 原 Worker 已退出，保留同一会话与目录，新的 owner 继续核对原回执。
                     with store.tx() as connection:
-                        connection.execute("UPDATE jobs SET status='queued',owner='',lease=0,available=? WHERE id=? AND owner=? AND lease<?", (time.time(), job['id'], job['slot_owner'], time.time()))
-                        connection.execute("UPDATE review_execution_slots SET owner='' WHERE job=? AND owner=?", (job['id'], job['slot_owner']))
+                        changed = connection.execute("UPDATE jobs SET status='queued',owner='',lease=0,available=? WHERE id=? AND owner=? AND status='running' AND lease<?", (time.time(), job['id'], job['slot_owner'], time.time())).rowcount
+                        if changed:
+                            connection.execute("UPDATE review_execution_slots SET owner='' WHERE job=? AND owner=?", (job['id'], job['slot_owner']))
                     continue
                 if current.get('session_id'):
                     from .native_review import cancel_session
