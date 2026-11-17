@@ -50,7 +50,8 @@ def freeze(store, job, snapshot, workspace):
     rules = dict(protocol=PROTOCOL, path=PATH, source_commit=valid_sha(snapshot['base']),
                  status='missing', sha256=None, content='')
     try:
-        check = lambda: store.active(job['id'], job['owner'])
+        def check():
+            store.active(job['id'], job['owner'])
         entry = run_git(['ls-tree', '-z', rules['source_commit'], '--', PATH], cwd=workspace, check=check)
         if entry:
             metadata, path = entry.rstrip(b'\0').split(b'\t', 1)

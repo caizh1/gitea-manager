@@ -228,8 +228,9 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
         )
     if job.get("rules_protocol"):
         from .repository_rules import check_input, validate
-        validate(snapshot)
-        check_input(instructions, config)
+        rules = validate(snapshot)
+        if rules["status"] == "loaded":
+            check_input(instructions, config)
     store.update(
         job["id"],
         job["owner"],
