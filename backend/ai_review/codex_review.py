@@ -380,7 +380,7 @@ def process(store, job):
         findings = [finding for index, finding in enumerate(findings) if index not in rejected]
         store.update(job["id"], job["owner"], snapshot=snapshot)
         report = "VERDICT: " + ("FAIL" if any(f["severity"] in ("P0", "P1") for f in findings) else "PASS")
-        report += "\n\n成立问题 " + str(len(findings)) + " 项。"
+        report += "\n\n本轮主审成立问题 " + str(len(findings)) + " 项。"
         for finding in findings:
             report += "\n\n" + finding["title"] + "\n" + finding["explanation"]
         if not snapshot["coverage"]["complete"]:
