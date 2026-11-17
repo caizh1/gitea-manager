@@ -152,6 +152,31 @@ class UninstallTests(unittest.TestCase):
     def test_unknown_volume(self):
         with self.assertRaisesRegex(RuntimeError, '未知数据卷'): self.cleaner(unknown=True).inventory()
 
+    def test_legacy_volumes_use_same_ownership_checks(self):
+        for suffix in ('gitea-manager-data', 'review-native'):
+            for shared in (False, True):
+                with self.subTest(suffix=suffix, shared=shared):
+                    cleaner = u.Cleaner(None, 'manager', 'gitea-manager')
+                    volume = 'gitea-manager_' + suffix
+
+                    def docker(*args):
+                        if args[:2] == ('ps', '-aq'):
+                            if args[-1] == 'volume=' + volume and shared:
+                                return 'own foreign'
+                            return 'own'
+                        if args[:2] == ('volume', 'ls'):
+                            return volume
+                        if args[:2] == ('network', 'ls'):
+                            return 'network'
+                        raise AssertionError(args)
+
+                    cleaner.docker = docker
+                    if shared:
+                        with self.assertRaisesRegex(RuntimeError, '其他实例'):
+                            cleaner.inventory()
+                    else:
+                        self.assertEqual(cleaner.inventory()['volume'], [volume])
+
     def test_changed_plan(self):
         with self.assertRaisesRegex(RuntimeError, '资源发生变化'): self.cleaner().remove({})
 

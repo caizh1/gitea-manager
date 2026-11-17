@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from flask import Flask, g
 from tests.access_helpers import init_test_auth as init_auth, login_platform
 from models import db, GiteaServer
-from routes.management_routes import management_bp
+from routes.management_routes import management_bp, connection_token
 from routes.server_routes import server_to_dict
 import paramiko
 import time
@@ -88,11 +88,17 @@ class ManagementTests(unittest.TestCase):
                               'pg_container':identity+'-db','port':3000,'running':True}
                     payload={'mode':mode,'host':'gitea.example.test','ssh_port':22,'ssh_user':'root',
                              'instance_id':identity,'name':'隔离实例 '+identity,'role':role}
+                    payload['api_token'] = '已有管理员测试令牌' if mode == 'ssh' else ''
                     api_response=Mock(status_code=200);api_response.json.return_value={'is_admin':True}
+                    command_results = [config] if mode == 'ssh' else [
+                        config, 'ID Username Email IsActive\n7 existing-admin admin@example.test true\n', '隔离测试令牌',
+                    ]
                     with patch('routes.management_routes.discover',return_value=[instance]), \
                          patch('routes.management_routes.get_setting',return_value='127.0.0.1'), \
-                         patch('routes.management_routes.exec_container',side_effect=[config,'隔离测试令牌']) as execute, \
+                         patch('routes.management_routes.exec_container',side_effect=command_results) as execute, \
                          patch('requests.Session') as session:
+                        session.return_value.__enter__ = Mock(return_value=session.return_value)
+                        session.return_value.__exit__ = Mock(return_value=False)
                         session.return_value.get.return_value=api_response
                         response=self.client.post('/api/management/connect',json=payload,headers=headers)
                     self.assertEqual(response.status_code,200,response.json)
@@ -100,7 +106,86 @@ class ManagementTests(unittest.TestCase):
                     self.assertEqual(row.role,role)
                     self.assertEqual(row.connection_mode,mode)
                     self.assertEqual(row.is_local,mode=='local')
-                    self.assertEqual(execute.call_count,2)
+                    self.assertEqual(execute.call_count,1 if mode == 'ssh' else 3)
+                    self.assertEqual(row.api_token, payload['api_token'] if mode == 'ssh' else '隔离测试令牌')
+                    if mode == 'local':
+                        self.assertIn('existing-admin', execute.call_args.args[2])
+
+    def test_remote_requires_token_before_discovery(self):
+        headers = self.login()
+        with patch('routes.management_routes.discover') as discover:
+            for token in ('', '  ', None, 123):
+                response = self.client.post('/api/management/connect', headers=headers,
+                    json={'mode': 'ssh', 'role': 'primary', 'api_token': token})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('Token', response.json['error'])
+            discover.assert_not_called()
+
+    def test_manual_token_never_creates_users_or_tokens(self):
+        with patch('routes.management_routes.exec_container') as execute:
+            for mode in ('local', 'ssh'):
+                self.assertEqual(connection_token({'mode': mode, 'api_token': ' 已有令牌 '}, 'gitea'), '已有令牌')
+            execute.assert_not_called()
+
+    def test_local_multiple_or_inactive_admins_require_manual_token(self):
+        listings = [
+            'ID Username Email IsActive\n',
+            'ID Username Email IsActive\n1 first first@example.test true\n2 second second@example.test true\n',
+            'ID Username Email IsActive\n1 inactive inactive@example.test false\n',
+        ]
+        for listing in listings:
+            with self.subTest(listing=listing), patch('routes.management_routes.exec_container', return_value=listing) as execute:
+                with self.assertRaisesRegex(ValueError, 'API Token'):
+                    connection_token({'mode': 'local'}, 'gitea')
+                execute.assert_called_once()
+
+    def test_remote_rejects_invalid_identity_and_scopes_without_saving(self):
+        import requests
+        headers = self.login()
+        config = '[server]\nROOT_URL=http://gitea.example.test:3000/\n[database]\nNAME=gitea\nUSER=gitea\n'
+        instance = {'id': 'isolated', 'project': 'isolated', 'name': 'gitea',
+                    'pg_container': 'postgres', 'port': 3000, 'running': True}
+        payload = {'mode': 'ssh', 'host': 'gitea.example.test', 'instance_id': 'isolated',
+                   'role': 'primary', 'api_token': '不应进入诊断的测试令牌'}
+        cases = [
+            (Mock(status_code=401), None, '无效或已撤销'),
+            (Mock(status_code=403), None, '读取用户信息'),
+            (Mock(status_code=302), None, '访问地址'),
+            (Mock(status_code=200, json=Mock(return_value={'is_admin': False})), None, '管理员权限'),
+            (Mock(status_code=200, json=Mock(side_effect=ValueError('无效数据'))), None, 'Web 根地址'),
+            (Mock(status_code=200, json=Mock(return_value=[])), None, '管理员权限'),
+            (Mock(status_code=200, json=Mock(return_value={'is_admin': True})), Mock(status_code=403), '管理员 API'),
+        ]
+        for user_response, admin_response, expected in cases:
+            with self.subTest(expected=expected), patch('routes.management_routes.discover', return_value=[instance]), \
+                    patch('routes.management_routes.exec_container', return_value=config) as execute, \
+                    patch('requests.Session') as session:
+                client = session.return_value.__enter__.return_value
+                client.get.side_effect = [user_response, admin_response]
+                response = self.client.post('/api/management/connect', json=payload, headers=headers)
+                self.assertEqual(response.status_code, 400, response.json)
+                self.assertIn(expected, response.json['error'])
+                self.assertEqual(GiteaServer.query.count(), 0)
+                execute.assert_called_once()
+        with patch('routes.management_routes.discover', return_value=[instance]), \
+                patch('routes.management_routes.exec_container', return_value=config), patch('requests.Session') as session:
+            session.return_value.__enter__.return_value.get.side_effect = requests.ConnectionError(payload['api_token'])
+            response = self.client.post('/api/management/connect', json=payload, headers=headers)
+            self.assertEqual(response.status_code, 400)
+            self.assertNotIn(payload['api_token'], response.get_data(as_text=True))
+            for path in (self.root / 'diagnostics').rglob('*'):
+                if path.is_file() and path.suffix in ('.json', '.jsonl', '.md'):
+                    self.assertNotIn(payload['api_token'], path.read_text())
+
+    def test_stopped_instance_rejected_before_configuration(self):
+        headers = self.login()
+        with patch('routes.management_routes.discover', return_value=[{'id': 'stopped', 'running': False}]), \
+                patch('routes.management_routes.exec_container') as execute:
+            response = self.client.post('/api/management/connect', headers=headers,
+                json={'mode': 'ssh', 'role': 'primary', 'instance_id': 'stopped', 'api_token': '已有管理员令牌'})
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('未运行', response.json['error'])
+            execute.assert_not_called()
 
     def test_api_token_never_serialized(self):
         row=GiteaServer(name='隔离实例',host='127.0.0.1',ssh_user='root',gitea_port=3000,gitea_url='http://127.0.0.1:3000',api_token='仅测试秘密')

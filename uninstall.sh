@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 仅用于本安装包创建的实例；两次确认由卸载程序执行。
+# 按 Docker 归属识别新旧 Manager 实例；两次确认由卸载程序执行。
 set -Eeuo pipefail
 umask 077
 SCRIPT_ROOT="$(cd -- "$(dirname -- "$0")" && pwd)"

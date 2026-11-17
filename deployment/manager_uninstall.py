@@ -9,6 +9,13 @@ import re
 SERVICES = {'backend', 'frontend', 'review-worker', 'review-feedback', 'review-progress',
             'review-executor', 'approval-view', 'svn-migration-worker', 'git-migration-worker'}
 LABEL = 'com.docker.compose.project'
+UPGRADE_REVIEW_LABEL = 'io.gitea-manager.review-data'
+# 与 upgrade_runtime.py 生成的独立卷及其固定挂载位置一致。
+UPGRADE_VOLUMES = {'review-data': '/app/review',
+                   'review-workspaces': '/app/review-workspaces',
+                   'review-native': '/app/review-native'}
+# 旧版直接运行 Compose，使用目录名或显式项目名；新版安装器附加随机后缀。
+PROJECT_PATTERN = re.compile(r'gitea-manager(?:[-_][a-z0-9_-]+)?')
 
 
 def inventory(cleaner):
@@ -22,14 +29,38 @@ def inventory(cleaner):
         if labels.get(LABEL) != cleaner.project or labels.get('com.docker.compose.service') not in SERVICES:
             raise RuntimeError('发现非预期服务，拒绝扩大卸载范围')
         for mount in attached:
-            if mount['Type'] == 'volume' and mount.get('Name') not in plan['volume']:
-                raise RuntimeError('实例挂载了非本项目管理的数据卷，拒绝删除：' + mount.get('Name', ''))
             mounts.append({'容器': cid, '类型': mount['Type'], '来源': mount.get('Name') or mount['Source'], '目标': mount['Destination']})
+    upgrade_names = {cleaner.project + '-' + suffix: target for suffix, target in UPGRADE_VOLUMES.items()}
+    # 升级器创建的外部卷可能没有 Compose 项目标签；也纳入中断删除后遗留的已知卷。
+    names = set(cleaner.docker('volume', 'ls', '--format', '{{.Name}}').splitlines())
+    volumes = set(plan['volume']) | (names & upgrade_names.keys())
+    for mount in mounts:
+        if mount['类型'] == 'volume' and mount['来源'] not in volumes:
+            raise RuntimeError('实例挂载了非本项目管理的数据卷，拒绝删除：' + mount['来源'])
+    identities = {}
+    for name in sorted(volumes):
+        identity = cleaner.volume_identity(name)
+        labels = identity['labels']
+        if any(labels.get(key) not in (None, '', cleaner.project)
+               for key in (LABEL, UPGRADE_REVIEW_LABEL)):
+            raise RuntimeError('数据卷属于其他实例，拒绝删除：' + name)
+        if name in upgrade_names:
+            if any(m['类型'] == 'volume' and m['来源'] == name and m['目标'] != upgrade_names[name]
+                   for m in mounts):
+                raise RuntimeError('升级数据卷挂载位置不一致，拒绝删除：' + name)
+        elif labels.get(LABEL) != cleaner.project:
+            raise RuntimeError('数据卷归属不明确，拒绝删除：' + name)
+        users = set(cleaner.docker('ps', '-aq', '--filter', 'volume=' + name).split())
+        if users - set(plan['container']):
+            raise RuntimeError('数据卷被其他实例引用，拒绝删除：' + name)
+        identities[name] = identity
+    plan['volume'] = sorted(volumes)
     for network in plan['network']:
         attached = json.loads(cleaner.docker('network', 'inspect', '--format', '{{json .Containers}}', network)) or {}
         if any(not any(cid.startswith(expected) for expected in plan['container']) for cid in attached):
             raise RuntimeError('网络被其他实例使用，拒绝卸载')
-    return dict(plan, mounts=sorted(mounts, key=lambda r: (r['容器'], r['目标'])))
+    return dict(plan, mounts=sorted(mounts, key=lambda r: (r['容器'], r['目标'])),
+                volume_identities=identities)
 
 
 def run(cleaner, report, ask=input, lock_root=Path('/run/lock')):
@@ -40,9 +71,22 @@ def run(cleaner, report, ask=input, lock_root=Path('/run/lock')):
                              '--format', '{{.Name}} {{.Label "' + LABEL + '"}}')
         for line in raw.splitlines():
             name, _, project = line.partition(' ')
-            if re.fullmatch(r'gitea-manager-[0-9a-f]{10}', project):
+            if PROJECT_PATTERN.fullmatch(project):
                 rows.append({'实例':project,'名称':name,'状态':'项目资源','端口':''})
-    projects = sorted({r['实例'] for r in rows if re.fullmatch(r'gitea-manager-[0-9a-f]{10}', r['实例'] or '')})
+    raw = cleaner.docker('volume', 'ls', '--filter', 'label=' + UPGRADE_REVIEW_LABEL,
+                         '--format', '{{.Name}} {{.Label "' + UPGRADE_REVIEW_LABEL + '"}}')
+    for line in raw.splitlines():
+        name, _, project = line.partition(' ')
+        if PROJECT_PATTERN.fullmatch(project):
+            rows.append({'实例': project, '名称': name, '状态': '升级数据卷', '端口': ''})
+    for name in cleaner.docker('volume', 'ls', '--format', '{{.Name}}').splitlines():
+        for suffix in UPGRADE_VOLUMES:
+            ending = '-' + suffix
+            project = name[:-len(ending)] if name.endswith(ending) else ''
+            if PROJECT_PATTERN.fullmatch(project):
+                rows.append({'实例': project, '名称': name, '状态': '升级数据卷', '端口': ''})
+                break
+    projects = sorted({r['实例'] for r in rows if PROJECT_PATTERN.fullmatch(r['实例'] or '')})
     if not projects:
         raise RuntimeError('未找到 Manager 实例，未删除资源；不处理 Gitea 或 Runner')
     for i, project in enumerate(projects, 1):
@@ -74,7 +118,7 @@ def run(cleaner, report, ask=input, lock_root=Path('/run/lock')):
         # 对每一步重新核对归属；共享卷及网络检查在所有容器删除之前完成。
         for kind in ('container', 'volume', 'network'):
             cleaner.remove_kind(kind, plan)
-        if any(cleaner.inventory().values()):
+        if any(inventory(cleaner).values()):
             raise RuntimeError('仍有目标资源残留，卸载未完成，请保留诊断后重试')
         print('Manager 实例卸载完成：' + cleaner.project)
         print('宿主机绑定目录及旧安装文件均保留；如含敏感数据，请按实际挂载清单另行处理。')

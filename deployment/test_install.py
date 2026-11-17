@@ -174,6 +174,30 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((self.root / 'state/installation.json').exists())
         self.assertTrue(list((self.root / 'state/diagnostics').glob('diagnostics-*.tar.gz')))
 
+    def test_wrong_ubuntu_package_stops_before_dependencies(self):
+        import hashlib
+        import shutil
+        shutil.copy2(Path(__file__).resolve().parents[1] / 'install.sh', self.root / 'install.sh')
+        (self.root / 'runtime').mkdir()
+        target = self.root / 'runtime/ubuntu-version'
+        target.write_text('20.04\n')
+        (self.root / 'installer-manifest.json').write_text('{}')
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        (self.root / 'SHA256SUMS').write_text(digest + '  runtime/ubuntu-version\n')
+        # 通过隔离 Shell 函数模拟实际操作系统，不更改测试宿主机配置。
+        command = '''
+uname() { case "$1" in -s) echo Linux;; -m) echo x86_64;; esac; }
+source() { ID=ubuntu; VERSION_ID=24.04; }
+export -f uname source
+bash "$1"
+'''
+        result = subprocess.run(['bash', '-c', command, 'test', str(self.root / 'install.sh')],
+                                text=True, encoding='utf-8', errors='replace', capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('本包适用 Ubuntu 20.04 amd64', result.stdout + result.stderr)
+        self.assertIn('当前系统为 ubuntu 24.04', result.stdout + result.stderr)
+        self.assertFalse((self.root / 'state/installation.json').exists())
+
     def test_reuse_requires_exact_image_identity(self):
         self.manifest['images'] = {'backend': {'tag': 'sample:fixed', 'ids': ['sha256:expected']}}
         installer = MODULE.Installer(self.root, self.manifest)

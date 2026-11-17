@@ -173,6 +173,64 @@ def exec_container(data, container, args):
     return out
 
 
+def connection_token(data, container):
+    token = data.get('api_token', '')
+    if not isinstance(token, str):
+        raise ValueError('令牌格式无效，请粘贴 API Token 文本')
+    token = token.strip()
+    register_secret(token)
+    if token:
+        if any(character.isspace() for character in token):
+            raise ValueError('令牌中不能包含空格或换行')
+        return token
+    if data.get('mode') != 'local':
+        raise ValueError('请填写目标 Gitea 已有管理员的 API Token')
+
+    prefix = ['gitea', '--config', '/data/gitea/conf/app.ini', 'admin', 'user']
+    users = exec_container(data, container, prefix + ['list', '--admin'])
+    administrators = []
+    for line in users.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and fields[0].isdigit() and fields[-1].lower() == 'true':
+            administrators.append(fields[1])
+    if len(administrators) != 1:
+        raise ValueError('无法唯一确定可用的 Gitea 管理员，请填写已有管理员的 API Token')
+    token = exec_container(data, container, prefix + [
+        'generate-access-token', '--username', administrators[0],
+        '--token-name', 'manager-' + uuid.uuid4().hex, '--scopes', 'all', '--raw',
+    ]).strip()
+    register_secret(token)
+    return token
+
+
+def verify_management_token(url, token):
+    import requests
+    with requests.Session() as client:
+        client.trust_env = False
+        headers = {'Authorization': 'token ' + token}
+        try:
+            response = client.get(url.rstrip('/') + '/api/v1/user', headers=headers,
+                                  timeout=10, allow_redirects=False)
+            if response.status_code == 401:
+                raise ValueError('令牌无效或已撤销，请重新填写 API Token')
+            if response.status_code == 403:
+                raise ValueError('令牌缺少读取用户信息的权限，请检查 API Token')
+            if response.status_code != 200:
+                raise ValueError('Gitea API 验证失败，HTTP ' + str(response.status_code) + '；请检查 Gitea 访问地址')
+            try:
+                account = response.json()
+            except ValueError:
+                raise ValueError('Gitea 访问地址未返回有效的 API 数据，请填写 Gitea Web 根地址') from None
+            if not isinstance(account, dict) or account.get('is_admin') is not True:
+                raise ValueError('令牌所属账号没有 Gitea 管理员权限')
+            response = client.get(url.rstrip('/') + '/api/v1/admin/users', params={'limit': 1},
+                                  headers=headers, timeout=10, allow_redirects=False)
+            if response.status_code != 200:
+                raise ValueError('无法访问管理员 API，HTTP ' + str(response.status_code) + '；请检查令牌权限')
+        except requests.RequestException:
+            raise ValueError('无法访问 Gitea API，请检查访问地址、网络和 HTTPS 证书') from None
+
+
 @management_bp.post('/connect')
 def connect():
     data=request.get_json() or {}
@@ -180,8 +238,18 @@ def connect():
         role=data.get('role')
         if role not in ('primary','backup','mirror'):
             raise ValueError('请选择有效的服务器角色；如页面没有角色选项，请刷新后重试')
+        if data.get('mode') not in ('local', 'ssh'):
+            raise ValueError('请选择有效的接入方式')
+        raw_token = data.get('api_token', '')
+        if not isinstance(raw_token, str):
+            raise ValueError('令牌格式无效，请粘贴 API Token 文本')
+        register_secret(raw_token.strip())
+        if data['mode'] == 'ssh' and not raw_token.strip():
+            raise ValueError('请填写目标 Gitea 已有管理员的 API Token')
         selected=next((r for r in discover(data) if r['id']==data.get('instance_id')),None)
         if selected is None:raise ValueError('实例身份已变化，请重新发现')
+        if not selected['running']:
+            raise ValueError('所选 Gitea 实例未运行，请启动后重新发现')
         identity=selected['project']+':'+selected['name']
         management_host=get_setting('host_ip') if data.get('mode')=='local' else remote_parameters(data)[0]
         if GiteaServer.query.filter_by(instance_identity=identity,host=management_host).first():
@@ -191,29 +259,22 @@ def connect():
             config.read_string('[DEFAULT]\n'+exec_container(data,name,['cat','/data/gitea/conf/app.ini']))
         except configparser.Error as exc:
             raise RuntimeError('Gitea 配置格式无效：'+type(exc).__name__) from None
-        url=data.get('gitea_url') or config.get('server','ROOT_URL')
+        url=str(data.get('gitea_url') or config.get('server','ROOT_URL')).strip()
         from urllib.parse import urlsplit
         parsed=urlsplit(url)
         if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError('Gitea 访问地址无效')
-        # 由已授权的管理通道创建独立令牌，不要求用户复制初始管理员密码。
-        token_name='manager-'+uuid.uuid4().hex
-        prefix=['gitea','--config','/data/gitea/conf/app.ini','admin','user']
-        token=exec_container(data,name,prefix+['generate-access-token','--username','administrator','--token-name',token_name,'--scopes','all','--raw']).strip()
-        register_secret(token)
+        pg_dbname = config.get('database', 'NAME')
+        pg_user = config.get('database', 'USER')
+        token = connection_token(data, name)
         server=GiteaServer(name=data.get('name') or selected['project'],role=role,
             host=management_host,ssh_port=int(data.get('ssh_port',22)),ssh_user=data.get('ssh_user','root'),
             connection_mode='local' if data.get('mode')=='local' else 'ssh',is_local=data.get('mode')=='local',
             instance_identity=identity,gitea_container=name,pg_container=selected['pg_container'],
-            pg_dbname=config.get('database','NAME'),pg_user=config.get('database','USER'),
+            pg_dbname=pg_dbname,pg_user=pg_user,
             gitea_port=selected['port'] or parsed.port or (443 if parsed.scheme=='https' else 80),gitea_url=url,api_token=token)
-        import requests
         with report.stage('验证管理 API 身份'):
-            s=requests.Session();s.trust_env=False
-            response=s.get(url.rstrip('/')+'/api/v1/user',headers={'Authorization':'token '+token},timeout=10,allow_redirects=False)
-            s.close()
-            if response.status_code!=200 or not response.json().get('is_admin'):
-                raise RuntimeError('管理 API 身份验证失败，HTTP '+str(response.status_code))
+            verify_management_token(url, token)
         server.status='online';db.session.add(server);db.session.commit()
         return {'id':server.id,'ok':True}
     return operation('添加并验证服务器',run)

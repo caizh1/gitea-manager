@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""在联网准备机生成两套独立 Ubuntu 24.04 amd64 离线安装包。"""
+"""在联网准备机生成对应 Ubuntu 版本的 amd64 离线安装包。"""
 import argparse
 import fcntl
 import hashlib
@@ -30,10 +30,16 @@ def main():
     parser.add_argument('--executor-legacy-image', default='gitea-review-executor:oneclick-v2-legacy')
     parser.add_argument('--output-dir', type=Path, default=ROOT/'outputs')
     parser.add_argument('--provenance-dir', type=Path, default=ROOT/'work/oneclick-v2-build')
+    parser.add_argument('--ubuntu-version', choices=['20.04', '24.04'], default='24.04')
+    parser.add_argument('--dependencies-dir', type=Path, default=ROOT/'work/oneclick-build/debs')
     args = parser.parse_args()
-    deps = ROOT / 'work/oneclick-build/debs'
+    deps = args.dependencies_dir.resolve()
     if not (deps / 'Packages').is_file():
         raise RuntimeError('请先运行 bash deployment/prepare-ubuntu-deps.sh')
+    version_file = deps / 'ubuntu-version'
+    dependency_version = version_file.read_text().strip() if version_file.exists() else '24.04'
+    if dependency_version != args.ubuntu_version:
+        raise RuntimeError('离线依赖与目标 Ubuntu 版本不一致，请重新准备对应版本依赖')
     lock = (deps.parent / 'package.lock').open('a')
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -41,7 +47,7 @@ def main():
         raise RuntimeError('另一安装包构建正在运行，未覆盖输出') from None
     products = ['gitea', 'manager'] if args.product == 'both' else [args.product]
     for product in products:
-        directory = args.output_dir / (product + '-ubuntu24-amd64-installer')
+        directory = args.output_dir / (product + '-ubuntu' + args.ubuntu_version[:2] + '-amd64-installer')
         directory.mkdir(parents=True, exist_ok=True)
         if (directory / 'state').exists():
             raise RuntimeError('输出目录包含运行状态，拒绝覆盖')
@@ -56,6 +62,7 @@ def main():
         shutil.copy2(ROOT / 'backend/services/diagnostics.py', directory / 'deployment/diagnostics.py')
         shutil.copytree(deps, directory / 'runtime/debs', dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('partial', 'lock'))
+        (directory / 'runtime/ubuntu-version').write_text(args.ubuntu_version + '\n')
         tags = ({'gitea': args.gitea_image, 'database': 'postgres:17.11-bookworm'} if product == 'gitea' else
                 {key: 'gitea-review-' + key + ':' + args.manager_tag for key in ('backend', 'frontend', 'executor', 'svn', 'git')})
         if product == 'manager':
@@ -75,7 +82,7 @@ def main():
             provenance=directory/'build-provenance';provenance.mkdir(exist_ok=True)
             for filename in ('base-images.json','source-manifest.json'):
                 shutil.copy2(args.provenance_dir/filename,provenance/filename)
-        manifest = {'说明': '固定 Linux amd64 镜像；首次安装不构建、不拉取镜像。', 'product': product, 'images': images, 'opencode_versions': ['1.18.7','1.1.51'] if product=='manager' else []}
+        manifest = {'说明': '固定 Linux amd64 镜像；首次安装不构建、不拉取镜像。', 'product': product, 'ubuntu_version': args.ubuntu_version, 'images': images, 'opencode_versions': ['1.18.7','1.1.51'] if product=='manager' else []}
         (directory / 'installer-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
         shutil.copy2(ROOT / 'docs/oneclick-installation.md', directory / 'README.md')
         if product == 'manager':

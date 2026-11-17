@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ubuntu 24.04 amd64 离线首次安装；入口与清单随专用安装包交付。
+# Ubuntu amd64 离线首次安装；按包内清单使用对应发行版依赖。
 set -Eeuo pipefail
 umask 077
 cd "$(dirname "$0")"
@@ -59,23 +59,33 @@ BOOTSTRAP_STAGE='校验离线安装包完整性'
 echo '正在校验离线安装包完整性。'
 if command -v sha256sum >/dev/null; then sha256sum --check --quiet SHA256SUMS
 else shasum -a 256 --check --quiet SHA256SUMS; fi
+TARGET_UBUNTU=24.04
+if [[ -f runtime/ubuntu-version ]]; then TARGET_UBUNTU="$(cat runtime/ubuntu-version)"; fi
+case "$TARGET_UBUNTU" in
+  20.04|24.04) ;;
+  *) echo '安装包指定的 Ubuntu 版本无效。' >&2; exit 1 ;;
+esac
 if [[ "${1:-}" != --desktop-test ]]; then
   BOOTSTRAP_STAGE="检查 Ubuntu 版本、架构与安装权限"
-  [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || { echo '仅支持 Ubuntu 24.04 amd64。' >&2; exit 1; }
+  [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || { echo "请在 Ubuntu $TARGET_UBUNTU amd64 上运行本安装包。" >&2; exit 1; }
   source /etc/os-release
-  [[ "$ID" == ubuntu && "$VERSION_ID" == 24.04 && "$EUID" == 0 ]] || { echo '请在 Ubuntu 24.04 amd64 上使用 sudo bash install.sh。' >&2; exit 1; }
+  [[ "$ID" == ubuntu && "$VERSION_ID" == "$TARGET_UBUNTU" && "$EUID" == 0 ]] || { echo "本包适用 Ubuntu $TARGET_UBUNTU amd64，当前系统为 $ID ${VERSION_ID}。请使用对应版本安装包并执行 sudo bash install.sh。" >&2; exit 1; }
   [[ -d /run/systemd/system ]] || { echo '需要正常启动的 systemd 主机；普通容器不属于裸机安装环境。' >&2; exit 1; }
-  if ! command -v python3 >/dev/null || ! docker compose version >/dev/null 2>&1; then
+  NEED_PYTHON=0
+  NEED_COMPOSE=0
+  FRESH_DOCKER=0
+  command -v python3 >/dev/null || NEED_PYTHON=1
+  docker compose version >/dev/null 2>&1 || NEED_COMPOSE=1
+  command -v docker >/dev/null || FRESH_DOCKER=1
+  if [[ "$NEED_PYTHON" == 1 || "$NEED_COMPOSE" == 1 || "$FRESH_DOCKER" == 1 ]]; then
     echo '正在从安装包配置离线依赖。'
     # 不替换已有 Docker CE、Snap 或其他容器运行时。
-    if command -v docker >/dev/null && ! dpkg-query -W -f='${Status}' docker.io 2>/dev/null | grep -q 'install ok installed'; then
+    if [[ "$NEED_COMPOSE" == 1 && "$FRESH_DOCKER" == 0 ]] && ! dpkg-query -W -f='${Status}' docker.io 2>/dev/null | grep -q 'install ok installed'; then
       echo '检测到非 Ubuntu docker.io 的现有 Docker，请先为它安装兼容的 Compose 和 Python 3；未替换现有运行时。' >&2
       exit 1
     fi
     [[ -f runtime/debs/Packages ]] || { echo '安装包缺少 Ubuntu 离线依赖。' >&2; exit 1; }
     # file 仓库副本位于 apt 可读取目录；不修改系统软件源，不访问网络。
-    FRESH_DOCKER=0
-    command -v docker >/dev/null || FRESH_DOCKER=1
     APT_DIR="$(mktemp -d /var/tmp/gitea-install-apt.XXXXXX)"
     trap 'BOOTSTRAP_EXIT=$?; rm -rf "$APT_DIR"; finish_bootstrap "$BOOTSTRAP_EXIT"' EXIT
     chmod 755 "$APT_DIR"
@@ -87,7 +97,11 @@ if [[ "${1:-}" != --desktop-test ]]; then
     BOOTSTRAP_STAGE="配置离线依赖索引"
     timeout 300s apt-get "${APT_OPTIONS[@]}" update
     BOOTSTRAP_STAGE="安装离线 Docker、Compose 与 Python"
-    DEBIAN_FRONTEND=noninteractive timeout 900s apt-get "${APT_OPTIONS[@]}" --no-install-recommends --no-remove -y install docker.io docker-compose-v2 python3
+    PACKAGES=()
+    [[ "$NEED_PYTHON" == 0 ]] || PACKAGES+=(python3)
+    [[ "$NEED_COMPOSE" == 0 ]] || PACKAGES+=(docker-compose-v2)
+    [[ "$FRESH_DOCKER" == 0 ]] || PACKAGES+=(docker.io)
+    DEBIAN_FRONTEND=noninteractive timeout 900s apt-get "${APT_OPTIONS[@]}" --no-install-recommends --no-remove -y install "${PACKAGES[@]}"
     if [[ "$FRESH_DOCKER" == 1 ]]; then
       python3 - <<'PYCONFIG'
 import json
@@ -99,7 +113,10 @@ c['storage-driver']='overlay2'
 p.write_text(json.dumps(c,indent=2)+'\n')
 PYCONFIG
       BOOTSTRAP_STAGE="配置新 Docker 使用 overlay2"
-      dockerd --validate --config-file=/etc/docker/daemon.json
+      # Docker 20.10 尚无 --validate，启动后的服务检查仍使用同一配置。
+      if dockerd --help 2>&1 | grep -q -- '--validate'; then
+        dockerd --validate --config-file=/etc/docker/daemon.json
+      fi
       systemctl restart docker
     fi
     rm -rf "$APT_DIR"

@@ -1,4 +1,6 @@
-# Ubuntu 24.04 amd64 离线一键安装
+# Ubuntu amd64 离线一键安装
+
+按宿主机版本选择 Ubuntu 20.04 或 24.04 专用包。包内系统依赖与发行版对应，安装器会核对版本。
 
 分别解压 Gitea 增强版和 Manager 安装包到永久目录，在各自目录运行：
 
@@ -20,7 +22,7 @@ sudo cat state/access.txt
 
 ### 同一台宿主机
 
-登录 Manager，进入“服务器管理 → 添加服务器”，选择“本机 Gitea”。页面自动发现本机 Gitea 与其 PostgreSQL 关联实例；多实例时选择对应端口，点击“连接并添加服务器”。无需 SSH、复制管理员密码或手动生成 API Token。
+登录 Manager，进入“服务器管理 → 添加服务器”，选择“本机 Gitea”。页面自动发现本机 Gitea 与其 PostgreSQL 关联实例；只有一个运行中的实例时自动选中，多实例时点击对应卡片。选择主服务器或备服务器角色，再点击“连接并添加服务器”。可填写已有管理员的 API Token；留空时，仅在实例中有唯一启用的管理员时自动生成令牌，多管理员实例需要手动填写。
 
 管理地址按实例配置读取；若客户端实际使用其他访问地址，可在向导中填写。不要把 Git SSH 端口当作系统 SSH 端口。
 
@@ -28,7 +30,11 @@ sudo cat state/access.txt
 
 选择“跨主机 Gitea”，复制或下载页面提供的公钥。请目标宿主机管理员将公钥追加到管理账号的 `~/.ssh/authorized_keys`，目录权限为 700、文件权限为 600。该账号需要能直接执行 Docker 命令，并操作备份临时文件。
 
-这是跨主机唯一需要目标管理员事先完成的授权步骤。然后在页面填写宿主机地址、系统 SSH 端口和管理账号，核对并确认主机指纹，发现实例并添加。私钥由安装器生成 RSA 3072 后持久保存，页面不会显示或下载私钥。指纹变化会阻止连接，不能直接忽略警告覆盖。
+在页面填写宿主机地址、系统 SSH 端口和管理账号，核对并确认主机指纹，点击“发现并检查实例”。发现唯一运行实例时自动选中；多个实例时点击对应卡片，卡片会显示实例名称、HTTP 端口、关联数据库、运行状态和选中状态。
+
+在“管理员 API Token”填写目标 Gitea 已有管理员的令牌，可在该管理员的个人设置 → 应用中生成，选择 Manager 所需权限。远程接入使用此令牌，不会自动创建管理员账号或生成令牌，也不要求管理员使用固定用户名。保存前校验令牌所属账号具有管理员身份，并能访问用户信息和管理员 API。选择服务器角色后点击“连接并添加服务器”。访问地址使用含 `http://` 或 `https://` 的 Web 根地址及实际端口、部署子路径，留空时读取实例配置。
+
+私钥由安装器生成 RSA 3072 后持久保存，页面不会显示或下载私钥。指纹变化会阻止连接，不能直接忽略警告覆盖。
 
 ## CPU 兼容和 AI 状态
 
@@ -60,11 +66,13 @@ Manager“服务器接入与诊断”页面可以查看安装与运行诊断、�
 
 全新 Docker 在导入镜像前配置 overlay2；已有 Docker 不自动切换存储驱动或重启，先进行镜像创建与启动预检。已有非 Ubuntu Docker 若缺少兼容 Compose，会说明原因并停止，不替换运行时。
 
-支持 Ubuntu 24.04 amd64、systemd、root、标准 Docker socket。建议 Manager 至少 4 GiB 内存，Gitea 与 PostgreSQL 至少 2 GiB；预留安装目录及 Docker 数据目录空间。默认内网 HTTP；Manager 目录登录、会话及目录配置保存要求 HTTPS。Manager 包附带 `organization-access-ldap.md`，说明企业证书安装参数、Gitea 字段对照和升级回退；客户端 CA 信任、防火墙和 DNS 需按实际网络配置。
+支持对应包指定的 Ubuntu 20.04 或 24.04 amd64、systemd、root、标准 Docker socket。建议 Manager 至少 4 GiB 内存，Gitea 与 PostgreSQL 至少 2 GiB；预留安装目录及 Docker 数据目录空间。默认内网 HTTP；Manager 目录登录、会话及目录配置保存要求 HTTPS。Manager 包附带 `organization-access-ldap.md`，说明企业证书安装参数、Gitea 字段对照和升级回退；客户端 CA 信任、防火墙和 DNS 需按实际网络配置。
 
 ## 构建与校验
 
 联网准备机使用固定基础镜像、OpenCode 归档校验值和离线依赖。构建入口为 `deployment/build-v2.py`，打包入口为 `deployment/build-installers.py`；前端先执行 `npm run build`。构建输入记录在包内 `build-provenance/`，依赖版本在 `runtime/debs/package-versions.txt`。
+
+Ubuntu 20.04 的依赖准备使用 `bash deployment/prepare-ubuntu-deps.sh 20.04 work/oneclick-ubuntu20/debs`，打包时传入 `--ubuntu-version 20.04 --dependencies-dir work/oneclick-ubuntu20/debs`。默认参数继续生成 Ubuntu 24.04 包。
 
 每个安装包附有 `.sha256`，包内 `SHA256SUMS` 在安装前自动核对。最终验收状态、已验证范围和未验证项见交付验收报告；候选包与历史验收记录不能替代最终报告。
 

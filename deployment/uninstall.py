@@ -18,7 +18,8 @@ from diagnostics import Report
 LABEL = 'com.docker.compose.project'
 VOLUMES = {
     'gitea': {'database-data', 'gitea-data'},
-    'manager': {'manager-data', 'review-data', 'executor-data', 'review-workspaces', 'diagnostic-data'},
+    'manager': {'manager-data', 'gitea-manager-data', 'review-data', 'executor-data', 'review-native',
+                'review-workspaces', 'diagnostic-data'},
 }
 
 
@@ -86,7 +87,9 @@ class Cleaner:
             ids = self.docker(*command, '--filter', 'label=' + LABEL + '=' + self.project).split()
             result[kind] = sorted(ids)
         for name in result['volume']:
-            if name not in {self.project + '_' + v for v in VOLUMES[self.product]}:
+            separators = ('_', '-') if self.product == 'manager' else ('_',)
+            if name not in {self.project + separator + v
+                            for separator in separators for v in VOLUMES[self.product]}:
                 raise RuntimeError('发现未知数据卷，拒绝删除：' + name)
             users = self.docker('ps', '-aq', '--filter', 'volume=' + name).split()
             if set(users) - set(result['container']):
@@ -102,6 +105,16 @@ class Cleaner:
                 if any(not any(cid.startswith(own) for own in result['container']) for cid in attached):
                     raise RuntimeError('网络被其他实例引用，拒绝删除：' + nid)
         return result
+
+    def volume_identity(self, name):
+        # 删除前比较固定身份；仅记录归属标签，不读取卷内文件或驱动凭据。
+        raw = self.docker('volume', 'inspect', '--format',
+                          '{{json .Name}}\n{{json .Driver}}\n{{json .CreatedAt}}\n{{json .Labels}}', name)
+        volume, driver, created, labels = map(json.loads, raw.splitlines())
+        labels = labels or {}
+        keys = (LABEL, 'com.docker.compose.volume', 'io.gitea-manager.review-data')
+        return {'name': volume, 'driver': driver, 'created': created,
+                'labels': {key: labels[key] for key in keys if key in labels}}
 
     @contextlib.contextmanager
     def fresh_manager_guard(self, plan):
@@ -140,9 +153,14 @@ class Cleaner:
     def remove_kind(self, kind, plan):
         for item in plan[kind]:
             # 删除前再次核对所有权，且不强制删除数据卷或网络。
-            template = '{{index .Config.Labels "' + LABEL + '"}}' if kind == 'container' else '{{index .Labels "' + LABEL + '"}}'
-            if self.docker(kind, 'inspect', '--format', template, item) != self.project:
-                raise RuntimeError('资源归属改变，停止清理：' + item)
+            identity = plan.get('volume_identities', {}).get(item) if kind == 'volume' else None
+            if identity is not None:
+                if self.volume_identity(item) != identity:
+                    raise RuntimeError('数据卷身份或归属改变，停止清理：' + item)
+            else:
+                template = '{{index .Config.Labels "' + LABEL + '"}}' if kind == 'container' else '{{index .Labels "' + LABEL + '"}}'
+                if self.docker(kind, 'inspect', '--format', template, item) != self.project:
+                    raise RuntimeError('资源归属改变，停止清理：' + item)
             args = [kind, 'rm'] + (['-f'] if kind == 'container' else []) + [item]
             self.docker(*args)
 
