@@ -68,6 +68,15 @@
               <el-form-item :label="config.api_key_configured ? 'API Key（已配置，留空保留）' : 'API Key（尚未配置）'"><el-input v-model="apiKey" type="password" autocomplete="new-password" placeholder="仅在新增或更换密钥时填写" /></el-form-item>
               <el-form-item label="思考控制协议"><el-select v-model="config.thinking_protocol" @change="value => { if (value === 'provider_default') config.thinking_enabled = false }"><el-option label="服务默认（未控制）" value="provider_default" /><el-option label="Qwen / vLLM（含 New API 透传）" value="qwen_vllm" /><el-option label="DeepSeek 官方协议" value="deepseek" /><el-option label="reasoning_effort 兼容协议" value="reasoning_effort" /></el-select><span class="secondary">按实际服务选择；New API 必须支持透传。服务默认不代表已关闭思考。</span></el-form-item>
               <el-form-item label="启用深度思考"><el-switch v-model="config.thinking_enabled" :disabled="config.thinking_protocol === 'provider_default'" /><span class="secondary">默认关闭；仅对新任务生效。参数被接受不代表服务实际遵守。</span></el-form-item>
+              <el-form-item v-if="config.engine === 'codex_cli'" label="思考档位" class="reasoning-field">
+                <el-radio-group v-model="reasoningEffort" class="reasoning-options" aria-label="思考档位" :disabled="!config.thinking_enabled || config.thinking_protocol === 'provider_default'">
+                  <el-radio v-for="option in reasoningOptions" :key="option.value" :label="option.value" class="reasoning-option">
+                    <span class="reasoning-title">{{ option.value }} · {{ option.title }}</span>
+                    <span class="reasoning-description">{{ option.description }}</span>
+                  </el-radio>
+                </el-radio-group>
+                <span class="secondary reasoning-note">实际耗时和效果取决于模型服务。保存后对新建审查生效。</span>
+              </el-form-item>
               <el-form-item label="思考额度（Token）"><el-input-number v-model="config.thinking_token_budget" :min="128" :max="32768" :precision="0" :disabled="!config.thinking_enabled || config.thinking_protocol !== 'qwen_vllm'" /><span class="secondary">仅 Qwen / vLLM 独立思考预算；需要服务支持，其他协议不发送此额度。</span></el-form-item>
               <el-form-item label="连续 Push 合并窗口（秒）"><el-input-number v-model="config.debounce_seconds" :min="0" :max="120" /></el-form-item>
             </div>
@@ -150,6 +159,15 @@ const sectionTitle = computed(() => ({ tasks:'AI Code Review', repositories:'审
 const refreshing = ref(false)
 const error = ref(''), tasksError = ref(''), busy = ref(false), testing = ref(false), csrf = ref('')
 const config = ref({ enabled: false }), apiKey = ref(''), health = ref([]), servers = ref([]), repositories = ref([])
+const reasoningOptions = [
+  { value: 'low', title: '快速', description: '较少思考开销' },
+  { value: 'high', title: '深入', description: '增加推理投入' },
+  { value: 'max', title: '最高', description: '优先更充分的推理' },
+]
+const reasoningEffort = computed({
+  get: () => config.value.reasoning_effort || 'high',
+  set: value => { config.value.reasoning_effort = value },
+})
 const tasks = ref([]), total = ref(0), page = ref(Math.max(1, Number(route.query.page) || 1)), filterRepo = ref(Number(route.query.repository) || null), detail = ref(null), detailVisible = ref(false)
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 const dateString = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -357,6 +375,18 @@ onUnmounted(() => { disposed = true; statisticsGeneration++; statisticsControlle
 .panel { padding: 24px; }
 .muted { color: var(--text-secondary, #64748b); font-size: 13px; line-height: 1.7; }
 .review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; }
+.reasoning-field { grid-column: 1 / -1; }
+.reasoning-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; width: 100%; }
+.reasoning-option.el-radio { display: flex; align-items: flex-start; min-width: 0; height: auto; min-height: 72px; margin: 0; padding: 14px 18px; border: 1px solid #d9e1eb; border-radius: 10px; background: rgba(255, 255, 255, 0.55); transition: border-color .15s, background-color .15s; }
+.reasoning-option.el-radio:hover:not(.is-disabled) { border-color: #7ba9eb; }
+.reasoning-option.el-radio.is-checked { border-color: #409eff; background: #edf5ff; }
+.reasoning-option.el-radio.is-disabled { background: #f5f7fa; }
+.reasoning-option :deep(.el-radio__input) { margin-top: 3px; }
+.reasoning-option :deep(.el-radio__label) { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding-left: 12px; white-space: normal; }
+.reasoning-title { color: #17263c; font-size: 15px; font-weight: 600; line-height: 1.5; }
+.reasoning-description { color: #5b6b81; font-size: 13px; line-height: 1.5; }
+.reasoning-option.is-disabled .reasoning-title, .reasoning-option.is-disabled .reasoning-description { color: #a0a8b5; }
+.reasoning-note { display: block; width: 100%; margin-top: 6px; color: #64748b; font-size: 13px; line-height: 1.5; }
 .selector { width: 280px; max-width: 100%; }
 .full { width: 100%; }
 .footer { margin-top: 22px; margin-bottom: 16px; }
@@ -369,7 +399,7 @@ onUnmounted(() => { disposed = true; statisticsGeneration++; statisticsControlle
 .failure { color: #b45309; font-size: 12px; }
 .el-pagination { margin-top: 20px; flex-wrap: wrap; }
 .el-alert { margin-bottom: 16px; }
-@media (max-width: 720px) { .review-grid { grid-template-columns: minmax(0, 1fr); } .panel { padding: 14px; } }
+@media (max-width: 720px) { .review-grid, .reasoning-options { grid-template-columns: minmax(0, 1fr); } .panel { padding: 14px; } }
 </style>
 
 <style scoped>
