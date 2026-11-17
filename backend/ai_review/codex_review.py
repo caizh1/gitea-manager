@@ -509,7 +509,12 @@ def process(store, job):
             if uncertain
             else "incomplete" if isinstance(exc, IncompleteReview) else "failed"
         )
-        store.finish(job["id"], job["owner"], state, str(exc))
+        if getattr(exc, "diagnostic", None):
+            from .worker import _finish_failure
+
+            _finish_failure(store, current, exc, job, state)
+        else:
+            store.finish(job["id"], job["owner"], state, str(exc))
     finally:
         stop.set()
         thread.join(timeout=2)

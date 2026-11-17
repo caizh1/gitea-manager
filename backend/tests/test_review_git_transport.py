@@ -141,6 +141,34 @@ class GitTransportTests(unittest.TestCase):
         self.assertNotIn('private', detail)
         self.assertNotIn('gitea.invalid', detail)
 
+    def test_codex_process_persists_git_failure_diagnostic(self):
+        from ai_review import codex_review
+        from ai_review.store import Store
+        from unittest.mock import Mock
+
+        store = Store(self.root / 'process-review.db')
+        config = store.config()
+        config.update(enabled=True, debounce_seconds=0, engine='codex_cli')
+        store.save_config(config)
+        repo = store.save_repo(1, 1, {'enabled': True, 'gitea_url': self.url, 'repo_name': 'owner/repo'})
+        ident = store.enqueue(repo['id'], 1, {'base': self.base, 'head': self.head})
+        job = store.claim()
+        snapshot = {'id': self.head, 'base': self.base, 'head': self.head,
+                    'merge_base': self.base, 'diff': self.git('diff', self.base, self.head)}
+        failure = GitFailure('fetch', 128, b'fatal: Authentication failed for https://example.invalid')
+        with patch('ai_review.worker.client_for', return_value=Mock()), \
+                patch('ai_review.diff_review.capture', return_value=snapshot), \
+                patch('ai_review.git_workspace.prepare', side_effect=failure), \
+                patch('ai_review.native_workspace.cleanup'):
+            codex_review.process(store, job)
+        saved = store.job(ident, evidence=False)
+        self.assertEqual(saved['status'], 'failed')
+        self.assertEqual(saved['diagnostic']['source'], 'git_source')
+        self.assertEqual(saved['diagnostic']['phase'], 'fetch')
+        self.assertEqual(saved['diagnostic']['exit_code'], 128)
+        self.assertIn('Authentication failed', saved['diagnostic']['git_error'])
+        self.assertIn('认证失败', saved['error'])
+
     def test_native_workspace_first_fetch_reuse_and_incremental_update(self):
         from ai_review import git_workspace, native_workspace
         from ai_review.store import Store
