@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,22 @@ def test_pr_agent_budget_preset_preserves_existing_task_configuration(tmp_path):
     assert store.job_config(first)['max_findings'] == 20
     assert store.job_config(second)['model_max_output_tokens'] == 393216
     assert store.job_config(second)['max_findings'] == 30
+
+
+def test_review_store_upgrades_version_22_without_changing_old_jobs(tmp_path):
+    store = Store(tmp_path / 'review.db')
+    store.save_config({'revision': 1, 'enabled': True})
+    repo = store.save_repo(1, 1, {'enabled': True, 'gitea_url': 'http://test', 'repo_name': 'owner/repo'})
+    old_job = store.enqueue(repo['id'], 1, {'head': 'b' * 40, 'base': 'a' * 40})
+    with sqlite3.connect(store.path) as connection:
+        connection.execute('ALTER TABLE jobs DROP COLUMN pr_agent_protocol')
+        connection.execute('PRAGMA user_version=22')
+
+    upgraded = Store(store.path)
+    assert upgraded.job(old_job)['pr_agent_protocol'] == 0
+    new_job = upgraded.enqueue(repo['id'], 2, {'head': 'c' * 40, 'base': 'a' * 40})
+    assert upgraded.job(new_job)['pr_agent_protocol'] == 1
+    assert Store(upgraded.path).job(old_job)['status'] == 'queued'
 
 
 @pytest.mark.parametrize(('added', 'deleted'), [

@@ -21,6 +21,7 @@ DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **PR_AGENT_BUDGETS,
             'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20,
             'execution_revision': 1}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
+SCHEMA_VERSION = 23
 
 
 class Store:
@@ -28,10 +29,10 @@ class Store:
         self.path = Path(path or os.environ.get('AI_REVIEW_DB', '/app/review/review.db'))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 22:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= SCHEMA_VERSION:
                 return
         with self.lock('初始化', blocking=True), contextlib.closing(self.connect()) as c:
-            if c.execute('PRAGMA user_version').fetchone()[0] >= 22:
+            if c.execute('PRAGMA user_version').fetchone()[0] >= SCHEMA_VERSION:
                 return
             c.execute('PRAGMA journal_mode=WAL')
             c.executescript('''
@@ -108,7 +109,7 @@ class Store:
             migrate_concurrency(c)
             if 'pr_agent_protocol' not in {row[1] for row in c.execute('PRAGMA table_info(jobs)')}:
                 c.execute('ALTER TABLE jobs ADD COLUMN pr_agent_protocol INTEGER NOT NULL DEFAULT 0')
-            c.execute('PRAGMA user_version=22')
+            c.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
             c.commit()
         os.chmod(self.path, 0o600)
 
