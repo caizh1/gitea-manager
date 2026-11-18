@@ -145,7 +145,9 @@ def adopt_history(store, client, job, repo):
 
 def evidence_lines(snapshot, prefix):
     # 行编号指向保存的 diff 原文，包括元信息和上下文，不是猜测的源码行号。
-    return {prefix + str(i): line for i, line in enumerate(snapshot['diff'].splitlines(), 1)}
+    diff = snapshot['diff']
+    lines = (diff.removesuffix('\n').split('\n') if diff else []) if snapshot.get('pr_agent_protocol') else diff.splitlines()
+    return {prefix + str(i): line.removesuffix('\r') for i, line in enumerate(lines, 1)}
 
 
 def check_input(issue, origin, snapshot, candidates):
@@ -181,6 +183,20 @@ def uncertain(reason, candidates):
             'relations': {f['candidate_id']: 'uncertain' for f in candidates}, 'anchor_id': None}
 
 
+def diff_code_references(source):
+    in_hunk = False
+    references = set()
+    for ident in sorted(source, key=lambda key: int(key[1:])):
+        line = source[ident]
+        if line.startswith('diff --git '):
+            in_hunk = False
+        elif line.startswith('@@ '):
+            in_hunk = True
+        elif in_hunk and line.startswith(('+', '-', ' ')):
+            references.add(ident)
+    return references
+
+
 def validate_check(raw, payload, snapshot):
     """核对格式、范围和原文；不把格式通过当作语义判断已经被证明。"""
     if not isinstance(raw, dict) or raw.get('issue_id') != payload['issue_id'] or raw.get('snapshot_id') != snapshot['id']:
@@ -197,13 +213,25 @@ def validate_check(raw, payload, snapshot):
     if not isinstance(evidence, list) or len(evidence) > 100:
         raise ReviewError('复核证据格式无效')
     prefixes = set()
+    confirmed = []
+    code_references = {}
     for entry in evidence:
         if not isinstance(entry, dict) or set(entry) != {'id', 'quote'} or not isinstance(entry['id'], str):
             raise ReviewError('复核证据必须引用 diff 编号和原文')
         ident = entry['id']; prefix = ident[:1]
         source = payload['historical_diff'] if prefix == 'H' else payload['current_diff'] if prefix == 'C' else payload.get('current_source', {}) if prefix == 'S' else {}
-        if ident not in source or not source[ident].strip() or source[ident] != entry['quote']:
+        canonical = source.get(ident, '')
+        if not canonical.strip():
             raise ReviewError('复核引用不属于固定 diff 原文')
+        if canonical != entry['quote']:
+            if not (snapshot.get('pr_agent_protocol') and prefix in ('H', 'C')
+                    and canonical[1:] == entry['quote'] and canonical[1:].strip()):
+                raise ReviewError('复核引用不属于固定 diff 原文')
+            if prefix not in code_references:
+                code_references[prefix] = diff_code_references(source)
+            if ident not in code_references[prefix]:
+                raise ReviewError('复核引用不属于固定 diff 原文')
+        confirmed.append({'id': ident, 'quote': canonical})
         prefixes.add(prefix)
     if state == 'present' and not prefixes & {'C', 'S'}:
         raise ReviewError('仍存在必须引用当前 diff 证据')
@@ -216,7 +244,9 @@ def validate_check(raw, payload, snapshot):
     anchor = raw.get('anchor_id')
     if anchor is not None and (not isinstance(anchor, str) or anchor not in snapshot.get('anchors', {})):
         raise ReviewError('当前定位编号无效')
-    return {k: raw.get(k) for k in ('status', 'reason', 'evidence', 'relations', 'anchor_id', 'obsolete_reason')}
+    return {k: raw.get(k) for k in ('status', 'reason', 'relations', 'anchor_id', 'obsolete_reason')} | {
+        'evidence': confirmed,
+    }
 
 
 def reconcile(store, client, job, repo, snapshot, result, runner=None):

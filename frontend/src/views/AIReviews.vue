@@ -68,6 +68,7 @@
               </el-form-item>
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
               <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎" @change="applyEngineBudget"><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /><el-option label="PR-Agent 原生审查（Linux amd64）" value="pr_agent" /><el-option label="原生 OpenCode 会话（已弃用）" value="opencode_native" /></el-select><span v-if="config.engine === 'opencode_native'" class="secondary">OpenCode 执行器已弃用，后续新功能支持 Codex 和 PR-Agent。</span></el-form-item>
+              <p v-if="config.engine === 'pr_agent' && changedLineLimits.pr_agent" class="secondary">PR-Agent 支持新增与删除合计最多 {{ changedLineLimits.pr_agent.toLocaleString('en-US') }} 行。完整变更还须放入模型的输入额度。</p>
               <el-form-item label="内部 New API 地址"><el-input v-model="config.api_base_url" placeholder="填写包含 API 前缀的内网地址" autocomplete="off" /></el-form-item>
               <el-form-item label="模型"><el-input v-model="config.model" placeholder="填写内部实际可用的模型标识" autocomplete="off" /></el-form-item>
               <el-form-item :label="config.api_key_configured ? 'API Key（已配置，留空保留）' : 'API Key（尚未配置）'"><el-input v-model="apiKey" type="password" autocomplete="new-password" placeholder="仅在新增或更换密钥时填写" /></el-form-item>
@@ -123,6 +124,19 @@
         <el-form-item v-if="isPlatformAdmin" label="专用机器人 Token（编辑时留空保留）"><el-input v-model="repoForm.bot_token" type="password" autocomplete="new-password" /></el-form-item>
         <div v-if="isPlatformAdmin" class="permission-guide"><strong>账号与 Token 的权限分别配置</strong><dl><dt>机器人账号</dt><dd>独立非管理员；仓库协作者选择 Read／只读。组织和团队也不能授予代码写入或管理权限。</dd><dt>Token 权限</dt><dd><code>read:user</code>、<code>write:repository</code>、<code>write:issue</code>。私有仓库不能选择仅公开资源。</dd></dl><p>Token 的写权限用于发布审查和进度评论，账号自身仍保持代码只读。已有 Token 满足要求时，可以继续使用。</p></div>
         <p class="secondary">Codex 和 PR-Agent 的自定义审查规则由仓库中的 .gitea/review-rules.md 提供，读取本次任务固定的目标分支版本，合并后生效。</p>
+        <el-form-item label="PR-Agent 源码备用编码">
+          <div class="full">
+            <p class="secondary">默认 UTF-8。可为旧源码指定 GBK 或 GB18030，目录使用仓库相对路径，填 . 适用于整个仓库。</p>
+            <el-space v-for="(rule, index) in encodingRules" :key="index" wrap>
+              <el-input v-model="rule.directory" placeholder="目录，例如 src/legacy" aria-label="备用编码目录" />
+              <el-select v-model="rule.codec" aria-label="备用编码" style="width: 115px">
+                <el-option label="GBK" value="gbk" /><el-option label="GB18030" value="gb18030" />
+              </el-select>
+              <el-button text @click="encodingRules.splice(index, 1)">移除</el-button>
+            </el-space>
+            <div><el-button text type="primary" @click="encodingRules.push({ directory: '', codec: 'gbk' })">添加编码规则</el-button></div>
+          </div>
+        </el-form-item>
         <el-form-item label="启用该仓库"><el-switch v-model="repoForm.enabled" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="repoVisible = false">取消</el-button><el-button type="primary" :loading="busy" @click="saveRepo">保存仓库</el-button></template>
@@ -219,6 +233,7 @@ watch(() => [route.query.start, route.query.end, route.query.repository, route.q
 })
 function startManual() { manualRepo.value = availableRepos.value.find(r => r.id === filterRepo.value) || availableRepos.value[0]; manualVisible.value = true }
 const repoVisible = ref(false), repoForm = ref({}), catalog = ref([]), catalogLoading = ref(false)
+const encodingRules = ref([])
 const hookVisible = ref(false), hookRepo = ref(null), managerURL = ref(window.location.origin)
 const manualVisible = ref(false), manualRepo = ref(null), manualNumber = ref(1)
 const connectionMessage = ref(''), connectionOk = ref(false), connectionDiagnostic = ref(null)
@@ -261,13 +276,21 @@ async function refresh() { if (refreshing.value) return; refreshing.value = true
 async function saveConfig() { if (busy.value) return; configError.value = ''; busy.value = true; try { const { api_key_configured, ...payload } = config.value; if (apiKey.value) payload.api_key = apiKey.value; config.value = (await write('put', '/config', payload)).data; apiKey.value = ''; ElMessage.success('设置已保存，并发上限已生效；资源预算用于新任务') } catch (e) { configError.value = errorMessage(e) } finally { busy.value = false } }
 async function testTokens() { testing.value = true; connectionMessage.value = ''; try { const r = await write('post', '/connection-test', { token_samples: 4 }); connectionMessage.value = r.data.calibration.message + ' ' + r.data.calibration.samples.map((v, i) => `样本 ${i+1}：本地 ${v.local} / 服务 ${v.server ?? '未提供'}，差值 ${v.difference ?? '未知'}`).join('；'); connectionOk.value = r.data.calibration.samples.every(v => v.difference === 0) } catch(e) { connectionOk.value = false; connectionMessage.value = errorMessage(e) } finally { testing.value = false } }
 async function testConnection() { testing.value = true; connectionMessage.value = ''; connectionDiagnostic.value = null; try { const r = await write('post', '/connection-test', {}); connectionMessage.value = r.data.message; connectionOk.value = r.data.ok } catch (e) { connectionOk.value = false; connectionMessage.value = errorMessage(e); connectionDiagnostic.value = e.response?.data?.diagnostic || null } finally { testing.value = false } }
-function editRepo(row) { repoGeneration++; repoError.value = ''; repoForm.value = row ? { ...row, bot_token: '' } : { server_id: servers.value[0]?.id, repo_name: '', bot_token: '', enabled: false }; catalog.value = []; repoVisible.value = true; if (!row && repoForm.value.server_id) searchCatalog('') }
+function editRepo(row) { repoGeneration++; repoError.value = ''; repoForm.value = row ? { ...row, bot_token: '' } : { server_id: servers.value[0]?.id, repo_name: '', bot_token: '', enabled: false }; encodingRules.value = Object.entries(row?.source_encodings || {}).map(([directory, codec]) => ({ directory, codec })); catalog.value = []; repoVisible.value = true; if (!row && repoForm.value.server_id) searchCatalog('') }
 async function searchCatalog(q) { const generation = ++catalogGeneration; if (!repoForm.value.server_id) return; catalogLoading.value = true; try { const r = await api.get('/ai-review/catalog', { params: { server_id: repoForm.value.server_id, q } }); if (!disposed && generation === catalogGeneration) catalog.value = r.data.items } catch (e) { if (!disposed && generation === catalogGeneration) repoError.value = errorMessage(e) } finally { if (generation === catalogGeneration) catalogLoading.value = false } }
 async function reloadRepositories() { try { repositories.value = (await api.get('/ai-review/repositories')).data } catch { error.value = '配置已保存，但仓库列表刷新失败；请刷新核对。' } }
 async function saveRepo() {
   if (busy.value) return
   busy.value = true; repoError.value = ''; const current = repoGeneration
-  try { const f = repoForm.value; await write(f.id ? 'put' : 'post', '/repositories'+(f.id ? '/'+f.id : ''), isPlatformAdmin.value ? { server_id: f.server_id, repo_name: f.repo_name, bot_token: f.bot_token, enabled: f.enabled, revision: f.revision } : { enabled: f.enabled, revision: f.revision });
+  try {
+    const f = repoForm.value
+    const entries = encodingRules.value.map(({ directory, codec }) => [directory.trim(), codec])
+    if (entries.some(([directory]) => !directory) || new Set(entries.map(([directory]) => directory)).size !== entries.length) {
+      repoError.value = '备用编码目录不能为空或重复。'
+      return
+    }
+    const settings = { enabled: f.enabled, revision: f.revision, source_encodings: Object.fromEntries(entries) }
+    await write(f.id ? 'put' : 'post', '/repositories'+(f.id ? '/'+f.id : ''), isPlatformAdmin.value ? { ...settings, server_id: f.server_id, repo_name: f.repo_name, bot_token: f.bot_token } : settings)
     if (disposed || current !== repoGeneration) return
     repoVisible.value = false; repoForm.value.bot_token = ''; ElMessage.success('仓库配置已保存'); await reloadRepositories()
   } catch (e) { if (!disposed && current === repoGeneration) repoError.value = errorMessage(e) } finally { busy.value = false }

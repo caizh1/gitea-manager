@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 from copy import copy
+import hashlib
 import importlib.metadata
 import json
 import os
@@ -10,6 +11,36 @@ import re
 import sys
 
 VERSION = '0.49.0'
+FILE_HEADER = re.compile(r"## File: '(.*)'")
+HUNK_HEADER = re.compile(r'@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@')
+NEW_CHANGE = re.compile(r'(\d+) \+(.*)')
+
+
+def rendered_changes(text):
+    """核对原生编号补丁的路径、侧、行号和文本，保留重复行的计数。"""
+    files = {}
+    path = side = old = None
+    for raw in text.split('\n'):
+        line = raw.removesuffix('\r')
+        if match := FILE_HEADER.fullmatch(line):
+            path = match[1]
+            files.setdefault(path, [])
+            side = old = None
+        elif match := HUNK_HEADER.match(line):
+            old = int(match[1])
+            side = None
+        elif line == '__new hunk__':
+            side = 'new'
+        elif line == '__old hunk__':
+            side = 'old'
+        elif path and side == 'new' and (match := NEW_CHANGE.fullmatch(line)):
+            files[path].append(('+', int(match[1]), match[2]))
+        elif path and side == 'old' and old is not None and line.startswith(('-', ' ')):
+            if line.startswith('-'):
+                files[path].append(('-', old, line[1:]))
+            old += 1
+    return {path: hashlib.sha256(json.dumps(sorted(rows), ensure_ascii=False, separators=(',', ':'))
+                                 .encode()).hexdigest() for path, rows in files.items()}
 
 
 def emit(kind, **value):
@@ -72,6 +103,17 @@ async def review(payload):
     from pr_agent.algo.types import EDIT_TYPE
     from pr_agent.git_providers.diff_parsing import parse_unified_diff
     from tenacity import stop_after_attempt
+    task = payload['input']
+    expected = task.get('expected_changes')
+    checked_diff = None
+    if expected is not None:
+        from pr_agent.algo import language_handler
+        from pr_agent.git_providers import plain_diff_provider
+
+        # Manager 已在 Git 层区分普通文本与不支持内容。撤掉这次调用的扩展名过滤，
+        # 仍用原生语言排序、补丁渲染与 Token 预算。
+        language_handler.filter_bad_extensions = list
+        plain_diff_provider.partition_files_by_language_filter = lambda files: (files, [])
 
     native_render = pr_processing.decouple_and_convert_to_hunks_with_lines_numbers
 
@@ -86,11 +128,16 @@ async def review(payload):
     native_get_diff = pr_reviewer.get_pr_diff
 
     def complete_diff(*args, **kwargs):
+        nonlocal checked_diff
         # 原生压缩会省略部分删除内容，压缩后的输入不能作为完整审查。
         kwargs['return_prepared'] = True
         prepared = native_get_diff(*args, **kwargs)
         if prepared.file_dict is not None:
             raise ValueError('pr_agent_context_incomplete')
+        if expected is not None:
+            if rendered_changes(prepared.diff) != expected:
+                raise ValueError('pr_agent_changes_missing')
+            checked_diff = prepared.diff.strip('\n')
         return prepared
 
     pr_reviewer.get_pr_diff = complete_diff
@@ -98,7 +145,6 @@ async def review(payload):
     get_logger().remove()
     settings = get_settings()
     model = 'openai/' + payload['model']
-    task = payload['input']
     values = {
         'config.git_provider': 'plain-diff', 'config.model': model,
         'config.weak_model': model, 'config.fallback_models': [], 'config.num_retries': 0,
@@ -121,6 +167,8 @@ async def review(payload):
         'plain_diff.content': task['diff'], 'plain_diff.title': task['title'],
         'plain_diff.description': task['description'],
     }
+    if expected is not None:
+        values.update({'config.patch_extra_lines_before': 0, 'config.patch_extra_lines_after': 0})
     for key, value in values.items():
         settings.set(key, value)
     import litellm
@@ -137,11 +185,19 @@ async def review(payload):
             kwargs['stream'] = False
             if payload['output_tokens']:
                 kwargs['max_tokens'] = payload['output_tokens']
+            if expected is not None and (not checked_diff or not any(
+                message.get('role') == 'user' and checked_diff in message.get('content', '')
+                for message in kwargs.get('messages', ())
+            )):
+                raise ValueError('pr_agent_changes_missing')
             response = await super()._acompletion(*args, **kwargs)
             usage = response.usage.model_dump() if response.usage else {}
             emit('usage', usage={'input_tokens': usage.get('prompt_tokens', 0),
                                  'output_tokens': usage.get('completion_tokens', 0)})
-            if not response.choices or response.choices[0].finish_reason != 'stop':
+            finish = response.choices[0].finish_reason if response.choices else None
+            if finish == 'length' and task.get('pr_agent_protocol'):
+                raise ValueError('pr_agent_response_length')
+            if finish != 'stop':
                 raise ValueError('pr_agent_response_incomplete')
             return response
 

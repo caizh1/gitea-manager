@@ -26,6 +26,7 @@ def read_coverage(snapshot, reads):
     coverage = dict(snapshot["coverage"], scope="repository")
     if snapshot.get('engine') == 'pr_agent':
         return dict(coverage, scope='diff', files_reviewed=coverage['files_total'],
+                    diff_files_provided=coverage['files_total'],
                     source_files_read=None, source_read_tracking='pr_agent_diff_context')
     if snapshot.get("codex_tools") == "native":
         return dict(coverage, files_reviewed=0, source_files_read=None,
@@ -144,7 +145,15 @@ def normalize(raw, snapshot, workspace):
         start = location.get("line_range", {}).get("start")
         end = location.get("line_range", {}).get("end")
         code = code if git_layout else target.read_bytes()
-        lines = code.decode("utf-8").splitlines()
+        if snapshot.get("pr_agent_protocol"):
+            from .pr_agent_encoding import decode_blob
+            decoded, _ = decode_blob(code, relative, side, snapshot["source_encodings"])
+            lines = decoded.split("\n")
+            if lines[-1] == "":
+                lines.pop()
+            lines = [line.removesuffix("\r") for line in lines]
+        else:
+            lines = code.decode("utf-8").splitlines()
         if type(start) is not int or type(end) is not int or not 1 <= start <= end <= len(lines):
             raise ReviewError("Codex 意见行范围无法核对")
         if snapshot.get('engine') != 'pr_agent' and snapshot.get("codex_tools") != "native" and not any(
@@ -281,17 +290,19 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
             else "独立反证" if phase.startswith("refutation-") else "自主审查"
         ),
     )
-    raw = execute(
-        store,
-        phase_job,
-        config,
-        workspace,
-        token,
-        diff_snapshot=dict(
-            snapshot, _codex_phase=phase, _pr_agent_input=agent_input,
-            _batch_messages=[{"content": ""}, {"content": instructions or '请审查固定版本的完整 PR。'}]
-        ),
-    )
+    from .performance import span
+    with span(store, job["id"], "analysis", phase):
+        raw = execute(
+            store,
+            phase_job,
+            config,
+            workspace,
+            token,
+            diff_snapshot=dict(
+                snapshot, _codex_phase=phase, _pr_agent_input=agent_input,
+                _batch_messages=[{"content": ""}, {"content": instructions or '请审查固定版本的完整 PR。'}]
+            ),
+        )
     if job.get("rules_protocol"):
         raw["_rules_identity"] = snapshot["rules_identity"]
     with store.tx() as c:
@@ -316,6 +327,7 @@ def process(store, job):
     from .native_workspace import bind_snapshot_evidence
     from .issue_lifecycle import reconcile
     from .gitea import assert_version
+    from .performance import span
     from .publication import publish
 
     repo, config = store.repo(job["repository"]), store.job_config(job["id"])
@@ -338,16 +350,24 @@ def process(store, job):
         if job.get("result") and job["result"].get("lifecycle"):
             if job["result"].get("analysis_complete") is not True:
                 raise IncompleteReview("保存的审查结果尚未完整结束")
-            publish(store, client, job, repo)
+            with span(store, job["id"], "publication"):
+                publish(store, client, job, repo)
             return
         snapshot = job.get("snapshot")
+        engine = config.get('engine', 'codex_cli')
         if not snapshot:
-            snapshot = capture(client, job["number"], config, batched=True)
+            if engine == 'pr_agent' and job.get('pr_agent_protocol'):
+                snapshot = capture(client, job["number"], config, batched=True,
+                                   byte_encodings=repo.get('source_encodings', {}))
+            else:
+                snapshot = capture(client, job["number"], config, batched=True)
             snapshot["codex_tools"] = "native"
             snapshot["workspace_layout"] = "git-worktree-v2"
         snapshot.pop("batch_protocol", None)
-        snapshot["engine"] = config.get('engine', 'codex_cli')
-        validate_single_size(snapshot)
+        snapshot["engine"] = engine
+        if not snapshot.get("pr_agent_protocol"):
+            limit = {"max_changed_lines": 10000} if engine == 'pr_agent' else {}
+            validate_single_size(dict(snapshot, **limit))
         store.update(job["id"], job["owner"], snapshot=snapshot, stage="准备 Git 增量缓存")
         if snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2"):
             from .git_workspace import prepare
@@ -355,16 +375,21 @@ def process(store, job):
 
             if snapshot.get("workspace_layout") == "git-worktree-v1":
                 workspace_lock.enter_context(store.lock("git-workspace-" + cache_key(repo)))
-        preparation_started = time.monotonic()
-        workspace, info = prepare(store, client, repo, job, snapshot)
         from .repository_rules import freeze, check_phase
-        snapshot = freeze(store, job, snapshot, workspace)
-        evidence_started = time.monotonic()
-        snapshot = bind_snapshot_evidence(store, job, snapshot, workspace)
-        info["evidence_seconds"] = round(time.monotonic() - evidence_started, 3)
-        info["total_seconds"] = round(time.monotonic() - preparation_started, 3)
+        with span(store, job["id"], "preparation"):
+            preparation_started = time.monotonic()
+            workspace, info = prepare(store, client, repo, job, snapshot)
+            snapshot = freeze(store, job, snapshot, workspace)
+            evidence_started = time.monotonic()
+            snapshot = bind_snapshot_evidence(store, job, snapshot, workspace)
+            info["evidence_seconds"] = round(time.monotonic() - evidence_started, 3)
+            info["total_seconds"] = round(time.monotonic() - preparation_started, 3)
         snapshot["source_cache"] = info
         store.update(job["id"], job["owner"], snapshot=snapshot, workspace_path=workspace)
+        if snapshot.get("pr_agent_protocol") and not snapshot["coverage"]["complete"]:
+            skipped = snapshot["coverage"]["skipped"]
+            first = skipped[0]
+            raise IncompleteReview(f'源码证据存在 {len(skipped)} 项缺口。{first["path"]} · {first["reason"]}')
         with contextlib.closing(store.connect()) as c:
             old = c.execute(
                 "SELECT phase,result FROM codex_review_phases WHERE job=?", (job["id"],)
@@ -453,7 +478,15 @@ def process(store, job):
                 and source.is_file()
                 and not source.is_symlink()
             ):
-                lines = source.read_text(encoding="utf-8").splitlines()
+                if current_snapshot.get("pr_agent_protocol"):
+                    from .pr_agent_encoding import decode_blob
+                    from .git_workspace import read_blob
+                    code = read_blob(source_root, current_snapshot["head"], finding["path"])
+                    text, _ = decode_blob(code, finding["path"], "新侧", current_snapshot["source_encodings"])
+                    lines = text.removesuffix("\n").split("\n") if text else []
+                    lines = [line.removesuffix("\r") for line in lines]
+                else:
+                    lines = source.read_text(encoding="utf-8").splitlines()
                 anchor_line = (finding.get("anchor") or {}).get("line", 1)
                 start = max(1, anchor_line - 100)
                 payload["current_source"] = {
@@ -523,11 +556,12 @@ def process(store, job):
             result["analysis_complete"] = False
             result["report_markdown"] = "历史 P0/P1 尚待确认，未形成完整审查结论。"
             store.update(job["id"], job["owner"], result=result)
-            raise IncompleteReview("历史 P0/P1 复核存在未决项，未进入发布确认")
+            raise IncompleteReview("历史 P0/P1 复核存在未决项，未自动发布")
         if unresolved_blocker and result["report_markdown"].startswith("VERDICT: PASS"):
             result["report_markdown"] = result["report_markdown"].replace("VERDICT: PASS", "VERDICT: FAIL", 1)
         assert_version(client, job["number"], snapshot)
-        publish(store, client, dict(job, result=result, snapshot=snapshot), repo)
+        with span(store, job["id"], "publication"):
+            publish(store, client, dict(job, result=result, snapshot=snapshot), repo)
     except Stale as exc:
         store.finish(job["id"], job["owner"], "superseded", str(exc))
     except Exception as exc:

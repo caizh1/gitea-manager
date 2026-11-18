@@ -349,14 +349,26 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
     root = Path(workspace)
     diff_path = root / 'change.diff' if (root / 'change.diff').exists() else root / '变更.diff'
     git_layout = snapshot.get('workspace_layout') in ('git-worktree-v1', 'git-worktree-v2')
-    raw = snapshot['diff'].encode() if git_layout else _read_fixed(diff_path, deadline_at, store, job)
-    patches = parse_diff(raw)
+    byte_protocol = snapshot.get('pr_agent_protocol')
+    if byte_protocol:
+        from .pr_agent_encoding import blocks, decode_blob, render_block, unpack
+        raw = unpack(snapshot)
+        patch_blocks = blocks(raw)
+        if len(patch_blocks) != snapshot['coverage']['files_total']:
+            raise ReviewError('固定补丁文件结构与快照不一致')
+        records = [(parse_diff(block)[0], block) for block in patch_blocks]
+    else:
+        raw = snapshot['diff'].encode() if git_layout else _read_fixed(diff_path, deadline_at, store, job)
+        records = [(patch, None) for patch in parse_diff(raw)]
+    rendered = []
     files, anchors, skipped = [], {}, []
     with store.tx() as c:
         c.execute('CREATE TABLE IF NOT EXISTS review_snapshot_sources '
                   '(job TEXT,path TEXT,side TEXT,code TEXT,PRIMARY KEY(job,path,side))')
-    for patch in patches:
+    for patch, block in records:
         path = patch.new_path or patch.old_path
+        if not path and block:
+            path = block.split(b'\n', 1)[0].decode('utf-8', 'backslashreplace')[:1000]
         try:
             _deadline(deadline_at); store.active(job['id'], job['owner'])
             if patch.unsupported:
@@ -364,7 +376,7 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
             if not path or not patch.hunks:
                 skipped.append({'path': path or '非文本变更',
                                 'reason': '纯重命名、模式变更或无文本修改，不做行内定位',
-                                'evidence_gap': False})
+                                'evidence_gap': bool(byte_protocol)})
                 continue
             old_path = root / 'before' / patch.old_path if patch.old_path else None
             new_path = root / 'after' / patch.new_path if patch.new_path else None
@@ -375,15 +387,24 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
             else:
                 old = _read_fixed(old_path, deadline_at, store, job)
                 new = _read_fixed(new_path, deadline_at, store, job)
+            encodings = None
+            if byte_protocol:
+                rules = snapshot['source_encodings']
+                old_text, old_codec = decode_blob(old, patch.old_path or path, '旧侧', rules)
+                new_text, new_codec = decode_blob(new, patch.new_path or path, '新侧', rules)
+                encodings = {'old': old_codec, 'new': new_codec}
             try:
-                found = validate_patch(patch, old, new, snapshot['id'])
+                found = validate_patch(patch, old, new, snapshot['id'], encodings)
             except ReviewError as exc:
                 # 同一固定 SHA 的归档源码无法被固定 Diff 还原，说明
                 # 版本身份或证据已不一致，不能降级为普通覆盖缺口后继续发布。
                 if str(exc) not in ('文件包含二进制内容', '源码不是 UTF-8，不能精确引用'):
                     exc.fatal_job = True
                 raise
-            old_text, new_text = old.decode('utf-8'), new.decode('utf-8')
+            if byte_protocol:
+                normalized = render_block(block, patch, encodings)
+            else:
+                old_text, new_text = old.decode('utf-8'), new.decode('utf-8')
             needed = len(old) + len(new)
             if shutil.disk_usage(store.path.parent).free < needed * 3 + 64 * 1024 * 1024:
                 raise ReviewError('源码证据存储空间不足：需保留本文件三倍写入空间及 64 MiB 收尾空间')
@@ -400,6 +421,8 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
                                     'kinds': [kind for kind, _ in h.rows]} for h in patch.hunks]}
             files.append(SourceFile(reference, store))
             anchors.update((item['id'], item) for item in found)
+            if byte_protocol:
+                rendered.append(normalized)
         except (ReviewError, UnicodeError) as exc:
             from .common import Stale
             if isinstance(exc, Stale) or getattr(exc, 'fatal_job', False):
@@ -408,7 +431,25 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
                             'reason': str(exc) if isinstance(exc, ReviewError) else '源码不是 UTF-8',
                             'evidence_gap': True})
     snapshot['files'], snapshot['anchors'] = files, anchors
-    snapshot['coverage'] = {'files_total': len(patches), 'files_reviewed': len(files),
+    if byte_protocol:
+        if not skipped:
+            from .git_cache import run_git
+            paths = run_git(['diff', '--name-only', '--no-renames', '--no-ext-diff', '--no-textconv', '-z',
+                             snapshot['merge_base'], snapshot['head'], '--'], cwd=root,
+                            check=lambda: store.active(job['id'], job['owner']))
+            expected = set(paths.split(b'\0')) - {b''}
+            actual = set()
+            for patch, block in records:
+                if patch.old_path and b'\ncopy from ' not in block:
+                    actual.add(patch.old_path.encode())
+                if patch.new_path:
+                    actual.add(patch.new_path.encode())
+            for path in sorted(expected ^ actual):
+                skipped.append({'path': path.decode('utf-8', 'backslashreplace'),
+                                'reason': 'Gitea 补丁文件范围与固定 Git 提交不一致',
+                                'evidence_gap': True})
+        snapshot['diff'] = ''.join(rendered)
+    snapshot['coverage'] = {'files_total': len(records), 'files_reviewed': len(files),
                             'skipped': skipped,
                             'complete': not any(row.get('evidence_gap') for row in skipped)}
     return snapshot

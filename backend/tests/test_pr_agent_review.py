@@ -43,16 +43,24 @@ def test_pr_agent_budget_preset_preserves_existing_task_configuration(tmp_path):
     assert store.job_config(second)['max_findings'] == 30
 
 
-def test_pr_agent_limit_counts_both_sides():
+@pytest.mark.parametrize(('added', 'deleted'), [
+    (10000, 0), (0, 10001), (29999, 0), (30000, 0), (0, 30000),
+    (15000, 15000), (30001, 0), (0, 30001), (15001, 15000),
+])
+def test_pr_agent_limit_counts_both_sides(added, deleted):
     from ai_review.batch_flow import validate_single_size
 
-    snapshot = {'engine': 'pr_agent', 'diff':
-        'diff --git a/replace.c b/replace.c\n--- a/replace.c\n+++ b/replace.c\n'
-        '@@ -1,4953 +1,5047 @@\n' + '-int old;\n' * 4953 + '+int new;\n' * 5047}
-    assert validate_single_size(snapshot)['added_lines'] == 5047
-    snapshot['diff'] = snapshot['diff'].replace('+1,5047', '+1,5048') + '+int one_more;\n'
-    with pytest.raises(ReviewError, match='10001 行.*10000 行'):
-        validate_single_size(snapshot)
+    snapshot = {'engine': 'pr_agent'}
+    raw = ('diff --git a/replace.c b/replace.c\n--- a/replace.c\n+++ b/replace.c\n'
+           f'@@ -{int(bool(deleted))},{deleted} +{int(bool(added))},{added} @@\n').encode()
+    raw += '-旧注释\n'.encode('gbk') * deleted + b'+int new;\n' * added
+    if added + deleted > 30000:
+        with pytest.raises(ReviewError, match='30001 行.*30000 行') as error:
+            validate_single_size(snapshot, raw=raw)
+        assert error.value.error_code == 'PR_TOTAL_CHANGE_LIMIT'
+    else:
+        counts = validate_single_size(snapshot, raw=raw)
+        assert (counts['added_lines'], counts['deleted_lines']) == (added, deleted)
 
 
 def test_pr_agent_context_does_not_depend_on_hidden_codex_compaction():
@@ -106,6 +114,106 @@ def runner_module():
     return module
 
 
+def test_mixed_encoding_round_trip_and_final_change_digest():
+    import hashlib
+
+    from ai_review.common import digest
+    from ai_review.diff import parse_diff, validate_patch
+    from ai_review.diff_inline import index, verify_comment
+    from ai_review.pr_agent_encoding import decode_blob, pack, render_block, validate_config
+
+    path = 'src/legacy/queue.c'
+    old = '// 旧版注释\r\n'.encode('gbk')
+    new = '// 新版注释\r\n'.encode()
+    raw = (f'diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n'.encode()
+           + b'-' + old + b'+' + new)
+    rules = validate_config({'.': 'gb18030', 'src/legacy': 'gbk'})
+    sides = {'old': decode_blob(old, path, '旧侧', rules)[1],
+             'new': decode_blob(new, path, '新侧', rules)[1]}
+    assert sides == {'old': 'gbk', 'new': 'utf-8'}
+    patch, = parse_diff(raw)
+    anchors = validate_patch(patch, old, new, 'snapshot', sides)
+    assert [a['quote'] for a in anchors] == ['// 旧版注释', '// 新版注释']
+    diff = render_block(raw, patch, sides)
+    assert '-// 旧版注释' in diff
+    snapshot = {'id': 'snapshot', 'pr_agent_protocol': 1, 'diff': diff,
+                'raw_diff': pack(raw), 'diff_sha256': hashlib.sha256(raw).hexdigest()}
+    report_anchors, _ = index(snapshot)
+    gitea_projection = ''.join('\ufffd' if 0xdc80 <= ord(c) <= 0xdcff else c
+                               for c in old.decode('utf-8', 'surrogateescape').rstrip('\r\n'))
+    snippet = '@@ -1 +1 @@\n-' + gitea_projection + '\n+// 新版注释'
+    verify_comment(snippet, report_anchors['R2'], snapshot)
+    with pytest.raises(ReviewError, match='评论片段与固定 PR diff 不一致'):
+        verify_comment(snippet.replace('新版注释', '错误注释'), report_anchors['R2'], snapshot)
+    runner = runner_module()
+    rendered = f"## File: '{path}'\n@@ -1 +1 @@\n__new hunk__\n1 +// 新版注释\r\n__old hunk__\n-// 旧版注释"
+    expected = {path: digest([('+', 1, '// 新版注释'), ('-', 1, '// 旧版注释')])}
+    assert runner.rendered_changes(rendered) == expected
+    assert runner.rendered_changes(rendered.rsplit('\n', 1)[0]) != expected
+    with pytest.raises(ReviewError, match='旧侧.*第 1 行.*第 4 字节'):
+        decode_blob(old, path, '旧侧', {})
+    with pytest.raises(ReviewError, match='固定版本旧文件不一致'):
+        validate_patch(patch, b'changed\n', new, 'snapshot', sides)
+
+
+def test_pr_agent_rejects_gitea_diff_omitting_a_whole_file(tmp_path):
+    import hashlib
+    import subprocess
+
+    from ai_review.native_workspace import bind_snapshot_evidence
+    from ai_review.pr_agent_encoding import pack
+
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(repo), *args])
+
+    git('init', '-q')
+    git('config', 'user.name', 'Review')
+    git('config', 'user.email', 'review@example.invalid')
+    for path in ('first.c', 'second.c'):
+        (repo / path).write_text('int old;\n')
+    git('add', '.')
+    git('commit', '-qm', '基线')
+    base = git('rev-parse', 'HEAD').decode().strip()
+    for path in ('first.c', 'second.c'):
+        (repo / path).write_text('int new;\n')
+    git('commit', '-qam', '固定变更')
+    head = git('rev-parse', 'HEAD').decode().strip()
+    raw = git('diff', base, head, '--', 'first.c')
+
+    store = Store(tmp_path / 'review.db')
+    store.save_config(dict(store.config(), enabled=True, debounce_seconds=0, engine='pr_agent'))
+    repository = store.save_repo(1, 1, {'enabled': True, 'repo_name': 'owner/repo'})
+    store.enqueue(repository['id'], 1, {'head': head, 'base': base})
+    job = store.claim()
+    snapshot = {'head': head, 'merge_base': base, 'id': '固定快照', 'source_encodings': {},
+                'workspace_layout': 'git-worktree-v2', 'pr_agent_protocol': 1,
+                'raw_diff': pack(raw), 'diff_sha256': hashlib.sha256(raw).hexdigest(),
+                'coverage': {'files_total': 1}}
+    result = bind_snapshot_evidence(store, job, snapshot, repo)
+    assert not result['coverage']['complete']
+    assert result['coverage']['skipped'][0]['path'] == 'second.c'
+
+
+def test_pr_agent_history_checks_code_without_structural_diff_marker():
+    from ai_review.issue_lifecycle import validate_check
+
+    payload = {'issue_id': '问题编号', 'candidates': [],
+               'historical_diff': {'H1': '+++ b/writer.c', 'H2': '@@ -1 +1 @@', 'H3': '+    acknowledge();'},
+               'current_diff': {'C1': '@@ -1 +1 @@', 'C2': '+    if (failed) return;'}}
+    snapshot = {'id': '固定版本', 'pr_agent_protocol': 1}
+    raw = {'issue_id': '问题编号', 'snapshot_id': '固定版本', 'status': 'fixed', 'reason': '失败时在确认前退出',
+           'relations': {}, 'evidence': [{'id': 'H3', 'quote': '    acknowledge();'},
+                                        {'id': 'C2', 'quote': '    if (failed) return;'}]}
+    assert validate_check(raw, payload, snapshot)['evidence'][0]['quote'] == '+    acknowledge();'
+    for entry in ({'id': 'H1', 'quote': '++ b/writer.c'}, {'id': 'H3', 'quote': '    acknowledge(other);'}):
+        raw['evidence'][0] = entry
+        with pytest.raises(ReviewError, match='不属于固定 diff 原文'):
+            validate_check(raw, payload, snapshot)
+
+
 def configure_case(case):
     case.snapshot['engine'] = 'pr_agent'
     case.store.update(case.job['id'], case.job['owner'], snapshot=case.snapshot)
@@ -142,6 +250,7 @@ def test_pr_agent_jobs_keep_engine_and_use_shared_concurrency(tmp_path):
         assert job['id'] in (first, second)
         assert job['batch_protocol'] == 0
         assert job['rules_protocol'] == 1
+        assert job['pr_agent_protocol'] == 1
         assert store.job_config(job['id'])['engine'] == 'pr_agent'
     assert store.claim() is None
     store.save_config(dict(store.config(), engine='codex_cli'))

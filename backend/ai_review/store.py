@@ -106,6 +106,8 @@ class Store:
             migrate_rules(c)
             from .concurrency import migrate as migrate_concurrency
             migrate_concurrency(c)
+            if 'pr_agent_protocol' not in {row[1] for row in c.execute('PRAGMA table_info(jobs)')}:
+                c.execute('ALTER TABLE jobs ADD COLUMN pr_agent_protocol INTEGER NOT NULL DEFAULT 0')
             c.execute('PRAGMA user_version=22')
             c.commit()
         os.chmod(self.path, 0o600)
@@ -296,6 +298,9 @@ class Store:
 
     def save_repo(self, server_id, repo_id, data, repository=None, required_config_revision=None):
         data = dict(data)
+        from .pr_agent_encoding import CONFIG, validate_config
+        if CONFIG in data:
+            data[CONFIG] = validate_config(data[CONFIG])
         # 创建回执仅由安装流程写入，客户端不能伪造或清空它。
         data.pop('webhook_binding', None)
         with self.tx() as c:
@@ -411,6 +416,9 @@ class Store:
                       (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
             if config.get('engine') in ('codex_cli', 'pr_agent'):
                 c.execute('UPDATE jobs SET batch_protocol=0,rules_protocol=1 WHERE id=?', (job,))
+            if config.get('engine') == 'pr_agent':
+                from .pr_agent_encoding import PROTOCOL
+                c.execute('UPDATE jobs SET pr_agent_protocol=? WHERE id=?', (PROTOCOL, job))
             return job
 
     def job(self, job, public=False, evidence=True):
@@ -459,7 +467,9 @@ class Store:
             value.pop('event_token_hash', None)
             value.pop('native_result_sha256', None)
             if value['snapshot']:
-                value['snapshot'] = {k: value['snapshot'][k] for k in ('id', 'base', 'head', 'merge_base', 'coverage', 'analysis_version', 'source_cache') if k in value['snapshot']}
+                value['snapshot'] = {k: value['snapshot'][k] for k in (
+                    'id', 'base', 'head', 'merge_base', 'coverage', 'analysis_version',
+                    'source_cache', 'line_counts', 'max_changed_lines') if k in value['snapshot']}
             from .session_events import project
             project(value)
         return value

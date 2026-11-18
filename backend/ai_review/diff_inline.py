@@ -156,6 +156,15 @@ def verify_comment(raw, anchor, snapshot):
     old, new = old_start - bool(old_count), new_start - bool(new_count)
     expected = hunks[(anchor['path'], anchor['hunk'])]
     positions = {(a, b, kind): (i, quote) for i, (a, b, kind, quote) in enumerate(expected)}
+    api_quotes = []
+    if snapshot.get('pr_agent_protocol'):
+        from .pr_agent_encoding import unpack
+        patch = next(p for p in parse_diff(unpack(snapshot)) if (p.new_path or p.old_path) == anchor['path'])
+        for _, line in patch.hunks[anchor['hunk']].rows:
+            # Go JSON 序列化对无效 UTF-8 逐字节输出 U+FFFD。仍以固定位置和
+            # 已核对的原始补丁计算该投影，模型证据继续使用正确解码文本。
+            raw_text = line.removesuffix(b'\n').removesuffix(b'\r').decode('utf-8', 'surrogateescape')
+            api_quotes.append(re.sub(r'[\udc80-\udcff]', '\ufffd', raw_text))
     # Gitea 1.26.4 截取连续替换块时，空侧沿用“下一行”游标，
     # 零长度区间因此偏一行。只在固定 diff 证实首行匹配该差异时校正空侧；
     # 有源码的一侧、后续每行的坐标和正文仍逐字核对。
@@ -181,11 +190,12 @@ def verify_comment(raw, anchor, snapshot):
         consumed_old += kind != '+'
         consumed_new += kind != '-'
         match = positions.get((old, new, kind))
-        if not match or match[1] != text or (last is not None and match[0] != last + 1):
+        if (not match or (match[1] != text and (not api_quotes or api_quotes[match[0]] != text))
+                or (last is not None and match[0] != last + 1)):
             raise ReviewError('Gitea 评论片段与固定 PR diff 不一致')
         last = match[0]
         if ((kind == '+' and anchor['side'] == 'new' and new == anchor['line']) or
                 (kind == '-' and anchor['side'] == 'old' and old == anchor['line'])):
-            found = text == anchor['quote']
+            found = match[1] == anchor['quote']
     if not found or consumed_old > old_count or consumed_new > new_count:
         raise ReviewError('Gitea 评论片段没有包含正确的问题变更行')

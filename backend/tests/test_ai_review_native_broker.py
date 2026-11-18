@@ -224,12 +224,12 @@ class NativeBrokerFailureTests(unittest.TestCase):
         self.store = Store(root / 'review.db')
 
     def request(self, mode, timeout, repository_id=99, output_tokens=0, thinking=None,
-                model='测试模型', request_values=None):
+                model='测试模型', request_values=None, engine='opencode_native'):
         upstream = _Upstream(mode)
         self.addCleanup(upstream.close)
         current = self.store.config()
         self.store.save_config({'revision': current['revision'], 'enabled': True,
-            'debounce_seconds': 0, 'model': model, 'engine': 'opencode_native',
+            'debounce_seconds': 0, 'model': model, 'engine': engine,
             'api_base_url': upstream.url, 'api_key': self.store.seal('upstream-test-key'),
             'model_request_timeout_seconds': timeout,
             'model_max_output_tokens': output_tokens, **(thinking or {})})
@@ -255,6 +255,15 @@ class NativeBrokerFailureTests(unittest.TestCase):
                                                                      json=body, headers=headers)
             response.get_data()
         return response, self.store.job(job_id, evidence=False)['diagnostic'], upstream
+
+    def test_pr_agent_checks_final_messages_before_using_model_call(self):
+        response, diagnostic, upstream = self.request('capture', 5, engine='pr_agent',
+            output_tokens=8192, thinking={'model_context_tokens': 32768},
+            request_values={'messages': [{'role': 'user', 'content': '长' * 9000}]})
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(diagnostic['error_code'], 'MODEL_INPUT_BUDGET')
+        self.assertEqual(diagnostic['input_limit'], 22528)
+        self.assertFalse(upstream.bodies)
 
     def test_actual_http_qwen_sampling_and_tool_choice_match_deployment_contract(self):
         structured = {'type': 'function', 'function': {

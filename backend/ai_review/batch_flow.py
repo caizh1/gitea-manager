@@ -9,7 +9,7 @@ from . import batch_plan, batch_graph, batch_references, batch_locations, token_
 VERSION = 'diff-batches-v3'
 MAX_SINGLE_NET_ADDED_LINES = 1000  # 仅用于已冻结的第五版任务
 MAX_SINGLE_CHANGED_LINES = 1200
-PR_AGENT_MAX_CHANGED_LINES = 10000
+PR_AGENT_MAX_CHANGED_LINES = 30000
 # 历史分批模式的装箱目标；默认单次模式使用独立的千行与完整 Token 门槛。
 PRIMARY_WORK_LINES = 320
 ASSOCIATION_WORK_LINES = 320
@@ -50,14 +50,15 @@ def changed_line_limit(engine):
     return PR_AGENT_MAX_CHANGED_LINES if engine == 'pr_agent' else MAX_SINGLE_CHANGED_LINES
 
 
-def validate_single_size(snapshot, *, net_limit=False):
+def validate_single_size(snapshot, *, net_limit=False, raw=None):
     """新任务按新增加删除准入；第五版冻结任务仍沿用净增加门槛。"""
     from .diff import parse_diff
-    kinds = [kind for patch in parse_diff(snapshot['diff'].encode())
-             for hunk in patch.hunks for kind, _ in hunk.rows]
-    added, deleted = kinds.count('+'), kinds.count('-')
+    raw = snapshot['diff'].encode() if raw is None else raw
+    counts = Counter(kind for patch in parse_diff(raw)
+                     for hunk in patch.hunks for kind, _ in hunk.rows)
+    added, deleted = counts['+'], counts['-']
     net = max(0, added - deleted)
-    limit = changed_line_limit(snapshot.get('engine'))
+    limit = snapshot.get('max_changed_lines', changed_line_limit(snapshot.get('engine')))
     if not net_limit and added + deleted > limit:
         raise token_budget.failure('PR_TOTAL_CHANGE_LIMIT',
             f'PR 新增 {added} 行、删除 {deleted} 行，合计 {added + deleted} 行，超过当前 {limit} 行上限；未发送模型')

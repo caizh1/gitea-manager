@@ -1,6 +1,7 @@
 """严格解析累计补丁；只有旧文件可精确还原新文件时才产生锚点。"""
 import re
 from dataclasses import dataclass, field
+from io import BytesIO
 
 from .common import ReviewError, digest, safe_path
 
@@ -53,7 +54,7 @@ def git_path(raw):
 
 
 def parse_diff(data):
-    lines = file_lines(data)
+    lines = BytesIO(data)
     patches, patch, hunk = [], None, None
     for line in lines:
         if line.startswith(b'diff --git '):
@@ -82,7 +83,8 @@ def parse_diff(data):
         elif line.startswith(b'+++ '):
             patch.new_path = git_path(line[4:].removesuffix(b'\n'))
         elif line.startswith((b'Binary files ', b'GIT binary patch', b'new file mode 120000',
-                              b'new file mode 160000', b'old mode 120000', b'old mode 160000', b'index ')):
+                              b'new file mode 160000', b'deleted file mode 120000', b'deleted file mode 160000',
+                              b'old mode 120000', b'old mode 160000', b'new mode 120000', b'new mode 160000', b'index ')):
             if not line.startswith(b'index ') or line.rstrip().endswith((b'120000', b'160000')):
                 patch.unsupported = '二进制文件、符号链接或子模块不产生行内意见'
         elif not line.startswith((b'index ', b'new file mode ', b'deleted file mode ', b'old mode ',
@@ -106,12 +108,12 @@ def file_lines(data):
     return [v + b'\n' for v in rows[:-1]] + ([rows[-1]] if rows[-1] else [])
 
 
-def quote_text(raw):
+def quote_text(raw, encoding='utf-8'):
     """模型引用不携带行终止符；代码缩进及其他空白保持原样。"""
-    return raw.removesuffix(b'\n').removesuffix(b'\r').decode('utf-8')
+    return raw.removesuffix(b'\n').removesuffix(b'\r').decode(encoding)
 
 
-def validate_patch(patch, old, new, snapshot_id):
+def validate_patch(patch, old, new, snapshot_id, encodings=None):
     if patch.unsupported:
         return []
     if b'\0' in old or b'\0' in new:
@@ -139,7 +141,7 @@ def validate_patch(patch, old, new, snapshot_id):
             if kind in ('+', '-'):
                 side, number = ('new', right) if kind == '+' else ('old', cursor)
                 try:
-                    quote = quote_text(raw)
+                    quote = quote_text(raw, encodings[side] if encodings else 'utf-8')
                 except UnicodeError:
                     raise ReviewError('源码不是 UTF-8，不能精确引用') from None
                 anchor = {'snapshot_id': snapshot_id, 'path': patch.new_path or patch.old_path,

@@ -3,6 +3,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 from pathlib import Path
@@ -230,7 +231,11 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                 response = _request(session, 'POST', '/execute', json=data)
                 value = _response(response, response_limit)
                 if response.status_code not in (200, 201, 202):
-                    error = ReviewError('原生会话启动被执行器拒绝，未重放')
+                    code = value.get('error_code', '')
+                    detail = f'HTTP {response.status_code}'
+                    if isinstance(code, str) and re.fullmatch(r'[a-z_]{1,64}', code):
+                        detail += f' · {code}'
+                    error = ReviewError(f'原生会话启动被执行器拒绝（{detail}），未重放')
                     error.error_code = 'EXECUTOR_START_REJECTED'
                     raise error
             except requests.RequestException:

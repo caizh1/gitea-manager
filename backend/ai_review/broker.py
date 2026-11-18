@@ -399,7 +399,26 @@ def create_broker(store=None):
                 if (not preliminary or preliminary['job'] != job_id or preliminary['expires'] < time.time()
                         or preliminary['remaining'] == 0 or body.get('model') != preliminary['model']):
                     raise ReviewError('任务原生会话授权无效或已过期')
-                batch_job = c.execute('SELECT batch_protocol,owner FROM jobs WHERE id=?', (job_id,)).fetchone()
+                batch_job = c.execute('SELECT batch_protocol,pr_agent_protocol,owner FROM jobs WHERE id=?',
+                                      (job_id,)).fetchone()
+            if batch_job and batch_job['pr_agent_protocol']:
+                from . import token_budget
+                store.active(job_id, batch_job['owner'])
+                cfg = store.job_config(job_id)
+                model = cfg['model'].lower()
+                if cfg.get('tokenizer_profile', 'auto') == 'auto' and model in (
+                    'deepseek-flash', 'deepseek-v4-flash', 'deepseek- v4.1-flash',
+                ):
+                    cfg['tokenizer_profile'] = 'deepseek41'
+                input_tokens = token_budget.count(body['messages'], cfg)
+                input_limit = cfg['model_context_tokens'] - (cfg.get('model_max_output_tokens') or 8192) - 2048
+                if input_tokens > input_limit:
+                    error = token_budget.input_failure(input_tokens, input_limit, 'PR-Agent 完整输入超过模型窗口')
+                    store.update(job_id, batch_job['owner'], error=str(error), diagnostic={
+                        **error.diagnostic, 'status': 'failed', 'error_code': error.error_code,
+                        'message': str(error), 'call_id': call_id, 'session_id': session_id,
+                    })
+                    return jsonify(error={'message': str(error), 'call_id': call_id}), 413
             if batch_job and batch_job['batch_protocol']:
                 from .batch_counter import run as count_request
                 from .batch_store import get as get_plan
@@ -513,6 +532,10 @@ def create_broker(store=None):
                 details = safe_upstream_details(envelope)
                 transport.close()
                 message = f'模型服务返回 HTTP {status}，未自动重放'
+                if batch_job and batch_job['pr_agent_protocol'] and status in (400, 422) and isinstance(error, dict):
+                    hint = str(error.get('message', '')).lower()
+                    if any(word in hint for word in ('max_tokens', 'context length', 'context window', 'maximum context')):
+                        message = f'模型服务拒绝配置的上下文或输出额度（HTTP {status}）'
                 mark_failed('MODEL_HTTP_ERROR', message, source='model_upstream', **details)
                 return jsonify(_review_upstream_error=envelope), 502
 

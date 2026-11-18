@@ -209,6 +209,8 @@ def repositories():
 
 
 def repository_values(state, data, old=None):
+    from ai_review.pr_agent_encoding import CONFIG, validate_config
+    encodings = validate_config(data.get(CONFIG, (old or {}).get(CONFIG, {})))
     if not isinstance(data.get('enabled', False), bool):
         raise ReviewError('仓库开关必须是布尔值')
     if old:
@@ -244,6 +246,7 @@ def repository_values(state, data, old=None):
             'bot_token': state.seal(token), 'bot_id': user['id'], 'bot_name': user['login'],
             'webhook_secret': old['webhook_secret'] if old else state.seal(secrets.token_urlsafe(32)),
             'enabled': data.get('enabled', False), 'hook_status': old.get('hook_status', '未安装') if old else '未安装',
+            CONFIG: encodings,
             **({'revision': data.get('revision')} if old else {})}
     finally:
         client.close()
@@ -269,7 +272,11 @@ def update_repository(repository):
     from access.scopes import is_platform, actor_snapshot, current_binding, check_task_actor
     if not is_platform():
         check_task_actor(actor_snapshot(current_binding()), old['server_id'], old['repo_id'])
-        return jsonify(state.save_repo(old['server_id'], old['repo_id'], body(), repository))
+        data = body()
+        # 管理员只在已授权仓库内配置文本读取规则。
+        if set(data) - {'enabled', 'revision', 'source_encodings'}:
+            raise ReviewError('仓库设置只接受启用状态、版本与备用编码')
+        return jsonify(state.save_repo(old['server_id'], old['repo_id'], data, repository))
     target, repo_id, data = repository_values(state, body(), old)
     from access.scopes import bind_review_repository, require_repo
     bind_review_repository(state, repository, require_repo(target, repo_id))

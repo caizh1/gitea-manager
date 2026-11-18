@@ -47,7 +47,7 @@ function fixture(url, method, payload) {
   if (p.endsWith('/csrf')) return { token: '隔离测试令牌' }
   if (p === '/api/ai-review/config') return method === 'PUT' ? payload : {
     config: { enabled: false, engine: 'codex_cli', model: 'navigation-test-model' }, health: [],
-    changed_line_limits: { pr_agent: 10000, codex_cli: 1200, opencode_native: 1200 },
+    changed_line_limits: { pr_agent: 30000, codex_cli: 1200, opencode_native: 1200 },
     engine_budgets: { pr_agent: { model_max_output_tokens: 393216, model_context_tokens: 1000000,
       task_timeout_seconds: 3600, review_timeout_seconds: 3600, model_request_timeout_seconds: 3600,
       thinking_protocol: 'deepseek', thinking_enabled: true, reasoning_effort: 'high' } },
@@ -204,7 +204,8 @@ async function main() {
   await navigate(page, '/ai-reviews/settings'); await reviewReady(page, '/ai-reviews/settings')
   await page.locator('.el-select').filter({ has: page.getByRole('combobox', { name: '执行引擎', exact: true }) }).click()
   await page.getByRole('option', { name: 'PR-Agent 原生审查（Linux amd64）', exact: true }).click()
-  await page.getByText('PR-Agent 原生差异审查，新增与删除合计最多 10,000 行', { exact: true }).waitFor()
+  await page.getByText('PR-Agent 原生差异审查，新增与删除合计最多 30,000 行', { exact: true }).waitFor()
+  await page.getByText('PR-Agent 支持新增与删除合计最多 30,000 行。完整变更还须放入模型的输入额度。', { exact: true }).waitFor()
   await page.getByRole('button', { name: '应用 PR-Agent 实测预算', exact: true }).click()
   await page.locator('.el-radio').filter({ has: page.getByRole('radio', { name: /low/ }) }).click()
   const savedRequest = page.waitForRequest(request => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/ai-review/config')

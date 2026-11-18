@@ -159,7 +159,7 @@ class TimeBudgetTests(unittest.TestCase):
         self.assertEqual(initial['review_timeout_seconds'],3600)
         self.assertEqual(initial['model_request_timeout_seconds'],3600)
         self.assertEqual(initial['model_max_output_tokens'],393216)
-        self.assertEqual(payload['changed_line_limits']['pr_agent'],10000)
+        self.assertEqual(payload['changed_line_limits']['pr_agent'],30000)
         self.assertEqual(client.put('/api/ai-review/config',json={'revision':initial['revision'],'model_request_timeout_seconds':900}).status_code,403)
         headers={'X-Review-CSRF':client.get('/api/ai-review/csrf').json['token']}
         self.assertEqual(client.put('/api/ai-review/config',json={},headers={'X-Review-CSRF':'é'}).status_code,403)

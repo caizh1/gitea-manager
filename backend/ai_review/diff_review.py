@@ -26,28 +26,41 @@ def prompt(snapshot):
             + diff_inline.locations(snapshot))
 
 
-def capture(client, number, config, batched=False):
+def capture(client, number, config, batched=False, *, byte_encodings=None):
     server_version = client.version()
     client.repository()
     pr = client.pr(number)
     version = version_of(pr)
     raw = client.request('GET', client.prefix + f'/pulls/{number}.diff', raw=True, limit=64 * 1024 * 1024)
     assert_version(client, number, version)
-    try:
-        text = raw.decode('utf-8')
-    except UnicodeError:
-        raise ReviewError('PR diff 不是 UTF-8，未替换或截断原文') from None
-    files = sum(line.startswith('diff --git ') for line in text.splitlines())
-    if text.strip() and not files:
+    byte_snapshot = {}
+    if byte_encodings is not None:
+        from .batch_flow import PR_AGENT_MAX_CHANGED_LINES, validate_single_size
+        from .pr_agent_encoding import PROTOCOL, pack
+        size_policy = {'engine': 'pr_agent', 'max_changed_lines': PR_AGENT_MAX_CHANGED_LINES}
+        byte_snapshot = dict(size_policy, line_counts=validate_single_size(size_policy, raw=raw),
+                             pr_agent_protocol=PROTOCOL, source_encodings=byte_encodings,
+                             raw_diff=pack(raw))
+        text = ''
+    else:
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeError:
+            raise ReviewError('PR diff 不是 UTF-8，未替换或截断原文') from None
+    files = raw.count(b'\ndiff --git ') + int(raw.startswith(b'diff --git '))
+    if raw.strip() and not files:
         raise ReviewError('PR 接口未返回 Git diff，未提交模型')
     identity = dict(version, repository=client.repo_id, number=number, review_scope='diff',
                     config_revision=config.get('execution_revision', config['revision']),
                     diff_sha256=hashlib.sha256(raw).hexdigest(), server_version=server_version,
                     inline_contract=1, lifecycle_version=1)
+    if byte_snapshot:
+        identity.update(pr_agent_protocol=byte_snapshot['pr_agent_protocol'], source_encodings=byte_encodings)
     snapshot = dict(identity, id=digest(identity), title=pr.get('title') or '',
                     description=pr.get('body') or '', diff=text, files=[], anchors={},
                     coverage={'scope': 'diff', 'files_total': files, 'files_reviewed': 0,
                               'diff_files_provided': files, 'skipped': [], 'complete': True})
+    snapshot.update(byte_snapshot)
     if batched:
         snapshot['batch_protocol'] = 1
         return snapshot
