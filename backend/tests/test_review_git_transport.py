@@ -171,6 +171,7 @@ class GitTransportTests(unittest.TestCase):
 
     def test_native_workspace_first_fetch_reuse_and_incremental_update(self):
         from ai_review import git_workspace, native_workspace
+        from ai_review.concurrency import reap
         from ai_review.store import Store
 
         key = self.root / 'master.key'
@@ -199,6 +200,7 @@ class GitTransportTests(unittest.TestCase):
                 modes.append(info['mode'])
                 self.assertEqual((Path(workspace) / 'a.py').read_text(), 'a=' + str(3 if step == 2 else 2) + '\n')
                 store.finish(job_id, job['owner'], 'succeeded')
+                reap(store)
             self.assertEqual(modes, ['首次获取', '缓存复用', '增量更新'])
 
 

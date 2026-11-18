@@ -64,8 +64,11 @@ class Gateway:
         self.completed_calls = 0
         self.failure = None
         self.lock = threading.Lock()
-        self.idle = threading.Event()
-        self.idle.set()
+        self.condition = threading.Condition(self.lock)
+        self.active_calls = 0
+        self.started_calls = 0
+        self.latest_review_sequence = 0
+        self.final_sequence = 0
         self.token = secrets.token_urlsafe(32)
         gateway = self
 
@@ -84,16 +87,24 @@ class Gateway:
                 if not 0 < length <= 16 * 1024 * 1024:
                     self.send_error(413)
                     return
-                gateway.idle.clear()
-                data = self.rfile.read(length)
-                from backend_responses import StreamCollector
-
-                collector = StreamCollector(run.response_limit, native_tools=run.native_tools)
-                client = requests.Session()
-                client.trust_env = False
+                with gateway.condition:
+                    gateway.started_calls += 1
+                    sequence = gateway.started_calls
+                    gateway.active_calls += 1
+                client = None
+                failed = False
                 try:
+                    data = self.rfile.read(length)
+                    from backend_responses import StreamCollector
+
+                    collector = StreamCollector(run.response_limit, native_tools=run.native_tools)
+                    client = requests.Session()
+                    client.trust_env = False
                     body = json.loads(data)
                     compacting = is_compaction(body, self.headers)
+                    if not compacting:
+                        with gateway.condition:
+                            gateway.latest_review_sequence = max(gateway.latest_review_sequence, sequence)
                     if compacting:
                         run.emit("session.compaction", status="running", summary="Codex 正在压缩上下文")
                     with client.post(
@@ -112,7 +123,9 @@ class Gateway:
                         self.send_header("Connection", "close")
                         self.end_headers()
                         if response.status_code != 200:
-                            gateway.failure = "codex_gateway_failed"
+                            failed = True
+                            with gateway.condition:
+                                gateway.failure = "codex_gateway_failed"
                             diagnostic = {"source": "model_gateway", "phase": "response_headers",
                                           "reason": "broker_http_error", "http_status": response.status_code}
                             try:
@@ -137,9 +150,11 @@ class Gateway:
                             self.wfile.write(chunk)
                             self.wfile.flush()
                         final = collector.finish()
-                        with gateway.lock:
-                            if not compacting:
+                        with gateway.condition:
+                            # CLI 收到结束事件后可立即开始下一轮，旧 HTTP 流可能更晚收尾。
+                            if not compacting and sequence == gateway.latest_review_sequence:
                                 gateway.final = final
+                                gateway.final_sequence = sequence
                             gateway.completed_calls += 1
                         if compacting:
                             run.emit("session.compaction", status="completed", summary="Codex 上下文压缩完成")
@@ -149,21 +164,50 @@ class Gateway:
                             payload={"usage": final.get("usage", {})},
                         )
                 except Exception as exc:
-                    gateway.failure = "codex_gateway_failed"
+                    failed = True
+                    with gateway.condition:
+                        gateway.failure = "codex_gateway_failed"
                     run.diagnostic = run.diagnostic or getattr(exc, "diagnostic", None) or safe_exception(
                         exc, source="model_transport", phase="response_stream", reason="response_stream_failed")
                 finally:
-                    if 'call_id' in locals():
-                        run.raw_diagnostics.model_response_end(call_id, "failed" if gateway.failure else "completed")
-                    self.close_connection = True
-                    client.close()
-                    gateway.idle.set()
+                    try:
+                        if 'call_id' in locals():
+                            run.raw_diagnostics.model_response_end(call_id, "failed" if failed else "completed")
+                    finally:
+                        self.close_connection = True
+                        try:
+                            if client is not None:
+                                client.close()
+                        finally:
+                            with gateway.condition:
+                                gateway.active_calls -= 1
+                                gateway.condition.notify_all()
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.url = f"http://127.0.0.1:{self.server.server_port}/v1"
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
+
+    def wait_for_final(self):
+        """CLI 退出后等待全部响应收尾，并在同一把锁内读取最后一轮结果。"""
+        with self.condition:
+            while self.active_calls:
+                if self.run.cancel_requested.is_set():
+                    raise NativeError("user_cancelled")
+                remaining = self.run.remaining()
+                if remaining <= 0:
+                    raise NativeError("deadline_exceeded")
+                self.condition.wait(timeout=min(0.2, remaining))
+            if self.run.cancel_requested.is_set():
+                raise NativeError("user_cancelled")
+            if self.failure or not self.final or self.final_sequence != self.latest_review_sequence:
+                raise NativeError("codex_response_incomplete", {
+                    "source": "codex", "phase": "result_collection", "reason": "codex_response_incomplete",
+                    "completed_calls": self.completed_calls,
+                    "final_response_received": bool(self.final),
+                })
+            return self.final
 
     def close(self):
         self.server.shutdown()
@@ -330,15 +374,13 @@ class CodexRun(SessionRun):
             self.emit("model.usage", summary="原生审查回合完成", payload={"usage": event.get("usage", {})})
 
     def _result(self):
-        if not self.gateway.idle.wait(timeout=min(10, self.remaining())):
-            raise NativeError("codex_response_incomplete")
-        if self.gateway.failure or not self.gateway.final or not self.final_review or not self.turn_completed:
+        final = self.gateway.wait_for_final()
+        if not self.final_review or not self.turn_completed:
             raise NativeError("codex_response_incomplete", {
                 "source": "codex", "phase": "result_collection", "reason": "codex_response_incomplete",
                 "completed_calls": self.gateway.completed_calls, "turn_completed": self.turn_completed,
                 "final_response_received": bool(self.gateway.final), "final_text_received": bool(self.final_review),
             })
-        final = self.gateway.final
         texts = [
             part.get("text", "")
             for item in final.get("output", [])
@@ -348,6 +390,12 @@ class CodexRun(SessionRun):
         ]
         final_text = "".join(texts)
         self.raw_diagnostics.result_text(final_text)
+        if not final_text.strip():
+            raise NativeError("codex_response_incomplete", {
+                "source": "codex", "phase": "result_collection", "reason": "empty_final_text",
+                "completed_calls": self.gateway.completed_calls, "turn_completed": self.turn_completed,
+                "final_response_received": True, "final_text_received": False,
+            })
         result = decode_review(final_text)
         if self.phase.startswith("history-") and isinstance(result, dict) and "issue_id" in result:
             result = {"findings": [], "overall_explanation": json.dumps(result, ensure_ascii=False)}

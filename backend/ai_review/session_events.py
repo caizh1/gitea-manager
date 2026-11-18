@@ -91,7 +91,7 @@ def migrate(c):
     setting = c.execute('SELECT value FROM settings WHERE id=1').fetchone()
     if setting:
         config = json.loads(setting[0])
-        if config.get('engine') not in ('opencode_native', 'codex_cli'):
+        if config.get('engine') not in ('opencode_native', 'codex_cli', 'pr_agent'):
             # 引擎收口是一次升级迁移，不是用户更换模型/凭据。保留旧执行代次，
             # 否则下一轮仓库核对会把全部旧 PR 当成新配置自动重审。
             previous_execution_revision = int(config.get('execution_revision', config.get('revision', 1)))

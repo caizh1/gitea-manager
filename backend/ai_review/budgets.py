@@ -9,6 +9,26 @@ INITIAL_TIMEOUTS = {
     'review_timeout_seconds': 1200,
     'model_request_timeout_seconds': 900,
 }
+DEFAULT_PR_AGENT_MODEL = 'deepseek-flash'
+CODEX_AND_LEGACY_BUDGETS = {
+    **CODEX_CONTEXT_DEFAULTS, **INITIAL_TIMEOUTS,
+    'model_max_output_tokens': 0, 'model_response_max_mib': 8, 'max_findings': 20,
+    'max_calls': 32, 'max_files': 40,
+    'thinking_protocol': 'provider_default', 'thinking_enabled': False, 'reasoning_effort': 'high',
+}
+PR_AGENT_BUDGETS = {
+    **CODEX_CONTEXT_DEFAULTS,
+    'model_max_output_tokens': 393216, 'model_response_max_mib': 64, 'max_findings': 30,
+    'max_calls': 64, 'max_files': 100,
+    'task_timeout_seconds': 3600, 'review_timeout_seconds': 3600, 'model_request_timeout_seconds': 3600,
+    'thinking_protocol': 'deepseek', 'thinking_enabled': True, 'reasoning_effort': 'high',
+}
+ENGINE_BUDGETS = {
+    'pr_agent': PR_AGENT_BUDGETS,
+    'codex_cli': CODEX_AND_LEGACY_BUDGETS,
+    'opencode_native': CODEX_AND_LEGACY_BUDGETS,
+}
+
 # 旧配置和任务历史缺少字段时沿用原有隐含时限。
 MODEL_TIMEOUT_DEFAULT = 600
 MODEL_TIMEOUT_MAX = 3600
@@ -22,6 +42,10 @@ def validate_context(config):
         if type(config.get(key)) is not int or not 4096 <= config[key] <= 1048576:
             raise ReviewError('模型窗口和压缩阈值必须为 4096 至 1048576 的整数 Token')
     reserve = config.get('model_max_output_tokens') or 8192
+    if config.get('engine') == 'pr_agent':
+        if reserve >= config['model_context_tokens']:
+            raise ReviewError('输出预留必须小于模型上下文窗口')
+        return
     if config['compaction_threshold_tokens'] + reserve > config['model_context_tokens']:
         raise ReviewError('压缩阈值加输出预留不能超过模型窗口；输出额度为 0 时至少预留 8192 Token')
 

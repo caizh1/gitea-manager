@@ -449,7 +449,7 @@ class RawDiagnostics:
 
     def process_log(self, raw, engine='opencode'):
         """有界保存已由调用方精确剔除本地认证值的执行器日志。"""
-        engine = 'codex' if engine == 'codex' else 'opencode'
+        engine = engine if engine in ('codex', 'pr_agent') else 'opencode'
         raw = bytes(raw)
         self.process_log_observed += len(raw)
         remaining = max(0, PROCESS_LOG_PREFIX - self.process_log_saved)
@@ -467,7 +467,7 @@ class RawDiagnostics:
                 del self.process_log_tail[:-PROCESS_LOG_TAIL]
 
     def finish_process_log(self, engine='opencode'):
-        engine = 'codex' if engine == 'codex' else 'opencode'
+        engine = engine if engine in ('codex', 'pr_agent') else 'opencode'
         tail_saved = False
         if self.process_log_tail:
             tail_saved = self._append(engine + '-stderr-tail.raw', self.process_log_tail,

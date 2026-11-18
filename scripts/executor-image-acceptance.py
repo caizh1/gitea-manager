@@ -28,6 +28,8 @@ try:
         if check.returncode == 0:
             report['默认启动健康'] = json.loads(check.stdout)
             assert report['默认启动健康']['ready'] is True
+            if 'pr_agent_ready' in report['默认启动健康']:
+                assert report['默认启动健康']['pr_agent_ready'] is True
             break
         if time.monotonic() >= deadline:
             raise RuntimeError('默认执行器未健康启动：'+check.stderr[-1000:])

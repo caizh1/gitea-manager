@@ -293,7 +293,7 @@ def reconcile(store, client, job, repo, snapshot, result, runner=None):
                 publish_ids.add(ident)
         lifecycle['publish_ids'] = sorted(publish_ids)
         result = dict(result, findings=candidates, lifecycle=lifecycle)
-        if snapshot.get('engine') == 'codex_cli':
+        if snapshot.get('engine') in ('codex_cli', 'pr_agent'):
             blockers = c.execute('''SELECT count(*) FROM review_issue_observations o
                 JOIN review_issues i ON i.id=o.issue WHERE o.job=?
                 AND json_extract(o.value,'$.status')='present'

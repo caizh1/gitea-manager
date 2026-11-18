@@ -1449,13 +1449,13 @@ class NativeSessions:
         if not path.is_absolute() or not path.exists() or not path.is_dir():
             raise NativeError('workspace_invalid')
         resolved = path.resolve()
-        if data.get('workspace_layout') == 'git-worktree-v2' and data.get('engine') == 'codex_cli':
+        if data.get('workspace_layout') == 'git-worktree-v2' and data.get('engine') in ('codex_cli', 'pr_agent'):
             if (resolved.name != data['job_id'] or resolved.parent.name != 'worktrees'
                     or resolved.parents[2] != root / '.repositories'
                     or not re.fullmatch(r'[0-9a-f]{64}', resolved.parents[1].name)):
                 raise NativeError('workspace_outside_repository')
             return resolved
-        if data.get('workspace_layout') == 'git-worktree-v1' and data.get('engine') == 'codex_cli':
+        if data.get('workspace_layout') == 'git-worktree-v1' and data.get('engine') in ('codex_cli', 'pr_agent'):
             if (resolved.name != 'worktree' or resolved.parent.parent != root / '.repositories'
                     or not re.fullmatch(r'[0-9a-f]{64}', resolved.parent.name)):
                 raise NativeError('workspace_outside_repository')
@@ -1469,6 +1469,18 @@ class NativeSessions:
                     'event_url', 'event_token', 'capability')
         if not isinstance(data, dict) or any(k not in data for k in required):
             raise NativeError('execute_input_invalid')
+        if data.get('engine', 'opencode_native') not in ('opencode_native', 'codex_cli', 'pr_agent'):
+            raise NativeError('execute_input_invalid')
+        if data.get('engine') == 'pr_agent':
+            source = data.get('pr_agent_input')
+            if (not isinstance(source, dict)
+                    or any(not isinstance(source.get(key), str) for key in
+                           ('head', 'merge_base', 'title', 'description', 'diff', 'phase', 'instructions'))
+                    or not re.fullmatch(r'[0-9a-f]{40}', source['head'])
+                    or source['head'] != data.get('source_head')
+                    or not re.fullmatch(r'[0-9a-f]{40}', source['merge_base'])
+                    or type(data.get('max_findings')) is not int or not 1 <= data['max_findings'] <= 30):
+                raise NativeError('execute_input_invalid')
         if data.get('review_scope', 'repository') not in ('repository', 'diff'):
             raise NativeError('execute_input_invalid')
         if data.get('batch_protocol', 0) not in (0, 1) or (data.get('batch_protocol') and data.get('review_scope') != 'diff'):
@@ -1555,6 +1567,9 @@ class NativeSessions:
             if data.get('engine') == 'codex_cli':
                 from codex_session import CodexRun
                 run_type = CodexRun
+            elif data.get('engine') == 'pr_agent':
+                from pr_agent_session import PRAgentRun
+                run_type = PRAgentRun
             row = run_type(data, workspace, runtime,
                 os.environ.get('AI_REVIEW_BROKER_URL', 'http://review-worker:5051/v1'))
             self.sessions[row.session_id] = row
@@ -1616,6 +1631,8 @@ class NativeSessions:
         workspace = (Path(os.environ.get('AI_REVIEW_WORKSPACE_ROOT', '/app/review-workspaces')) / job_id).resolve()
         binary = str(Path(os.environ.get('AI_REVIEW_OPENCODE', '/opt/review/opencode')))
         codex_binary = str(Path(os.environ.get('AI_REVIEW_CODEX', '/opt/review/codex')))
+        pr_agent_python = os.environ.get('AI_REVIEW_PR_AGENT_PYTHON', '/opt/pr-agent-runtime/bin/python3.12')
+        pr_agent_runner = os.fsencode(str(Path(__file__).with_name('pr_agent_runner.py')))
         runtime = Path(os.environ.get('AI_REVIEW_NATIVE_ROOT', '/app/review-native'))
         found = False
         for folder in proc.iterdir():
@@ -1626,8 +1643,10 @@ class NativeSessions:
                 native_command = (command and (os.fsdecode(command[0]) == binary or
                     command[0].endswith(b'/rosetta') and os.fsencode(binary) in command[1:3]))
                 codex_command = (command and (os.fsdecode(command[0]) == codex_binary or command[0].endswith(b'/rosetta') and os.fsencode(codex_binary) in command[1:3]))
+                pr_agent_command = (len(command) >= 3 and os.fsdecode(command[0]) == pr_agent_python
+                                    and command[1] == pr_agent_runner)
                 cwd = (folder / 'cwd').resolve()
-                if codex_command:
+                if codex_command or pr_agent_command:
                     bindings = list((runtime / 'bindings').glob(job_id + '.*.json'))
                     allowed_dirs = set()
                     for binding in bindings:
@@ -1635,14 +1654,21 @@ class NativeSessions:
                         allowed_dirs.add((runtime / value['session_id']).resolve())
                         if value.get('workspace'):
                             allowed_dirs.add(Path(value['workspace']).resolve())
-                    if cwd not in allowed_dirs or b'review' not in command:
+                    if cwd not in allowed_dirs or codex_command and b'review' not in command:
                         continue
                     environment = (folder / 'environ').read_bytes().split(b'\0')
-                    session_homes = {os.fsencode(str(runtime / json.loads(binding.read_text())['session_id'] / 'config'))
-                                     for binding in bindings}
-                    if not any(entry.startswith(b'CODEX_HOME=') and entry[11:] in session_homes
-                               for entry in environment):
-                        continue
+                    if pr_agent_command:
+                        session_dirs = {runtime / json.loads(binding.read_text())['session_id'] for binding in bindings}
+                        if not any(command[2] == os.fsencode(str(directory / 'input.json'))
+                                   and b'HOME=' + os.fsencode(str(directory)) in environment
+                                   for directory in session_dirs):
+                            continue
+                    else:
+                        session_homes = {os.fsencode(str(runtime / json.loads(binding.read_text())['session_id'] / 'config'))
+                                         for binding in bindings}
+                        if not any(entry.startswith(b'CODEX_HOME=') and entry[11:] in session_homes
+                                   for entry in environment):
+                            continue
                 elif not native_command:
                     continue
                 elif cwd != workspace or not (b'serve' in command or b'--version' in command):

@@ -12,7 +12,7 @@ def codex_effort(config):
         return 'none'
     effort = config.get('reasoning_effort', 'high')
     if effort not in ('low', 'high', 'max'):
-        raise ReviewError('Codex 思考档位必须为 low、high 或 max')
+        raise ReviewError('思考档位必须为 low、high 或 max')
     return effort
 
 
@@ -22,7 +22,7 @@ def validate(config):
     if type(config.get('thinking_enabled')) is not bool:
         raise ReviewError('深度思考开关必须为布尔值')
     if 'reasoning_effort' in config and config['reasoning_effort'] not in ('low', 'high', 'max'):
-        raise ReviewError('Codex 思考档位必须为 low、high 或 max')
+        raise ReviewError('思考档位必须为 low、high 或 max')
     for key, low, high in [('thinking_token_budget', 128, 32768), ('context_retrieval_budget', 1, 200)]:
         if type(config.get(key)) is not int or not low <= config[key] <= high:
             raise ReviewError(f'{key} 超出允许范围 {low} 至 {high}')
@@ -35,6 +35,11 @@ def validate(config):
 
 def parameters(config):
     protocol = config.get('thinking_protocol')
+    if config.get('engine') == 'pr_agent' and protocol in ('deepseek', 'reasoning_effort'):
+        result = {'reasoning_effort': codex_effort(config)} if config.get('thinking_enabled') or protocol == 'reasoning_effort' else {}
+        if protocol == 'deepseek':
+            result['thinking'] = {'type': 'enabled' if config.get('thinking_enabled') else 'disabled'}
+        return result
     # 历史任务保持原行为；升级后管理员可明确选择协议，不推测私有模型名称。
     if protocol is None:
         return {'thinking': {'type': 'disabled'}} if config.get('model', '').lower().startswith('deepseek') else {}

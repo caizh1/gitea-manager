@@ -92,7 +92,7 @@ def prepare(store, client, job, repo):
     if saved:
         return json.loads(saved['value'])
     result = deepcopy(job['result'].get('publication') or job['result'])
-    if job['snapshot'].get('engine') == 'codex_cli' and job['result'].get('analysis_complete') is not True:
+    if job['snapshot'].get('engine') in ('codex_cli', 'pr_agent') and job['result'].get('analysis_complete') is not True:
         raise ReviewError('审查尚未完整结束，无法自动发布')
     result.pop('publication', None)
     if not job['result'].get('publication'):
@@ -201,11 +201,14 @@ def publish(store, client, job, repo):
     from .authorization import authorize
     from .publish import Publisher
     from .issue_publication import publish_new, sync_comments
-    with store.lock(f"发布-{job['repository']}-{job['number']}"):
+    with (
+        store.lock(f"进度-{job['repository']}-{job['number']}", blocking=True),
+        store.lock(f"发布-{job['repository']}-{job['number']}"),
+    ):
         store.active(job['id'], job['owner'])
         authorize(repo, job, 'write')
         assert_version(client, job['number'], job['snapshot'])
-        if job['snapshot'].get('engine') == 'codex_cli' and job['result'].get('analysis_complete') is not True:
+        if job['snapshot'].get('engine') in ('codex_cli', 'pr_agent') and job['result'].get('analysis_complete') is not True:
             raise ReviewError('审查尚未完整结束，无法自动发布')
         store.update(job['id'], job['owner'], status='publishing', stage='自动发布审查结果')
         plan = prepare(store, client, job, repo)
@@ -318,7 +321,10 @@ def _resume(store, job):
             store.active(job['id'], owner)
         except Stale:
             client = client_for(store, repo)
-            with store.lock(f"发布-{job['repository']}-{job['number']}"):
+            with (
+                store.lock(f"进度-{job['repository']}-{job['number']}", blocking=True),
+                store.lock(f"发布-{job['repository']}-{job['number']}"),
+            ):
                 recover_obsolete(store, client, job, repo)
             return
         client = client_for(store, repo, job)

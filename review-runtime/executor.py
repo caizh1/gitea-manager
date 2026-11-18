@@ -295,6 +295,14 @@ def initialize_runtime():
         runtime_status['ready'] = runtime_status['ready'] and runtime_status['codex_ready']
     except Exception as exc:
         runtime_status = {'ready': False, 'reason': str(exc)}
+    try:
+        python = os.environ.get('AI_REVIEW_PR_AGENT_PYTHON', '/opt/pr-agent-runtime/bin/python3.12')
+        env = dict(os.environ, LD_LIBRARY_PATH='/opt/pr-agent-runtime/lib')
+        version = subprocess.check_output([python, '-c', "from importlib.metadata import version; print(version('pr-agent'))"],
+                                          timeout=30, text=True, env=env).strip()
+        runtime_status.update(pr_agent_version=version, pr_agent_ready=version == '0.49.0')
+    except (OSError, subprocess.SubprocessError):
+        runtime_status.update(pr_agent_ready=False)
     logging.warning('执行器启动检测：%s', json.dumps(runtime_status, ensure_ascii=False))
 
 threading.Thread(target=initialize_runtime, daemon=True, name='运行时自检').start()

@@ -30,13 +30,13 @@ def reserve(store, connection, job_id, owner):
         connection.execute("UPDATE review_execution_slots SET owner=? WHERE job=? AND owner=''", (owner, job_id))
         return True
     slots = connection.execute('SELECT s.*,h.value FROM review_execution_slots s JOIN jobs j ON j.id=s.job LEFT JOIN configuration_history h ON h.revision=j.config_revision').fetchall()
-    limit = config['max_concurrent_reviews'] if config['engine'] == 'codex_cli' else 1
-    if len(slots) >= limit or any(json.loads(row['value'] or '{}').get('engine') != 'codex_cli' for row in slots):
+    limit = config['max_concurrent_reviews'] if config['engine'] in ('codex_cli', 'pr_agent') else 1
+    if len(slots) >= limit or any(json.loads(row['value'] or '{}').get('engine') not in ('codex_cli', 'pr_agent') for row in slots):
         return False
     if any(row['repository'] == job['repository'] and row['number'] == job['number'] for row in slots):
         return False
     saved = store.historical_config(job['config_revision'], connection)
-    if saved.get('engine') != 'codex_cli' and slots:
+    if saved.get('engine') not in ('codex_cli', 'pr_agent') and slots:
         return False
     connection.execute('INSERT INTO review_execution_slots VALUES (?,?,?,?,?)',
                        (job_id, job['repository'], job['number'], owner, time.time()))
@@ -50,7 +50,7 @@ def status(store):
         queued = connection.execute("SELECT count(*) FROM jobs WHERE status='queued'").fetchone()[0]
         config = store.config(connection=connection)
     running = sum(row['status'] in ('running', 'publishing', 'recovering') and row['lease'] >= time.time() for row in rows)
-    return {'limit': config['max_concurrent_reviews'] if config['engine'] == 'codex_cli' else 1,
+    return {'limit': config['max_concurrent_reviews'] if config['engine'] in ('codex_cli', 'pr_agent') else 1,
             'occupied': len(rows), 'running': running, 'recovering': len(rows) - running, 'queued': queued}
 
 

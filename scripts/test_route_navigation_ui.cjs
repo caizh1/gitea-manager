@@ -35,7 +35,7 @@ const results = [], unknown = new Set(), errors = [], transitionWarnings = []
 let serverReads = 0, documentLoads = 0
 let completed = false
 
-function fixture(url, method) {
+function fixture(url, method, payload) {
   const p = new URL(url).pathname
   if (p === '/api/session') return session
   if (p === '/api/servers') { serverReads++; return failServers ? { error: '隔离测试：服务器列表暂时不可用' } : servers }
@@ -45,7 +45,13 @@ function fixture(url, method) {
   if (p === '/api/alerts/summary') return { active_count: 0, latest_alert: null }
   if (p === '/api/ai-review/attention') return { summary: { pr_count: 0 }, items: [], total: 0 }
   if (p.endsWith('/csrf')) return { token: '隔离测试令牌' }
-  if (p === '/api/ai-review/config') return { config: { enabled: false, model: 'navigation-test-model' }, health: [] }
+  if (p === '/api/ai-review/config') return method === 'PUT' ? payload : {
+    config: { enabled: false, engine: 'codex_cli', model: 'navigation-test-model' }, health: [],
+    changed_line_limits: { pr_agent: 10000, codex_cli: 1200, opencode_native: 1200 },
+    engine_budgets: { pr_agent: { model_max_output_tokens: 393216, model_context_tokens: 1000000,
+      task_timeout_seconds: 3600, review_timeout_seconds: 3600, model_request_timeout_seconds: 3600,
+      thinking_protocol: 'deepseek', thinking_enabled: true, reasoning_effort: 'high' } },
+  }
   if (p === '/api/ai-review/repositories') return repositories
   if (p === '/api/ai-review/servers') return servers
   if (p === '/api/ai-review/statistics') return null
@@ -144,7 +150,7 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   await context.route(/^https?:\/\/[^/]+\/api\//, async route => {
     const p = new URL(route.request().url()).pathname
-    const data = fixture(route.request().url(), route.request().method())
+    const data = fixture(route.request().url(), route.request().method(), route.request().postDataJSON())
     if (p === '/api/servers' && delayServers) await new Promise(resolve => setTimeout(resolve, delayServers))
     if (p.startsWith('/api/ai-review/') && delayReview) await new Promise(resolve => setTimeout(resolve, delayReview))
     const failure = (p === '/api/servers' && failServers) || /^\/api\/svn-migrations\/(runs|preflights|plans)\/\d+$/.test(p)
@@ -196,6 +202,27 @@ async function main() {
   results.push({ 场景: '真实任务详情显示 Git 失败阶段、退出码和脱敏原因', 结果: '通过' })
   await page.getByRole('button', { name: '返回完整列表', exact: true }).click()
   await navigate(page, '/ai-reviews/settings'); await reviewReady(page, '/ai-reviews/settings')
+  await page.locator('.el-select').filter({ has: page.getByRole('combobox', { name: '执行引擎', exact: true }) }).click()
+  await page.getByRole('option', { name: 'PR-Agent 原生审查（Linux amd64）', exact: true }).click()
+  await page.getByText('PR-Agent 原生差异审查，新增与删除合计最多 10,000 行', { exact: true }).waitFor()
+  await page.getByRole('button', { name: '应用 PR-Agent 实测预算', exact: true }).click()
+  await page.locator('.el-radio').filter({ has: page.getByRole('radio', { name: /low/ }) }).click()
+  const savedRequest = page.waitForRequest(request => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/ai-review/config')
+  await page.getByRole('button', { name: '保存设置', exact: true }).click()
+  const selected = (await savedRequest).postDataJSON()
+  assert.equal(selected.engine, 'pr_agent')
+  assert.equal(selected.model, 'navigation-test-model')
+  assert.equal(selected.model_max_output_tokens, 393216)
+  assert.equal(selected.task_timeout_seconds, 3600)
+  assert.equal(selected.reasoning_effort, 'low')
+  assert.equal(selected.thinking_enabled, true)
+  await page.getByText('设置已保存，并发上限已生效；资源预算用于新任务', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('switch').nth(1).getAttribute('aria-checked'), 'true')
+  await page.screenshot({ path: path.join(output, 'pr-agent-settings.png'), fullPage: true })
+  await page.locator('.el-select').filter({ has: page.getByRole('combobox', { name: '执行引擎', exact: true }) }).click()
+  await page.getByRole('option', { name: '原生 OpenCode 会话（已弃用）', exact: true }).click()
+  await page.getByText('OpenCode 执行器已弃用，后续新功能支持 Codex 和 PR-Agent。', { exact: true }).waitFor()
+  results.push({ 场景: 'PR-Agent引擎及思考档位保存，OpenCode保持弃用提示', 结果: '通过' })
   await navigate(page, '/servers'); await serverReady(page)
   assert.equal(documentLoads, initialLoads, '弹窗关闭后的导航不能刷新页面')
   results.push({ 场景: '数据集加载、历史抽屉和自动发布页面导航', 结果: '通过' })

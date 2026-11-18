@@ -12,15 +12,14 @@ from cryptography.fernet import Fernet, InvalidToken
 from .token_budget import DEFAULTS as BATCH_DEFAULTS
 from .thinking import DEFAULTS as THINKING_DEFAULTS
 from .common import ReviewError, Stale, encode, secret_file
-from .budgets import (TIME_FIELDS, CONTEXT_DEFAULTS, CODEX_CONTEXT_DEFAULTS, DEFAULT_CODEX_MODEL,
-                      INITIAL_TIMEOUTS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision)
+from .budgets import (TIME_FIELDS, CONTEXT_DEFAULTS, DEFAULT_CODEX_MODEL, DEFAULT_PR_AGENT_MODEL,
+                      PR_AGENT_BUDGETS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision)
 import json
 
-DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **CODEX_CONTEXT_DEFAULTS, **INITIAL_TIMEOUTS,
-            'enabled': False, 'engine': 'codex_cli', 'api_base_url': '', 'model': DEFAULT_CODEX_MODEL,
-            'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20, 'max_files': 40,
-            'max_calls': 32,
-            'execution_revision': 1, 'model_max_output_tokens': 0, 'model_response_max_mib': 8, 'max_findings': 20}
+DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **PR_AGENT_BUDGETS,
+            'enabled': False, 'engine': 'pr_agent', 'api_base_url': '', 'model': DEFAULT_PR_AGENT_MODEL,
+            'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20,
+            'execution_revision': 1}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
 
 
@@ -190,7 +189,7 @@ class Store:
             with contextlib.closing(self.connect()) as c:
                 result = self.config(connection=c)
         if not result.get('model'):
-            result['model'] = DEFAULT_CODEX_MODEL
+            result['model'] = DEFAULT_PR_AGENT_MODEL if result.get('engine') == 'pr_agent' else DEFAULT_CODEX_MODEL
         result.setdefault('model_request_timeout_seconds', MODEL_TIMEOUT_DEFAULT)
         result.setdefault('review_timeout_seconds', result.get('task_timeout_seconds', REVIEW_TIMEOUT_DEFAULT))
         result.setdefault('model_max_output_tokens', 0)
@@ -257,7 +256,8 @@ class Store:
                 raise ReviewError('配置已变化，请刷新后保存')
             data.pop('execution_revision', None)
             changes = {key for key, value in data.items() if old.get(key) != value}
-            invalidate = bool(changes - TIME_FIELDS - {'max_concurrent_reviews'})
+            frozen_budgets = {'max_calls', 'max_files', 'max_findings'} if old['engine'] == 'pr_agent' else set()
+            invalidate = bool(changes - TIME_FIELDS - frozen_budgets - {'max_concurrent_reviews'})
             old.update(data); old['revision'] += 1
             if invalidate:
                 old['execution_revision'] = old['revision']
@@ -409,7 +409,7 @@ class Store:
                        config['revision'], repo['revision'], int(manual), target_head))
             c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=8 WHERE id=?',
                       (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
-            if config.get('engine') == 'codex_cli':
+            if config.get('engine') in ('codex_cli', 'pr_agent'):
                 c.execute('UPDATE jobs SET batch_protocol=0,rules_protocol=1 WHERE id=?', (job,))
             return job
 
@@ -528,7 +528,7 @@ class Store:
                 return None
             row = c.execute("""SELECT j.id FROM jobs j WHERE j.status='queued' AND j.available<=?
                                AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.repository=j.repository AND s.number=j.number AND NOT (s.job=j.id AND s.owner=''))
-                               AND (json_extract((SELECT value FROM configuration_history WHERE revision=j.config_revision),'$.engine')='codex_cli' OR NOT EXISTS
+                               AND (json_extract((SELECT value FROM configuration_history WHERE revision=j.config_revision),'$.engine') IN ('codex_cli','pr_agent') OR NOT EXISTS
                                    (SELECT 1 FROM jobs x WHERE x.repository=j.repository AND x.number=j.number AND x.status='publish_unknown'))
                                ORDER BY CASE WHEN EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=j.id AND s.owner='') THEN 0 ELSE 1 END,j.available,j.created LIMIT 1""", (now,)).fetchone()
             if not row:

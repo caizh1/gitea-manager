@@ -569,6 +569,14 @@ def create_broker(store=None):
                             yield json.dumps({'_review_upstream_error': envelope}, ensure_ascii=False,
                                              separators=(',', ':')).encode()
                             return
+                        if config.get('engine') == 'pr_agent' and isinstance(parsed, dict):
+                            usage = parsed.get('usage')
+                            usage = usage if isinstance(usage, dict) else {}
+                            counts = [usage.get('prompt_tokens', 0), usage.get('completion_tokens', 0)]
+                            if all(type(value) is int and 0 <= value < 2**63 for value in counts):
+                                with store.tx() as c:
+                                    c.execute('INSERT OR REPLACE INTO review_codex_usage VALUES (?,?,?,?,?)',
+                                              (call_id, job_id, *counts, encode(usage)))
                         yield raw
                     else:
                         tail = inspector.finish()

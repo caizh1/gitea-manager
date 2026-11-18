@@ -325,8 +325,11 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(state_for(self.store, self.repo, 1)[0]['progress_seq'], seq)
 
     def test_batch_budget_continues_all_units(self):
+        from ai_review.budgets import CODEX_AND_LEGACY_BUDGETS
+
         job = self.store.claim()
-        config = dict(self.store.config(), max_calls=2, max_findings=5)
+        config = dict(self.store.config(), **CODEX_AND_LEGACY_BUDGETS)
+        config.update(max_calls=2, max_findings=5)
         snapshot = {'coverage': {'skipped': []}}
         item = {'path': 'code.c', 'scope': {'name': 'f'}, 'side': 'new', 'anchors': []}
         result = review(self.store, job, config, snapshot, [item, item, item], caller=lambda *args: {'findings': []})

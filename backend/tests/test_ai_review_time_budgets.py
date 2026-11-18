@@ -1,6 +1,7 @@
 """时间预算冻结、执行版本隔离、首个错误与新旧配置兼容回归。"""
 import concurrent.futures
 import json
+import math
 import time
 import unittest
 from unittest.mock import patch, Mock
@@ -109,6 +110,7 @@ class TimeBudgetTests(unittest.TestCase):
         self.assertEqual(second, first+1)
 
     def test_first_timeout_is_preserved_after_cli_authorization_rejection(self):
+        self.change(model_request_timeout_seconds=900)
         self.enqueue(); job = self.store.claim(); token = capability(self.store, job, '测试模型')
         client = create_broker(self.store).test_client()
         payload = {'model':'测试模型','messages':[{'role':'user','content':'私有测试源码'}]}
@@ -124,6 +126,7 @@ class TimeBudgetTests(unittest.TestCase):
         self.assertNotIn(token,json.dumps(actual['diagnostic']))
 
     def test_broker_uses_frozen_deadline_and_distinguishes_upstream_403(self):
+        self.change(model_request_timeout_seconds=900)
         self.enqueue(); job = self.store.claim(); token = capability(self.store, job, '测试模型')
         self.change(model_request_timeout_seconds=1000)
         client = create_broker(self.store).test_client()
@@ -143,16 +146,20 @@ class TimeBudgetTests(unittest.TestCase):
         from flask import Flask
         from tests.access_helpers import init_test_auth as init_auth, login_platform
         from routes.ai_review_routes import ai_review_bp
-        self.change(model='test-model',api_base_url='http://model.invalid/v1',api_key=self.store.seal('合成 Key'))
+        self.change(engine='pr_agent',model='test-model',api_base_url='http://model.invalid/v1',api_key=self.store.seal('合成 Key'))
         app=Flask('预算接口验收');app.secret_key='本机测试会话';app.config['AI_REVIEW_DB']=str(self.store.path)
         init_auth(app);app.register_blueprint(ai_review_bp,url_prefix='/api/ai-review')
         client=app.test_client()
         self.assertEqual(client.get('/api/ai-review/config').status_code,401)
         login_platform(client)
-        initial=client.get('/api/ai-review/config').json['config']
-        self.assertEqual(initial['task_timeout_seconds'],2400)
-        self.assertEqual(initial['review_timeout_seconds'],1200)
-        self.assertEqual(initial['model_request_timeout_seconds'],900)
+        payload=client.get('/api/ai-review/config').json
+        initial=payload['config']
+        self.assertEqual(initial['engine'],'pr_agent')
+        self.assertEqual(initial['task_timeout_seconds'],3600)
+        self.assertEqual(initial['review_timeout_seconds'],3600)
+        self.assertEqual(initial['model_request_timeout_seconds'],3600)
+        self.assertEqual(initial['model_max_output_tokens'],393216)
+        self.assertEqual(payload['changed_line_limits']['pr_agent'],10000)
         self.assertEqual(client.put('/api/ai-review/config',json={'revision':initial['revision'],'model_request_timeout_seconds':900}).status_code,403)
         headers={'X-Review-CSRF':client.get('/api/ai-review/csrf').json['token']}
         self.assertEqual(client.put('/api/ai-review/config',json={},headers={'X-Review-CSRF':'é'}).status_code,403)
@@ -170,7 +177,8 @@ class TimeBudgetTests(unittest.TestCase):
                 revision=client.get('/api/ai-review/config').json['config']['revision']
                 response=client.put('/api/ai-review/config',json={'revision':revision,'task_timeout_seconds':value,'model_request_timeout_seconds':value},headers=headers)
                 self.assertEqual(response.status_code,200,response.json)
-        max_output = initial['model_context_tokens'] - initial['compaction_threshold_tokens']
+        context = initial['model_context_tokens']
+        max_output = context - max(2048, math.ceil(context * .05)) - 1024
         with patch('routes.ai_review_routes.endpoint',return_value='http://model.invalid/v1'):
             for field, bounds in (('model_max_output_tokens',(0,max_output)),('model_response_max_mib',(1,64))):
                 for invalid in (bounds[0]-1,bounds[1]+1,True,8.5,'8',None):
@@ -189,6 +197,19 @@ class TimeBudgetTests(unittest.TestCase):
         self.assertEqual(reopened['model_request_timeout_seconds'],3600)
         revision=reopened['revision']
         self.assertEqual(client.put('/api/ai-review/config',json={'revision':revision,'execution_revision':1},headers=headers).status_code,400)
+        with patch('routes.ai_review_routes.endpoint',return_value='http://model.invalid/v1'), \
+             patch('ai_review.setup_service.verify_model'):
+            response=client.put('/api/ai-review/config',json={'revision':revision,'engine':'codex_cli'},headers=headers)
+            self.assertEqual(response.status_code,200,response.json)
+            self.assertEqual(response.json['model_max_output_tokens'],0)
+            self.assertEqual(response.json['task_timeout_seconds'],2400)
+            response=client.put('/api/ai-review/config',
+                json={'revision':response.json['revision'],'engine':'pr_agent','reasoning_effort':'low'},headers=headers)
+            self.assertEqual(response.status_code,200,response.json)
+            self.assertEqual(response.json['model_max_output_tokens'],393216)
+            self.assertEqual(response.json['reasoning_effort'],'low')
+            self.assertEqual(response.json['api_base_url'],'http://model.invalid/v1')
+            self.assertEqual(response.json['model'],'test-model')
 
     def test_executor_bad_response_or_disconnect_preserves_first_gateway_failure(self):
         import hashlib

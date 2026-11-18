@@ -158,7 +158,8 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
     session_deadline = deadline - FINISH_MARGIN
     if time.time() >= session_deadline:
         raise ReviewError('工作区准备已用完原生审查时间，未启动模型')
-    capability = _capability(store, job, config['model'], session_deadline, 1 if job.get('batch_protocol') and config.get('engine') != 'codex_cli' else -1)
+    allowance = 1 if config.get('engine') == 'pr_agent' or job.get('batch_protocol') and config.get('engine') != 'codex_cli' else -1
+    capability = _capability(store, job, config['model'], session_deadline, allowance)
     response_limit = config.get('model_response_max_mib', 8) * 1024 * 1024
     session = requests.Session(); session.trust_env = False
     submitted = bool(current.get('session_submitted_at'))
@@ -213,6 +214,14 @@ def execute(store, job, config, workspace, event_token, diff_snapshot=None):
                     data.update(batch_protocol=1, codex_phase=diff_snapshot.get('_codex_phase', 'primary'),
                                 reasoning_effort=codex_effort(config),
                                 codex_native_tools=diff_snapshot.get('codex_tools') == 'native',
+                                workspace_layout=diff_snapshot.get('workspace_layout'),
+                                source_head=diff_snapshot.get('head'))
+                elif config.get('engine') == 'pr_agent':
+                    from .thinking import codex_effort
+                    data.pop('compaction_threshold_tokens', None)
+                    data.update(batch_protocol=1, pr_agent_input=diff_snapshot['_pr_agent_input'],
+                                reasoning_effort=codex_effort(config),
+                                max_findings=config['max_findings'],
                                 workspace_layout=diff_snapshot.get('workspace_layout'),
                                 source_head=diff_snapshot.get('head'))
                 if diff_snapshot.get('_batch_messages'):

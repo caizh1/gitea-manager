@@ -59,21 +59,21 @@
     <section v-else-if="tab === 'config' && isPlatformAdmin">
         <div class="glass-card panel">
           <el-alert v-if="configError" :title="configError" type="error" show-icon :closable="false" /><el-form label-position="top" @submit.prevent="saveConfig">
-            <el-alert :title="config.engine === 'codex_cli' ? 'Codex 自主检索审查，总变更最多 1200 行' : '新任务单次审查，新增与删除合计最多 1200 行'" :description="config.engine === 'codex_cli' ? '首次获取仓库，后续增量更新。P0/P1 独立反证，审查完成后自动发布行内评论与总览。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
+            <el-alert :title="reviewLimitTitle" :description="['codex_cli', 'pr_agent'].includes(config.engine) ? '首次获取仓库，后续增量更新。P0/P1 独立反证，审查完成后自动发布行内评论与总览。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
             <div class="review-grid">
               <el-form-item label="源码缓存"><div><el-button @click="loadSourceCache">查看缓存</el-button><span v-if="sourceCache"> {{ Math.round(sourceCache.bytes/1048576) }} / {{ Math.round(sourceCache.limit_bytes/1048576) }} MiB</span><div v-for="row in sourceCache?.repositories || []" :key="row.repository">{{ repoName(row.repository) }} · {{ Math.round(row.bytes/1048576) }} MiB <el-button link type="danger" @click="clearSourceCache(row.repository)">清理</el-button></div></div></el-form-item>
-              <el-form-item v-if="config.engine === 'codex_cli'" label="同时审查 PR 数量">
+              <el-form-item v-if="['codex_cli', 'pr_agent'].includes(config.engine)" label="同时审查 PR 数量">
                 <el-input-number v-model="config.max_concurrent_reviews" :min="1" :max="5" :precision="0" aria-label="同时审查 PR 数量" />
                 <span class="secondary">保存后立即生效。调低上限时，已启动的审查继续完成。</span>
               </el-form-item>
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
-              <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎"><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /><el-option label="原生 OpenCode 会话（已弃用）" value="opencode_native" /></el-select><span v-if="config.engine === 'opencode_native'" class="secondary">OpenCode 执行器已弃用，后续新功能仅支持 Codex。</span></el-form-item>
+              <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎" @change="applyEngineBudget"><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /><el-option label="PR-Agent 原生审查（Linux amd64）" value="pr_agent" /><el-option label="原生 OpenCode 会话（已弃用）" value="opencode_native" /></el-select><span v-if="config.engine === 'opencode_native'" class="secondary">OpenCode 执行器已弃用，后续新功能支持 Codex 和 PR-Agent。</span></el-form-item>
               <el-form-item label="内部 New API 地址"><el-input v-model="config.api_base_url" placeholder="填写包含 API 前缀的内网地址" autocomplete="off" /></el-form-item>
               <el-form-item label="模型"><el-input v-model="config.model" placeholder="填写内部实际可用的模型标识" autocomplete="off" /></el-form-item>
               <el-form-item :label="config.api_key_configured ? 'API Key（已配置，留空保留）' : 'API Key（尚未配置）'"><el-input v-model="apiKey" type="password" autocomplete="new-password" placeholder="仅在新增或更换密钥时填写" /></el-form-item>
               <el-form-item label="思考控制协议"><el-select v-model="config.thinking_protocol" @change="value => { if (value === 'provider_default') config.thinking_enabled = false }"><el-option label="服务默认（未控制）" value="provider_default" /><el-option label="Qwen / vLLM（含 New API 透传）" value="qwen_vllm" /><el-option label="DeepSeek 官方协议" value="deepseek" /><el-option label="reasoning_effort 兼容协议" value="reasoning_effort" /></el-select><span class="secondary">按实际服务选择；New API 必须支持透传。服务默认不代表已关闭思考。</span></el-form-item>
               <el-form-item label="启用深度思考"><el-switch v-model="config.thinking_enabled" :disabled="config.thinking_protocol === 'provider_default'" /><span class="secondary">默认关闭；仅对新任务生效。参数被接受不代表服务实际遵守。</span></el-form-item>
-              <el-form-item v-if="config.engine === 'codex_cli'" label="思考档位" class="reasoning-field">
+              <el-form-item v-if="['codex_cli', 'pr_agent'].includes(config.engine)" label="思考档位" class="reasoning-field">
                 <el-radio-group v-model="reasoningEffort" class="reasoning-options" aria-label="思考档位" :disabled="!config.thinking_enabled || config.thinking_protocol === 'provider_default'">
                   <el-radio v-for="option in reasoningOptions" :key="option.value" :label="option.value" class="reasoning-option">
                     <span class="reasoning-title">{{ option.value }} · {{ option.title }}</span>
@@ -86,22 +86,22 @@
               <el-form-item label="连续 Push 合并窗口（秒）"><el-input-number v-model="config.debounce_seconds" :min="0" :max="120" /></el-form-item>
             </div>
             <el-collapse><el-collapse-item title="审查资源预算" name="limits"><div class="review-grid">
-              <el-form-item v-if="config.engine !== 'codex_cli'" label="Token 计数方式"><el-select v-model="config.tokenizer_profile"><el-option label="自动匹配具体型号" value="auto" /><el-option label="Qwen3.8-27B" value="qwen38" /><el-option label="DeepSeek-V4.1-Flash" value="deepseek41" /><el-option label="通用保守估算" value="conservative" /></el-select><span class="secondary">计数资源离线运行，不修改模型名或思考参数；实际资源版本在任务计划中显示。</span></el-form-item>
-              <el-form-item v-if="config.engine !== 'codex_cli'" label="单次请求输入目标（Token）"><el-input-number v-model="config.batch_input_tokens" :min="4096" :max="1048576" /><span class="secondary">实际额度会扣除输出预留和安全余量。</span></el-form-item>
-              <el-form-item v-if="config.engine !== 'codex_cli'" label="自动执行调用上限"><el-input-number v-model="config.batch_auto_calls" :min="1" :max="10000" /><span class="secondary">最大计划调用数超出时等待确认，包含反证与历史复核。</span></el-form-item>
-              <el-form-item v-if="config.engine !== 'codex_cli'" label="审查有效执行预算（秒）"><el-input-number v-model="config.batch_execution_seconds" :min="60" :max="604800" /></el-form-item>
+              <el-form-item v-if="config.engine === 'opencode_native'" label="Token 计数方式"><el-select v-model="config.tokenizer_profile"><el-option label="自动匹配具体型号" value="auto" /><el-option label="Qwen3.8-27B" value="qwen38" /><el-option label="DeepSeek-V4.1-Flash" value="deepseek41" /><el-option label="通用保守估算" value="conservative" /></el-select><span class="secondary">计数资源离线运行，不修改模型名或思考参数；实际资源版本在任务计划中显示。</span></el-form-item>
+              <el-form-item v-if="config.engine === 'opencode_native'" label="单次请求输入目标（Token）"><el-input-number v-model="config.batch_input_tokens" :min="4096" :max="1048576" /><span class="secondary">实际额度会扣除输出预留和安全余量。</span></el-form-item>
+              <el-form-item v-if="config.engine === 'opencode_native'" label="自动执行调用上限"><el-input-number v-model="config.batch_auto_calls" :min="1" :max="10000" /><span class="secondary">最大计划调用数超出时等待确认，包含反证与历史复核。</span></el-form-item>
+              <el-form-item v-if="config.engine === 'opencode_native'" label="审查有效执行预算（秒）"><el-input-number v-model="config.batch_execution_seconds" :min="60" :max="604800" /></el-form-item>
               <el-form-item label="预处理超时（秒）"><el-input-number v-model="config.batch_preprocess_seconds" :min="10" :max="3600" /></el-form-item>
-              <el-form-item v-if="config.engine !== 'codex_cli'" label="计数进程内存上限（MiB）"><el-input-number v-model="config.batch_memory_mib" :min="256" :max="8192" /></el-form-item>
-              <el-form-item v-if="config.engine === 'codex_cli'" label="整个任务时限（秒）"><el-input-number v-model="config.task_timeout_seconds" :min="60" :max="3600" /></el-form-item>
-              <el-form-item label="每会话审查上限（秒）"><el-input-number v-model="config.review_timeout_seconds" :min="60" :max="3600" :precision="0" /><span class="secondary">新安装默认 1200 秒。Codex 主审、独立反证和历史复核各有会话上限，共用任务总时限。</span></el-form-item>
-              <el-form-item v-if="config.engine !== 'codex_cli'" label="每会话源码检索额度"><el-input-number v-model="config.context_retrieval_budget" :min="1" :max="200" :precision="0" /></el-form-item>
+              <el-form-item v-if="config.engine === 'opencode_native'" label="计数进程内存上限（MiB）"><el-input-number v-model="config.batch_memory_mib" :min="256" :max="8192" /></el-form-item>
+              <el-form-item v-if="['codex_cli', 'pr_agent'].includes(config.engine)" label="整个任务时限（秒）"><el-input-number v-model="config.task_timeout_seconds" :min="60" :max="3600" /></el-form-item>
+              <el-form-item label="每会话审查上限（秒）"><el-input-number v-model="config.review_timeout_seconds" :min="60" :max="3600" :precision="0" /><span class="secondary">主审、独立反证和历史复核各有会话上限，共用任务总时限。</span></el-form-item>
+              <el-form-item v-if="config.engine === 'opencode_native'" label="每会话源码检索额度"><el-input-number v-model="config.context_retrieval_budget" :min="1" :max="200" :precision="0" /></el-form-item>
               <el-form-item label="模型上下文窗口（Token）"><el-input-number v-model="config.model_context_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">新安装的默认 DeepSeek 模型预填 1,000,000。请按服务实际开放的窗口配置。</span></el-form-item>
-              <el-form-item :label="config.engine === 'codex_cli' ? '自动压缩启动阈值（Token）' : '历史会话压缩阈值（Token）'"><el-input-number v-model="config.compaction_threshold_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">{{ config.engine === 'codex_cli' ? '由 Codex 发起原生压缩。阈值与输出预留之和应在模型窗口内。' : '新任务按固定 diff 分批处理，此项用于历史会话。' }}</span></el-form-item>
+              <el-form-item v-if="config.engine !== 'pr_agent'" :label="config.engine === 'codex_cli' ? '自动压缩启动阈值（Token）' : '历史会话压缩阈值（Token）'"><el-input-number v-model="config.compaction_threshold_tokens" :min="4096" :max="1048576" :precision="0" /><span class="secondary">{{ config.engine === 'codex_cli' ? '由 Codex 发起原生压缩。阈值与输出预留之和应在模型窗口内。' : '新任务按固定 diff 分批处理，此项用于历史会话。' }}</span></el-form-item>
               <el-form-item label="单次模型请求超时（秒）"><el-input-number v-model="config.model_request_timeout_seconds" :min="60" :max="3600" :precision="0" /></el-form-item>
-              <el-form-item label="模型输出额度（Token）"><el-input-number v-model="config.model_max_output_tokens" :min="0" :max="1048576" :precision="0" /><span class="secondary">{{ config.engine === 'codex_cli' ? '新安装默认 0，由模型服务决定输出额度。填写正数时限制单次模型输出，包含思考与正文。' : '设为 0 时分批任务使用 8192。正数额度可能包含思考与正文。' }}</span></el-form-item>
+              <el-form-item label="模型输出额度（Token）"><el-input-number v-model="config.model_max_output_tokens" :min="0" :max="1048576" :precision="0" /><span class="secondary">{{ config.engine === 'pr_agent' ? '实测配置为 393,216，包含思考与正文。设为 0 时使用模型服务的默认额度。' : config.engine === 'codex_cli' ? '设为 0 时使用模型服务的默认额度。填写正数时限制单次模型输出，包含思考与正文。' : '设为 0 时分批任务使用 8192。正数额度可能包含思考与正文。' }}</span></el-form-item>
               <el-form-item label="正文大小上限（MiB）"><el-input-number v-model="config.model_response_max_mib" :min="1" :max="64" :precision="0" /><span class="secondary">限制审查报告正文，不累计心跳和进度事件。</span></el-form-item>
-            </div><p class="muted" data-testid="time-budget-help">初始单次等待上限 {{ effectiveModelTimeout }} 秒。每次调用还受会话剩余时间限制，Codex 会话同时受整个任务剩余时间限制，并预留 40 秒收尾。保存预算后，新任务使用新配置，已排队和运行中的任务沿用创建时的预算。</p></el-collapse-item></el-collapse>
-            <div class="review-actions footer"><el-button type="primary" :loading="busy" native-type="submit">保存设置</el-button><el-button :loading="testing" @click="testConnection">检查已保存的连接</el-button><el-button :loading="testing" @click="testTokens">核对 Token 计数（4 次请求）</el-button></div>
+            </div><p class="muted" data-testid="time-budget-help">初始单次等待上限 {{ effectiveModelTimeout }} 秒。每次调用还受会话剩余时间限制，Codex 和 PR-Agent 会话同时受整个任务剩余时间限制，并预留 40 秒收尾。保存预算后，新任务使用新配置，已排队和运行中的任务沿用创建时的预算。</p></el-collapse-item></el-collapse>
+            <div class="review-actions footer"><el-button type="primary" :loading="busy" native-type="submit">保存设置</el-button><el-button v-if="config.engine === 'pr_agent' && engineBudgets.pr_agent" @click="applyEngineBudget('pr_agent')">应用 PR-Agent 实测预算</el-button><el-button :loading="testing" @click="testConnection">检查已保存的连接</el-button><el-button :loading="testing" @click="testTokens">核对 Token 计数（4 次请求）</el-button></div>
           </el-form>
           <el-alert v-if="connectionMessage" :title="connectionMessage" :type="connectionOk ? 'success' : 'warning'" :closable="false" />
           <details v-if="connectionDiagnostic" class="connection-diagnostic" data-testid="connection-diagnostic">
@@ -122,7 +122,7 @@
         <el-form-item label="仓库"><el-select v-model="repoForm.repo_name" :disabled="!!repoForm.id" filterable remote :remote-method="searchCatalog" :loading="catalogLoading" placeholder="搜索所有者或仓库名称" class="full"><el-option v-for="r in catalog" :key="r.id" :value="r.name" :label="r.full_path || r.name" /><el-option v-if="repoForm.id" :label="repoForm.repo_name" :value="repoForm.repo_name" /></el-select></el-form-item>
         <el-form-item v-if="isPlatformAdmin" label="专用机器人 Token（编辑时留空保留）"><el-input v-model="repoForm.bot_token" type="password" autocomplete="new-password" /></el-form-item>
         <div v-if="isPlatformAdmin" class="permission-guide"><strong>账号与 Token 的权限分别配置</strong><dl><dt>机器人账号</dt><dd>独立非管理员；仓库协作者选择 Read／只读。组织和团队也不能授予代码写入或管理权限。</dd><dt>Token 权限</dt><dd><code>read:user</code>、<code>write:repository</code>、<code>write:issue</code>。私有仓库不能选择仅公开资源。</dd></dl><p>Token 的写权限用于发布审查和进度评论，账号自身仍保持代码只读。已有 Token 满足要求时，可以继续使用。</p></div>
-        <p class="secondary">Codex 自定义审查规则由仓库中的 .gitea/review-rules.md 提供，读取本次任务固定的目标分支版本，合并后生效。</p>
+        <p class="secondary">Codex 和 PR-Agent 的自定义审查规则由仓库中的 .gitea/review-rules.md 提供，读取本次任务固定的目标分支版本，合并后生效。</p>
         <el-form-item label="启用该仓库"><el-switch v-model="repoForm.enabled" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="repoVisible = false">取消</el-button><el-button type="primary" :loading="busy" @click="saveRepo">保存仓库</el-button></template>
@@ -158,6 +158,18 @@ const refreshing = ref(false)
 const error = ref(''), tasksError = ref(''), busy = ref(false), testing = ref(false), csrf = ref('')
 const concurrency = ref(null)
 const config = ref({ enabled: false, max_concurrent_reviews: 5 }), apiKey = ref(''), health = ref([]), servers = ref([]), repositories = ref([])
+const engineBudgets = ref({}), changedLineLimits = ref({})
+const reviewLimitTitle = computed(() => {
+  const engine = config.value.engine
+  const title = ({ pr_agent: 'PR-Agent 原生差异审查', codex_cli: 'Codex 自主检索审查' })[engine] || '新任务单次审查'
+  const limit = changedLineLimits.value[engine]
+  return limit ? `${title}，新增与删除合计最多 ${limit.toLocaleString('en-US')} 行` : title
+})
+
+function applyEngineBudget(engine) {
+  const budget = engineBudgets.value[engine]
+  if (budget) Object.assign(config.value, budget)
+}
 const reasoningOptions = [
   { value: 'low', title: '快速', description: '较少思考开销' },
   { value: 'high', title: '深入', description: '增加推理投入' },
@@ -230,7 +242,7 @@ const statusLabel = s => ({ awaiting_publication: '历史待发布', awaiting_co
 const effectiveModelTimeout = computed(() => {
   const { engine, task_timeout_seconds, review_timeout_seconds, model_request_timeout_seconds } = config.value
   const session = review_timeout_seconds ?? 1200
-  const limit = engine === 'codex_cli' ? Math.min(session, task_timeout_seconds ?? 2400) : session
+  const limit = ['codex_cli', 'pr_agent'].includes(engine) ? Math.min(session, task_timeout_seconds ?? 2400) : session
   return Math.max(0, Math.min(model_request_timeout_seconds ?? 900, limit - 40))
 })
 const showError = e => { if (e.code === 'ERR_CANCELED') return; error.value = errorMessage(e); if (detailVisible.value) detailError.value = error.value }
@@ -245,7 +257,7 @@ async function write(method, path, data) {
   return api.request({ method, url: '/ai-review'+path, data, headers: { 'X-Review-CSRF': csrf.value } })
 }
 async function loadTasks(silent = false) { lastTasksPoll = Date.now(); const current = ++taskGeneration; tasksController?.abort(); tasksController = new AbortController(); try { const r = await api.get('/ai-review/tasks', { params: { ...scopeParams(), page: page.value, status: filterStatus.value || undefined }, signal: tasksController.signal, notifyError: !silent }); if (!disposed && current === taskGeneration) { tasks.value = r.data.items; total.value = r.data.total; tasksError.value = '' } } catch (e) { if (!disposed && current === taskGeneration && e.code !== 'ERR_CANCELED') tasksError.value = errorMessage(e) } }
-async function refresh() { if (refreshing.value) return; refreshing.value = true; try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; concurrency.value = c.data?.concurrency || null; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } finally { refreshing.value = false } }
+async function refresh() { if (refreshing.value) return; refreshing.value = true; try { const [c, r, s] = await Promise.all([api.get('/ai-review/config'), api.get('/ai-review/repositories'), api.get('/ai-review/servers')]); config.value = c.data?.config || config.value; engineBudgets.value = c.data?.engine_budgets || {}; changedLineLimits.value = c.data?.changed_line_limits || {}; concurrency.value = c.data?.concurrency || null; health.value = Array.isArray(c.data?.health) ? c.data.health : []; repositories.value = Array.isArray(r.data) ? r.data : repositories.value; servers.value = Array.isArray(s.data) ? scopedServers(s.data) : servers.value; if (tab.value === 'tasks') await Promise.all([loadTasks(), loadStatistics()]) } catch (e) { showError(e) } finally { refreshing.value = false } }
 async function saveConfig() { if (busy.value) return; configError.value = ''; busy.value = true; try { const { api_key_configured, ...payload } = config.value; if (apiKey.value) payload.api_key = apiKey.value; config.value = (await write('put', '/config', payload)).data; apiKey.value = ''; ElMessage.success('设置已保存，并发上限已生效；资源预算用于新任务') } catch (e) { configError.value = errorMessage(e) } finally { busy.value = false } }
 async function testTokens() { testing.value = true; connectionMessage.value = ''; try { const r = await write('post', '/connection-test', { token_samples: 4 }); connectionMessage.value = r.data.calibration.message + ' ' + r.data.calibration.samples.map((v, i) => `样本 ${i+1}：本地 ${v.local} / 服务 ${v.server ?? '未提供'}，差值 ${v.difference ?? '未知'}`).join('；'); connectionOk.value = r.data.calibration.samples.every(v => v.difference === 0) } catch(e) { connectionOk.value = false; connectionMessage.value = errorMessage(e) } finally { testing.value = false } }
 async function testConnection() { testing.value = true; connectionMessage.value = ''; connectionDiagnostic.value = null; try { const r = await write('post', '/connection-test', {}); connectionMessage.value = r.data.message; connectionOk.value = r.data.ok } catch (e) { connectionOk.value = false; connectionMessage.value = errorMessage(e); connectionDiagnostic.value = e.response?.data?.diagnostic || null } finally { testing.value = false } }

@@ -104,7 +104,9 @@ class ProgressSync:
         with self.store.tx() as c:
             c.execute('''UPDATE pr_state SET progress_seq=progress_seq+1 WHERE EXISTS
                 (SELECT 1 FROM jobs j WHERE j.repository=pr_state.repository AND j.number=pr_state.number
-                 AND j.generation=pr_state.generation AND j.session_id IS NOT NULL AND j.session_id!='')''')
+                 AND j.generation=pr_state.generation AND ((j.session_id IS NOT NULL AND j.session_id!='')
+                 OR EXISTS (SELECT 1 FROM configuration_history h WHERE h.revision=j.config_revision
+                            AND json_extract(h.value,'$.engine') IN ('codex_cli','pr_agent'))))''')
 
     def pending(self, now=None):
         now = time.time() if now is None else now
@@ -152,7 +154,8 @@ class ProgressSync:
                 state, job = state_for(self.store, repository, number)
                 if not job or state['progress_next'] > time.time():
                     return False
-                if (job.get('configuration') or {}).get('engine') == 'codex_cli':
+                # Codex 发布器持有总览的冻结回执；完成前不能改写它的核对正文。
+                if (job.get('configuration') or {}).get('engine') in ('codex_cli', 'pr_agent') and job['status'] != 'succeeded':
                     return False
                 repo = self.store.repo(repository)
                 client = self.factory(repo)
@@ -161,11 +164,24 @@ class ProgressSync:
                 self.adopt_reference(client, repo, job)
                 # 在联网读取后重新取任务，避免用之前的执行代次覆盖新状态。
                 state, job = state_for(self.store, repository, number)
+                codex = (job.get('configuration') or {}).get('engine') in ('codex_cli', 'pr_agent')
+                if codex and job['status'] != 'succeeded':
+                    return False
                 seq, generation = state['progress_seq'], state['generation']
                 payload = payload_for(repo, state, job, self.store.config()['enabled'], pr)
                 body = comment_body(payload)
-                from .issue_lifecycle import overview
-                body += overview(self.store, repo, job, pr)
+                if codex:
+                    with contextlib.closing(self.store.connect()) as c:
+                        plan = c.execute('SELECT value FROM review_publication_plans WHERE job=?', (job['id'],)).fetchone()
+                    if plan:
+                        summary = json.loads(plan['value'])['overview']
+                    else:
+                        from .publication import overview
+                        summary = overview(self.store, job, (job.get('result') or {}).get('publication') or job['result'])
+                    body += '\n\n' + summary.removeprefix(SUMMARY_MARK + '\n')
+                else:
+                    from .issue_lifecycle import overview
+                    body += overview(self.store, repo, job, pr)
                 comment = None
                 if state['summary_id']:
                     comment = client.request('GET', client.prefix + '/issues/comments/' + str(state['summary_id']), missing=True)

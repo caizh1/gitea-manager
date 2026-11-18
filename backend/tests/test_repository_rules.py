@@ -177,19 +177,23 @@ def test_rules_access_is_scoped():
         fixture.doCleanups()
 
 
-def test_real_stage_entry_forwards_identical_frozen_rules(repository, tmp_path):
+@pytest.mark.parametrize('engine', ['codex_cli', 'pr_agent'])
+def test_real_stage_entry_forwards_identical_frozen_rules(repository, tmp_path, engine):
     from ai_review.codex_review import run_phase
     state = Store(tmp_path / 'stage.db')
-    state.save_config({'revision': state.config()['revision'], 'enabled': True, 'debounce_seconds': 0})
+    state.save_config({'revision': state.config()['revision'], 'engine': engine,
+                       'enabled': True, 'debounce_seconds': 0})
     repo = state.save_repo(1, 1, {'enabled': True})
     base = commit(repository, '# 用户约束\n检查租户隔离。'.encode())
     with patch('ai_review.runtime_status.available', return_value=True):
         ident = state.enqueue(repo['id'], 1, {'base': base, 'head': base})
     job = state.claim()
-    frozen = freeze(state, job, snapshot(base), repository)
+    frozen = freeze(state, job, dict(snapshot(base), title='规则验收', description=''), repository)
     sent = []
     def execute(*args, **kwargs):
-        sent.append(kwargs['diff_snapshot']['_batch_messages'][1]['content'])
+        data = kwargs['diff_snapshot']
+        sent.append(data['_pr_agent_input']['instructions'] if engine == 'pr_agent' else
+                    data['_batch_messages'][1]['content'])
         return {'findings': [], '_native_result_sha256': '固定回执', '_native_final_event_seq': 1, '_event_log_complete': True}
     with patch('ai_review.native_review.execute', side_effect=execute), patch('ai_review.native_review.acknowledge_result'):
         for phase, candidates in [('primary', None), ('refutation-0', []),

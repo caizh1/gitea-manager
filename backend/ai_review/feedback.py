@@ -177,7 +177,7 @@ def apply_command(store, client, repo, number, comment, sender):
 
 
 def acknowledge(store, client, repo, number, comment, text):
-    if store.config().get('engine') == 'codex_cli':
+    if store.config().get('engine') in ('codex_cli', 'pr_agent'):
         return  # Codex 自动分析与反馈仅更新 Manager，外部写入统一走确认。
     marker='<!-- ai-review:feedback:'+str(comment)+' -->'
     body=marker+'\n'+text

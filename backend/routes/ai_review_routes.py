@@ -104,8 +104,13 @@ def csrf():
 @ai_review_bp.get('/config')
 def config():
     state = store()
+    from ai_review.batch_flow import changed_line_limit
+    from ai_review.budgets import ENGINE_BUDGETS
     from ai_review.concurrency import status
-    return jsonify(config=state.config(public=True), health=state.health_status(), concurrency=status(state), supported_version='1.26.4', trial_versions=['1.27.3'])
+    return jsonify(config=state.config(public=True), health=state.health_status(), concurrency=status(state),
+                   engine_budgets=ENGINE_BUDGETS,
+                   changed_line_limits={engine: changed_line_limit(engine) for engine in ENGINE_BUDGETS},
+                   supported_version='1.26.4', trial_versions=['1.27.3'])
 
 
 @ai_review_bp.put('/config')
@@ -120,8 +125,11 @@ def save_config():
         raise ReviewError('配置包含不支持的字段')
     old = state.config()
     value = dict(old, **data)
-    if not isinstance(value['enabled'], bool) or value['engine'] not in ('opencode_native', 'codex_cli'):
+    from ai_review.budgets import ENGINE_BUDGETS, validate_context
+    if not isinstance(value['enabled'], bool) or value['engine'] not in ENGINE_BUDGETS:
         raise ReviewError('开关或执行引擎无效')
+    if value['engine'] != old['engine']:
+        value.update({key: default for key, default in ENGINE_BUDGETS[value['engine']].items() if key not in data})
     for key, low, high in [('max_concurrent_reviews', 1, 5), ('debounce_seconds', 0, 120), ('max_files', 1, 100), ('max_calls', 2, 64),
                            ('task_timeout_seconds', 60, 3600), ('review_timeout_seconds', 60, 3600),
                            ('model_request_timeout_seconds', 60, 3600), ('max_findings', 1, 30),
@@ -130,7 +138,6 @@ def save_config():
             raise ReviewError(f'{key} 超出允许范围 {low} 至 {high}')
     from ai_review.thinking import validate as validate_thinking
     validate_thinking(value)
-    from ai_review.budgets import validate_context
     validate_context(value)
     validate_batch(value)
     if value['api_base_url']:
@@ -142,7 +149,7 @@ def save_config():
         value['api_key'] = state.seal(data['api_key']) if data['api_key'] else ''
     if value['enabled'] and not all(value[k] for k in ('api_base_url', 'api_key', 'model')):
         raise ReviewError('启用前请配置模型服务地址、密钥和模型')
-    if value['enabled'] and value['engine'] == 'codex_cli' and any(
+    if value['enabled'] and value['engine'] in ('codex_cli', 'pr_agent') and any(
             value.get(key) != old.get(key) for key in ('enabled', 'engine', 'api_base_url', 'api_key', 'model')):
         from ai_review.setup_service import verify_model
         verify_model(state, value)

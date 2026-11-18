@@ -51,11 +51,12 @@ def test_codex_requests_keep_authentication_and_usage_beyond_legacy_limits(tmp_p
     import time
 
     from flask import Flask
+    from ai_review.budgets import CODEX_AND_LEGACY_BUDGETS
     from ai_review.responses import register
     from ai_review.store import Store
 
     store = Store(tmp_path / "review.db")
-    config = store.config()
+    config = dict(store.config(), **CODEX_AND_LEGACY_BUDGETS, engine='codex_cli')
     assert config["model_max_output_tokens"] == 0
     config.update(enabled=True, debounce_seconds=0, batch_input_tokens=4096,
                   thinking_protocol="deepseek", thinking_enabled=True, reasoning_effort=effort)
@@ -328,7 +329,7 @@ def test_defaults_preserve_explicit_model(tmp_path):
     from ai_review.store import Store
 
     store = Store(tmp_path / "review.db")
-    assert store.config()["model"] == "DeepSeek- V4.1-Flash"
+    assert store.config()["model"] == "deepseek-flash"
     assert store.config()["compaction_threshold_tokens"] == 800_000
     with store.tx() as c:
         current = store.config(connection=c)

@@ -24,6 +24,9 @@ def read_coverage(snapshot, reads):
     from .diff import parse_diff
 
     coverage = dict(snapshot["coverage"], scope="repository")
+    if snapshot.get('engine') == 'pr_agent':
+        return dict(coverage, scope='diff', files_reviewed=coverage['files_total'],
+                    source_files_read=None, source_read_tracking='pr_agent_diff_context')
     if snapshot.get("codex_tools") == "native":
         return dict(coverage, files_reviewed=0, source_files_read=None,
                     diff_files_provided=coverage["files_total"],
@@ -144,7 +147,7 @@ def normalize(raw, snapshot, workspace):
         lines = code.decode("utf-8").splitlines()
         if type(start) is not int or type(end) is not int or not 1 <= start <= end <= len(lines):
             raise ReviewError("Codex 意见行范围无法核对")
-        if snapshot.get("codex_tools") != "native" and not any(
+        if snapshot.get('engine') != 'pr_agent' and snapshot.get("codex_tools") != "native" and not any(
             r.get("path") == path and r.get("line_start", 0) <= start and r.get("line_end", 0) >= end
             for r in reads
         ):
@@ -249,10 +252,14 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
     )
     sid, token, _ = create_session(store, job["id"], job["owner"], deadline, workspace)
     phase_job = dict(job, session_id=sid, batch_protocol=1)
-    instructions = prompt(snapshot, phase, candidates)
+    agent_input = None
+    if config.get('engine') == 'pr_agent':
+        from .pr_agent_review import phase_input
+        agent_input = phase_input(snapshot, phase, candidates)
+    instructions = agent_input['instructions'] if agent_input else prompt(snapshot, phase, candidates)
     if phase != "primary" or snapshot.get("codex_tools") != "native":
         instructions += "\n实际快照根目录为 " + workspace + "。绝对文件路径必须位于此目录。"
-    if phase.startswith("history-"):
+    if phase.startswith("history-") and agent_input is None:
         instructions += (
             "\n历史问题复核任务的结构化结论放入 overall_explanation 字符串中，字符串内容为完整 JSON，包含以下字段约定。findings 返回空数组。\n"
             + candidates["instructions"]
@@ -267,7 +274,7 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
     store.update(
         job["id"],
         job["owner"],
-        stage="Codex "
+        stage=("PR-Agent " if agent_input else "Codex ")
         + (
             "历史问题复核"
             if phase.startswith("history-")
@@ -281,7 +288,8 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
         workspace,
         token,
         diff_snapshot=dict(
-            snapshot, _codex_phase=phase, _batch_messages=[{"content": ""}, {"content": instructions}]
+            snapshot, _codex_phase=phase, _pr_agent_input=agent_input,
+            _batch_messages=[{"content": ""}, {"content": instructions or '请审查固定版本的完整 PR。'}]
         ),
     )
     if job.get("rules_protocol"):
@@ -338,7 +346,7 @@ def process(store, job):
             snapshot["codex_tools"] = "native"
             snapshot["workspace_layout"] = "git-worktree-v2"
         snapshot.pop("batch_protocol", None)
-        snapshot["engine"] = "codex_cli"
+        snapshot["engine"] = config.get('engine', 'codex_cli')
         validate_single_size(snapshot)
         store.update(job["id"], job["owner"], snapshot=snapshot, stage="准备 Git 增量缓存")
         if snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2"):
@@ -416,7 +424,7 @@ def process(store, job):
             "findings": findings,
             "coverage": read_coverage(snapshot, reads),
             "report_markdown": report,
-            "review_scope": "repository",
+            "review_scope": "diff" if config.get('engine') == 'pr_agent' else "repository",
             "native_session": True,
             "native_commands": raw.get("_codex_commands", []),
         }

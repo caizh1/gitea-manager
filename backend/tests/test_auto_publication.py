@@ -1,6 +1,9 @@
 """自动发布从真实台账入口验证，不调用模型，覆盖写入与失联恢复。"""
 import copy
 import json
+import threading
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +11,9 @@ from test_ai_review_issue_lifecycle import LifecycleTests, Client
 from ai_review.common import PublishUnknown
 from ai_review.issue_lifecycle import reconcile
 from ai_review.publication import publish, resume
+from ai_review.progress import ProgressSync
 from ai_review.store import Store
+from test_ai_review_progress import decode_body
 
 
 class AutomaticClient(Client):
@@ -118,6 +123,124 @@ def test_pass_creates_only_automatic_summary(case):
     assert not case.client.reviews
     assert 'VERDICT: PASS' in case.client.summaries[0]['body']
     assert case.store.job(case.job['id'])['status'] == 'succeeded'
+
+
+@pytest.mark.parametrize('findings', [True, False])
+def test_completed_codex_summary_gains_progress_without_republishing(case, findings):
+    result(case, findings)
+    send(case)
+    summary = copy.deepcopy(case.client.summaries[0])
+    reviews = copy.deepcopy(case.client.reviews)
+    task = case.store.job(case.job['id'])
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        assert sync.sync(case.repo, 1)
+        payload = decode_body(case.client.summaries[0])
+        assert payload['status'] == 'succeeded'
+        assert payload['head'] == case.snapshot['head']
+        assert summary['body'].split('\n', 1)[1] in case.client.summaries[0]['body']
+        assert case.client.summaries[0]['id'] == summary['id']
+        assert len(case.client.summaries) == 1
+        assert case.client.reviews == reviews
+        with case.store.tx() as connection:
+            connection.execute('UPDATE pr_state SET progress_next=0,progress_synced=progress_seq')
+            connection.execute("UPDATE jobs SET session_id='' WHERE id=?", (case.job['id'],))
+        sync.refresh_native()
+        assert len(sync.pending()) == 1
+        assert sync.sync(case.repo, 1)
+    updated = case.store.job(case.job['id'])
+    for key in ('status', 'result', 'model_calls', 'generation'):
+        assert updated[key] == task[key]
+    assert case.client.reviews == reviews
+    assert len(case.client.summaries) == 1
+
+
+def test_codex_progress_preserves_pending_publication_receipt(case):
+    result(case)
+    case.client.summary_failure = True
+    with pytest.raises(PublishUnknown):
+        send(case)
+    summary = copy.deepcopy(case.client.summaries)
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        assert not sync.sync(case.repo, 1)
+    assert case.client.summaries == summary
+    retry(case)
+    assert case.store.job(case.job['id'])['status'] == 'succeeded'
+    assert len(case.client.summaries) == 1
+
+
+def test_codex_progress_waits_for_publisher_and_preserves_human_edits(case):
+    result(case)
+    send(case)
+    summary = copy.deepcopy(case.client.summaries)
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        with case.store.lock(f'进度-{case.repo}-1'):
+            assert not sync.sync(case.repo, 1)
+        assert case.client.summaries == summary
+        with case.store.tx() as connection:
+            connection.execute('UPDATE pr_state SET progress_next=0')
+        case.client.summaries[0]['body'] += '\n人工补充说明'
+        assert not sync.sync(case.repo, 1)
+    assert case.client.summaries[0]['body'].endswith('人工补充说明')
+
+
+def test_codex_publication_waits_for_progress_update(case):
+    result(case)
+    entered = threading.Event()
+    lock = case.store.lock
+
+    @contextmanager
+    def observed_lock(name, **kwargs):
+        if name == f'进度-{case.repo}-1':
+            entered.set()
+        with lock(name, **kwargs):
+            yield
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with patch.object(case.store, 'lock', side_effect=observed_lock):
+            with lock(f'进度-{case.repo}-1'):
+                future = pool.submit(send, case)
+                assert entered.wait(2)
+                with pytest.raises(TimeoutError):
+                    future.result(timeout=0.05)
+            future.result(timeout=5)
+    assert case.store.job(case.job['id'])['status'] == 'succeeded'
+    assert len(case.client.summaries) == 1
+
+
+def test_next_codex_publication_reuses_summary_after_progress_sync(case):
+    result(case)
+    send(case)
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        assert sync.sync(case.repo, 1)
+    summary_id = case.client.summaries[0]['id']
+    next_version(case, False, 'fixed')
+    send(case)
+    with case.store.tx() as connection:
+        connection.execute('UPDATE pr_state SET progress_next=0')
+    with patch.object(case.client, 'repository', create=True):
+        assert sync.sync(case.repo, 1)
+    assert case.client.summaries[0]['id'] == summary_id
+    assert len(case.client.summaries) == 1
+    assert decode_body(case.client.summaries[0])['head'] == case.snapshot['head']
+    assert '已修复' in case.client.summaries[0]['body']
+
+
+def test_codex_progress_recovers_lost_patch_receipt_once(case):
+    result(case)
+    send(case)
+    case.client.summary_failure = True
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        assert not sync.sync(case.repo, 1)
+        with case.store.tx() as connection:
+            connection.execute('UPDATE pr_state SET progress_next=0')
+        assert sync.sync(case.repo, 1)
+    assert decode_body(case.client.summaries[0])['status'] == 'succeeded'
+    assert len(case.client.summaries) == len(case.client.reviews) == 1
 
 
 def test_summary_lost_receipt_is_recovered_without_duplicate(case):

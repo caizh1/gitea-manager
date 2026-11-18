@@ -25,3 +25,6 @@ offline/
 /gitea-manager.*包复验.json
 /review-runtime/vendor/codex-linux-x64
 /review-runtime/vendor/rg-linux-x64
+/review-runtime/vendor/pr-agent-wheels/
+/review-runtime/vendor/pr-agent-assets/
+/review-runtime/vendor/pr-agent-source.tar.gz

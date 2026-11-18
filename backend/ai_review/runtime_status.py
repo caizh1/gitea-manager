@@ -46,7 +46,8 @@ def refresh():
             session.trust_env=False
             response=session.get(os.environ.get('AI_REVIEW_EXECUTOR_URL','http://review-executor:5052')+'/health',timeout=(2,3),allow_redirects=False)
             body=response.json()
-            value={key:body[key] for key in ('version','mode','checks','binary_sha256','cpu','process') if key in body}
+            value={key:body[key] for key in ('version','mode','checks','binary_sha256','cpu','process',
+                                            'codex_version','codex_ready','pr_agent_version','pr_agent_ready') if key in body}
             value.update(ready=response.status_code==200 and body.get('ready') is True, reason=body.get('reason') or body.get('error') or ('执行器启动自检通过' if response.status_code==200 else '执行器未就绪，HTTP '+str(response.status_code)), http_status=response.status_code)
     except (requests.RequestException,ValueError) as exc:
         value={'ready':False,'reason':'执行器健康读取失败：'+type(exc).__name__,'error':str(exc)}

@@ -170,7 +170,7 @@ def process(store, job, recovering=False):
 
 
 def _process(store, job, recovering=False):
-    if store.job_config(job['id']).get('engine') == 'codex_cli':
+    if store.job_config(job['id']).get('engine') in ('codex_cli', 'pr_agent'):
         from .codex_review import process as process_codex
         if recovering:
             job = dict(job, status='recovering')
@@ -351,7 +351,7 @@ def reconcile_unknown(store):
         if not row:
             return
     job = store.job(row['id'])
-    if (job.get('configuration') or {}).get('engine') == 'codex_cli':
+    if (job.get('configuration') or {}).get('engine') in ('codex_cli', 'pr_agent'):
         from .publication import resume
         resume(store, job)
         return
