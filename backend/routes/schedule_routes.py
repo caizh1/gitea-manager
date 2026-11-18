@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
-from models import db, ScheduledTask, ScheduleLog
+from models import Backup, db, ScheduledTask, ScheduleLog
 from services.schedule_progress import schedule_progress_for_response
 from services.schedule_runner import claim_schedule_task, start_schedule_task_thread
 
@@ -94,12 +94,14 @@ def run_schedule(tid):
     return jsonify(task_to_dict(task))
 
 
-def _schedule_log_steps(log_entry, restore_results):
+def _schedule_log_steps(log_entry, restore_results, backup_outcome=None):
     steps = []
     first_log_part = (log_entry.log or '').split(';')[0].strip()
     backup_status = log_entry.backup_status or log_entry.status
     backup_detail = ''
-    if log_entry.backup_error:
+    if backup_outcome and backup_outcome['error_msg']:
+        backup_detail = backup_outcome['error_msg']
+    elif log_entry.backup_error:
         backup_detail = '备份失败: ' + log_entry.backup_error
     elif log_entry.backup_filename:
         backup_detail = '备份完成: ' + log_entry.backup_filename
@@ -114,6 +116,7 @@ def _schedule_log_steps(log_entry, restore_results):
         'status': backup_status,
         'detail': backup_detail,
         'backup_id': log_entry.backup_id,
+        'backup_outcome': backup_outcome,
         'started_at': log_entry.started_at.isoformat() if log_entry.started_at else None,
         'completed_at': log_entry.completed_at.isoformat() if log_entry.completed_at and not restore_results else None,
     })
@@ -149,6 +152,10 @@ def get_schedule_logs(tid):
     logs = ScheduleLog.query.filter_by(schedule_task_id=tid)\
         .order_by(ScheduleLog.started_at.desc()).limit(20).all()
     result = []
+    from services.backup_outcome import outcome_for_response
+    backup_ids = {entry.backup_id for entry in logs if entry.backup_id}
+    backups = {backup.id: outcome_for_response(backup)
+               for backup in Backup.query.filter(Backup.id.in_(backup_ids)).all()} if backup_ids else {}
     for log_entry in logs:
         restore_results = _load_restore_results(log_entry.restore_results)
         result.append({
@@ -160,7 +167,7 @@ def get_schedule_logs(tid):
             'backup_filename': log_entry.backup_filename,
             'backup_error': log_entry.backup_error,
             'restore_results': restore_results,
-            'steps': _schedule_log_steps(log_entry, restore_results),
+            'steps': _schedule_log_steps(log_entry, restore_results, backups.get(log_entry.backup_id)),
             'started_at': log_entry.started_at.isoformat() if log_entry.started_at else None,
             'completed_at': log_entry.completed_at.isoformat() if log_entry.completed_at else None,
         })

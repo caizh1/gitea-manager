@@ -7,6 +7,7 @@ import shlex
 import zipfile
 
 from services.restore_secrets import read_file
+from services.backup_metadata import read_zip_json, write_zip_json
 
 MANIFEST = 'manager-manifest.json'
 
@@ -112,14 +113,12 @@ def append_manifest(path, requirements, tables, server, progress=None):
                         progress.show('manifest', '计算归档文件摘要', current=current, total=total,
                                       unit='bytes', item=entry.filename, heartbeat=True)
             files[entry.filename] = {'摘要': digest.hexdigest(), '权限': entry.external_attr >> 16, '系统': entry.create_system}
-        payload = json.dumps({'版本': 2, '准入': requirements, '数据表': tables,
+        payload = {'版本': 2, '准入': requirements, '数据表': tables,
             '文件': files, '来源名称': server.name, 'API令牌': server.api_token,
-            '边界': '同镜像、同 PostgreSQL 主版本、本地持久存储；不包含镜像及 Manager 的其他业务状态'}, ensure_ascii=False).encode()
-        if len(payload) > 64 * 1024 * 1024:
-            raise RuntimeError('灾备清单超出当前恢复器的支持上限，拒绝发布成功备份')
+            '边界': '同镜像、同 PostgreSQL 主版本、本地持久存储；不包含镜像及 Manager 的其他业务状态'}
         if progress:
             progress.show('manifest', '写入备份清单', current=current, total=total, unit='bytes', force=True)
-        archive.writestr(MANIFEST, payload)
+        write_zip_json(archive, MANIFEST, payload)
 
 
 def load_manifest(path):
@@ -128,9 +127,7 @@ def load_manifest(path):
         validate_members(archive.infolist())
         if MANIFEST not in archive.namelist():
             return None
-        if archive.getinfo(MANIFEST).file_size > 64 * 1024 * 1024:
-            raise RuntimeError('灾备清单过大')
-        value = json.loads(archive.read(MANIFEST))
+        value = read_zip_json(archive, MANIFEST)
         if value.get('版本') != 2 or not all(isinstance(value.get(key), dict) for key in ('准入', '数据表', '文件')):
             raise RuntimeError('灾备清单结构不受支持')
         files = set(archive.namelist()) - {MANIFEST}

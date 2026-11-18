@@ -1,11 +1,11 @@
 """显式携带 dump 不会收集的启动秘密；恢复时使用包内私有副本。"""
 import base64
 import configparser
-import json
 from pathlib import PurePosixPath
 import zipfile
 
 from services.restore_secrets import read_file, put_file, uri_path
+from services.backup_metadata import read_zip_json, write_zip_json
 
 DEPENDENCIES = 'manager-startup-files.json'
 SECRET_FIELDS = (('security', 'SECRET_KEY'), ('security', 'INTERNAL_TOKEN'),
@@ -53,9 +53,7 @@ def install_startup_files(archive, config, container):
         if any(config.get(section, key + '_URI', fallback='') for section, key in SECRET_FIELDS if key != 'SECRET_KEY'):
             raise RuntimeError('旧备份缺少启动依赖快照，请重新备份后导出离线包')
         return
-    if archive.getinfo(DEPENDENCIES).file_size > 16 * 1024 * 1024:
-        raise RuntimeError('启动依赖快照过大')
-    value = json.loads(archive.read(DEPENDENCIES))
+    value = read_zip_json(archive, DEPENDENCIES)
     if value.get('版本') != 1:
         raise RuntimeError('启动依赖快照版本不受支持')
     allowed = set(SECRET_FIELDS) | {('oauth2', 'JWT_SIGNING_PRIVATE_KEY_FILE')}
@@ -81,7 +79,7 @@ def install_startup_files(archive, config, container):
 
 def append_startup_files(path, value):
     with zipfile.ZipFile(path, 'a') as archive:
-        archive.writestr(DEPENDENCIES, json.dumps(value, ensure_ascii=False))
+        write_zip_json(archive, DEPENDENCIES, value)
         for entry in value['文件']:
             if entry['配置项'] == 'SECRET_KEY':
                 continue

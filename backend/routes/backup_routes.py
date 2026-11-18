@@ -19,6 +19,7 @@ def import_backup():
     import uuid
     from config import BACKUP_DIR
     from models import BackupRepoCommit
+    from services.backup_metadata import MetadataResourceError, metadata_io
     from services.backup_manifest import load_manifest
     from services.backup_consistency import load_snapshot, commit_rows
     upload = request.files.get('file')
@@ -29,7 +30,8 @@ def import_backup():
     os.close(fd)
     destination = None
     try:
-        upload.save(temporary)
+        with metadata_io('保存上传的备份', request.content_length):
+            upload.save(temporary)
         manifest = load_manifest(temporary)
         snapshot = load_snapshot(temporary)
         if manifest is None or snapshot is None:
@@ -61,10 +63,12 @@ def import_backup():
         os.replace(temporary, destination)
         db.session.commit()
         return jsonify(backup_to_dict(backup)), 201
-    except Exception:
+    except Exception as error:
         db.session.rollback()
         if destination and os.path.exists(destination):
             os.remove(destination)
+        if isinstance(error, MetadataResourceError):
+            return jsonify(error=str(error)), 400
         return jsonify(error='导入失败：备份清单、文件或校验记录无效；未修改目标实例'), 400
     finally:
         if os.path.exists(temporary):
@@ -72,6 +76,7 @@ def import_backup():
 
 
 def backup_to_dict(b):
+    from services.backup_outcome import outcome_for_response
     server_exists = b.source_server is not None
     server_name = b.source_server_name or (b.source_server.name if server_exists else '未知服务器')
     export = b.source_export
@@ -93,7 +98,7 @@ def backup_to_dict(b):
         'file_path': b.file_path,
         'file_size': b.file_size,
         'status': b.status,
-        'error_msg': b.error_msg,
+        **outcome_for_response(b),
         'diagnostic_id': b.diagnostic_id,
         **progress_for_response(b),
         'commit_snapshot_status': b.commit_snapshot_status or '',

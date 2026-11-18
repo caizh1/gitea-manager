@@ -156,7 +156,8 @@ def append_artifacts(path, source, database, server, raw, progress=None, staged=
         for record in records:
             if record not in inventory:
                 raise RuntimeError('有效 Actions 制品缺少正文：' + str(record))
-        archive.writestr('manager-actions.json', json.dumps({'版本': 1, '路径': directory, '文件': inventory}, ensure_ascii=False))
+        from services.backup_metadata import write_zip_json
+        write_zip_json(archive, 'manager-actions.json', {'版本': 1, '路径': directory, '文件': inventory})
 
 
 def switch_command(stage, path):

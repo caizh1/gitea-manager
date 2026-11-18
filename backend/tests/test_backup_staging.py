@@ -144,3 +144,49 @@ class StagingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, '尚未停止源站'):
                 staging.prepare_export(helper, MagicMock(), self.server, self.export.marker)
         self.assertEqual(execute.call_count, 2)
+
+    def test_large_export_metadata_uses_file_upload_and_streamed_verified_receive(self):
+        from config import BACKUP_DIR
+        Path(BACKUP_DIR).mkdir()
+        payload = {'版本': 1, '仓库快照': {'说明': '仓' * (6 * 1024 * 1024)}}
+        source_archive = self.root / 'metadata.tar'
+        helper = MagicMock()
+
+        def put_archive(path, stream):
+            self.assertEqual(path, '/export')
+            self.assertFalse(isinstance(stream, bytes))
+            with tarfile.open(fileobj=stream) as archive, tarfile.open(source_archive, 'w') as target:
+                entry = archive.next()
+                self.assertEqual(entry.name, 'export.json.partial')
+                self.assertEqual(entry.mode, 0o600)
+                self.assertGreater(entry.size, 16 * 1024 * 1024)
+                entry.name = 'export.json'
+                target.addfile(entry, archive.extractfile(entry))
+            return True
+
+        helper.put_archive.side_effect = put_archive
+        digest = staging.upload_metadata(helper, '/export', payload)
+        reader = MagicMock()
+        with source_archive.open('rb') as stream:
+            blocks = (block for block in iter(lambda: stream.read(1024 * 1024), b''))
+            reader.get_archive.return_value = (blocks, {})
+            destination = self.root / 'export.json'
+            self.assertEqual(staging.receive_file(reader, '/export/export.json', destination), digest)
+        with destination.open('rb') as stream:
+            self.assertEqual(json.load(stream), payload)
+
+    def test_disk_full_reports_receive_stage_and_size(self):
+        from errno import ENOSPC
+        raw = io.BytesIO()
+        with tarfile.open(fileobj=raw, mode='w') as archive:
+            entry = tarfile.TarInfo('export.json')
+            entry.size = 2
+            archive.addfile(entry, io.BytesIO(b'{}'))
+        reader = MagicMock()
+        blocks = MagicMock()
+        blocks.__iter__.return_value = iter([raw.getvalue()])
+        reader.get_archive.return_value = (blocks, {'size': 2})
+        with patch('services.backup_staging.os.open', side_effect=OSError(ENOSPC, '隔离磁盘写满')):
+            with self.assertRaisesRegex(RuntimeError, '接收固定副本 export.json（2 字节）失败.*磁盘'):
+                staging.receive_file(reader, '/export/export.json', self.root / 'export.json')
+        blocks.close.assert_called_once()

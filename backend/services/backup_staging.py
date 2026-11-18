@@ -1,7 +1,7 @@
 """源端持久化固定副本；源站恢复后只读接收，失败副本由管理员保留或丢弃。"""
 import base64
 from contextlib import contextmanager, closing
-from datetime import datetime
+from datetime import datetime, timezone
 import fcntl
 import hashlib
 import io
@@ -18,7 +18,8 @@ from types import SimpleNamespace
 from docker.errors import NotFound
 from docker.types import Mount
 
-from services.restore_secrets import read_file, put_file, security_values, uri_path, LEGACY_SECRET
+from services.backup_metadata import metadata_io, write_json, write_zip_json
+from services.restore_secrets import read_file, security_values, uri_path, LEGACY_SECRET
 
 MOUNT = '/manager-backup-spool'
 OWNER = 'gitea-manager-site-backup-v1'
@@ -146,15 +147,11 @@ def freeze_metadata(helper, source, database, server, export, snapshot, tables, 
              '数据表': tables, '准入': requirements, '启动依赖': startup, '文件': components,
              '密钥': {'配置摘要': hashlib.sha256(raw).hexdigest(), '数据加密密钥': secret},
              '制品': {'directory': directory, 'records': records}}
-    encoded = json.dumps(value, ensure_ascii=False).encode()
-    if len(encoded) > 16 * 1024 * 1024:
-        raise RuntimeError('固定导出元数据超过 16 MiB')
-    put_file(helper, root + '/' + METADATA + '.partial', encoded, 0o600)
+    digest = upload_metadata(helper, root, value)
     execute(helper, ['sh', '-ec', 'sync; mv "$1" "$2"; chmod -R a-w "$3"; sync',
                      'sh', root + '/' + METADATA + '.partial', root + '/' + METADATA, root])
     from services.backup_consistency import require_quiet
     require_quiet(database, server)
-    digest = hashlib.sha256(encoded).hexdigest()
     total = sum(item['size'] for item in components.values())
     exported_at = datetime.utcnow()
     journal.value['站点导出'] = {'摘要': digest, '大小': total, '时间UTC': exported_at.isoformat()}
@@ -163,11 +160,40 @@ def freeze_metadata(helper, source, database, server, export, snapshot, tables, 
     db.session.commit()
 
 
+def upload_metadata(helper, root, value):
+    from config import BACKUP_DIR
+    size = None
+    with metadata_io('固化导出元数据', lambda: size):
+        with tempfile.TemporaryFile(dir=BACKUP_DIR) as payload, tempfile.TemporaryFile(dir=BACKUP_DIR) as wire:
+            write_json(payload, value)
+            size = payload.tell()
+            payload.seek(0)
+            digest = hashlib.file_digest(payload, 'sha256').hexdigest()
+            payload.seek(0)
+            entry = tarfile.TarInfo(METADATA + '.partial')
+            entry.size, entry.mode = size, 0o600
+            with tarfile.open(fileobj=wire, mode='w') as archive:
+                archive.addfile(entry, payload)
+            wire.seek(0)
+            if not helper.put_archive(root, wire):
+                raise RuntimeError(f'固化导出元数据（{size} 字节）失败：源端拒绝写入')
+    return digest
+
+
 def restore_export_index(backup, journal):
     export = db_export(backup)
     receipt = journal.value.get('站点导出')
-    if backup.source_stopped_at and not backup.source_restored_at and journal.value.get('源收尾已完成'):
-        backup.source_restored_at = datetime.fromisoformat(journal.value['记录时间UTC'])
+    if not backup.source_stopped_at and journal.value.get('停止请求已持久化'):
+        stopped = journal.value.get('实际停止源', {}).get('State', {})
+        try:
+            finished = datetime.fromisoformat(stopped.get('FinishedAt', '').replace('Z', '+00:00'))
+            backup.source_stopped_at = finished.astimezone(timezone.utc).replace(tzinfo=None)
+        except (ValueError, AttributeError):
+            pass
+    if backup.source_stopped_at and not backup.source_restored_at:
+        checked = journal.value.get('源健康核实时间UTC')
+        if checked or journal.value.get('源收尾已完成'):
+            backup.source_restored_at = datetime.fromisoformat(checked or journal.value['记录时间UTC'])
     if export and receipt and not export.exported_at:
         export.digest, export.size = receipt['摘要'], receipt['大小']
         export.exported_at = datetime.fromisoformat(receipt['时间UTC'])
@@ -195,17 +221,17 @@ class BlockReader(io.RawIOBase):
         return size
 
 
-def receive_file(reader, remote, target, expected=None, limit=None, callback=None):
-    blocks, _ = reader.get_archive(remote, chunk_size=1024 * 1024)
+def receive_file(reader, remote, target, expected=None, callback=None):
+    blocks, details = reader.get_archive(remote, chunk_size=1024 * 1024)
     with closing(blocks), io.BufferedReader(BlockReader(blocks)) as stream, tarfile.open(fileobj=stream, mode='r|') as archive:
         member = archive.next()
         if not member or not member.isfile() or member.name != Path(remote).name:
             raise RuntimeError('固定副本归档条目无效')
-        if (limit is not None and member.size > limit) or (expected and member.size != expected['size']):
+        if member.size != details.get('size', member.size) or (expected and member.size != expected['size']):
             raise RuntimeError('固定副本大小不符')
         digest = hashlib.sha256()
-        with archive.extractfile(member) as body, open(target, 'xb') as output:
-            os.chmod(target, 0o600)
+        with metadata_io(f'接收固定副本 {member.name}', member.size), archive.extractfile(member) as body, \
+                os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as output:
             count = 0
             for block in iter(lambda: body.read(1024 * 1024), b''):
                 output.write(block)
@@ -215,7 +241,7 @@ def receive_file(reader, remote, target, expected=None, limit=None, callback=Non
                     callback(count)
             output.flush()
             os.fsync(output.fileno())
-        if archive.next() is not None or (expected and digest.hexdigest() != expected['sha256']):
+        if count != member.size or archive.next() is not None or (expected and digest.hexdigest() != expected['sha256']):
             raise RuntimeError('固定副本摘要或文件集合不符')
         return digest.hexdigest()
 
@@ -274,10 +300,13 @@ def receive_export(client, export, destination, backup, journal, progress):
     os.makedirs(Path(destination).parent, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='receive-', dir=str(Path(destination).parent)) as temp:
         folder = Path(temp)
-        digest = receive_file(reader, root + '/' + METADATA, folder / METADATA, limit=16 * 1024 * 1024)
+        progress.show('transfer', '接收固定导出元数据', item=METADATA, force=True)
+        metadata = folder / METADATA
+        digest = receive_file(reader, root + '/' + METADATA, metadata)
         if digest != export.digest:
             raise RuntimeError('导出元数据摘要不符')
-        value = json.loads((folder / METADATA).read_bytes())
+        with metadata_io('解析固定导出元数据', metadata.stat().st_size), metadata.open('rb') as stream:
+            value = json.load(stream)
         context = json.loads(export.context_json)
         if value.get('版本') != 1 or value.get('导出标识') != export.marker or value.get('来源容器') != context['来源容器']:
             raise RuntimeError('导出身份不符')
@@ -323,7 +352,7 @@ def assemble_export(folder, value, progress):
     keys = (folder / 'ssh.tar').read_bytes()
     validate_ssh_archive(keys)
     with zipfile.ZipFile(path, 'a') as archive:
-        archive.writestr(SNAPSHOT_FILE, json.dumps(value['仓库快照'], ensure_ascii=False))
+        write_zip_json(archive, SNAPSHOT_FILE, value['仓库快照'])
         archive.writestr('manager-ssh-hostkeys.tar', keys)
     append_manifest(path, value['准入'], value['数据表'], SimpleNamespace(name=value['来源名称'], api_token=value['来源令牌']), progress=progress)
     with open(path, 'rb') as stream:
@@ -336,6 +365,7 @@ def retry_export(server, backup, journal):
     from services.backup_recovery import SERVER_FIELDS
     from services.docker_service import managed_client
     from services.backup_activity import BackupActivity
+    from services.backup_outcome import RecoveryProgress, record_failure
     export = db_export(backup)
     context = json.loads(export.context_json)
     if context['服务器'] != {key: getattr(server, key) for key in SERVER_FIELDS}:
@@ -353,11 +383,22 @@ def retry_export(server, backup, journal):
             backup.file_path = os.path.join(BACKUP_DIR, backup.filename)
             backup.file_size = os.path.getsize(backup.file_path)
             db.session.commit()
+        except Exception as error:
+            try:
+                db.session.rollback()
+                record_failure(backup, error)
+            except Exception:
+                db.session.rollback()
+            raise
         finally:
             import sys
             original = sys.exc_info()[1]
             try:
-                cleanup_reader(client, journal)
+                if journal.value.get('导出读取助手') and not journal.value.get('传输收尾完成'):
+                    with RecoveryProgress(backup).run('清理固定副本读取助手') as recovery:
+                        if backup.source_restored_at:
+                            recovery.source('available', backup.source_restored_at)
+                        cleanup_reader(client, journal)
             except Exception as error:
                 if original is None:
                     raise

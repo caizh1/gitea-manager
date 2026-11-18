@@ -2,7 +2,7 @@
   <div class="backup-execution">
     <div class="task-meta">
       <span>备份 #{{ task.id }} · {{ task.source_server_name || task.filename }}</span>
-      <el-tag v-if="sourceLabel" :type="sourceType" effect="light">{{ sourceLabel }}</el-tag>
+      <el-tag v-if="sourceLabel && !task.recovery?.source_state" :type="sourceType" effect="light">{{ sourceLabel }}</el-tag>
     </div>
     <el-empty v-if="!steps.length && !running" description="暂无历史步骤记录" />
     <ol ref="stepList" class="steps">
@@ -102,14 +102,19 @@
         </details>
       </li>
     </ol>
-    <el-alert v-if="task.status === 'failed' && task.error_msg" :title="task.error_msg" type="error"
-              :closable="false" class="task-error" />
+    <el-alert v-if="task.error_msg" :title="task.error_msg" type="error" :closable="false" class="task-error">
+      <template v-if="task.failure_label || task.failure_at">
+        {{ task.failure_label }}<span v-if="task.failure_at"> · {{ clockTime(task.failure_at) }}</span>
+      </template>
+    </el-alert>
+    <BackupRecoveryStatus :task="task" />
   </div>
 </template>
 
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, Circle, CircleAlert, CircleCheck, LoaderCircle } from '@lucide/vue'
+import BackupRecoveryStatus from './BackupRecoveryStatus.vue'
 import { backupObservationText, backupObservationStale, elapsedText, operationActive, quantityText, stagePercent, utcTime } from './operationDisplay'
 
 const props = defineProps({

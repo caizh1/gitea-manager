@@ -109,6 +109,9 @@ class Backup(db.Model):
     file_size = db.Column(db.BigInteger, default=0)
     status = db.Column(db.String(30), nullable=False, default='running')
     error_msg = db.Column(db.Text, default='')
+    failure_stage = db.Column(db.String(50), nullable=False, default='')
+    failure_at = db.Column(db.DateTime)
+    recovery_info = db.Column('source_recovery_info', db.JSON, nullable=False, default=dict)
     diagnostic_id = db.Column(db.String(100), nullable=False, default='')
     recovery_token = db.Column(db.String(32), nullable=False, default=lambda: __import__('uuid').uuid4().hex)
     recovery_pending = db.Column(db.Boolean, nullable=False,

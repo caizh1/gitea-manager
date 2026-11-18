@@ -115,14 +115,14 @@ def update_backup_progress(task_or_id, stage, label, percent, detail='', **count
     update_progress(task, stage, label, percent, detail, **counts)
 
 
-def finish_current_step(task, detail='', *, stage=None):
+def finish_current_step(task, detail='', *, stage=None, status='success'):
     """成功回退/清理是已完成的步骤，不能因整个任务失败而显示为步骤失败。"""
     model = BackupStepLog if isinstance(task, Backup) else RestoreStepLog
     key = 'backup_id' if isinstance(task, Backup) else 'restore_task_id'
     try:
         with Session(db.engine) as session:
             for step in session.query(model).filter_by(**{key: task.id, 'step_key': stage or task.progress_stage, 'status': 'running'}).all():
-                step.status = 'success'
+                step.status = status
                 step.completed_at = datetime.utcnow()
                 step.elapsed_ms = max(0, int((step.completed_at - step.started_at).total_seconds() * 1000))
                 if detail: step.detail = redact(detail)[:2000]

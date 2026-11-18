@@ -5,6 +5,9 @@ from models import db, GiteaServer
 from services.gitea_service import fetch_server_info, test_server_connection, get_server_detail
 
 server_bp = Blueprint('servers', __name__)
+SERVER_UPDATE_FIELDS = ('name', 'role', 'host', 'ssh_port', 'ssh_user',
+                        'gitea_container', 'pg_container', 'pg_dbname', 'pg_user',
+                        'gitea_port', 'gitea_url', 'api_token')
 
 
 def server_to_dict(s):
@@ -129,10 +132,7 @@ def update_server(sid):
         from access.scopes import invalidate_server
         invalidate_server(s)
 
-    fields = ['name', 'role', 'host', 'ssh_port', 'ssh_user',
-              'gitea_container', 'pg_container', 'pg_dbname', 'pg_user',
-              'gitea_port', 'gitea_url', 'api_token']
-    for f in fields:
+    for f in SERVER_UPDATE_FIELDS:
         if f in data and (f != 'api_token' or data[f]):
             setattr(s, f, data[f])
     db.session.commit()

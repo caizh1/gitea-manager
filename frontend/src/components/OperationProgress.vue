@@ -9,6 +9,7 @@
       <div v-if="task.progress_detail && task.progress_detail !== task.progress_item" class="operation-detail">{{ task.progress_detail }}</div>
       <div v-if="task.progress_updated_at" class="operation-time">最近上报 {{ new Date(utcTime(task.progress_updated_at)).toLocaleTimeString() }}</div>
     </template>
+    <BackupRecoveryStatus v-if="kind === 'backup'" :task="task" />
     <el-button v-if="kind" link type="primary" size="small" @click="details = true">展开详情</el-button>
     <OperationSteps v-if="details" :task="task" :kind="kind" @close="details = false" />
   </div>
@@ -17,6 +18,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { LoaderCircle } from '@lucide/vue'
 import OperationSteps from './OperationSteps.vue'
+import BackupRecoveryStatus from './BackupRecoveryStatus.vue'
 import { operationActive, operationStatus, stagePercent, quantityText, elapsedText, utcTime } from './operationDisplay'
 const props = defineProps({ task: { type: Object, required: true }, kind: { type: String, default: '' } })
 const details = ref(false), now = ref(Date.now())

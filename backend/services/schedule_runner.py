@@ -1,7 +1,10 @@
 import json
 import logging
+import fcntl
+import os
 import re
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from models import db, Backup, GiteaServer, RestoreTask, ScheduleLog, ScheduledTask
@@ -68,7 +71,54 @@ def start_schedule_task_thread(task_id, started_at=None):
     return thread
 
 
+@contextmanager
+def schedule_lease(task_id):
+    from services.backup_recovery import directory
+    path = directory() / f'schedule-{int(task_id)}.lock'
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'r+b') as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+
+
+def retire_interrupted_backup_runs():
+    candidates = (ScheduledTask.query.join(Backup, ScheduledTask.current_backup_id == Backup.id)
+                  .filter(ScheduledTask.last_status == 'running', ScheduledTask.current_restore_task_id.is_(None),
+                          Backup.status == 'failed', Backup.failure_at.is_not(None)).all())
+    for task in candidates:
+        try:
+            with schedule_lease(task.id):
+                db.session.refresh(task)
+                if task.last_status != 'running' or not task.current_backup_id or task.current_restore_task_id:
+                    continue
+                backup = db.session.get(Backup, task.current_backup_id, populate_existing=True)
+                if not backup or backup.status != 'failed' or not backup.failure_at:
+                    continue
+                task.last_status = 'failed'
+                task.last_log = backup.error_msg
+                task.progress_stage = 'failed'
+                task.progress_label = '定时备份失败'
+                task.progress_detail = backup.error_msg
+                task.progress_percent = 100
+                task.progress_updated_at = datetime.utcnow()
+                db.session.add(ScheduleLog(schedule_task_id=task.id, status='failed',
+                    log=task.last_log, backup_status='failed', backup_id=backup.id,
+                    backup_filename=backup.filename, backup_error=backup.error_msg,
+                    started_at=task.last_run_at or backup.started_at, completed_at=backup.completed_at))
+                db.session.commit()
+        except BlockingIOError:
+            continue
+
+
 def run_schedule_task(task_id, started_at=None):
+    try:
+        with schedule_lease(task_id):
+            return _run_schedule_task(task_id, started_at)
+    except BlockingIOError:
+        return
+
+
+def _run_schedule_task(task_id, started_at):
     task = ScheduledTask.query.get(task_id)
     if not task:
         return

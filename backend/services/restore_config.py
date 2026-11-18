@@ -91,9 +91,9 @@ class RestoreConfig:
                 if self.config.get(section, key + '_URI', fallback=''):
                     raise RuntimeError('旧备份缺少启动依赖快照，拒绝引用源外置秘密文件')
             return
-        if manifest.stat().st_size > 16 * 1024 * 1024:
-            raise RuntimeError('启动依赖快照过大')
-        data = json.loads(manifest.read_bytes())
+        from services.backup_metadata import metadata_io
+        with metadata_io('读取启动依赖快照', manifest.stat().st_size), manifest.open('rb') as stream:
+            data = json.load(stream)
         if data.get('版本') != 1:
             raise RuntimeError('启动依赖快照版本不受支持')
         seen = set()

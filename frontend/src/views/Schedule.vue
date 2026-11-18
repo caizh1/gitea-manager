@@ -35,7 +35,12 @@
                     <el-tag :type="statusType(lr.status)" size="small">{{ lr.status }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="detail" label="详情" min-width="300" show-overflow-tooltip />
+                <el-table-column prop="detail" label="详情" min-width="300">
+                  <template #default="{ row: lr }">
+                    <div>{{ lr.detail }}</div>
+                    <BackupRecoveryStatus v-if="lr.backupOutcome" :task="lr.backupOutcome" />
+                  </template>
+                </el-table-column>
               </el-table>
               <div v-else class="log-empty">暂无执行历史</div>
             </div>
@@ -133,9 +138,10 @@ import { notifyApiError } from '../api/errors.js'
 import OperationProgress from '../components/OperationProgress.vue'
 import { useOperationPolling } from '../composables/useOperationPolling'
 import { operationActive } from '../components/operationDisplay'
+import BackupRecoveryStatus from '../components/BackupRecoveryStatus.vue'
 
 export default {
-  components: { OperationProgress },
+  components: { OperationProgress, BackupRecoveryStatus },
   setup() {
     const tasks = ref([])
     const servers = ref([])
@@ -304,10 +310,11 @@ export default {
         if (l.steps && l.steps.length) {
           l.steps.forEach(step => {
             rows.push({
-              started_at: step.started_at || l.started_at,
-              stage: step.target ? `${step.stage}：${step.target}` : step.stage,
+              started_at: step.backup_outcome?.failure_at || step.started_at || l.started_at,
+              stage: step.backup_outcome?.failure_label || (step.target ? `${step.stage}：${step.target}` : step.stage),
               status: step.status,
               detail: step.detail || '-',
+              backupOutcome: step.backup_outcome,
             })
           })
           return

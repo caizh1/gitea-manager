@@ -74,9 +74,11 @@ def _api_get_json(server, path, params=None, timeout=30, repo='Gitea API', page=
         message = f'{url} 返回 HTTP {resp.status_code}'
         if body:
             message += f': {body}'
+        detail = _api_detail('api_status_error', path, message, repo=repo, url=url, page=page)
+        detail['status_code'] = resp.status_code
         raise RestoreValidationError(
             message,
-            [_api_detail('api_status_error', path, message, repo=repo, url=url, page=page)],
+            [detail],
             retryable=resp.status_code >= 500,
         )
 
@@ -90,9 +92,10 @@ def _api_get_json(server, path, params=None, timeout=30, repo='Gitea API', page=
         )
 
 
-def _require_target_health(server, require_auth=True, observation=None):
+def _require_target_health(server, require_auth=True, observation=None, *, attempts=None):
+    attempts = RESTORE_HEALTH_CHECK_ATTEMPTS if attempts is None else attempts
     last_error = None
-    for attempt in range(1, RESTORE_HEALTH_CHECK_ATTEMPTS + 1):
+    for attempt in range(1, attempts + 1):
         try:
             _api_get_json(server, '/api/v1/version', timeout=10)
             if require_auth:
@@ -100,21 +103,21 @@ def _require_target_health(server, require_auth=True, observation=None):
             return
         except RestoreValidationError as e:
             if observation:
-                observation(attempt, RESTORE_HEALTH_CHECK_ATTEMPTS)
+                observation(attempt, attempts)
             last_error = e
-            if not e.retryable or attempt >= RESTORE_HEALTH_CHECK_ATTEMPTS:
+            if not e.retryable or attempt >= attempts:
                 break
             logging.info(
                 '[恢复验证] Gitea API 尚未就绪，等待重试 (%d/%d): %s',
                 attempt,
-                RESTORE_HEALTH_CHECK_ATTEMPTS,
+                attempts,
                 e,
             )
             time.sleep(RESTORE_HEALTH_CHECK_INTERVAL_SECONDS)
 
     message = str(last_error) if last_error else 'Gitea API 健康检查失败'
-    if last_error and last_error.retryable and RESTORE_HEALTH_CHECK_ATTEMPTS > 1:
-        message = f'Gitea API 在 {RESTORE_HEALTH_CHECK_ATTEMPTS} 次重试后仍不可用: {message}'
+    if last_error and last_error.retryable and attempts > 1:
+        message = f'Gitea API 在 {attempts} 次重试后仍不可用: {message}'
     raise RestoreValidationError(
         message,
         last_error.details if last_error else [_api_detail('api_unreachable', '/api/v1/version', message)],

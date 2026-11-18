@@ -279,6 +279,7 @@ def do_backup(backup_id):
 
 @tracked_operation("备份", Backup)
 def _perform_backup(backup_id, journal):
+    from services.backup_outcome import record_failure
     backup = Backup.query.get(backup_id)
     if not backup:
         return
@@ -287,8 +288,8 @@ def _perform_backup(backup_id, journal):
 
     server = GiteaServer.query.get(backup.source_server_id)
     if not server:
+        record_failure(backup, '源 Gitea 登记不存在', stage='prepare')
         backup.status = 'failed'
-        backup.error_msg = 'Server not found'
         backup.completed_at = datetime.utcnow()
         update_backup_progress(backup, 'failed', '备份失败', 0, backup.error_msg)
         db.session.commit()
@@ -340,16 +341,17 @@ def _perform_backup(backup_id, journal):
             update_backup_progress(backup, 'completed', '备份完成', 100, backup.filename)
     except Exception as e:
         if CURRENT.get(): CURRENT.get().fail(e)
+        db.session.rollback()
         backup = Backup.query.get(backup_id)
         if not backup:
             return
+        record_failure(backup, e)
         backup.status = 'failed'
-        backup.error_msg = _limit_error_msg(str(e))
         if backup.commit_snapshot_status in ('', 'pending', 'running'):
-            _set_backup_snapshot_state(backup, 'failed', repo_count=0, error=str(e), collected_at=None)
+            _set_backup_snapshot_state(backup, 'failed', repo_count=0, error=backup.error_msg, collected_at=None)
         backup.completed_at = datetime.utcnow()
         update_backup_progress(backup, 'failed', '备份失败', backup.progress_percent or 0, backup.error_msg)
-        logging.error('[备份] 失败 - %s', e)
+        logging.error('[备份] 失败 - %s', backup.error_msg)
 
     db.session.commit()
 

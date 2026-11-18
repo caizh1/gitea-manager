@@ -142,9 +142,10 @@ def load_snapshot(path):
         names = [name for name in archive.namelist() if PurePosixPath(name).name == SNAPSHOT_FILE]
         if not names:
             return None
-        if len(names) != 1 or archive.getinfo(names[0]).file_size > 64 * 1024 * 1024:
+        if len(names) != 1:
             raise RuntimeError('备份校验快照结构不受支持')
-        value = json.loads(archive.read(names[0]))
+        from services.backup_metadata import read_zip_json
+        value = read_zip_json(archive, names[0])
         if value.get('版本') != 1 or not isinstance(value.get('数据库仓库'), list) or not isinstance(value.get('Git仓库'), dict):
             raise RuntimeError('备份校验快照版本或结构不受支持')
         return value
@@ -179,6 +180,7 @@ def consistent_backup(server, backup, journal=None):
     from services.docker_service import managed_client
     from services.backup_activity import BackupActivity
     from services.operation_progress import finish_current_step
+    from services.backup_outcome import RecoveryProgress, record_failure
     from services import backup_staging
     from models import db
     from datetime import datetime
@@ -187,6 +189,7 @@ def consistent_backup(server, backup, journal=None):
     client = managed_client(server)
     helper = None
     was_running = False
+    recovery_attempted = False
     marker = 'manager-backup-' + uuid.uuid4().hex
     try:
         gitea = client.containers.get(server.gitea_container)
@@ -249,9 +252,15 @@ def consistent_backup(server, backup, journal=None):
         require_quiet(database, server)
         from services.backup_recovery import recover_source
         progress.source = 'recovering' if was_running else 'stopped'
-        recover_source(client, server, journal, progress=progress)
+        recovery_attempted = True
+        try:
+            with RecoveryProgress(backup).run('核对并恢复源站') as recovery:
+                recover_source(client, server, journal, progress=progress, recovery=recovery)
+        except Exception as error:
+            record_failure(backup, error, stage='resume_source')
+            raise
         if was_running:
-            backup.source_restored_at = datetime.utcnow()
+            backup.source_restored_at = backup.source_restored_at or datetime.utcnow()
             db.session.commit()
         progress.source = 'available' if was_running else 'stopped'
         finish_current_step(backup, stage='resume_source')
@@ -261,23 +270,40 @@ def consistent_backup(server, backup, journal=None):
         backup.file_path = local
         final_size = os.path.getsize(local)
         db.session.commit()
+    except Exception as error:
+        try:
+            db.session.rollback()
+            record_failure(backup, error)
+        except Exception:
+            db.session.rollback()
+            logging.warning('备份首错暂时无法写入数据库', exc_info=True)
+        raise
     finally:
         original_error = sys.exc_info()[1]
         cleanup_error = None
         try:
-            if journal.value.get('原源') and not journal.value.get('源收尾已完成'):
+            if (journal.value.get('原源') and not journal.value.get('源收尾已完成')
+                    and not recovery_attempted):
                 from services.backup_recovery import recover_source
                 if progress.source == 'paused' and was_running:
                     progress.source = 'recovering'
                 progress.show('resume_source', '核对源容器并清理备份现场',
                               previous_failed=original_error is not None)
-                recover_source(client, server, journal, progress=progress)
+                with RecoveryProgress(backup).run('核对并恢复源站') as recovery:
+                    try:
+                        recover_source(client, server, journal, progress=progress, recovery=recovery)
+                    except Exception as error:
+                        from services.backup_outcome import failure_detail
+                        finish_current_step(backup, failure_detail(error), stage='resume_source', status='failed')
+                        raise
                 progress.source = 'available' if journal.value['原源']['State']['Running'] else 'stopped'
                 progress.show('resume_source', '源站收尾已完成', force=True)
                 finish_current_step(backup, stage='resume_source')
             elif not journal.value.get('原源'):
                 journal.complete_source()
-            backup_staging.cleanup_reader(client, journal)
+            if journal.value.get('导出读取助手') and not journal.value.get('传输收尾完成'):
+                with RecoveryProgress(backup).run('清理固定副本读取助手'):
+                    backup_staging.cleanup_reader(client, journal)
         except BaseException as exc:
             cleanup_error = exc
             try:

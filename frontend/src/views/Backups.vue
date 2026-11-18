@@ -54,7 +54,7 @@
         <el-table-column label="错误原因" min-width="240" show-overflow-tooltip>
           <template #default="{ row }">
             <template v-if="row.status === 'failed' && row.error_msg">
-              <span class="error-summary">{{ shortError(row.error_msg) }}</span>
+              <span class="error-summary">{{ row.failure_label ? row.failure_label + ' · ' : '' }}{{ shortError(row.error_msg) }}</span>
               <el-button size="small" type="danger" text @click="showError(row)">查看</el-button>
             </template>
             <span v-else class="text-muted">-</span>
@@ -126,7 +126,7 @@
       <div v-if="selectedErrorBackup" class="error-dialog">
         <div class="error-meta">
           <span>{{ selectedErrorBackup.filename }}</span>
-          <span>{{ fmt(selectedErrorBackup.started_at) }}</span>
+          <span>{{ fmt(selectedErrorBackup.failure_at || selectedErrorBackup.started_at) }}</span>
         </div>
         <pre class="error-content">{{ selectedErrorBackup.error_msg }}</pre>
       </div>
@@ -163,7 +163,7 @@ export default {
     const { refresh: load, error: pollError } = useOperationPolling(
       config => Promise.all([api.get('/backups', config), api.get('/servers', config)]),
       ([bRes, sRes]) => { backups.value = bRes.data; servers.value = sRes.data; primaryServers.value = sRes.data.filter(s => s.role === 'primary') },
-      () => backups.value.some(operationActive),
+      () => backups.value.some(row => operationActive(row) || row.recovery?.state === 'running'),
     )
 
     function createBackup() {

@@ -155,6 +155,100 @@ class RecoveryTests(unittest.TestCase):
         recovery.recover_source(self.client, self.server, journal)
         self.assertTrue(journal.value['源收尾已完成']); self.assertEqual(self.source.starts, 1)
 
+    def test_retry_keeps_first_error_and_retires_interrupted_schedule_without_restarting_healthy_source(self):
+        from models import BackupStepLog, ScheduleLog, ScheduledTask
+        from routes.schedule_routes import _schedule_log_steps
+        from services.backup_outcome import outcome_for_response
+        from services.commit_service import RestoreValidationError
+
+        self.source.attrs['State']['StartedAt'] = '2026-11-17T03:00:00Z'
+        self.source.save()
+        journal = self.journal()
+        journal.before_stop(self.source)
+        self.source.stop()
+        self.source.attrs['State']['FinishedAt'] = '2026-11-17T03:01:00Z'
+        self.source.save()
+        journal.stopped(self.source)
+        journal.instance_lock.close()
+        self.source.attrs['State'].update(Running=True, Status='running', Pid=101, StartedAt='2026-11-17T03:02:00Z')
+        self.source.save()
+
+        self.task.status = 'failed'
+        self.task.diagnostic_id = 'legacy-backup-test'
+        self.task.source_stopped_at = datetime(2026, 11, 17, 3, 1)
+        self.task.error_msg = '备份执行进程已中断，正在核实原源并恢复运行状态'
+        first = '固定导出元数据超过 16 MiB'
+        diagnostic = self.root / self.task.diagnostic_id
+        diagnostic.mkdir()
+        (diagnostic / 'first-error.json').write_text(json.dumps({'说明': first, '步骤': '固化源端备份副本'}))
+        schedule = ScheduledTask(name='隔离调度', source_server_id=self.server.id, target_ids='[]',
+                                 schedule_hour=2, schedule_minute=0, last_status='running',
+                                 current_backup_id=self.task.id)
+        db.session.add(schedule)
+        db.session.commit()
+
+        self.health.side_effect = [RestoreValidationError('模拟响应包含秘密', [
+            {'type': 'api_status_error', 'path': '/api/v1/user', 'status_code': 401}]), None]
+        with patch.dict(os.environ, MANAGEMENT_DIAGNOSTICS_ROOT=str(self.root)):
+            recovery.recover_pending()
+        db.session.refresh(self.task)
+        failure_at = self.task.failure_at
+        self.assertEqual((self.task.error_msg, self.task.failure_stage), (first, 'freeze_export'))
+        self.assertEqual(self.task.recovery_info['state'], 'waiting')
+        self.assertEqual(self.task.recovery_info['source_state'], 'running')
+        self.assertEqual(self.task.recovery_info['error'], '认证检查 /api/v1/user 返回 HTTP 401')
+        self.assertTrue(self.task.recovery_pending)
+        self.assertTrue(recovery.allow_token_repair(self.server.id, {'api_token': '新的隔离令牌'}))
+        self.assertFalse(recovery.allow_token_repair(self.server.id, {'api_token': '新的隔离令牌', 'host': '另一主机'}))
+        logs = ScheduleLog.query.filter_by(schedule_task_id=schedule.id).all()
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs[0].backup_id, self.task.id)
+        self.assertEqual(_schedule_log_steps(logs[0], [], outcome_for_response(self.task))[0]['detail'], first)
+        recovery.recover_pending()
+        self.assertEqual(self.health.call_count, 1)
+
+        self.task.recovery_info = {**self.task.recovery_info, 'next_retry_at': '2000-01-01T00:00:00Z'}
+        db.session.commit()
+        recovery.recover_pending()
+        db.session.refresh(self.task)
+        self.assertFalse(self.task.recovery_pending)
+        self.assertEqual((self.task.status, self.task.error_msg, self.task.failure_at), ('failed', first, failure_at))
+        self.assertEqual(self.task.recovery_info['state'], 'completed')
+        self.assertEqual(self.task.recovery_info['source_state'], 'available')
+        self.assertIsNotNone(self.task.source_restored_at)
+        self.assertEqual(self.source.starts, 0)
+        self.assertEqual(BackupStepLog.query.filter_by(backup_id=self.task.id, step_key='backup_recovery').one().status, 'failed')
+
+    def test_stop_without_receipt_does_not_adopt_running_source_with_a_new_start(self):
+        journal = self.journal()
+        journal.before_stop(self.source)
+        self.source.start()
+        with self.assertRaisesRegex(RuntimeError, '未知的新启动'):
+            recovery.recover_source(self.client, self.server, journal)
+        self.health.assert_not_called()
+
+    def test_owned_unlock_helper_retries_after_nonzero_exit(self):
+        journal = self.journal()
+        journal.before_lock()
+        token = journal.value['随机校验']
+        name = 'manager-backup-unlock-' + token
+        journal.value['解锁助手名称'] = name
+        command = [recovery._unlock_script(), 'sh', recovery.LOCK, journal.retired_lock(),
+                   journal.value['锁所有者SHA256'], journal.staged_lock(), 'no']
+        helper = MagicMock()
+        helper.attrs = {
+            'Image': self.source.attrs['Image'],
+            'Config': {'Labels': {'gitea.manager.backup-cleanup': token}, 'Entrypoint': ['sh', '-ec'], 'Cmd': command},
+            'HostConfig': {'NetworkMode': 'none', 'VolumesFrom': [self.source.id]},
+            'State': {'Status': 'exited', 'ExitCode': 1, 'Running': False, 'OOMKilled': False},
+        }
+        helper.wait.return_value = {'StatusCode': 0}
+        self.client.containers.get.side_effect = {name: helper}.__getitem__
+        recovery._clear_lock(self.client, self.source, journal)
+        helper.start.assert_called_once()
+        helper.remove.assert_called_once()
+        self.assertTrue(journal.value['解锁已完成'])
+
     def test_disk_full_after_stop_does_not_skip_original_source_start(self):
         journal = self.journal(); journal.before_stop(self.source); self.source.stop(); journal.stopped(self.source)
         failure = OSError('合成ENOSPC')
@@ -238,14 +332,18 @@ class RecoveryTests(unittest.TestCase):
         import ast, sqlite3
         tree = ast.parse((Path(__file__).resolve().parents[1] / 'app.py').read_text())
         statements = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant)
-                      and isinstance(node.value, str) and node.value.startswith('ALTER TABLE backups ADD COLUMN recovery_')]
-        self.assertEqual(len(statements), 2)
+                      and isinstance(node.value, str) and node.value.startswith((
+                          'ALTER TABLE backups ADD COLUMN recovery_', 'ALTER TABLE backups ADD COLUMN failure_',
+                          'ALTER TABLE backups ADD COLUMN source_recovery_info'))]
+        self.assertEqual(len(statements), 5)
         with sqlite3.connect(':memory:') as connection:
             connection.execute('CREATE TABLE backups(id INTEGER PRIMARY KEY,status TEXT)')
             connection.executemany('INSERT INTO backups VALUES (?,?)', [(20, 'running'), (21, 'running'), (31, 'running'), (39, 'running')])
             for statement in statements:
                 connection.execute(statement)
-            self.assertEqual(connection.execute('SELECT recovery_token,recovery_pending FROM backups').fetchall(), [('', 0)] * 4)
+            self.assertEqual(connection.execute(
+                'SELECT recovery_token,recovery_pending,failure_stage,failure_at,source_recovery_info FROM backups'
+            ).fetchall(), [('', 0, '', None, '{}')] * 4)
 
     def test_server_change_and_delete_cannot_destroy_pending_recovery_identity(self):
         recovery.install_guards(self.app)

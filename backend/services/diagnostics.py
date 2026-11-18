@@ -309,7 +309,7 @@ def tracked_operation(kind, model):
             except Exception as exc:
                 report.fail(exc)
                 item = model.query.get(identifier)
-                if item is not None:
+                if item is not None and not (getattr(item, 'failure_at', None) and item.status == 'failed'):
                     from models import db
                     item.error_msg = redact(str(exc))[:16000] + '；诊断编号：' + report.id
                     item.status = 'failed'
