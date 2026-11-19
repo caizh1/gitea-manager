@@ -27,6 +27,7 @@ const routes = [
   { path: '/ai-reviews/dataset', meta: { capability: 'ai_reviews', reviewSection: 'dataset' }, component: () => import('../views/AIReviews.vue') },
   { path: '/ai-reviews/settings', meta: { capability: 'ai_reviews', reviewSection: 'config', platformOnly: true }, component: () => import('../views/AIReviews.vue') },
   { path: '/commit-gates', meta: { capability: 'commit_gates' }, component: () => import('../views/CommitGates.vue') },
+  { path: '/engineering-activity', meta: { capability: 'statistics' }, component: () => import('../views/EngineeringActivity.vue') },
   { path: '/statistics/authors', meta: { capability: 'statistics' }, component: () => import('../views/AuthorList.vue') },
   { path: '/statistics/authors/:name', meta: { capability: 'statistics' }, component: () => import('../views/AuthorDetail.vue') },
   { path: '/statistics', meta: { capability: 'statistics' }, component: () => import('../views/Statistics.vue') },

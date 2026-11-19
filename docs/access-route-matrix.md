@@ -2,7 +2,7 @@
 
 本表由生产入口蓝图登记及统一权限清单生成。组织上下文使用绑定 ID；组织业务仍须按实际仓库稳定 ID、实例代次及资源快照再次核验。
 
-共 157 个方法与路径组合。HEAD 继承 GET；OPTIONS 不代表业务授权。未登记接口默认拒绝。
+共 162 个方法与路径组合。HEAD 继承 GET；OPTIONS 不代表业务授权。未登记接口默认拒绝。
 
 自动化逐项检查平台接口的组织管理员请求返回 403、匿名请求返回 401；组织接口的未授权目录账号返回 403 或 404，写请求携带有效 CSRF。公开认证与服务接口分别执行自身认证协议。
 
@@ -93,6 +93,11 @@
 | `/api/commit-rules/<int:rule_id>` | DELETE | `commit_gate.delete_rule` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
 | `/api/commit-rules/<int:rule_id>` | PUT | `commit_gate.update_rule` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
 | `/api/dashboard/recent` | GET | `dashboard.recent_activity` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
+| `/api/engineering-activity/<int:server_id>/collect` | POST | `engineering_activity.collect` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
+| `/api/engineering-activity/<int:server_id>/dashboard` | GET | `engineering_activity.overview` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
+| `/api/engineering-activity/<int:server_id>/details` | GET | `engineering_activity.detail` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
+| `/api/engineering-activity/<int:server_id>/options` | GET | `engineering_activity.options` | 平台或组织管理员 | 平台全部；组织仅当前授权绑定与实际资源归属 |
+| `/api/engineering-activity/events/<int:server_id>/<int:owner_id>/<int:repo_id>` | POST | `engineering_activity.event` | 服务身份 | 专用服务令牌、签名或组件协议核验 |
 | `/api/integrations/v1/events` | GET | `integrations.events` | 服务身份 | 专用服务令牌、签名或组件协议核验 |
 | `/api/integrations/v1/health` | GET | `integrations.health` | 服务身份 | 专用服务令牌、签名或组件协议核验 |
 | `/api/integrations/v1/tasks/<task_type>/<int:task_id>` | GET | `integrations.task_detail` | 服务身份 | 专用服务令牌、签名或组件协议核验 |

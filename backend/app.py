@@ -33,6 +33,7 @@ def create_app():
     from access import models as access_models
     from access import scopes as access_scopes
     from access import statistics as access_statistics
+    from engineering_activity import models as engineering_activity_models
     from svn_migration import models as svn_migration_models
     from git_migration import models as git_migration_models
     from services.database_startup import database_startup_lock
@@ -225,6 +226,8 @@ def create_app():
     app.register_blueprint(dashboard_bp, url_prefix='/api')
     app.register_blueprint(mirror_bp, url_prefix='/api')
     app.register_blueprint(statistics_bp, url_prefix='/api')
+    from routes.engineering_activity_routes import engineering_bp
+    app.register_blueprint(engineering_bp, url_prefix='/api/engineering-activity')
     app.register_blueprint(commit_gate_bp, url_prefix='/api')
     app.register_blueprint(integration_bp, url_prefix='/api/integrations/v1')
     app.register_blueprint(policy_bp, url_prefix='/api/repository-policies')
@@ -275,6 +278,8 @@ def create_app():
     from services.scheduler_service import start_scheduler
     if os.environ.get('DISABLE_BACKGROUND_TASKS') != '1':
         start_scheduler(app)
+        from engineering_activity.worker import start as start_engineering_activity
+        start_engineering_activity(app)
         from services.policy_tasks import start_policy_worker
         start_policy_worker(app)
         if os.environ.get('GM_UPGRADE_MAINTENANCE') != '1':

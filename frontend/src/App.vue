@@ -91,6 +91,10 @@
             <el-icon><NavApproval /></el-icon>
             <template #title>审批规则</template>
           </el-menu-item>
+          <el-menu-item v-if="hasCapability('statistics')" index="/engineering-activity" aria-label="研发上库">
+            <el-icon><NavActivity /></el-icon>
+            <template #title>研发上库</template>
+          </el-menu-item>
           <el-menu-item v-if="hasCapability('statistics')" index="/statistics" aria-label="统计分析">
             <el-icon><NavChart /></el-icon>
             <template #title>统计分析</template>
@@ -173,7 +177,7 @@ import sidebarBrand from './assets/sidebar-brand.png'
 import { House as NavHouse, Server as NavServer, Database as NavDatabase, RotateCcw as NavRestore,
   Settings as NavSettings, Clock as NavClock, ArrowRightLeft as NavMigration, Box as NavBox,
   ShieldCheck as NavShield, ClipboardList as NavReview, Folder as NavFolder, GitBranch as NavBranch,
-  FileCheck2 as NavApproval, ChartNoAxesCombined as NavChart, UsersRound as NavUsers,
+  FileCheck2 as NavApproval, ChartNoAxesCombined as NavChart, Activity as NavActivity, UsersRound as NavUsers,
   UserRound as NavUser, LogOut as NavLogout, PanelLeftOpen as NavExpand, PanelLeftClose as NavCollapse } from '@lucide/vue'
 import { api, cancelScopeRequests } from './api'
 import { notifyApiError } from './api/errors.js'
@@ -194,6 +198,7 @@ const breadcrumbMap = {
   '/approval-rules': '审批规则',
   '/ai-reviews': 'AI Code Review',
   '/statistics': '统计分析',
+  '/engineering-activity': '研发上库',
   '/settings': '系统设置',
   '/schedules': '定时任务',
 }
@@ -211,7 +216,7 @@ function decodeRouteParam(value) {
 export default {
   components: { LoginView, AlertBell, ReviewAttentionBanner, PasswordChangeForm, NavExpand, NavCollapse,
     NavHouse, NavServer, NavDatabase, NavRestore, NavSettings, NavClock, NavMigration, NavBox, NavShield,
-    NavReview, NavFolder, NavBranch, NavApproval, NavChart, NavUsers, NavUser, NavLogout },
+    NavReview, NavFolder, NavBranch, NavApproval, NavChart, NavActivity, NavUsers, NavUser, NavLogout },
   setup() {
     const router = useRouter()
     const route = useRoute()

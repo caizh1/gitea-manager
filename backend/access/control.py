@@ -12,7 +12,7 @@ from access.scopes import current_binding
 PUBLIC = {'auth.check_session', 'auth.login'}
 MACHINE = {'ai_review.webhook', 'ai_review.setup_probe', 'approval_internal.gate_check',
            'approval_internal.installed', 'approval_internal.uninstall_ready', 'approval_view.view',
-           'integrations.health', 'integrations.events', 'integrations.task_detail', 'access_internal.check'}
+           'engineering_activity.event', 'integrations.health', 'integrations.events', 'integrations.task_detail', 'access_internal.check'}
 PLATFORM = {
     'git_migration': 'status sources source rotate_credentials rotate_target_credentials discoveries discovery inventories inventory runs run_detail resume_run abandon_run target_groups principals principal_details account_mappings account_mapping mapping_accounts preflights preflight_detail start_preflight acknowledge_preflight_compatibility cancel_preflight preflight_target_credentials resume_preflight',
     'svn_migration': 'status targets target_groups target_paths create_target_group sources source test_source discover_projects discovery_result enroll_projects detect_layouts layout_detection repositories repository plans plan preflight preflight_detail runs run control events report cleanup',
@@ -32,6 +32,7 @@ ORGANIZATION = {
     'commit_gate': 'list_rules create_rule update_rule delete_rule list_repos apply_gate remove_gate_route test_rule',
     'ai_review': 'csrf config servers catalog repositories update_repository tasks statistics issue_list task_issues dataset_list dataset_disable dataset_export dataset_history task task_rules task_failure_checks task_events task_events_export task_units task_context_reads rerun reconcile cancel_task attention task_plan confirm_plan continue_plan tokenizers retired_publication source_cache',
     'approval': 'csrf policies create_policy update_policy preview delete_policy enable disable admin_status audits',
+    'engineering_activity': 'options overview detail collect',
     'statistics': 'overview commit_trend repo_ranking author_ranking author_detail author_repos author_trend refresh_statistics',
     'alert': 'list_alerts alert_summary clear_alert clear_resolved',
     'dashboard': 'recent_activity',

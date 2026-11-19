@@ -74,6 +74,11 @@ function fixture(url, method, payload) {
     stats: { total: 0, confirmed: 0 }, revision: 1, ready: false }
   if (p === '/api/git-migrations/preflights/1') return { id: 1, status: 'blocked', result: { checks: [] } }
   if (/^\/api\/svn-migrations\/(runs|preflights|plans)\/\d+$/.test(p)) return { error: '隔离测试：详情记录不存在' }
+  if (p === '/api/engineering-activity/1/options') return {
+    repositories: [], teams: [], settings: { labels: ['bug'], teams: [], paths: {} }, collection: { status: 'disabled' } }
+  if (p === '/api/engineering-activity/1/dashboard') return {
+    summary: {}, series: [], people: [], ranking: [], daily: [], total_rows: 0, page_size: 30,
+    coverage: { repositories: 0, synced: 0, partial: false }, collection: { status: 'disabled' } }
   if (p === '/api/statistics/1/overview') return { total_commits: 0, total_code_lines: 0, total_doc_lines: 0,
     total_other_lines: 0, total_repos: 0, top_languages: [] }
   if (/^\/api\/statistics\/1\/authors\/[^/]+$/.test(p)) return { total_commits: 0, total_additions: 0, total_deletions: 0, repo_count: 0 }
