@@ -27,6 +27,13 @@ const gitFailureTask = { id: 'navigation-git-failure', repository: 1, number: 2,
   error: 'Git 仓库认证失败，请核对审查机器人凭据及仓库读取权限',
   diagnostic: { source: 'git_source', error_code: 'GIT_SOURCE_FAILED', phase: 'fetch',
     reason: 'authentication', exit_code: 128, git_error: 'fatal: Authentication failed for [仓库地址]' } }
+const preflightTask = { id: 'navigation-preflight-details', repository: 1, number: 3, status: 'incomplete',
+  error: '源码证据存在 2 项缺口。first.py · 旧侧第 66 行无法无损解码',
+  configuration: { engine: 'pr_agent' }, result: { coverage: { complete: false } },
+  snapshot: { coverage: { complete: false, skipped: [
+    { path: 'first.py', reason: '旧侧第 66 行无法无损解码' },
+    { path: 'second.py', reason: '第二个文件缺少备用编码' },
+  ] } } }
 const datasetItem = { id: 'navigation-sample', revision: 1, status: 'active', reference_ready: true,
   label: 'confirmed_defect', original: { title: '隔离导航样本', explanation: '固定样本用于核对页面加载与切换。' },
   path: 'example.py', correction: '隔离验证说明' }
@@ -57,6 +64,9 @@ function fixture(url, method, payload) {
   if (p === '/api/ai-review/statistics') return null
   if (p === '/api/ai-review/tasks') return { items: [publicationTask], total: 1 }
   if (p === '/api/ai-review/tasks/navigation-git-failure') return gitFailureTask
+  if (p === '/api/ai-review/tasks/navigation-preflight-details') return preflightTask
+  if (p === '/api/ai-review/tasks/navigation-preflight-summary') return { ...preflightTask, id: 'navigation-preflight-summary', snapshot: null }
+  if (/^\/api\/ai-review\/tasks\/navigation-preflight-(?:details|summary)\/context-reads$/.test(p)) return { items: [], total: 0 }
   if (p === '/api/ai-review/tasks/navigation-git-failure/issues') return { items: [], total: 0, page: 1, checks: {} }
   if (p === '/api/ai-review/repositories/1/dataset') return {
     items: [datasetItem], total: 1, pending_events: 0, sync_error: '',
@@ -205,6 +215,16 @@ async function main() {
   await failure.getByText('128', { exact: true }).waitFor()
   await failure.getByText(gitFailureTask.diagnostic.git_error, { exact: true }).waitFor()
   results.push({ 场景: '真实任务详情显示 Git 失败阶段、退出码和脱敏原因', 结果: '通过' })
+  await page.getByRole('button', { name: '返回完整列表', exact: true }).click()
+  await navigate(page, '/ai-reviews?tab=tasks&task=navigation-preflight-details')
+  await page.getByRole('tab', { name: '变更与覆盖（2 组缺口）', exact: true }).click()
+  await page.getByText('second.py', { exact: true }).click()
+  await page.getByText('第二个文件缺少备用编码', { exact: true }).waitFor()
+  await navigate(page, '/ai-reviews?tab=tasks&task=navigation-preflight-summary')
+  await page.getByRole('tab', { name: '变更与覆盖（2 项缺口）', exact: true }).click()
+  await page.getByText('失败摘要记录了 2 项源码缺口', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('tab', { name: /0 组缺口/ }).count(), 0)
+  results.push({ 场景: '失败任务显示固定快照的两项明细，只有摘要时保留缺口数', 结果: '通过' })
   await page.getByRole('button', { name: '返回完整列表', exact: true }).click()
   await navigate(page, '/ai-reviews/settings'); await reviewReady(page, '/ai-reviews/settings')
   await page.locator('.el-select').filter({ has: page.getByRole('combobox', { name: '执行引擎', exact: true }) }).click()

@@ -50,7 +50,7 @@
       <details v-if="isPlatformAdmin && task.error" class="failure-card" aria-label="任务失败详情"><summary>失败原因：{{ errorSummary }} · 展开诊断</summary>
         <div class="failure-heading"><WarningFilled /><div><strong>{{ errorSummary }}</strong><details v-if="String(task.error).length > 100" class="full-error"><summary>查看完整错误信息</summary><pre>{{ task.error }}</pre></details><p>{{ diagnosticSummary }}</p></div></div>
         <dl v-if="primaryDiagnosticRows.length" class="failure-fields"><template v-for="row in primaryDiagnosticRows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl>
-        <p v-else class="legacy-diagnostic">此历史任务未记录结构化诊断，无法补推失败层级、调用标识和响应位置。</p>
+        <p v-else class="legacy-diagnostic">此任务未记录结构化诊断。</p>
         <details v-if="moreDiagnosticRows.length"><summary>更多定位信息（{{ moreDiagnosticRows.length }} 项）</summary><dl class="failure-fields more-fields"><template v-for="row in moreDiagnosticRows" :key="row.key"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></template></dl></details>
         <p v-if="safeDiagnostic?.secondary_exception_type" class="secondary-note">次级传输异常 {{ safeDiagnostic.secondary_exception_type }} 发生在上述首因之后，不替代首因。</p>
         <details v-if="secondaryDiagnostics.length" class="secondary-diagnostics"><summary>次级原生错误（{{ secondaryDiagnostics.length }} 项）</summary><p>以下错误发生在首因之后，仅用于补充定位，不替代上方首因。</p><pre v-for="(item, index) in secondaryDiagnostics" :key="index">{{ toDiagnosticText(item) }}</pre></details>
@@ -122,11 +122,12 @@
         <el-tab-pane v-if="task.batch_protocol" label="计划与依据" name="plan" lazy>
           <ReviewBatchPlan :task="task" @refresh="$emit('refresh')" />
         </el-tab-pane>
-        <el-tab-pane :label="`变更与覆盖（${groups.length} 组缺口）`" name="coverage">
+        <el-tab-pane :label="coverageTabLabel" name="coverage">
           <p v-if="task.snapshot?.line_counts" class="secondary">新增 {{ task.snapshot.line_counts.added_lines }} 行，删除 {{ task.snapshot.line_counts.deleted_lines }} 行，合计 {{ task.snapshot.line_counts.added_lines + task.snapshot.line_counts.deleted_lines }} / {{ task.snapshot.max_changed_lines?.toLocaleString() }} 行。</p>
-          <el-alert v-if="usesPrAgent" :title="task.status === 'succeeded' ? `主审纳入 ${coverage.diff_files_provided ?? coverage.files_total ?? 0} 个变更文件` : 'PR-Agent 变更覆盖'" description="下方列出本次变更的覆盖缺口。历史问题复审记录在问题台账。" type="info" :closable="false" />
+          <el-alert v-if="missingGapDetails" :title="`失败摘要记录了 ${reportedGapCount} 项源码缺口`" description="部分或全部缺口没有可展开的文件与原因。已保存的定位见任务失败摘要。" type="warning" :closable="false" />
+          <el-alert v-else-if="usesPrAgent" :title="task.status === 'succeeded' ? `主审纳入 ${coverage.diff_files_provided ?? coverage.files_total ?? 0} 个变更文件` : 'PR-Agent 变更覆盖'" description="下方列出本次变更的覆盖缺口。历史问题复审记录在问题台账。" type="info" :closable="false" />
           <el-alert v-else-if="diffOnly" title="PR 变更覆盖" description="下方展示任务记录的输入范围和覆盖缺口。" type="info" :closable="false" />
-          <p class="secondary">文件读取数量与分析完成数量分别统计。重复缺口已合并，展开文件查看具体原因。</p><p v-if="coverage.change_evidence" class="evidence-count">已提供变更原文 {{ coverage.change_evidence.supplied }} / {{ coverage.change_evidence.expected }} 行。此项只统计原文供给，审查结论还需结合已完成单元和未决范围。</p><el-empty v-if="!groups.length" :description="task.status === 'succeeded' ? '本次没有记录覆盖缺口。' : '当前尚未记录缺口，任务完成前不能判断覆盖完整。'" /><el-collapse><el-collapse-item v-for="group in groups" :key="group.path" :name="group.path"><template #title><div class="coverage-title"><strong>{{ group.path }}</strong><el-tag type="warning" size="small">{{ group.reasons.length }} 类原因</el-tag></div></template><div v-for="(reason, i) in group.reasons" :key="i" class="coverage-reason"><p>{{ reason.reason }}</p><small>记录 {{ reason.count }} 次<span v-if="reason.scopes.length"> · 涉及 {{ reason.scopes.length }} 个函数</span></small><details v-if="reason.scopes.length"><summary>查看函数</summary><ul><li v-for="scope in reason.scopes" :key="scope">{{ scope }}</li></ul></details></div></el-collapse-item></el-collapse>
+          <p v-if="groups.length" class="secondary">文件读取数量与分析完成数量分别统计。重复缺口已合并，展开文件查看具体原因。</p><p v-if="coverage.change_evidence" class="evidence-count">已提供变更原文 {{ coverage.change_evidence.supplied }} / {{ coverage.change_evidence.expected }} 行。此项只统计原文供给，审查结论还需结合已完成单元和未决范围。</p><el-empty v-if="!groups.length && !missingGapDetails" :description="task.status === 'succeeded' ? '本次没有记录覆盖缺口。' : '此任务暂无可展开的覆盖明细。'" /><el-collapse><el-collapse-item v-for="group in groups" :key="group.path" :name="group.path"><template #title><div class="coverage-title"><strong>{{ group.path }}</strong><el-tag type="warning" size="small">{{ group.reasons.length }} 类原因</el-tag></div></template><div v-for="(reason, i) in group.reasons" :key="i" class="coverage-reason"><p>{{ reason.reason }}</p><small>记录 {{ reason.count }} 次<span v-if="reason.scopes.length"> · 涉及 {{ reason.scopes.length }} 个函数</span></small><details v-if="reason.scopes.length"><summary>查看函数</summary><ul><li v-for="scope in reason.scopes" :key="scope">{{ scope }}</li></ul></details></div></el-collapse-item></el-collapse>
           <details v-if="coverage.diagnostics?.length"><summary>代码组织说明（{{ coverage.diagnostics.length }} 项）</summary><p class="secondary">语法树用于辅助组织。解析器未识别的原文仍可进入审查；实际未决内容在上方单独显示。</p><ul class="diagnostics"><li v-for="(note, i) in coverage.diagnostics" :key="i"><strong>{{ note.path }}</strong><span>{{ note.side === 'old' ? '修改前' : '修改后' }}<template v-if="note.start_line"> · 第 {{ note.start_line }} 行</template> · {{ note.reason }}</span></li></ul></details>
           <section v-if="!hasNativeEvents"><h4>历史检索记录（{{ retrieval.operations || 0 }} 条）</h4><p>读取记录包含整个任务的分页和复用记录，不代表模型分析次数，也不会作为完整对话历史逐轮累加。</p><p class="secondary">模型补查 {{ retrieval.model_rounds ?? retrieval.rounds ?? 0 }} 轮 · 程序补查 {{ retrieval.runtime_rounds || 0 }} 轮 · 独立请求 {{ retrieval.unique_requests ?? retrieval.operations ?? 0 }} 项 · 读取记录 {{ retrieval.operations || 0 }} 条 · {{ retrieval.failed || 0 }} 条读取失败</p><el-alert v-if="readError" :title="readError" type="error" :closable="false" /><el-empty v-if="!reads.length" description="本次尚无主动检索记录，模型可以直接使用已提供的上下文。" /><el-collapse><el-collapse-item v-for="(read, i) in reads" :key="`${read.unit}:${read.request_id}:${i}`" :name="`read-${i}`"><template #title><div class="coverage-title"><el-tag :type="read.status === 'error' || read.complete === false ? 'warning' : 'info'" size="small">{{ read.request?.version === 'before' ? '修改前' : '修改后' }}</el-tag><strong>{{ operations[read.request?.op] || '读取' }} · {{ read.request?.path || read.request?.pattern || '*' }}</strong><span v-if="read.source">第 {{ read.source.start }}–{{ read.source.end }} 行</span><span v-if="read.request?.query">{{ read.request.query }}</span></div></template><p v-if="read.status === 'error'" class="read-warning">{{ read.reason }}</p><template v-if="read.source"><p>固定提交 {{ read.source.commit }} · 第 {{ read.source.start }}–{{ read.source.end }} 行</p><pre>{{ read.source.code }}</pre></template></el-collapse-item></el-collapse><el-button v-if="reads.length < readTotal" :loading="reading" @click="loadReads">加载更多记录（{{ reads.length }} / {{ readTotal }}）</el-button></section>
         </el-tab-pane>
@@ -182,7 +183,14 @@ const planSummary = computed(() => {
 const continuing = computed(() => ['queued','running','cancelling','publishing','recovering','publish_unknown'].includes(props.task?.status))
 const shouldPollEvents = computed(() => hasNativeEvents.value && props.task?.status !== 'cancelled' && props.task?.log_sync?.complete !== true)
 const findings = computed(() => Array.isArray(props.task?.result?.findings) ? props.task.result.findings : [])
-const coverage = computed(() => props.task?.result?.coverage || props.task?.snapshot?.coverage || {})
+const coverage = computed(() => {
+  const snapshot = props.task?.snapshot?.coverage
+  const result = props.task?.result?.coverage
+  if (['failed', 'incomplete'].includes(props.task?.status) && snapshot?.skipped?.length && !result?.skipped?.length) {
+    return { ...snapshot, ...result, complete: false, skipped: snapshot.skipped }
+  }
+  return result || snapshot || {}
+})
 const reviewScope = computed(() => props.task?.progress?.review_scope ?? props.task?.result?.review_scope ?? coverage.value.scope)
 const diffOnly = computed(() => reviewScope.value === 'diff')
 const usesPrAgent = computed(() => props.task?.configuration?.engine === 'pr_agent' || coverage.value.source_read_tracking === 'pr_agent_diff_context')
@@ -191,6 +199,16 @@ const prAgentScopeDescription = computed(() => props.task?.pr_agent_protocol ===
   : '主审使用 PR 变更和相邻上下文。历史问题复审可补充固定版本中的相关源码。')
 const reportText = computed(() => props.task?.result?.report_markdown || '')
 const groups = computed(() => coverageGroups(coverage.value))
+const reportedGapCount = computed(() => {
+  const match = /^源码证据存在 ([1-9]\d{0,5}) 项缺口。/.exec(props.task?.error || '')
+  return match ? Number(match[1]) : 0
+})
+const missingGapDetails = computed(() => reportedGapCount.value > (coverage.value.skipped?.length || 0))
+const coverageTabLabel = computed(() => {
+  if (missingGapDetails.value) return `变更与覆盖（${reportedGapCount.value} 项缺口）`
+  if (!groups.value.length && ['failed', 'incomplete'].includes(props.task?.status)) return '变更与覆盖'
+  return `变更与覆盖（${groups.value.length} 组缺口）`
+})
 const retrieval = computed(() => props.task?.result?.context_retrieval || {})
 const counters = computed(() => props.task?.counters || {})
 const modelName = computed(() => props.task?.configuration?.model || '历史模型未记录')
