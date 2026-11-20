@@ -227,27 +227,154 @@ class RecoveryTests(unittest.TestCase):
             recovery.recover_source(self.client, self.server, journal)
         self.health.assert_not_called()
 
-    def test_owned_unlock_helper_retries_after_nonzero_exit(self):
+    def test_interrupted_legacy_unlock_clears_empty_lock_without_restarting_source(self):
+        from docker.errors import NotFound
+
+        self.source.attrs['State']['StartedAt'] = '2026-11-17T03:00:00Z'
+        self.source.save()
         journal = self.journal()
         journal.before_lock()
+        journal.value['锁已取得'] = True  # 旧版误把已存在的空目录记录为取锁成功。
+        journal.before_stop(self.source)
+        self.source.stop()
+        self.source.attrs['State']['FinishedAt'] = '2026-11-17T03:01:00Z'
+        self.source.save()
+        journal.stopped(self.source)
+        self.source.attrs['State'].update(Running=True, Status='running', Pid=101, StartedAt='2026-11-17T03:02:00Z')
+        self.source.save()
+        journal.instance_lock.close()
+
+        self.task.status = 'failed'
+        self.task.error_msg = '固定导出元数据超过 16 MiB'
+        db.session.commit()
         token = journal.value['随机校验']
         name = 'manager-backup-unlock-' + token
         journal.value['解锁助手名称'] = name
-        command = [recovery._unlock_script(), 'sh', recovery.LOCK, journal.retired_lock(),
-                   journal.value['锁所有者SHA256'], journal.staged_lock(), 'no']
-        helper = MagicMock()
-        helper.attrs = {
+        journal.save()
+        shared = self.root / 'shared'
+        shared.mkdir()
+        command = [recovery._legacy_unlock_script(), 'sh', recovery.LOCK, journal.retired_lock(),
+                   journal.value['锁所有者SHA256'], journal.staged_lock(), 'yes']
+        old = MagicMock()
+        old.attrs = {
             'Image': self.source.attrs['Image'],
             'Config': {'Labels': {'gitea.manager.backup-cleanup': token}, 'Entrypoint': ['sh', '-ec'], 'Cmd': command},
             'HostConfig': {'NetworkMode': 'none', 'VolumesFrom': [self.source.id]},
             'State': {'Status': 'exited', 'ExitCode': 1, 'Running': False, 'OOMKilled': False},
         }
-        helper.wait.return_value = {'StatusCode': 0}
-        self.client.containers.get.side_effect = {name: helper}.__getitem__
-        recovery._clear_lock(self.client, self.source, journal)
+        replacement = MagicMock()
+        replacement.attrs = {'State': {'Running': False, 'OOMKilled': False}}
+
+        def get(identifier):
+            containers = {self.source.id: self.source, self.database.id: self.database, name: old}
+            if identifier not in containers:
+                raise NotFound('固定测试容器不存在')
+            return containers[identifier]
+
+        def wait(timeout):
+            new, shell, _, _, digest, _, strict, blocker, occupied = self.client.containers.create.call_args.kwargs['command']
+            result = subprocess.run(['sh', '-ec', new, shell, str(shared), str(self.root / 'retired'),
+                                     digest, str(self.root / 'staged'), strict, blocker, occupied],
+                                    capture_output=True)
+            replacement.logs.return_value = result.stdout + result.stderr
+            return {'StatusCode': result.returncode}
+
+        replacement.wait.side_effect = wait
+        self.client.containers.create.return_value = replacement
+        self.client.containers.get.side_effect = get
+        recovery.recover_pending()
+        db.session.refresh(self.task)
+        old.start.assert_not_called()
+        old.remove.assert_called_once()
+        self.assertFalse(shared.exists())
+        self.assertEqual(self.source.starts, 0)
+        self.assertFalse(self.task.recovery_pending)
+        self.assertEqual(self.task.recovery_info['note'], recovery.EMPTY_LOCK_RELEASED)
+        self.assertEqual(self.task.recovery_info['state'], 'completed')
+        self.assertEqual(self.task.error_msg, '固定导出元数据超过 16 MiB')
+
+    def test_different_database_alias_cannot_take_same_data_volume_lease(self):
+        from services.restore_recovery import instance_lease
+
+        self.journal()
+        with self.assertRaises(BlockingIOError):
+            instance_lease('不同数据库容器', '不同数据库', self.source.attrs['Mounts'])
+
+    def test_retry_adopts_finished_unlock_after_lost_ssh_wait_response(self):
+        from docker.errors import NotFound
+
+        journal = self.journal()
+        journal.before_lock()
+        token = journal.value['随机校验']
+        name = 'manager-backup-unlock-' + token
+        helper = MagicMock()
+        helper.attrs = {
+            'Image': self.source.attrs['Image'],
+            'Config': {'Labels': {'gitea.manager.backup-cleanup': token}, 'Entrypoint': ['sh', '-ec']},
+            'HostConfig': {'NetworkMode': 'none', 'VolumesFrom': [self.source.id]},
+            'State': {'Status': 'exited', 'ExitCode': 0, 'Running': False, 'OOMKilled': False},
+        }
+        helper.logs.return_value = recovery.EMPTY_LOCK_RELEASED.encode()
+        helper.wait.side_effect = [TimeoutError('合成 SSH 响应丢失'), {'StatusCode': 0}]
+
+        def create(image, **kwargs):
+            helper.attrs['Config']['Cmd'] = kwargs['command']
+            self.client.containers.get.side_effect = None
+            self.client.containers.get.return_value = helper
+            return helper
+
+        self.client.containers.get.side_effect = NotFound('固定测试容器尚未创建')
+        self.client.containers.create.side_effect = create
+        with self.assertRaises(TimeoutError):
+            recovery._clear_lock(self.client, self.source, journal)
+        saved = recovery.Journal.load(journal.path, self.task.id, token, self.server.id)
+        recovery._clear_lock(self.client, self.source, saved)
+        self.client.containers.create.assert_called_once()
         helper.start.assert_called_once()
         helper.remove.assert_called_once()
-        self.assertTrue(journal.value['解锁已完成'])
+        self.assertTrue(saved.value['解锁已完成'])
+        self.assertTrue(saved.value['已自动释放历史空锁'])
+
+    def test_empty_lock_protects_recovery_and_unexpected_entries(self):
+        from models import RestoreTask
+
+        journal = self.journal()
+        in_progress = RestoreTask(backup_id=self.task.id, target_server_id=self.server.id, status='running')
+        db.session.add(in_progress)
+        db.session.commit()
+        self.assertIn('未结束的恢复', recovery.empty_lock_blocker(self.client, self.source, journal))
+        other_host = GiteaServer(name='隔离其他宿主', host='不同宿主', ssh_user='root', connection_mode='ssh',
+                                  gitea_port=3000,
+                                  gitea_container=self.server.gitea_container, gitea_url='http://other.invalid',
+                                  api_token='合成值')
+        db.session.add(other_host)
+        db.session.flush()
+        in_progress.target_server_id = other_host.id
+        db.session.commit()
+        self.assertEqual(recovery.empty_lock_blocker(self.client, self.source, journal), '')
+        orphan = MagicMock()
+        orphan.attrs = {'Mounts': self.source.attrs['Mounts'], 'State': {'Status': 'running'}}
+        self.client.containers.list.return_value = [orphan]
+        self.assertIn('仍可能写入', recovery.empty_lock_blocker(self.client, self.source, journal))
+
+        lock = self.root / 'shared'
+        lock.mkdir()
+        work = self.root / 'manager-restore-sample'
+        script = recovery._recovery_unlock_script().replace('/data/manager-restore-', str(self.root / 'manager-restore-'))
+        command = ['sh', '-ec', script, 'sh', str(lock), str(self.root / 'retired'),
+                   '无归属摘要', str(self.root / 'staged'), 'yes', '', '']
+        work.mkdir()
+        self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+        self.assertTrue(lock.is_dir())
+        work.rmdir()
+        (lock / '.unknown').touch()
+        self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+        self.assertTrue((lock / '.unknown').is_file())
+        (lock / '.unknown').unlink()
+        lock.rmdir()
+        lock.symlink_to(self.root)
+        self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+        self.assertTrue(lock.is_symlink())
 
     def test_disk_full_after_stop_does_not_skip_original_source_start(self):
         journal = self.journal(); journal.before_stop(self.source); self.source.stop(); journal.stopped(self.source)

@@ -194,7 +194,7 @@ def consistent_backup(server, backup, journal=None):
     try:
         gitea = client.containers.get(server.gitea_container)
         database = client.containers.get(server.pg_container)
-        journal.attach(server, gitea, database, marker)
+        journal.attach(server, gitea, database, marker, daemon=client.info().get('ID'))
         check_layout(gitea, database, server)
         from services.backup_manifest import identity, table_snapshot, append_manifest
         requirements = identity(gitea, database, server)
@@ -217,7 +217,7 @@ def consistent_backup(server, backup, journal=None):
         helper.start()
         export_root = backup_staging.prepare_export(helper, database, server, marker)
         journal.before_lock()
-        journal.lock(helper)
+        journal.lock(helper, client, gitea)
         progress.show('stop_source', '检查源容器与停写条件')
         if was_running:
             journal.before_stop(gitea)

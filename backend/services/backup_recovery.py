@@ -18,7 +18,33 @@ from services.backup_outcome import RecoveryBlocked, RecoveryProgress, recover_f
 from services.diagnostics import register_secret
 OWNER = 'gitea-manager-backup-recovery-v1'
 LOCK = '/data/.manager-restore-lock'
-OWNER_FILE = LOCK + '/backup-owner.json'
+EMPTY_LOCK_RELEASED = '历史空锁已自动释放'
+EMPTY_LOCK_BLOCKERS = (
+    '无法核实源端数据卷归属',
+    '源实例存在未结束的恢复任务',
+    '同一实际实例仍有其他备份待收尾',
+    '源实例存在仍可能写入的备份或恢复助手',
+)
+# 只由持有实例互斥的备份流程调用。rmdir 会拒绝新增文件，包括隐藏文件。
+RELEASE_EMPTY_LOCK = r'''
+    release_empty_lock() {
+        test ! -L "$1" && test -d "$1" || return 1
+        inode=$(stat -c '%d:%i' -- "$1") || return 1
+        entries=$(ls -A -- "$1") || return 1
+        test -z "$entries" || return 1
+        if test -n "$2"; then printf '%s\n' "$2" >&2; return 1; fi
+        for workspace in /data/manager-restore-*; do
+            if test -e "$workspace" || test -L "$workspace"; then
+                echo '源端仍有恢复暂存目录' >&2
+                return 1
+            fi
+        done
+        test ! -L "$1" && test "$(stat -c '%d:%i' -- "$1")" = "$inode" || return 1
+        rmdir -- "$1" || return 1
+        sync || return 1
+        echo '历史空锁已自动释放'
+    }
+'''
 SERVER_FIELDS = ('id', 'host', 'ssh_port', 'ssh_user', 'connection_mode', 'gitea_container',
                  'pg_container', 'pg_user', 'pg_dbname', 'gitea_url', 'is_local')
 _threads = {}
@@ -169,12 +195,14 @@ class Journal:
                 and value['随机校验'] == token and value['源ID'] == source_id, '备份事务与本轮数据库记录不匹配')
         return cls(path, value)
 
-    def attach(self, server, source, database, marker):
-        from services.restore_recovery import database_lease
-        self.instance_lock = database_lease(database.id, server.pg_dbname)
-        ensure_database_ready(database.id, server.pg_dbname, exclude=self.value['任务ID'])
+    def attach(self, server, source, database, marker, *, daemon=None):
+        from services.restore_recovery import instance_lease
+        original = identity(source)
+        self.instance_lock = instance_lease(database.id, server.pg_dbname, original['Mounts'], daemon)
+        ensure_database_ready(database.id, server.pg_dbname, exclude=self.value['任务ID'],
+                              mounts=original['Mounts'], daemon=daemon)
         self.value.update({'服务器': {key: getattr(server, key) for key in SERVER_FIELDS},
-                           '原源': identity(source), '原PG': identity(database), '操作标识': marker})
+                           '原源': original, '原PG': identity(database), '操作标识': marker, 'Docker引擎ID': daemon})
         self.save('原实例已核实')
 
     def before_helper(self, source, network, spool=None):
@@ -214,19 +242,46 @@ class Journal:
         self.value['助手'] = current
         self.save('助手已核实')
 
-    def lock(self, helper):
+    def lock(self, helper, client, source):
         from services.restore_secrets import put_file
-        from services.backup_consistency import execute
+        from services.backup_consistency import command_output, execute
         raw = json.dumps({'所有者': OWNER, '任务ID': self.value['任务ID'], '随机校验': self.value['随机校验']}).encode()
         execute(helper, ['mkdir', self.staged_lock()])
         put_file(helper, self.staged_lock() + '/backup-owner.json', raw, 0o600, 0, 0)
         execute(helper, ['sync'])
-        execute(helper, ['sh', '-ec', 'mv -T -n -- "$1" "$2"; ! test -e "$1"; sync',
-                         'sh', self.staged_lock(), LOCK])
+        occupied = execute(helper, ['sh', '-ec', 'if test -e "$1" || test -L "$1"; then echo yes; fi',
+                                    'sh', LOCK]) == 'yes'
+        blocker = empty_lock_blocker(client, source, self, exclude=helper.id) if occupied else '实例锁在检查后出现'
+        # mkdir 原子认领共享路径。用硬链接一次发布预写的完整所有者文件。
+        command = RELEASE_EMPTY_LOCK + r'''
+            if test -e "$1" || test -L "$1"; then
+                release_empty_lock "$1" "$4" || exit 42
+            fi
+            if ! mkdir -- "$1"; then
+                if test -e "$1" || test -L "$1"; then exit 42; fi
+                exit 1
+            fi
+            ln -T -- "$2/backup-owner.json" "$1/backup-owner.json"
+            test ! -L "$1"
+            test ! -L "$1/backup-owner.json"
+            test "$(sha256sum "$1/backup-owner.json" | cut -d ' ' -f 1)" = "$3"
+            sync
+        '''
+        code, raw = helper.exec_run(['sh', '-ec', command, 'sh', LOCK, self.staged_lock(),
+                                     self.value['锁所有者SHA256'], blocker])
+        if code == 42:
+            self.value['锁已确认被占用'] = True
+            self.save('实例锁被占用')
+            detail = raw.decode(errors='replace').strip()
+            raise RecoveryBlocked('源端已有实例锁，本次备份未停源' + ('。' + detail if detail else ''))
+        if EMPTY_LOCK_RELEASED in command_output(code, raw).splitlines():
+            self.value['已自动释放历史空锁'] = True
         self.value['锁已取得'] = True
         self.save('实例锁已核实')
 
     def before_stop(self, source=None):
+        if self.value.get('实例锁请求已持久化'):
+            require(self.value.get('锁已取得'), '未核实本次备份的实例锁，拒绝停源')
         if source is not None:
             require(same_lifecycle(self.value['原源'], identity(source)), '停源前原实例生命周期已变化，拒绝操作')
         self.value['停止请求已持久化'] = True
@@ -327,8 +382,10 @@ def ensure_ready(source_id, exclude=None):
     require(query.first() is None, '该实例有未确认收尾的备份，请先完成原源恢复，禁止覆盖或删除恢复凭据')
 
 
-def ensure_database_ready(identifier, database_name, exclude=None):
+def ensure_database_ready(identifier, database_name, exclude=None, *, mounts=(), daemon=None):
     from models import Backup
+    from services.restore_recovery import data_mount
+    source = data_mount(mounts)
     query = Backup.query.filter(Backup.recovery_pending.is_(True))
     if exclude is not None:
         query = query.filter(Backup.id != exclude)
@@ -338,9 +395,57 @@ def ensure_database_ready(identifier, database_name, exclude=None):
         path, _ = paths(directory(), task.id, task.recovery_token)
         if path.exists():
             other = Journal.load(path, task.id, task.recovery_token, task.source_server_id).value
-            require(not (other.get('原PG', {}).get('Id') == identifier
-                         and other.get('服务器', {}).get('pg_dbname') == database_name),
-                    '同一实际数据库还有未确认收尾的备份，拒绝别名绕过互斥')
+            same_database = (other.get('原PG', {}).get('Id') == identifier
+                             and other.get('服务器', {}).get('pg_dbname') == database_name)
+            other_daemon = other.get('Docker引擎ID')
+            shared_engine = not daemon or not other_daemon or daemon == other_daemon
+            same_volume = shared_engine and source and source == data_mount(other.get('原源', {}).get('Mounts', ()))
+            require(not (same_database or same_volume),
+                    '同一实际实例还有未确认收尾的备份，拒绝别名绕过互斥')
+
+
+def empty_lock_blocker(client, source, journal, *, exclude=None):
+    from docker.errors import NotFound
+    from models import GiteaServer, RestoreTask
+    from services.restore_recovery import data_mount
+    mount = data_mount(source.attrs['Mounts'])
+    if not mount:
+        return EMPTY_LOCK_BLOCKERS[0]
+    try:
+        ensure_database_ready(journal.value['原PG']['Id'], journal.value['服务器']['pg_dbname'],
+                              exclude=journal.value['任务ID'], mounts=source.attrs['Mounts'],
+                              daemon=journal.value.get('Docker引擎ID'))
+    except RecoveryBlocked:
+        return EMPTY_LOCK_BLOCKERS[2]
+    targets = GiteaServer.query.join(RestoreTask, RestoreTask.target_server_id == GiteaServer.id).filter(
+        RestoreTask.status.in_(('running', 'pending'))).distinct()
+    registration = journal.value['服务器']
+    for target in targets:
+        if target.id == journal.value['源ID']:
+            return EMPTY_LOCK_BLOCKERS[1]
+        # 容器名只在同一 Docker 引擎有意义。不同连接别名仍由实际实例互斥、
+        # 同卷助手和持久化恢复暂存目录保护。
+        if target.connection_mode != registration['connection_mode']:
+            continue
+        if target.connection_mode != 'local' and (target.host, target.ssh_port) != (registration['host'], registration['ssh_port']):
+            continue
+        try:
+            container = client.containers.get(target.gitea_container)
+        except NotFound:
+            continue  # 已改名的孤儿恢复由同卷助手和源端暂存目录检查兜底。
+        if data_mount(container.attrs['Mounts']) == mount:
+            return EMPTY_LOCK_BLOCKERS[1]
+
+    for label in ('gitea.manager.operation', 'gitea.manager.recovery', 'gitea.manager.backup-cleanup'):
+        for helper in client.containers.list(all=True, filters={'label': label}):
+            if helper.id == exclude:
+                continue
+            helper.reload()
+            if data_mount(helper.attrs['Mounts']) != mount:
+                continue
+            if helper.attrs['State']['Status'] not in ('exited', 'dead'):
+                return EMPTY_LOCK_BLOCKERS[3]
+    return ''
 
 
 def allow_token_repair(source_id, data):
@@ -425,54 +530,99 @@ def _unlock_script():
     """
 
 
+def _recovery_unlock_script():
+    return RELEASE_EMPTY_LOCK + r'''
+        if test "$7" = occupied; then
+            # 取锁明确被拒绝，只收回本次暂存凭据。
+            if test -e "$4" || test -L "$4"; then
+                test ! -L "$4"
+                if test -e "$4/backup-owner.json" || test -L "$4/backup-owner.json"; then
+                    test -f "$4/backup-owner.json"
+                    test ! -L "$4/backup-owner.json"
+                    test "$(sha256sum "$4/backup-owner.json" | cut -d ' ' -f 1)" = "$3"
+                    rm -- "$4/backup-owner.json"
+                fi
+                rmdir -- "$4"
+            fi
+            exit 0
+        fi
+        if ! test -e "$2" && ! test -L "$2" && test ! -L "$1" && test -d "$1"; then
+            entries=$(ls -A -- "$1")
+            if test -z "$entries"; then
+                release_empty_lock "$1" "$6" || { echo '源端空锁尚未确认可释放' >&2; exit 42; }
+            fi
+        fi
+    ''' + _unlock_script()
+
+
 def _clear_lock(client, source, journal):
-    """专属无网络助手只检查本次锁令牌并rmdir，不接触业务正文或数据库。"""
-    token = journal.value['随机校验']
-    journal.value['解锁请求已持久化'] = True; journal.save('中断后解锁')
+    """以无网络助手收尾，重试前用最新证据重新判断空锁。"""
     from docker.errors import DockerException, NotFound
+    from services.diagnostics import redact
+
+    token = journal.value['随机校验']
+    journal.value['解锁请求已持久化'] = True
+    journal.save('中断后解锁')
     name = 'manager-backup-unlock-' + token
-    command = [_unlock_script(), 'sh', LOCK, journal.retired_lock(), journal.value['锁所有者SHA256'],
-               journal.staged_lock(), 'yes' if journal.value.get('停止请求已持久化') else 'no']
-    legacy_command = [_legacy_unlock_script(), *command[1:]]
+    args = ['sh', LOCK, journal.retired_lock(), journal.value['锁所有者SHA256'], journal.staged_lock()]
+    stopped = 'yes' if journal.value.get('停止请求已持久化') else 'no'
+    strict = 'yes' if stopped == 'yes' or journal.value.get('锁已取得') else 'no'
+    occupied = 'occupied' if journal.value.get('锁已确认被占用') else ''
     try:
         helper = client.containers.get(name)
     except NotFound:
+        helper = None
+    if helper is not None:
+        helper.reload()
+        attrs = helper.attrs
+        command = attrs['Config']['Cmd']
+        accepted = any(command == [script(), *args, stopped] for script in (_unlock_script, _legacy_unlock_script))
+        accepted = accepted or any(command == [_recovery_unlock_script(), *args, strict, blocker, occupied]
+                                   for blocker in ('', *EMPTY_LOCK_BLOCKERS))
+        require(journal.value.get('解锁助手名称') == name and attrs['Image'] == source.attrs['Image']
+                and (attrs['Config'].get('Labels') or {}).get('gitea.manager.backup-cleanup') == token
+                and attrs['HostConfig']['NetworkMode'] == 'none'
+                and attrs['HostConfig']['VolumesFrom'] == [source.id]
+                and attrs['Config']['Entrypoint'] == ['sh', '-ec']
+                and accepted, '解锁助手完整意图不符，不认领其他容器')
+        state = attrs['State']
+        if journal.value.get('解锁已完成'):
+            require(not state['Running'], '已结束解锁助手出现未知运行状态')
+            helper.remove()
+            return
+        if not state['Running'] and (state['Status'] == 'created' or
+                                     (state['Status'] == 'exited' and state['ExitCode'] != 0)):
+            helper.remove()
+            helper = None
+
+    if helper is None:
         if journal.value.get('解锁已完成'):
             return
-        # 确切名称和完整意图先持久化；丢失create回执后仍只能识别这一个无网络助手。
-        journal.value['解锁助手名称'] = name; journal.save('创建本次解锁助手')
+        blocker = '' if occupied else empty_lock_blocker(client, source, journal)
+        command = [_recovery_unlock_script(), *args, strict, blocker, occupied]
+        journal.value['解锁助手名称'] = name
+        journal.save('创建本次解锁助手')
         helper = client.containers.create(source.attrs['Image'], name=name, entrypoint=['sh', '-ec'],
-            command=command,
-            volumes_from=[source.id], network_mode='none', labels={'gitea.manager.backup-cleanup': token})
-    helper.reload()
-    attrs = helper.attrs
-    require(journal.value.get('解锁助手名称') == name and attrs['Image'] == source.attrs['Image']
-            and (attrs['Config'].get('Labels') or {}).get('gitea.manager.backup-cleanup') == token
-            and attrs['HostConfig']['NetworkMode'] == 'none'
-            and attrs['HostConfig']['VolumesFrom'] == [source.id]
-            and attrs['Config']['Entrypoint'] == ['sh', '-ec']
-            and attrs['Config']['Cmd'] in (command, legacy_command),
-            '解锁助手完整意图不符，不认领其他容器')
-    if journal.value.get('解锁已完成'):
-        require(not attrs['State']['Running'], '已结束解锁助手出现未知运行状态')
-        helper.remove()
-        return
-    # 已核实归属的解锁助手可以按同一命令续跑，退出失败的旧回执不能永久卡住收尾。
-    state = attrs['State']
-    if state['Status'] == 'created' or (state['Status'] == 'exited' and state['ExitCode'] != 0):
+            command=command, volumes_from=[source.id], network_mode='none',
+            labels={'gitea.manager.backup-cleanup': token})
         helper.start()
+
+    # 即使连接中断，仍由同名助手保留运行或结束回执，避免并行执行另一条解锁命令。
     result = helper.wait(timeout=120)
     helper.reload()
+    state = helper.attrs['State']
+    require(not state['Running'] and not state['OOMKilled'], '解锁助手结束状态未确认')
+    try:
+        detail = redact(helper.logs(tail=8).decode(errors='replace').strip())
+    except DockerException:
+        detail = ''
     if result['StatusCode'] != 0:
-        from services.diagnostics import redact
-        try:
-            detail = redact(helper.logs(tail=4).decode(errors='replace').strip())[:500]
-        except DockerException:
-            detail = ''
-        suffix = '，' + detail if detail else '，请核对实例锁归属和源端权限'
+        suffix = '，' + detail[-500:] if detail else '，请核对实例锁归属和源端权限'
         raise RecoveryBlocked(f'释放备份事务锁失败，解锁助手退出码 {result["StatusCode"]}{suffix}')
-    require(not helper.attrs['State']['Running'] and not helper.attrs['State']['OOMKilled'], '解锁助手结束状态未确认')
-    journal.value['解锁已完成'] = True; journal.save('本次锁已释放')
+    if EMPTY_LOCK_RELEASED in detail.splitlines():
+        journal.value['已自动释放历史空锁'] = True
+    journal.value['解锁已完成'] = True
+    journal.save('本次锁已释放')
     helper.remove()
 
 
@@ -545,7 +695,7 @@ def recover_source(client, server, journal, progress=None, recovery=None):
         else:
             journal.resume(source)
     journal.recovered(source)
-    if before['Running']:
+    if before['Running'] and not value.get('锁已确认被占用'):
         from services.commit_service import _require_target_health
         if recovery:
             recovery.source('running')
@@ -576,6 +726,8 @@ def recover_source(client, server, journal, progress=None, recovery=None):
         if progress:
             progress.show('resume_source', '释放备份事务锁', force=True)
         _clear_lock(client, source, journal)
+    if recovery and value.get('已自动释放历史空锁'):
+        recovery.update(note=EMPTY_LOCK_RELEASED)
     journal.complete_source()
 
 
@@ -583,7 +735,7 @@ def _resume_pending(task, journal):
     from models import Alert, GiteaServer, db
     from services.backup_staging import cleanup_reader, restore_export_index
     from services.docker_service import managed_client
-    from services.restore_recovery import database_lease
+    from services.restore_recovery import instance_lease
 
     source = db.session.get(GiteaServer, task.source_server_id)
     server = SimpleNamespace(**{key: getattr(source, key) for key in (*SERVER_FIELDS, 'api_token', 'name')}) if source else None
@@ -607,8 +759,12 @@ def _resume_pending(task, journal):
         if journal.value.get('原源') and not journal.value.get('源收尾已完成'):
             recovery.action('连接源端管理接口')
             require(server is not None, '原源登记已不存在，无法自动收尾')
-            with closing(database_lease(journal.value['原PG']['Id'], server.pg_dbname)), closing(managed_client(server)) as client:
-                recover_source(client, server, journal, recovery=recovery)
+            with closing(managed_client(server)) as client:
+                daemon = client.info().get('ID')
+                known_daemon = journal.value.get('Docker引擎ID')
+                require(not known_daemon or daemon == known_daemon, '源 Docker 引擎身份已变化，请核对后再收尾')
+                with instance_lease(journal.value['原PG']['Id'], server.pg_dbname, journal.value['原源']['Mounts'], daemon):
+                    recover_source(client, server, journal, recovery=recovery)
         if journal.value.get('导出读取助手') and not journal.value.get('传输收尾完成'):
             recovery.action('清理固定副本读取助手')
             require(server is not None, '原源登记已不存在，无法清理读取助手')
@@ -617,6 +773,8 @@ def _resume_pending(task, journal):
         if not journal.value.get('事务完成'):
             journal.value['事务完成'] = True
             journal.save('完成')
+        if journal.value.get('已自动释放历史空锁'):
+            recovery.update(note=EMPTY_LOCK_RELEASED)
         if not recovery.info.get('source_state') and task.source_restored_at:
             recovery.source('available', task.source_restored_at)
         task.recovery_pending = False

@@ -6,6 +6,7 @@
       <span v-if="pending && recovery.action">{{ recovery.action }}</span>
     </div>
     <div v-if="source">{{ source }}<span v-if="recovery.source_checked_at"> · {{ formatTime(recovery.source_checked_at) }}</span></div>
+    <div v-if="recovery.note">{{ recovery.note }}</div>
     <div v-if="pending && recovery.error" class="recovery-error">{{ recovery.error }}</div>
     <div v-if="pending && recovery.next_retry_at">下次复查 {{ formatTime(recovery.next_retry_at) }}</div>
   </div>

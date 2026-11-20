@@ -1,5 +1,6 @@
 """恢复检查点落在目标持久卷；同一 Manager 使用文件锁排除活跃工作进程。"""
 import base64
+from contextlib import ExitStack, closing
 import fcntl
 import hashlib
 import json
@@ -14,21 +15,51 @@ STATE = INSTANCE_LOCK + '/state.json'
 PHASES = ('准备', '停止', '数据库修改', '文件切换', '启动配置', '发布', '完成')
 
 
-def lease(target):
+def recovery_target(client, target):
+    from docker.errors import NotFound
+    try:
+        return client.containers.get(target.gitea_container)
+    except NotFound:
+        matches = [c for c in client.containers.list(all=True)
+                   if c.name.startswith(target.gitea_container + '-manager-restore-')]
+        if len(matches) != 1:
+            raise RuntimeError('无法唯一定位中断前的目标容器') from None
+        return matches[0]
+
+
+def data_mount(mounts):
+    for mount in mounts:
+        if mount['Destination'] == '/data':
+            return mount.get('Source')
+
+
+def instance_lease(identifier, database_name, mounts, daemon=None):
+    with ExitStack() as stack:
+        stack.enter_context(closing(database_lease(identifier, database_name)))
+        source = data_mount(mounts)
+        if source:
+            # Docker 报告的宿主机路径覆盖同卷的容器别名及同源路径绑定。
+            engine = daemon or ''
+            stack.enter_context(closing(_file_lease(f'数据卷:{engine}:{source}')))
+        return stack.pop_all()
+
+
+def lease(target, *, client=None, source=None):
     from services.docker_service import managed_client
-    client = managed_client(target)
+    from services.backup_recovery import ensure_database_ready
+    if client is None:
+        with closing(managed_client(target)) as client:
+            return lease(target, client=client)
+    database = client.containers.get(target.pg_container)
+    source = source or client.containers.get(target.gitea_container)
+    mounts = source.attrs['Mounts']
+    daemon = client.info().get('ID')
     try:
-        database = client.containers.get(target.pg_container)
-        identifier = database.id
-    finally:
-        client.close()
-    try:
-        lock = database_lease(identifier, target.pg_dbname)
+        lock = instance_lease(database.id, target.pg_dbname, mounts, daemon)
     except BlockingIOError:
-        raise RuntimeError('该实例仍有活跃恢复进程，拒绝接管') from None
+        raise RuntimeError('该实例仍有活跃恢复或备份进程，拒绝接管') from None
     try:
-        from services.backup_recovery import ensure_database_ready
-        ensure_database_ready(identifier, target.pg_dbname)
+        ensure_database_ready(database.id, target.pg_dbname, mounts=mounts, daemon=daemon)
         return lock
     except BaseException:
         lock.close()
@@ -37,10 +68,14 @@ def lease(target):
 
 def database_lease(identifier, database_name):
     """备份、恢复及中断收尾共用同一实际PG数据库锁，进程退出后由OS释放。"""
+    return _file_lease(identifier + ':' + database_name)
+
+
+def _file_lease(identity):
     from config import BACKUP_DIR
     root = Path(BACKUP_DIR).parent / 'restore-locks'
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    key = hashlib.sha256((identifier + ':' + database_name).encode()).hexdigest()
+    key = hashlib.sha256(identity.encode()).hexdigest()
     descriptor = os.open(root / key, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     stream = os.fdopen(descriptor, 'r+b')
     try:
@@ -95,18 +130,11 @@ def recover(target):
     from services.commit_service import _require_target_health
     from services.restore_isolation import retire_network
     from models import db, RestoreTask
-    lock = lease(target)
     client = managed_client(target)
-    helper = transition = None
+    lock = helper = transition = None
     try:
-        try:
-            current = client.containers.get(target.gitea_container)
-        except NotFound:
-            matches = [c for c in client.containers.list(all=True)
-                       if c.name.startswith(target.gitea_container + '-manager-restore-')]
-            if len(matches) != 1:
-                raise RuntimeError('无法唯一定位中断前的目标容器') from None
-            current = matches[0]
+        current = recovery_target(client, target)
+        lock = lease(target, client=client, source=current)
         helper = client.containers.run(current.attrs['Image'], entrypoint=['sleep'], command=['infinity'],
             volumes_from=[current.id], network_mode='none', detach=True,
             labels={'gitea.manager.recovery': current.id})
@@ -223,5 +251,8 @@ def recover(target):
             if helper is not None:
                 helper.remove(force=True)
         finally:
-            client.close()
-            lock.close()
+            try:
+                client.close()
+            finally:
+                if lock is not None:
+                    lock.close()

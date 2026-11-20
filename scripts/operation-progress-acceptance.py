@@ -83,7 +83,8 @@ def upload(container, dest, name, content, mode=0o600):
 def create(image, suffix, **kwargs):
     if os.environ.get('ACCEPTANCE_NETWORK') and 'network_mode' not in kwargs:
         kwargs.setdefault('network', os.environ['ACCEPTANCE_NETWORK'])
-    value = client.containers.create(image, name=marker+'-'+suffix, labels={'manager.progress.acceptance': marker}, platform='linux/amd64', **kwargs)
+    value = client.containers.create(image, name=marker+'-'+suffix, labels={'manager.progress.acceptance': marker},
+                                     platform=os.environ.get('ACCEPTANCE_PLATFORM', 'linux/amd64'), **kwargs)
     owned.append(value)
     return value
 

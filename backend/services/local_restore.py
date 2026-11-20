@@ -23,11 +23,12 @@ def restore(target, backup, task, progress):
     ensure_ready(target.id)
     from services.docker_service import managed_client
     from services.restore_recovery import lease
-    lock = lease(target)
-    client = None
+    lock = None
+    client = managed_client(target)
     try:
-        client = managed_client(target)
-        finalizer = _restore(client, target, backup, task, progress)
+        source = client.containers.get(target.gitea_container)
+        lock = lease(target, client=client, source=source)
+        finalizer = _restore(client, target, backup, task, progress, source=source)
         def finish(verified):
             try:
                 return finalizer(verified)
@@ -37,14 +38,16 @@ def restore(target, backup, task, progress):
         finish.snapshot_check = finalizer.snapshot_check
         return finish
     except BaseException:
-        if client is not None:
+        try:
             client.close()
-        lock.close()
+        finally:
+            if lock is not None:
+                lock.close()
         raise
 
 
-def _restore(client, target, backup, task, progress):
-    gitea = client.containers.get(target.gitea_container)
+def _restore(client, target, backup, task, progress, source=None):
+    gitea = source or client.containers.get(target.gitea_container)
     database = client.containers.get(target.pg_container)
     check_layout(gitea, database, target, restoring=True)
     from services.backup_manifest import load_manifest, identity, admit, table_snapshot
