@@ -3,7 +3,8 @@
   'use strict';
   const mark = '<!-- ai-review:summary:v1 -->';
   const labels = { queued: '已排队', running: '正在审查', publishing: '正在发布', recovering: '正在核对发布结果',
-    succeeded: '审查完成', failed: '审查失败', superseded: '版本已过期', publish_unknown: '发布结果待核对',
+    succeeded: '审查完成', failed: '审查失败', incomplete: '审查未完成', superseded: '版本已过期', publish_unknown: '发布结果待核对',
+    awaiting_publication: '历史待发布', awaiting_cost: '等待成本确认', budget_paused: '预算暂停',
     cancelling: '取消中', cancelled: '已取消', interrupted: '工作进程中断，等待恢复', stopped: '已停止审查', outdated: '新提交等待审查' };
   const sha = value => typeof value === 'string' && /^(?:[a-f0-9]{40})?$/.test(value);
   const integer = value => Number.isSafeInteger(value) && value >= 0;
@@ -55,7 +56,7 @@
     if (['running', 'publishing', 'recovering'].includes(p.status) && p.lease_until && p.lease_until < now) {
       return p.status === 'running' ? 'interrupted' : 'publish_unknown';
     }
-    return p.status;
+    return p.status === 'failed' && p.task_status === 'incomplete' ? 'incomplete' : p.status;
   }
   if (typeof module === 'object' && module.exports) { module.exports = { parse, effectiveStatus, extractFragment }; return; }
   const script = document.currentScript;
@@ -88,7 +89,8 @@
   function textMetric(label, value) { const span = document.createElement('span'); span.textContent = `${label}：${value}`; metrics.append(span); }
   function render(p, pr) {
     const state = effectiveStatus(p, pr); card.dataset.status = state; status.textContent = labels[state];
-    detail.textContent = state === 'outdated' ? '当前 PR 已有新提交，下方审查结果属于历史版本。' : state === 'interrupted' ? labels[state] : p.detail;
+    const failure = ['failed', 'incomplete'].includes(state) && p.error;
+    detail.textContent = state === 'outdated' ? '当前 PR 已有新提交，下方审查结果属于历史版本。' : state === 'interrupted' ? labels[state] : failure || p.detail;
     metrics.replaceChildren(); textMetric('审查版本', p.head ? p.head.slice(0, 12) : '等待读取');
     textMetric('接收', fmt(p.received_at));
     if (p.started_at) textMetric('开始', fmt(p.started_at));
@@ -97,7 +99,7 @@
     if (p.units_total !== null) textMetric('完成分析单元', `${p.units_completed}/${p.units_total}`);
     if (p.findings !== null) textMetric('发现问题', `${p.findings} 项`);
     if (p.coverage) textMetric('变更文件', `${p.coverage.files_reviewed}/${p.coverage.files_total}${p.coverage.complete ? '' : '（部分覆盖）'}`);
-    if (p.error) textMetric('说明', p.error);
+    if (p.error && !failure) textMetric('说明', p.error);
     link.hidden = !p.review_id || !p.review_fragment;
     link.href = prPath + '#' + p.review_fragment;
     link.textContent = state === 'outdated' ? '查看历史审查结果' : '查看审查结果';
@@ -124,14 +126,21 @@
       if (!sha(head) || (!head && template.dataset.closed !== 'true')) throw new Error('当前提交版本暂时不可用');
       const pr = { state: template.dataset.closed === 'true' ? 'closed' : 'open', head: { sha: head } };
       const identity = { id: Number(template.dataset.repositoryId), name: `${owner}/${repo}`, number };
-      const matches = [...template.content.querySelectorAll('div[data-comment-id][data-author-id]')].map(element => parse({
+      const rows = [...template.content.querySelectorAll('div[data-comment-id][data-author-id]')].map(element => ({
         body: element.textContent, user: { id: Number(element.dataset.authorId) }
-      }, identity, bots)).filter(Boolean);
+      })).filter(row => bots.includes(row.user.id) && row.body.startsWith(mark));
+      const matches = rows.map(row => parse(row, identity, bots)).filter(Boolean);
       if (matches.length > 1) throw new Error('存在多条可信状态，需管理员核对');
       const parsed = matches[0] || null;
       if (current !== cycle || disposed || document.hidden) return;
       if (parsed) { lastPayload = parsed; lastPR = pr; render(parsed, pr); }
-      else { lastPayload = null; status.textContent = '尚未收到审查状态'; detail.textContent = '等待机器人发布状态；可由管理员检查仓库开关及事件通知。'; metrics.replaceChildren(); link.hidden = true; notice.textContent = '每 5 秒自动检查'; }
+      else {
+        lastPayload = null; lastPR = null;
+        card.dataset.status = rows.length ? 'unavailable' : 'empty';
+        status.textContent = rows.length ? '审查状态暂不可读' : '尚未收到审查状态';
+        detail.textContent = rows.length ? '本页已有机器人总览，可在 PR 对话中查看原文。' : '此 PR 尚无机器人的审查状态记录。';
+        metrics.replaceChildren(); link.hidden = true; notice.textContent = '每 5 秒自动检查';
+      }
     } catch (e) {
       if (current !== cycle || disposed || document.hidden) return;
       if (lastPayload) render(lastPayload, lastPR);

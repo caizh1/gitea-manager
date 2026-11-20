@@ -119,6 +119,37 @@ class ProgressTests(unittest.TestCase):
         self.assertIn('按需检索固定版本仓库中的相关源码', comment_body(payload))
         self.assertIn('按需检索固定版本仓库中的相关源码', overview(self.store, stored, result))
 
+    def test_pr_agent_reports_preflight_failure_to_installed_v1_widget(self):
+        self.store.save_config({'revision': self.store.config()['revision'], 'engine': 'pr_agent'})
+        self.id = self.store.enqueue(self.repo, 1, {'head': self.client.head, 'base': 'b'*40}, manual=True)
+        job = self.store.claim()
+        self.assertEqual(job['id'], self.id)
+        reason = '源码证据存在 2 项缺口。签名脚本（旧侧）第 66 行、第 24 字节无法无损解码'
+        self.store.finish(self.id, job['owner'], 'incomplete', reason)
+        self.sync.refresh_native()
+        self.assertIn({'repository': self.repo, 'number': 1}, self.sync.pending())
+        self.assertTrue(self.send())
+        first = decode_body(self.client.rows[0])
+        self.assertEqual((first['status'], first['task_status'], first['error']), ('failed', 'incomplete', reason))
+        self.assertEqual(first['head'], self.client.head)
+        self.assertEqual(first['finished_at'], self.store.job(self.id)['updated'])
+        self.assertIsNone(first['review_id'])
+        self.assertIsNone(first['findings'])
+        self.assertEqual(self.store.job(self.id)['model_calls'], 0)
+
+        from ai_review.concurrency import reap
+        reap(self.store)
+        rerun = self.store.enqueue(self.repo, 1, {'head': self.client.head, 'base': 'b'*40}, manual=True)
+        self.assertTrue(self.send())
+        self.assertEqual(decode_body(self.client.rows[0])['status'], 'queued')
+        self.assertEqual(decode_body(self.client.rows[0])['error'], '')
+        task = self.store.claim()
+        self.store.finish(rerun, task['owner'], 'failed', '读取固定版本失败')
+        self.assertTrue(self.send())
+        last = decode_body(self.client.rows[0])
+        self.assertEqual((last['job'], last['status'], last['error']), (rerun, 'failed', '读取固定版本失败'))
+        self.assertEqual(self.client.writes, ['POST', 'PATCH', 'PATCH'])
+
     def test_pr_agent_scope_includes_source_in_historical_issue_checks(self):
         from ai_review.publication import overview
 

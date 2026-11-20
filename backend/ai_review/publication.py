@@ -72,7 +72,7 @@ def plan_summary(store, client, job, repo, body):
     from .issue_publication import operation
     from .progress import ProgressSync
     with contextlib.closing(store.connect()) as c:
-        old = c.execute('SELECT summary_id FROM pr_state WHERE repository=? AND number=?',
+        old = c.execute('SELECT summary_id,progress_creating FROM pr_state WHERE repository=? AND number=?',
                         (repo['id'], job['number'])).fetchone()
         managed = c.execute('SELECT body,pending FROM review_issue_summaries WHERE repository=? AND number=?',
                             (repo['id'], job['number'])).fetchone()
@@ -80,8 +80,18 @@ def plan_summary(store, client, job, repo, body):
     sync = ProgressSync(store)
     owned = [row for row in rows if sync.owned(row, repo) and sync.belongs(row, repo, job['number'])]
     target = next((row for row in owned if old and row['id'] == old['summary_id']), None)
-    if target is None and len(owned) == 1:
+    if old and old['progress_creating']:
+        # 进度写入和正式总览共用一条评论。先取得原写入的回执，再冻结更新目标。
+        confirmed = [row for row in owned if managed and row['body'] == managed['pending']
+                     and (not old['summary_id'] or row['id'] == old['summary_id'])]
+        if len(confirmed) != 1:
+            raise PublishUnknown('进度评论的写入回执尚未确认，稍后自动核对')
+        target = confirmed[0]
+    elif target is None and len(owned) == 1:
         target = owned[0]
+    if (target and managed and managed['pending'] and target['body'] == managed['body']
+            and target['body'] != managed['pending']):
+        raise PublishUnknown('进度评论的更新回执尚未确认，稍后自动核对')
     editable = target and managed and target['body'] in (managed['body'], managed['pending'])
     payload = {'body': body, 'comment_id': target['id'] if editable else None,
                'before': target['body'] if editable else None, 'previous_id': old['summary_id'] if old else None}

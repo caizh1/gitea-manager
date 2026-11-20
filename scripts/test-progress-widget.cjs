@@ -34,6 +34,18 @@ test('关闭 PR 和禁用功能显示停止', () => {
  assert.equal(effectiveStatus({ ...payload, enabled: false }, { state: 'open', head: { sha: payload.head } }), 'stopped');
 });
 
+test('源码核验未完成兼容已发布和新版状态，失败原因与 PR 版本一致', () => {
+ const pr = { state: 'open', head: { sha: payload.head } };
+ const error = '旧侧第 66 行、第 24 字节无法无损解码';
+ for (const fields of [{ status: 'incomplete' }, { status: 'failed', task_status: 'incomplete' }]) {
+   const p = parse(row({ ...payload, ...fields, error }), identity, [9]);
+   assert.equal(effectiveStatus(p, pr), 'incomplete');
+   assert.equal(p.error, error);
+   assert.equal(effectiveStatus(p, { ...pr, head: { sha: 'c'.repeat(40) } }), 'outdated');
+ }
+ assert.equal(effectiveStatus(parse(row({ ...payload, status: 'failed', error }), identity, [9]), pr), 'failed');
+});
+
 test('只提取最终服务器模板片段，不解析整个 PR 的图片和脚本', () => {
  const fragment = '<template id="ai-review-page-data" data-number="1"><div>已转义的 &lt;script&gt;</div></template>';
  assert.equal(extractFragment('<html><img src="https://example.invalid/image">&lt;template id="ai-review-page-data" &gt;'+fragment+'</html>'), fragment);

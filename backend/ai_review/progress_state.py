@@ -69,6 +69,9 @@ def job_progress(job, now=None):
     if not re.fullmatch(r'[0-9a-f]{40}', head):
         head = ''
     start, end = job.get('started_at'), job.get('finished_at')
+    if status == 'incomplete' and not job.get('batch_protocol') and end is None:
+        # 原生任务在 finish 时停止；旧记录的触发器只保存了该次状态更新的时间。
+        end = job.get('updated')
     progress = {'status': status, 'label': LABELS.get(status, status), 'stage': job.get('progress_stage', 'queued'),
             'detail': job['stage'], 'head': head, 'received_at': job['created'], 'started_at': start,
             'finished_at': end, 'elapsed_seconds': max(0, int((end or now)-start)) if start else None,

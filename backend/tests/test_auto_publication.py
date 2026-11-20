@@ -170,6 +170,92 @@ def test_codex_progress_preserves_pending_publication_receipt(case):
     assert len(case.client.summaries) == 1
 
 
+def test_native_rerun_failure_keeps_published_report_as_history(case):
+    result(case, False)
+    send(case)
+    original = case.client.summaries[0]
+    ident, report = original['id'], original['body'].split('\n', 1)[1]
+    next_version(case, False)
+    case.store.finish(case.job['id'], case.job['owner'], 'failed', '本次审查失败')
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        for _ in range(2):
+            with case.store.tx() as c:
+                c.execute('UPDATE pr_state SET progress_next=0')
+            assert sync.sync(case.repo, 1)
+            row, = case.client.summaries
+            assert row['id'] == ident and decode_body(row)['status'] == 'failed'
+            assert row['body'].count('上一次已发布的审查结果') == row['body'].count(report) == 1
+    next_version(case, False)
+    send(case)
+    row, = case.client.summaries
+    assert row['id'] == ident and '上一次已发布的审查结果' not in row['body']
+
+
+def test_publisher_reconciles_uncertain_first_progress_comment_before_posting(case):
+    sync = ProgressSync(case.store, lambda _: case.client)
+    case.client.summary_failure = True
+    with patch.object(case.client, 'repository', create=True):
+        assert not sync.sync(case.repo, 1)
+    original, = case.client.summaries
+    case.client.summaries.clear()
+    result(case, False)
+    with pytest.raises(PublishUnknown, match='进度评论的写入回执'):
+        send(case)
+    assert not case.client.summaries
+    case.client.summaries.append(original)
+    retry(case)
+    row, = case.client.summaries
+    assert row['id'] == original['id'] and 'VERDICT: PASS' in row['body']
+    assert case.store.job(case.job['id'])['status'] == 'succeeded'
+
+
+def test_unconfirmed_progress_patch_can_recover_before_summary_plan_is_frozen(case):
+    sync = ProgressSync(case.store, lambda _: case.client)
+    request = case.client.request
+
+    def pending_patch(method, path, *args, **kwargs):
+        if method == 'PATCH':
+            raise PublishUnknown('进度写入响应未知')
+        return request(method, path, *args, **kwargs)
+
+    with patch.object(case.client, 'repository', create=True):
+        assert sync.sync(case.repo, 1)
+        result(case, False)
+        with case.store.tx() as c:
+            c.execute('UPDATE pr_state SET progress_next=0')
+        with patch.object(case.client, 'request', side_effect=pending_patch):
+            assert not sync.sync(case.repo, 1)
+        with pytest.raises(PublishUnknown, match='更新回执'):
+            send(case)
+        with case.store.tx() as c:
+            c.execute('UPDATE pr_state SET progress_next=0')
+        assert sync.pending() == [{'repository': case.repo, 'number': 1}]
+        assert sync.sync(case.repo, 1)
+    retry(case)
+    assert len(case.client.summaries) == 1
+    assert case.store.job(case.job['id'])['status'] == 'succeeded'
+
+
+def test_new_failure_waits_for_then_adopts_old_exact_summary_receipt(case):
+    result(case, False)
+    case.client.summary_failure = True
+    with pytest.raises(PublishUnknown):
+        send(case)
+    old = case.job
+    case.begin()
+    case.store.finish(case.job['id'], case.job['owner'], 'incomplete', '新版本源码核验失败')
+    sync = ProgressSync(case.store, lambda _: case.client)
+    with patch.object(case.client, 'repository', create=True):
+        assert not sync.pending() and not sync.sync(case.repo, 1)
+        case.job = old
+        retry(case)
+        assert sync.sync(case.repo, 1)
+    row, = case.client.summaries
+    assert decode_body(row)['error'] == '新版本源码核验失败'
+    assert '上一次已发布的审查结果' in row['body']
+
+
 def test_codex_progress_waits_for_publisher_and_preserves_human_edits(case):
     result(case)
     send(case)

@@ -7,6 +7,6 @@
 .ai-review-progress .air-metrics, .ai-review-progress .air-notice { font-size: 12px; color: var(--color-text-light, #64748b); line-height: 1.8; }
 .ai-review-progress .air-footer { margin-top: 10px; justify-content: space-between; }
 .ai-review-progress [hidden] { display: none; }
-.ai-review-progress[data-status="failed"] .air-status, .ai-review-progress[data-status="interrupted"] .air-status, .ai-review-progress[data-status="publish_unknown"] .air-status { color: var(--color-warning-text, #9c640c); }
+.ai-review-progress[data-status="failed"] .air-status, .ai-review-progress[data-status="incomplete"] .air-status, .ai-review-progress[data-status="interrupted"] .air-status, .ai-review-progress[data-status="publish_unknown"] .air-status { color: var(--color-warning-text, #9c640c); }
 .ai-review-progress[data-status="succeeded"] .air-status { color: var(--color-success-text, #218455); }
 @media (max-width: 600px) { .ai-review-progress { padding: 12px; } .ai-review-progress .air-heading { align-items: flex-start; } .ai-review-progress .air-metrics { flex-direction: column; align-items: flex-start; gap: 3px; } }
