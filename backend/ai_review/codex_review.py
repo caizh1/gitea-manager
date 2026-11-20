@@ -358,7 +358,8 @@ def process(store, job):
         if not snapshot:
             if engine == 'pr_agent' and job.get('pr_agent_protocol'):
                 snapshot = capture(client, job["number"], config, batched=True,
-                                   byte_encodings=repo.get('source_encodings', {}))
+                                   byte_encodings=repo.get('source_encodings', {}),
+                                   pr_agent_protocol=job['pr_agent_protocol'])
             else:
                 snapshot = capture(client, job["number"], config, batched=True)
             snapshot["codex_tools"] = "native"
@@ -453,6 +454,8 @@ def process(store, job):
             "native_session": True,
             "native_commands": raw.get("_codex_commands", []),
         }
+        if raw.get('_pr_agent_local_input'):
+            result['pr_agent_local_input'] = raw['_pr_agent_local_input']
         store.update(job["id"], job["owner"], result=result, deadline_at=None, stage="核对历史问题")
         client.deadline_at = None
         from .issue_checks import SYSTEM as HISTORY_SYSTEM
@@ -495,6 +498,11 @@ def process(store, job):
             if not payload["historical_diff"]:
                 value = uncertain("历史证据缺失，保留待确认", payload["candidates"])
             else:
+                history_prompt = HISTORY_SYSTEM
+                if config.get('engine') != 'pr_agent':
+                    history_prompt = history_prompt.replace(
+                        "不审查源码仓库，没有工具", "可以使用当前固定版本只读源码工具"
+                    ).replace("不调用工具，不补查文件", "按需核对当前固定版本源码")
                 with store.tx() as c:
                     c.execute(
                         "UPDATE review_issue_checks SET state='started',started=? WHERE job=? AND issue=?",
@@ -513,9 +521,7 @@ def process(store, job):
                         {
                             "payload": payload,
                             "instructions": "当前固定源码证据可引用 current_source 中的 S 行号。修复判定必须同时引用 H 历史证据与 C 或 S 当前证据。\n"
-                            + HISTORY_SYSTEM.replace(
-                                "不审查源码仓库，没有工具", "可以使用当前固定版本只读源码工具"
-                            ).replace("不调用工具，不补查文件", "按需核对当前固定版本源码"),
+                            + history_prompt,
                         },
                     )
                 )

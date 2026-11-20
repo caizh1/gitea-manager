@@ -56,8 +56,61 @@ def test_review_store_upgrades_version_22_without_changing_old_jobs(tmp_path):
     upgraded = Store(store.path)
     assert upgraded.job(old_job)['pr_agent_protocol'] == 0
     new_job = upgraded.enqueue(repo['id'], 2, {'head': 'c' * 40, 'base': 'a' * 40})
-    assert upgraded.job(new_job)['pr_agent_protocol'] == 1
+    assert upgraded.job(new_job)['pr_agent_protocol'] == 2
     assert Store(upgraded.path).job(old_job)['status'] == 'queued'
+
+
+def test_local_pr_agent_uses_frozen_versions_instead_of_packaged_diff():
+    from ai_review.pr_agent_review import phase_input
+
+    snapshot = {'head': 'a' * 40, 'merge_base': 'b' * 40, 'title': '说明',
+                'description': '变更', 'diff': '仅供 Manager 核对的 Gitea 补丁',
+                'pr_agent_protocol': 2, 'source_encodings': {'legacy': 'gbk'},
+                'max_changed_lines': 30000}
+    result = phase_input(snapshot, 'primary')
+    assert result['pr_agent_protocol'] == 2
+    assert result['head'] == snapshot['head'] and result['merge_base'] == snapshot['merge_base']
+    assert result['source_encodings'] == {'legacy': 'gbk'}
+    assert 'diff' not in result and 'expected_changes' not in result
+
+
+def test_local_history_limits_large_patch_to_relevant_evidence():
+    import difflib
+    from ai_review.common import encode
+    from ai_review.issue_lifecycle import check_input, diff_code_references, evidence_lines
+
+    def snapshot(line):
+        lines = [line + '\n'] + [f'// 记录 {i}\n' for i in range(2000)]
+        patch = 'diff --git a/legacy.c b/legacy.c\n' + ''.join(
+            difflib.unified_diff([], lines, 'a/legacy.c', 'b/legacy.c'))
+        return {'id': 'snap', 'head': 'a' * 40, 'base': 'b' * 40, 'merge_base': 'b' * 40,
+                'diff': patch, 'pr_agent_protocol': 2}
+
+    issue = {'id': 'issue', 'status': 'present', 'finding': encode({
+        'path': 'legacy.c', 'anchor': {'side': 'new', 'line': 1},
+    })}
+    before, after = snapshot('未检查\v结果'), snapshot('检查结果后才确认')
+    before.pop('pr_agent_protocol')
+    payload = check_input(issue, before, after, [])
+    for source, prefix, key, line in ((before, 'H', 'historical_diff', '未检查\v结果'),
+                                      (after, 'C', 'current_diff', '检查结果后才确认')):
+        evidence = payload[key]
+        assert len(evidence) < 110 and len(evidence) > 2
+        source_lines = evidence_lines(dict(source, pr_agent_protocol=2), prefix)
+        assert all(source_lines[k] == v for k, v in evidence.items())
+        first = prefix + '5'
+        assert evidence[first] == '+' + line and first in diff_code_references(evidence)
+
+
+def test_gitea_legacy_patch_checks_raw_comment_context_per_anchor():
+    from ai_review.diff import parse_diff
+    from ai_review.native_workspace import gitea_legacy_inline_positions
+
+    patch, = parse_diff(
+        b'diff --git a/legacy.c b/legacy.c\n--- a/legacy.c\n+++ b/legacy.c\n@@ -1 +1,4 @@\n'
+        + '-旧行\n'.encode('gbk') + b'+first\n+second\n+third\n+fourth\n'
+    )
+    assert gitea_legacy_inline_positions(patch) == {('old', 1), ('new', 1), ('new', 2), ('new', 3)}
 
 
 @pytest.mark.parametrize(('added', 'deleted'), [
@@ -267,7 +320,7 @@ def test_pr_agent_jobs_keep_engine_and_use_shared_concurrency(tmp_path):
         assert job['id'] in (first, second)
         assert job['batch_protocol'] == 0
         assert job['rules_protocol'] == 1
-        assert job['pr_agent_protocol'] == 1
+        assert job['pr_agent_protocol'] == 2
         assert store.job_config(job['id'])['engine'] == 'pr_agent'
     assert store.claim() is None
     store.save_config(dict(store.config(), engine='codex_cli'))

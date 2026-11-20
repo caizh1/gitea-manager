@@ -39,14 +39,16 @@ def observations(store, job):
 
 
 def overview(store, job, result):
-    from .progress import SUMMARY_MARK
+    from .progress import SUMMARY_MARK, review_scope_note
     from .issue_lifecycle import LABELS
     from .publish import prose
     body = SUMMARY_MARK + '\n<!-- ai-review:auto-summary:' + job['id'] + ' -->'
     body += '\n### AI Code Review\n\n审查版本 `' + job['snapshot']['head'] + '`。'
     body += '\n\n' + (result.get('report_markdown', '').splitlines() or [''])[0]
-    if result.get('review_scope') == 'repository':
-        body += '\n\n审查范围：完整 PR diff，按需检索固定版本仓库中的相关源码。'
+    engine = job['snapshot'].get('engine') or (job.get('configuration') or {}).get('engine')
+    note = review_scope_note(engine, result.get('review_scope'), job['snapshot'].get('pr_agent_protocol'))
+    if note:
+        body += '\n\n' + note
     frozen_ids = result.get('_approved_issue_ids')
     for row in observations(store, job):
         if frozen_ids is not None and row['issue'] not in frozen_ids:
@@ -57,6 +59,8 @@ def overview(store, job, result):
     for finding in fallback:
         body += '\n\n- **' + prose(finding.get('severity', '')) + ' ' + prose(finding['title'])[:300] + '**'
         body += '\n  ' + prose(finding.get('explanation') or finding.get('comment_markdown', ''))[:600]
+        if finding.get('fallback_reason'):
+            body += '\n  ' + prose(finding['fallback_reason'])
     callback = store.repo(job['repository']).get('webhook_url', '')
     base = callback.split('/api/ai-review/webhooks/')[0] if '/api/ai-review/webhooks/' in callback else ''
     link = ('[查看完整分析与证据](' + base + '/ai-reviews?task=' + job['id'] + ')'
@@ -97,6 +101,10 @@ def prepare(store, client, job, repo):
     result.pop('publication', None)
     if not job['result'].get('publication'):
         result['_automatic_publication'] = True
+        for finding in result.get('findings', []):
+            if (finding.get('anchor') or {}).get('gitea_legacy_inline') is False:
+                finding['anchor'] = None
+                finding['fallback_reason'] = '该位置的 Gitea 行评补丁包含旧编码字节，意见已放入总览。'
     publisher = Publisher(store, client, job, repo, job['snapshot'], result)
     if result.get('_automatic_publication'):
         publisher.page_size = 1

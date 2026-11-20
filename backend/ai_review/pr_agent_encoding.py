@@ -6,7 +6,7 @@ import re
 from .common import ReviewError, safe_path
 from .diff import file_lines
 
-PROTOCOL = 1
+PROTOCOL = LOCAL_GIT_PROTOCOL = 2
 CONFIG = 'source_encodings'
 
 

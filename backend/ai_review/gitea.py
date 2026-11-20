@@ -272,6 +272,8 @@ class Gitea:
             # 1.26.4 的 Review 评论接口直接返回完整数组，既不使用分页参数，
             # 也不设置 X-Total-Count。不能按每页 50 条循环读取同一个集合。
             rows = self.request('GET', path)
+            if rows is None:
+                raise PublishUnknown('Gitea Review 行评回执为空，继续自动核对')
             if (not isinstance(rows, list)
                     or any(not isinstance(row, dict) or type(row.get('id')) is not int or row['id'] <= 0 for row in rows)
                     or len({row['id'] for row in rows}) != len(rows)

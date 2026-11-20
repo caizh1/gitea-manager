@@ -116,8 +116,24 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(task['progress']['review_scope'], 'repository')
         self.assertEqual(stored['result']['coverage']['scope'], 'diff')
         payload = payload_for(self.store.repo(self.repo), state, stored, True, self.client.pr(1))
-        self.assertNotIn('仅审查 PR diff', comment_body(payload))
+        self.assertIn('按需检索固定版本仓库中的相关源码', comment_body(payload))
         self.assertIn('按需检索固定版本仓库中的相关源码', overview(self.store, stored, result))
+
+    def test_pr_agent_scope_includes_source_in_historical_issue_checks(self):
+        from ai_review.publication import overview
+
+        job = self.store.claim()
+        snapshot = {'head': 'a' * 40, 'engine': 'pr_agent', 'coverage': {'scope': 'diff'}}
+        result = {'review_scope': 'diff', 'findings': [], 'report_markdown': 'VERDICT: PASS'}
+        self.store.update(self.id, job['owner'], snapshot=snapshot, result=result)
+        self.store.finish(self.id, job['owner'], 'succeeded')
+
+        state, stored = state_for(self.store, self.repo, 1)
+        payload = payload_for(self.store.repo(self.repo), state, stored, True, self.client.pr(1))
+        for text in (comment_body(payload), overview(self.store, stored, result)):
+            self.assertIn('PR-Agent 主审使用 PR 变更和相邻上下文', text)
+            self.assertIn('历史问题复审可补充固定版本中的相关源码', text)
+            self.assertNotIn('未读取完整工程', text)
 
     def test_superseded_list_matches_detail_without_rewriting_stored_stage(self):
         self.store.enqueue(self.repo, 1, {'head': 'c' * 40, 'base': 'b' * 40})

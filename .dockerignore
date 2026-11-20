@@ -3,6 +3,12 @@
 !backend/
 backend/*
 !backend/wheels/
+!backend/ai_review/
+backend/ai_review/*
+!backend/ai_review/__init__.py
+!backend/ai_review/common.py
+!backend/ai_review/diff.py
+!backend/ai_review/pr_agent_encoding.py
 !review-runtime/
 review-runtime/*
 !review-runtime/executor.py
@@ -22,6 +28,7 @@ review-runtime/*
 !review-runtime/codex_model.json
 !review-runtime/pr_agent_session.py
 !review-runtime/pr_agent_runner.py
+!review-runtime/pr_agent_local.py
 !review-runtime/pr-agent-requirements.txt
 !review-runtime/vendor/pr-agent-wheels/**
 !review-runtime/vendor/pr-agent-assets/**

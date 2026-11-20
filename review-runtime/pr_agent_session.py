@@ -73,6 +73,7 @@ class PRAgentRun(SessionRun):
             env['LD_LIBRARY_PATH'] = str(runtime / 'lib')
             env['TIKTOKEN_CACHE_DIR'] = os.environ.get('AI_REVIEW_PR_AGENT_ASSETS', '/opt/pr-agent-assets')
             payload = {'input': self.input, 'model': self.model, 'gateway': self.gateway.url,
+                       'job_id': self.job_id,
                        'timeout': max(1, int(self.remaining())), 'context_tokens': self.model_context_tokens,
                        'output_tokens': self.upstream_output_tokens, 'max_findings': self.max_findings,
                        'reasoning_effort': self.reasoning_effort}

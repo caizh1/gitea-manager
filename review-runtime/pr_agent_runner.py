@@ -104,9 +104,11 @@ async def review(payload):
     from pr_agent.git_providers.diff_parsing import parse_unified_diff
     from tenacity import stop_after_attempt
     task = payload['input']
+    local_git = task.get('pr_agent_protocol') == 2
+    provider = 'plain-diff'
     expected = task.get('expected_changes')
     checked_diff = None
-    if expected is not None:
+    if expected is not None or local_git:
         from pr_agent.algo import language_handler
         from pr_agent.git_providers import plain_diff_provider
 
@@ -114,6 +116,13 @@ async def review(payload):
         # 仍用原生语言排序、补丁渲染与 Token 预算。
         language_handler.filter_bad_extensions = list
         plain_diff_provider.partition_files_by_language_filter = lambda files: (files, [])
+    if local_git:
+        from pr_agent.git_providers import local_git_provider, register_git_provider
+        from pr_agent_local import local_provider
+
+        provider = 'manager-local'
+        register_git_provider(provider, local_provider(task))
+        local_git_provider.partition_files_by_language_filter = lambda files: (files, [])
 
     native_render = pr_processing.decouple_and_convert_to_hunks_with_lines_numbers
 
@@ -146,7 +155,7 @@ async def review(payload):
     settings = get_settings()
     model = 'openai/' + payload['model']
     values = {
-        'config.git_provider': 'plain-diff', 'config.model': model,
+        'config.git_provider': provider, 'config.model': model,
         'config.weak_model': model, 'config.fallback_models': [], 'config.num_retries': 0,
         'config.ai_timeout': payload['timeout'], 'config.propagate_command_errors': True,
         'config.response_language': 'zh-CN', 'config.publish_output': False,
@@ -164,10 +173,13 @@ async def review(payload):
         'pr_reviewer.inline_key_issues': False,
         'openai.api_base': payload['gateway'], 'openai.key': os.environ['PR_AGENT_API_KEY'],
         'litellm.timeout': payload['timeout'],
-        'plain_diff.content': task['diff'], 'plain_diff.title': task['title'],
+        'plain_diff.content': task.get('diff'), 'plain_diff.title': task['title'],
         'plain_diff.description': task['description'],
     }
-    if expected is not None:
+    if local_git:
+        values.update({'config.allow_dynamic_context': True, 'config.patch_extra_lines_before': 5,
+                       'config.patch_extra_lines_after': 1, 'config.max_extra_lines_before_dynamic_context': 10})
+    elif expected is not None:
         values.update({'config.patch_extra_lines_before': 0, 'config.patch_extra_lines_after': 0})
     for key, value in values.items():
         settings.set(key, value)
@@ -215,18 +227,28 @@ async def review(payload):
 
     settings.set('pr_review_prompt.system', priority_prompt(settings.pr_review_prompt.system, schema=True))
     settings.set('pr_review_prompt.user', priority_prompt(settings.pr_review_prompt.user))
-    files = parse_unified_diff(task['diff'])
+    if local_git:
+        reviewer = PRReviewer('gm-review-base-' + payload['job_id'], ai_handler=MeasuredHandler)
+        reviewer.vars.update(title=task['title'], description=task['description'])
+        files = reviewer.git_provider.get_diff_files()
+        expected = reviewer.git_provider.expected_changes
+    else:
+        files = parse_unified_diff(task['diff'])
     deletion_instructions = ''
     if any(file.edit_type == EDIT_TYPE.DELETED for file in files):
         deletion_instructions = (
             '同时检查整文件删除引入的回归。对于已删除文件，使用旧侧 hunk 的行号报告位置。\n')
-    settings.set('pr_reviewer.extra_instructions', (
+    extra = (
         '使用中文。每项severity字段填写P0、P1、P2或P3，issue_header保持简短标题。'
         'P0/P1仅用于当前改动造成、真实可达且严重到阻止合并的缺陷。'
         '核对调用约束和已有保护，正文给出触发条件、因果链、影响和证据。'
         '普通优化和轻微问题使用P2/P3。没有成立问题时key_issues_to_review返回空列表。\n'
-        + deletion_instructions + task['instructions']))
-    reviewer = PRReviewer('manager', ai_handler=MeasuredHandler)
+        + deletion_instructions + task['instructions'])
+    settings.set('pr_reviewer.extra_instructions', extra)
+    if local_git:
+        reviewer.vars['extra_instructions'] = extra
+    else:
+        reviewer = PRReviewer('manager', ai_handler=MeasuredHandler)
     expected_paths = {item.filename for item in files}
     actual_paths = {item.filename for item in reviewer.git_provider.get_diff_files()}
     if actual_paths != expected_paths or reviewer.git_provider.get_filtered_diff_file_names():
@@ -241,6 +263,9 @@ async def review(payload):
         raise ValueError('pr_agent_findings_limit')
     data = reviewer.prediction_data or reviewer._load_valid_review_yaml(reviewer.prediction)
     result = normalize(data)
+    if local_git:
+        result['_pr_agent_local_input'] = {'changes': reviewer.git_provider.change_counts,
+                                           'files': len(expected), 'dynamic_context': True}
     if len(result['findings']) >= payload['max_findings']:
         raise ValueError('pr_agent_findings_limit')
     return result

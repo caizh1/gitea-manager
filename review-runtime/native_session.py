@@ -1475,11 +1475,18 @@ class NativeSessions:
             source = data.get('pr_agent_input')
             if (not isinstance(source, dict)
                     or any(not isinstance(source.get(key), str) for key in
-                           ('head', 'merge_base', 'title', 'description', 'diff', 'phase', 'instructions'))
+                           ('head', 'merge_base', 'title', 'description', 'phase', 'instructions'))
                     or not re.fullmatch(r'[0-9a-f]{40}', source['head'])
                     or source['head'] != data.get('source_head')
                     or not re.fullmatch(r'[0-9a-f]{40}', source['merge_base'])
                     or type(data.get('max_findings')) is not int or not 1 <= data['max_findings'] <= 30):
+                raise NativeError('execute_input_invalid')
+            if source.get('pr_agent_protocol') == 2:
+                if ('diff' in source or data.get('workspace_layout') != 'git-worktree-v2'
+                        or not isinstance(source.get('source_encodings'), dict)
+                        or type(source.get('max_changed_lines')) is not int or source['max_changed_lines'] <= 0):
+                    raise NativeError('execute_input_invalid')
+            elif not isinstance(source.get('diff'), str) or source.get('pr_agent_protocol', 0) not in (0, 1):
                 raise NativeError('execute_input_invalid')
         if data.get('review_scope', 'repository') not in ('repository', 'diff'):
             raise NativeError('execute_input_invalid')

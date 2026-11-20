@@ -9,6 +9,7 @@ import secrets
 import shutil
 import tarfile
 import time
+from collections import deque
 from pathlib import Path, PurePosixPath
 
 from .common import ReviewError, encode
@@ -337,6 +338,27 @@ def _read_fixed(path, deadline_at, store, job):
     return b''.join(chunks)
 
 
+def gitea_legacy_inline_positions(patch):
+    """Gitea 1.26.4 默认把锚点及前三个补丁记录写入行评回执。"""
+    unsafe = set()
+    for hunk in patch.hunks:
+        recent = deque(maxlen=4)
+        old = hunk.old_start - bool(hunk.old_count)
+        new = hunk.new_start - bool(hunk.new_count)
+        for kind, raw in hunk.rows:
+            old += kind != '+'
+            new += kind != '-'
+            try:
+                raw.decode('utf-8')
+            except UnicodeDecodeError:
+                recent.append(False)
+            else:
+                recent.append(True)
+            if kind in ('+', '-') and not all(recent):
+                unsafe.add(('new', new) if kind == '+' else ('old', old))
+    return unsafe
+
+
 def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
     """
     用原生工作区的固定 Diff 及前后源码生成行内证据。
@@ -351,7 +373,7 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
     git_layout = snapshot.get('workspace_layout') in ('git-worktree-v1', 'git-worktree-v2')
     byte_protocol = snapshot.get('pr_agent_protocol')
     if byte_protocol:
-        from .pr_agent_encoding import blocks, decode_blob, render_block, unpack
+        from .pr_agent_encoding import LOCAL_GIT_PROTOCOL, blocks, decode_blob, render_block, unpack
         raw = unpack(snapshot)
         patch_blocks = blocks(raw)
         if len(patch_blocks) != snapshot['coverage']['files_total']:
@@ -403,6 +425,11 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
                 raise
             if byte_protocol:
                 normalized = render_block(block, patch, encodings)
+                if byte_protocol == LOCAL_GIT_PROTOCOL and set(encodings.values()) != {'utf-8'}:
+                    unsafe = gitea_legacy_inline_positions(patch)
+                    for anchor in found:
+                        if (anchor['side'], anchor['line']) in unsafe:
+                            anchor['gitea_legacy_inline'] = False
             else:
                 old_text, new_text = old.decode('utf-8'), new.decode('utf-8')
             needed = len(old) + len(new)

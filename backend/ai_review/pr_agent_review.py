@@ -1,6 +1,7 @@
 """将固定 PR 和仓库规范交给 PR-Agent 原生审查，复用现有阶段与发布编排。"""
 from .common import digest, encode
 from .diff import parse_diff, quote_text
+from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
 from .repository_rules import instructions
 
 
@@ -14,11 +15,15 @@ def phase_input(snapshot, phase, candidates=None):
         )
     elif phase.startswith('history-'):
         extra += '\n' + candidates['instructions'] + '\n' + encode(candidates['payload'])
-    result = {key: snapshot[key] for key in ('head', 'merge_base', 'title', 'description', 'diff')} | {
+    result = {key: snapshot[key] for key in ('head', 'merge_base', 'title', 'description')} | {
         'phase': phase, 'instructions': extra,
     }
     if snapshot.get('pr_agent_protocol'):
         result['pr_agent_protocol'] = snapshot['pr_agent_protocol']
+    if result.get('pr_agent_protocol') == LOCAL_GIT_PROTOCOL:
+        return dict(result, source_encodings=snapshot['source_encodings'],
+                    max_changed_lines=snapshot['max_changed_lines'])
+    result['diff'] = snapshot['diff']
     if result.get('pr_agent_protocol') and not phase.startswith('history-'):
         coverage = {}
         for patch in parse_diff(snapshot['diff'].encode()):

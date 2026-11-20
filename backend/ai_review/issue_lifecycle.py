@@ -4,8 +4,9 @@ import json
 import re
 import time
 
-from .common import ReviewError, Stale, AccessRevoked, digest, encode
+from .common import ReviewError, PublishUnknown, Stale, AccessRevoked, digest, encode
 from .gitea import assert_version
+from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
 
 LABELS = {'present': '仍存在', 'fixed': '已修复', 'obsolete': '已失效', 'uncertain': '待确认'}
 
@@ -93,7 +94,17 @@ def adopt_history(store, client, job, repo):
         snapshot = json.loads(source['snapshot']) if source['snapshot'] else None
         if snapshot and snapshot.get('head') != review.get('commit_id'):
             raise ReviewError('历史 Review 与固定版本不一致，未接管')
-        rows = client.pages(path + '/' + str(review['id']) + '/comments')
+        try:
+            rows = client.pages(path + '/' + str(review['id']) + '/comments')
+        except PublishUnknown:
+            # 已冻结的本系统操作继续由发布恢复核对，新一代仍可审查其他问题。
+            with contextlib.closing(store.connect()) as c:
+                pending = c.execute("""SELECT 1 FROM review_issue_operations WHERE job=? AND kind='create'
+                    AND state IN ('started','unknown') AND json_extract(payload,'$.body')=?""",
+                                    (source['id'], review.get('body'))).fetchone()
+            if not pending:
+                raise
+            continue
         from .publish import finding_body, marker
         result = json.loads(source['result']) if source['result'] else {}
         findings = result.get('publication', result).get('findings', [])
@@ -150,15 +161,57 @@ def evidence_lines(snapshot, prefix):
     return {prefix + str(i): line.removesuffix('\r') for i, line in enumerate(lines, 1)}
 
 
+def focused_diff_evidence(source, prefix, path, locations):
+    """只给单个历史问题提供同文件、同位置附近的证据，沿用原始 diff 引用号。"""
+    from .diff import parse_diff
+
+    if not path or not locations:
+        return {}
+    # 历史快照可能没有协议字段，Git diff 行仍只按 LF 分隔。
+    lines = [line.removesuffix('\r') for line in source['diff'].removesuffix('\n').split('\n')]
+    starts = [i for i, line in enumerate(lines) if line.startswith('diff --git ')] + [len(lines)]
+    selected = {}
+    for start, end in zip(starts, starts[1:]):
+        patch, = parse_diff(('\n'.join(lines[start:end]) + '\n').encode())
+        if path not in (patch.old_path, patch.new_path):
+            continue
+        headers = [i for i in range(start, end) if lines[i].startswith('@@ ')]
+        for header, hunk in zip(headers, patch.hunks):
+            old, new = hunk.old_start, hunk.new_start
+            for i in range(header + 1, end):
+                kind = lines[i][:1]
+                if kind not in (' ', '-', '+'):
+                    if lines[i].startswith('\\ No newline at end of file'):
+                        continue
+                    break
+                line_numbers = {'old': old if kind != '+' else None,
+                                'new': new if kind != '-' else None}
+                if any(line_numbers[side] is not None and abs(line_numbers[side] - line) <= 100
+                       for side, line in locations):
+                    selected[prefix + str(start + 1)] = lines[start]
+                    selected[prefix + str(header + 1)] = lines[header]
+                    selected[prefix + str(i + 1)] = lines[i]
+                old += kind != '+'
+                new += kind != '-'
+    return selected
+
+
 def check_input(issue, origin, snapshot, candidates):
     finding = json.loads(issue['finding'])
+
     def relevant(source, prefix):
         if not source:
             return {}
+        path = finding.get('path') or (finding.get('anchor') or {}).get('path')
+        if snapshot.get('pr_agent_protocol') == LOCAL_GIT_PROTOCOL:
+            changes = [finding] if prefix == 'H' else [finding, *candidates]
+            anchors = [row.get('anchor') or {} for row in changes if row.get('path') == path]
+            locations = {(anchor['side'], anchor['line']) for anchor in anchors
+                         if anchor.get('side') in ('old', 'new') and type(anchor.get('line')) is int}
+            return focused_diff_evidence(source, prefix, path, locations)
         if not snapshot.get('batch_protocol'):
             return evidence_lines(source, prefix)
         # 原问题及当前同路径修改块；缺失或重命名不推断修复。
-        path = finding.get('path') or (finding.get('anchor') or {}).get('path')
         from .diff import parse_diff
         import re
         lines = source['diff'].splitlines(keepends=True)

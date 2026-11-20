@@ -22,6 +22,8 @@ COPY --chmod=555 review-runtime/vendor/rg-linux-x64 /usr/local/bin/rg
 COPY review-runtime/codex_session.py review-runtime/review_tools.py review-runtime/backend_responses.py review-runtime/codex_model.json /opt/review/
 COPY review-runtime/executor.py /opt/review/executor.py
 COPY review-runtime/pr_agent_session.py review-runtime/pr_agent_runner.py /opt/review/
+COPY review-runtime/pr_agent_local.py /opt/review/
+COPY backend/ai_review/__init__.py backend/ai_review/common.py backend/ai_review/diff.py backend/ai_review/pr_agent_encoding.py /opt/review/ai_review/
 COPY review-runtime/native_session.py review-runtime/native_gateway.py review-runtime/raw_diagnostics.py review-runtime/runtime_diagnostics.py review-runtime/runtime_probe.py review-runtime/legacy_adapter.py review-runtime/review_result_schema.json review-runtime/StructuredOutput.js /opt/review/
 RUN python -c "import native_session, runtime_probe; native_session.load_review_result_schema()"
 RUN test "$(/opt/review/opencode --version)" = "1.18.7"

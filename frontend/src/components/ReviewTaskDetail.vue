@@ -93,8 +93,9 @@
         </el-tab-pane>
 
         <el-tab-pane :label="diffOnly ? '审查报告' : `审查结果（${findings.length}）`" name="result">
-          <el-alert v-if="diffOnly" title="仅审查 PR diff" description="仅使用 PR 标题、描述和 diff 中的变更与相邻上下文；未读取完整文件或工程，未执行构建与测试。" type="info" :closable="false" />
-          <el-alert v-else-if="reviewScope === 'repository' && task.configuration?.engine === 'codex_cli'" title="完整 PR diff，按需检索相关源码" description="Codex 可在固定版本的仓库中查阅相关文件。实际检索范围以任务日志为准。" type="info" :closable="false" />
+          <el-alert v-if="usesPrAgent" title="PR-Agent 主审范围" :description="prAgentScopeDescription" type="info" :closable="false" />
+          <el-alert v-else-if="reviewScope === 'repository' && task.configuration?.engine === 'codex_cli'" title="PR 变更与相关源码" description="Codex 可在固定版本的仓库中按需查阅相关文件。实际检索范围见任务日志。" type="info" :closable="false" />
+          <el-alert v-else-if="diffOnly" title="PR 变更审查" description="本次以 PR 变更为审查依据，实际覆盖范围见「变更与覆盖」。" type="info" :closable="false" />
           <el-alert v-if="partial" title="本次审查存在未覆盖或未完成内容，请结合覆盖范围查看。" type="warning" show-icon :closable="false" />
           <ReviewIssueLedger :task="task" :open="open" />
           <details v-if="task.result?.refutation?.length"><summary>独立会话反证结果</summary><section v-for="(check, index) in task.result.refutation" :key="index"><strong>{{ check.candidate }} · {{ check.retained ? '保留' : '排除' }}</strong><p>{{ check.reason }}</p></section></details>
@@ -123,7 +124,8 @@
         </el-tab-pane>
         <el-tab-pane :label="`变更与覆盖（${groups.length} 组缺口）`" name="coverage">
           <p v-if="task.snapshot?.line_counts" class="secondary">新增 {{ task.snapshot.line_counts.added_lines }} 行，删除 {{ task.snapshot.line_counts.deleted_lines }} 行，合计 {{ task.snapshot.line_counts.added_lines + task.snapshot.line_counts.deleted_lines }} / {{ task.snapshot.max_changed_lines?.toLocaleString() }} 行。</p>
-          <el-alert v-if="diffOnly" :title="`已提供 ${coverage.diff_files_provided || 0} 个文件的 PR diff`" description="这里统计输入范围，不代表完整工程覆盖；二进制内容和 diff 外的依赖无法检查。" type="info" :closable="false" />
+          <el-alert v-if="usesPrAgent" :title="task.status === 'succeeded' ? `主审纳入 ${coverage.diff_files_provided ?? coverage.files_total ?? 0} 个变更文件` : 'PR-Agent 变更覆盖'" description="下方列出本次变更的覆盖缺口。历史问题复审记录在问题台账。" type="info" :closable="false" />
+          <el-alert v-else-if="diffOnly" title="PR 变更覆盖" description="下方展示任务记录的输入范围和覆盖缺口。" type="info" :closable="false" />
           <p class="secondary">文件读取数量与分析完成数量分别统计。重复缺口已合并，展开文件查看具体原因。</p><p v-if="coverage.change_evidence" class="evidence-count">已提供变更原文 {{ coverage.change_evidence.supplied }} / {{ coverage.change_evidence.expected }} 行。此项只统计原文供给，审查结论还需结合已完成单元和未决范围。</p><el-empty v-if="!groups.length" :description="task.status === 'succeeded' ? '本次没有记录覆盖缺口。' : '当前尚未记录缺口，任务完成前不能判断覆盖完整。'" /><el-collapse><el-collapse-item v-for="group in groups" :key="group.path" :name="group.path"><template #title><div class="coverage-title"><strong>{{ group.path }}</strong><el-tag type="warning" size="small">{{ group.reasons.length }} 类原因</el-tag></div></template><div v-for="(reason, i) in group.reasons" :key="i" class="coverage-reason"><p>{{ reason.reason }}</p><small>记录 {{ reason.count }} 次<span v-if="reason.scopes.length"> · 涉及 {{ reason.scopes.length }} 个函数</span></small><details v-if="reason.scopes.length"><summary>查看函数</summary><ul><li v-for="scope in reason.scopes" :key="scope">{{ scope }}</li></ul></details></div></el-collapse-item></el-collapse>
           <details v-if="coverage.diagnostics?.length"><summary>代码组织说明（{{ coverage.diagnostics.length }} 项）</summary><p class="secondary">语法树用于辅助组织。解析器未识别的原文仍可进入审查；实际未决内容在上方单独显示。</p><ul class="diagnostics"><li v-for="(note, i) in coverage.diagnostics" :key="i"><strong>{{ note.path }}</strong><span>{{ note.side === 'old' ? '修改前' : '修改后' }}<template v-if="note.start_line"> · 第 {{ note.start_line }} 行</template> · {{ note.reason }}</span></li></ul></details>
           <section v-if="!hasNativeEvents"><h4>历史检索记录（{{ retrieval.operations || 0 }} 条）</h4><p>读取记录包含整个任务的分页和复用记录，不代表模型分析次数，也不会作为完整对话历史逐轮累加。</p><p class="secondary">模型补查 {{ retrieval.model_rounds ?? retrieval.rounds ?? 0 }} 轮 · 程序补查 {{ retrieval.runtime_rounds || 0 }} 轮 · 独立请求 {{ retrieval.unique_requests ?? retrieval.operations ?? 0 }} 项 · 读取记录 {{ retrieval.operations || 0 }} 条 · {{ retrieval.failed || 0 }} 条读取失败</p><el-alert v-if="readError" :title="readError" type="error" :closable="false" /><el-empty v-if="!reads.length" description="本次尚无主动检索记录，模型可以直接使用已提供的上下文。" /><el-collapse><el-collapse-item v-for="(read, i) in reads" :key="`${read.unit}:${read.request_id}:${i}`" :name="`read-${i}`"><template #title><div class="coverage-title"><el-tag :type="read.status === 'error' || read.complete === false ? 'warning' : 'info'" size="small">{{ read.request?.version === 'before' ? '修改前' : '修改后' }}</el-tag><strong>{{ operations[read.request?.op] || '读取' }} · {{ read.request?.path || read.request?.pattern || '*' }}</strong><span v-if="read.source">第 {{ read.source.start }}–{{ read.source.end }} 行</span><span v-if="read.request?.query">{{ read.request.query }}</span></div></template><p v-if="read.status === 'error'" class="read-warning">{{ read.reason }}</p><template v-if="read.source"><p>固定提交 {{ read.source.commit }} · 第 {{ read.source.start }}–{{ read.source.end }} 行</p><pre>{{ read.source.code }}</pre></template></el-collapse-item></el-collapse><el-button v-if="reads.length < readTotal" :loading="reading" @click="loadReads">加载更多记录（{{ reads.length }} / {{ readTotal }}）</el-button></section>
@@ -183,6 +185,10 @@ const findings = computed(() => Array.isArray(props.task?.result?.findings) ? pr
 const coverage = computed(() => props.task?.result?.coverage || props.task?.snapshot?.coverage || {})
 const reviewScope = computed(() => props.task?.progress?.review_scope ?? props.task?.result?.review_scope ?? coverage.value.scope)
 const diffOnly = computed(() => reviewScope.value === 'diff')
+const usesPrAgent = computed(() => props.task?.configuration?.engine === 'pr_agent' || coverage.value.source_read_tracking === 'pr_agent_diff_context')
+const prAgentScopeDescription = computed(() => props.task?.pr_agent_protocol === 2
+  ? 'PR-Agent 从固定 Git 工作区生成变更，并按需扩展变更附近的源码上下文。历史问题复审可补充相关源码。'
+  : '主审使用 PR 变更和相邻上下文。历史问题复审可补充固定版本中的相关源码。')
 const reportText = computed(() => props.task?.result?.report_markdown || '')
 const groups = computed(() => coverageGroups(coverage.value))
 const retrieval = computed(() => props.task?.result?.context_retrieval || {})

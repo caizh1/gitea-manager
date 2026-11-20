@@ -41,7 +41,9 @@ def payload_for(repo, state, job, enabled, pr, now=None):
     elif progress['head'] and progress['head'] != current_head:
         progress.update(status='outdated', label=LABELS['outdated'], detail='下方任务属于历史版本，当前提交等待审查')
     result = job.get('result') or {}
-    coverage = result.get('coverage') or (job.get('snapshot') or {}).get('coverage')
+    snapshot = job.get('snapshot') or {}
+    engine = snapshot.get('engine') or (job.get('configuration') or {}).get('engine')
+    coverage = result.get('coverage') or snapshot.get('coverage')
     diff_only = progress['review_scope'] == 'diff'
     coverage = ({k: coverage.get(k) for k in ('complete', 'files_reviewed', 'files_total', 'source_read_tracking')}
                 if coverage and (not diff_only or job.get('batch_protocol')) else None)
@@ -49,13 +51,27 @@ def payload_for(repo, state, job, enabled, pr, now=None):
                 job=job['id'], generation=state['generation'], job_generation=job['generation'], sequence=state['progress_seq'],
                 enabled=bool(enabled and repo['enabled']), current_head=current_head, checked_at=now,
                 findings=len(result.get('findings', [])) if result and job['status'] == 'succeeded' and not diff_only else None,
-                review_scope='diff' if diff_only else 'repository', coverage=coverage,
+                review_scope='diff' if diff_only else 'repository', review_engine=engine, coverage=coverage,
+                pr_agent_protocol=snapshot.get('pr_agent_protocol', job.get('pr_agent_protocol')),
                 error=job['error'][:1000], review_id=job.get('review_id') if job['status'] == 'succeeded' else None,
                 review_fragment=job.get('review_fragment', '') if job['status'] == 'succeeded' else '')
 
 
 def format_time(value):
     return time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(value)) if value else '尚无'
+
+
+def review_scope_note(engine, scope, pr_agent_protocol=None):
+    if engine == 'pr_agent':
+        from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
+        if pr_agent_protocol == LOCAL_GIT_PROTOCOL:
+            return 'PR-Agent 从固定 Git 工作区生成变更，并按需扩展变更附近的源码上下文。历史问题复审可补充相关源码。'
+        return 'PR-Agent 主审使用 PR 变更和相邻上下文。历史问题复审可补充固定版本中的相关源码。'
+    if scope == 'repository':
+        return '审查范围：完整 PR diff，按需检索固定版本仓库中的相关源码。'
+    if scope == 'diff':
+        return '本次以 PR 变更为审查依据，实际覆盖范围见任务详情。'
+    return ''
 
 
 def comment_body(payload):
@@ -75,8 +91,12 @@ def comment_body(payload):
     if payload['findings'] is not None:
         text += f"\n\n发现 {payload['findings']} 项问题。"
     coverage = payload['coverage']
-    if payload.get('review_scope') == 'diff':
-        text += '\n\n仅审查 PR diff；未读取完整工程。具体问题见审查报告，不提供自动提取的问题计数。'
+    engine = payload.get('review_engine')
+    scope = payload.get('review_scope')
+    if engine in ('pr_agent', 'codex_cli') or scope == 'diff':
+        note = review_scope_note(engine, scope, payload.get('pr_agent_protocol'))
+        if note:
+            text += '\n\n' + note
     if coverage:
         if coverage.get('source_read_tracking') == 'native_commands':
             text += f" 已提供 {coverage['files_total']} 个变更文件的完整 diff，源码调查记录见原生命令日志。"

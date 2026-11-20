@@ -26,7 +26,7 @@ def prompt(snapshot):
             + diff_inline.locations(snapshot))
 
 
-def capture(client, number, config, batched=False, *, byte_encodings=None):
+def capture(client, number, config, batched=False, *, byte_encodings=None, pr_agent_protocol=None):
     server_version = client.version()
     client.repository()
     pr = client.pr(number)
@@ -39,7 +39,7 @@ def capture(client, number, config, batched=False, *, byte_encodings=None):
         from .pr_agent_encoding import PROTOCOL, pack
         size_policy = {'engine': 'pr_agent', 'max_changed_lines': PR_AGENT_MAX_CHANGED_LINES}
         byte_snapshot = dict(size_policy, line_counts=validate_single_size(size_policy, raw=raw),
-                             pr_agent_protocol=PROTOCOL, source_encodings=byte_encodings,
+                             pr_agent_protocol=pr_agent_protocol or PROTOCOL, source_encodings=byte_encodings,
                              raw_diff=pack(raw))
         text = ''
     else:
