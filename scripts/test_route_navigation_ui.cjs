@@ -67,6 +67,7 @@ function fixture(url, method, payload) {
   if (p === '/api/ai-review/tasks/navigation-preflight-details') return preflightTask
   if (p === '/api/ai-review/tasks/navigation-preflight-summary') return { ...preflightTask, id: 'navigation-preflight-summary', snapshot: null }
   if (/^\/api\/ai-review\/tasks\/navigation-preflight-(?:details|summary)\/context-reads$/.test(p)) return { items: [], total: 0 }
+  if (/^\/api\/ai-review\/tasks\/navigation-preflight-(?:details|summary)\/issues$/.test(p)) return { items: [], total: 0, page: 1, checks: {} }
   if (p === '/api/ai-review/tasks/navigation-git-failure/issues') return { items: [], total: 0, page: 1, checks: {} }
   if (p === '/api/ai-review/repositories/1/dataset') return {
     items: [datasetItem], total: 1, pending_events: 0, sync_error: '',
