@@ -6,8 +6,25 @@ import re
 from .common import ReviewError, safe_path
 from .diff import file_lines
 
-PROTOCOL = LOCAL_GIT_PROTOCOL = 2
+LOCAL_GIT_PROTOCOL = 2
+PROTOCOL = 3
 CONFIG = 'source_encodings'
+
+
+def uses_local_git(protocol):
+    return protocol in (LOCAL_GIT_PROTOCOL, PROTOCOL)
+
+
+class UnreviewableSource(ReviewError):
+    """文件字节存在缺口，不能产生可信源码证据。"""
+
+
+class AgentCoverageError(ValueError):
+    """执行器使用结构化原因与文件清单定位覆盖缺口。"""
+
+    def __init__(self, code, **details):
+        super().__init__(code)
+        self.details = details
 
 
 def validate_config(value):
@@ -38,9 +55,9 @@ def blocks(raw):
     return [part for part in re.split(rb'(?m)(?=^diff --git )', raw) if part.strip()]
 
 
-def decode_blob(raw, path, side, rules):
+def decode_blob(raw, path, side, rules, *, reject_mixed=False):
     if b'\0' in raw:
-        raise ReviewError(f'{path}（{side}）含二进制内容')
+        raise UnreviewableSource(f'{path}（{side}）含二进制内容')
     try:
         return raw.decode('utf-8'), 'utf-8'
     except UnicodeDecodeError as exc:
@@ -51,13 +68,19 @@ def decode_blob(raw, path, side, rules):
         try:
             decoded = raw.decode(preferred)
             if decoded.encode(preferred) == raw:
+                if reject_mixed:
+                    utf8 = raw.decode('utf-8', 'surrogateescape')
+                    if re.search(r'[^\x00-\x7f\udc80-\udcff]{2}', utf8):
+                        line = raw.count(b'\n', 0, offset) + 1
+                        column = offset - raw.rfind(b'\n', 0, offset)
+                        raise UnreviewableSource(f'{path}（{side}）第 {line} 行、第 {column} 字节附近存在混合编码歧义')
                 return decoded, preferred
         except UnicodeError as exc:
             if isinstance(exc, UnicodeDecodeError):
                 offset = exc.start
     line = raw.count(b'\n', 0, offset) + 1
     column = offset - raw.rfind(b'\n', 0, offset)
-    raise ReviewError(f'{path}（{side}）第 {line} 行、第 {column} 字节无法无损解码（{preferred or "未配置备用编码"}）')
+    raise UnreviewableSource(f'{path}（{side}）第 {line} 行、第 {column} 字节无法无损解码（{preferred or "未配置备用编码"}）')
 
 
 def render_block(raw, patch, encodings):

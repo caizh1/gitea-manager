@@ -33,8 +33,14 @@ class PRAgentRun(SessionRun):
         elif event.get('type') == 'result' and self.final_review is None:
             self.final_review = event['result']
         else:
+            details = event.get('details')
+            if not isinstance(details, dict):
+                details = {}
+            counters = {key: value for key, value in details.items()
+                        if key in ('expected_files', 'actual_files', 'chunks', 'failed_chunks',
+                                   'remaining_files', 'partial_files') and type(value) is int}
             raise NativeError(event.get('code', 'pr_agent_protocol_invalid'),
-                              {'exception_type': event.get('exception_type', '')})
+                              {'exception_type': event.get('exception_type', ''), **counters})
 
     def _stderr(self):
         try:

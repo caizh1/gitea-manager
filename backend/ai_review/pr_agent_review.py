@@ -1,7 +1,9 @@
 """将固定 PR 和仓库规范交给 PR-Agent 原生审查，复用现有阶段与发布编排。"""
+import json
+
 from .common import digest, encode
 from .diff import parse_diff, quote_text
-from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
+from .pr_agent_encoding import PROTOCOL, uses_local_git
 from .repository_rules import instructions
 
 
@@ -14,13 +16,24 @@ def phase_input(snapshot, phase, candidates=None):
             '在 security_concerns 中解释核对依据。\n' + encode(candidates)
         )
     elif phase.startswith('history-'):
-        extra += '\n' + candidates['instructions'] + '\n' + encode(candidates['payload'])
+        payload = candidates['payload']
+        if snapshot.get('pr_agent_protocol') == PROTOCOL:
+            payload = dict(sorted(payload.items()))
+            for key in ('historical_diff', 'current_diff', 'current_source'):
+                if key in payload:
+                    payload[key] = dict(sorted(payload[key].items(), key=lambda item: int(item[0][1:])))
+            evidence = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+        else:
+            evidence = encode(payload)
+        extra += '\n' + candidates['instructions'] + '\n' + evidence
     result = {key: snapshot[key] for key in ('head', 'merge_base', 'title', 'description')} | {
         'phase': phase, 'instructions': extra,
     }
     if snapshot.get('pr_agent_protocol'):
         result['pr_agent_protocol'] = snapshot['pr_agent_protocol']
-    if result.get('pr_agent_protocol') == LOCAL_GIT_PROTOCOL:
+    if uses_local_git(result.get('pr_agent_protocol')):
+        if result['pr_agent_protocol'] == PROTOCOL:
+            result['review_paths'] = sorted(file['path'] for file in snapshot['files'])
         return dict(result, source_encodings=snapshot['source_encodings'],
                     max_changed_lines=snapshot['max_changed_lines'])
     result['diff'] = snapshot['diff']

@@ -23,6 +23,7 @@
         <el-icon class="action-symbol"><Loading v-if="continuing" class="is-loading" /><CircleCheckFilled v-else-if="task.status === 'succeeded'" /><WarningFilled v-else /></el-icon><div class="action-copy"><span>当前动作</span><h3>{{ currentAction }}</h3><p>{{ actionContext }}</p></div>
         <div class="action-state"><el-icon v-if="continuing" class="is-loading"><Loading /></el-icon><el-icon v-else-if="task.status === 'succeeded'"><CircleCheckFilled /></el-icon><el-icon v-else><WarningFilled /></el-icon><strong>{{ continuing ? '执行中' : statusLabel(task.status) }}</strong></div>
       </section>
+      <el-alert v-if="task.progress?.retry_at" title="等待模型额度" :description="'下次自动重试 ' + new Date(task.progress.retry_at * 1000).toLocaleString()" type="info" :closable="false" show-icon />
       <el-alert v-if="compacting" title="模型正在压缩上下文" description="正在整理会话历史，压缩完成后继续审查；执行器心跳仅表示会话存活。" type="info" :closable="false" show-icon data-testid="compaction-status" />
       <div class="metrics">
         <div><el-icon><Clock /></el-icon><div><span>已耗时</span><strong>{{ duration(elapsedSeconds) }}</strong><small>{{ targetText }}</small></div></div>

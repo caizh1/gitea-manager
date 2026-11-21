@@ -29,12 +29,13 @@ _INTEGERS = {
     'error_bytes', 'captured_bytes', 'declared_error_bytes', 'thinking_token_budget', 'reasoning_chars', 'content_chars',
     'finding_index', 'input_tokens', 'input_limit',
     'completed_calls', 'pending_bytes', 'stderr_bytes',
+    'expected_files', 'actual_files', 'chunks', 'failed_chunks', 'remaining_files', 'partial_files',
 }
 _BOOLEANS = {'completion_complete', 'done_seen', 'stream_closed', 'normalized_response',
              'error_truncated', 'thinking_enabled', 'turn_completed',
              'final_response_received', 'final_text_received'}
 _FLOATS = {'task_remaining_seconds', 'elapsed_seconds', 'timeout_seconds', 'first_data_elapsed_seconds',
-           'last_data_elapsed_seconds', 'headers_elapsed_seconds', 'request_started_at'}
+           'last_data_elapsed_seconds', 'headers_elapsed_seconds', 'request_started_at', 'retry_after_seconds'}
 _SENSITIVE = re.compile(r'(?i)(authorization|bearer|api[_ -]?key|token|secret|password|prompt|源码|正文)')
 _EXTRACTION_PATHS = {
     'message.parts[type=text].text', 'session.create.response.id',
@@ -208,6 +209,9 @@ def message_for(code, reason=None):
         'codex_runtime_failed': 'Codex 运行时发生异常，请查看异常类型及执行器位置',
         'pr_agent_execution_failed': 'PR-Agent 执行失败，请查看异常类型和原始诊断包',
         'pr_agent_review_incomplete': 'PR-Agent 未覆盖全部变更或未返回完整结果',
+        'pr_agent_files_filtered': 'PR-Agent 文件清单与固定审查范围不符',
+        'pr_agent_prediction_missing': 'PR-Agent 未返回可解析的审查结果',
+        'pr_agent_chunks_incomplete': 'PR-Agent 未完成全部审查片段',
         'pr_agent_changes_missing': 'PR-Agent 最终请求缺少固定补丁中的文件或变更行，未发送模型',
         'pr_agent_local_unsupported': '本地 Git 变更包含不支持的文件或元数据，未发送模型',
         'pr_agent_local_line_limit': '原生 Git 补丁超过本任务的变更行数上限，未发送模型',

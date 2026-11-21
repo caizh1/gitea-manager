@@ -25,7 +25,7 @@ MAX_RESPONSE = 8 * 1024 * 1024
 AUTHORIZATION_INTERVAL = .4
 ERROR_BODY_LIMIT = 128 * 1024
 SAFE_RESPONSE_HEADERS = frozenset({
-    'content-type', 'date', 'x-request-id', 'request-id', 'x-trace-id', 'traceparent', 'cf-ray',
+    'content-type', 'date', 'x-request-id', 'request-id', 'x-trace-id', 'traceparent', 'cf-ray', 'retry-after',
 })
 
 

@@ -13,7 +13,7 @@ from tests.access_helpers import init_test_auth as init_auth, login_platform
 from ai_review.broker import create_broker
 from ai_review.raw_diagnostics import metadata, signature
 from ai_review.session_events import _redact, create_session
-from ai_review.store import Store
+from ai_review.store import SCHEMA_VERSION, Store
 from routes.ai_review_routes import ai_review_bp
 
 
@@ -78,7 +78,7 @@ class RawDiagnosticsTests(unittest.TestCase):
             connection.execute('ALTER TABLE jobs DROP COLUMN raw_diagnostics')
         reopened=Store(self.store.path)
         with reopened.connect() as connection:
-            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0],22)
+            self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
             self.assertIn('raw_diagnostics',{row[1] for row in connection.execute('PRAGMA table_info(jobs)')})
         self.assertEqual(reopened.job(self.ident,evidence=False)['status'],'failed')
 

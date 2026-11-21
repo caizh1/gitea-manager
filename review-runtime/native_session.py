@@ -1481,7 +1481,13 @@ class NativeSessions:
                     or not re.fullmatch(r'[0-9a-f]{40}', source['merge_base'])
                     or type(data.get('max_findings')) is not int or not 1 <= data['max_findings'] <= 30):
                 raise NativeError('execute_input_invalid')
-            if source.get('pr_agent_protocol') == 2:
+            from ai_review.pr_agent_encoding import PROTOCOL, uses_local_git
+            if uses_local_git(source.get('pr_agent_protocol')):
+                if source.get('pr_agent_protocol') == PROTOCOL and (
+                        not isinstance(source.get('review_paths'), list) or not source['review_paths']
+                        or any(not isinstance(path, str) for path in source['review_paths'])
+                        or len(set(source['review_paths'])) != len(source['review_paths'])):
+                    raise NativeError('execute_input_invalid')
                 if ('diff' in source or data.get('workspace_layout') != 'git-worktree-v2'
                         or not isinstance(source.get('source_encodings'), dict)
                         or type(source.get('max_changed_lines')) is not int or source['max_changed_lines'] <= 0):
@@ -1591,7 +1597,7 @@ class NativeSessions:
         thread.start()
         return row, True
 
-    def abort(self, session_id, job_id):
+    def abort(self, session_id, job_id, *, session_only=False):
         """先持久化取消，再终止；迟到 execute 和执行器重启不能丢失取消意图。"""
         if not ID.fullmatch(str(session_id)) or not ID.fullmatch(str(job_id)):
             raise NativeError('execute_identity_invalid')
@@ -1599,18 +1605,23 @@ class NativeSessions:
         binding_path = runtime / 'bindings' / (job_id + '.json')
         with self.lock:
             batch_path = runtime / 'batch-jobs' / (job_id + '.json')
-            if batch_path.exists():
-                batch = json.loads(batch_path.read_text())
-                batch['cancelled'] = True
-                atomic_json(batch_path, batch)
+            batch = json.loads(batch_path.read_text()) if batch_path.exists() else None
+            if session_only and (not batch or batch.get('job_id') != job_id or batch.get('session_id') != session_id):
+                raise NativeError('session_identity_conflict')
+            if batch is not None:
                 binding_path = runtime / 'bindings' / (job_id + '.' + session_id + '.json')
             row = self.sessions.get(session_id)
             if row is not None and row.job_id != job_id:
                 raise NativeError('session_identity_conflict')
             existed = binding_path.exists()
+            if session_only and not existed:
+                raise NativeError('session_not_found')
             binding = json.loads(binding_path.read_text()) if existed else {'job_id': job_id, 'session_id': session_id}
             if binding.get('job_id') != job_id or binding.get('session_id') != session_id:
                 raise NativeError('session_identity_conflict')
+            if batch is not None and not session_only:
+                batch['cancelled'] = True
+                atomic_json(batch_path, batch)
             binding['cancelled'] = True
             if not existed:
                 binding['never_started'] = True

@@ -104,7 +104,8 @@ async def review(payload):
     from pr_agent.git_providers.diff_parsing import parse_unified_diff
     from tenacity import stop_after_attempt
     task = payload['input']
-    local_git = task.get('pr_agent_protocol') == 2
+    from ai_review.pr_agent_encoding import AgentCoverageError, PROTOCOL, uses_local_git
+    local_git = uses_local_git(task.get('pr_agent_protocol'))
     provider = 'plain-diff'
     expected = task.get('expected_changes')
     checked_diff = None
@@ -252,10 +253,24 @@ async def review(payload):
     expected_paths = {item.filename for item in files}
     actual_paths = {item.filename for item in reviewer.git_provider.get_diff_files()}
     if actual_paths != expected_paths or reviewer.git_provider.get_filtered_diff_file_names():
+        if task.get('pr_agent_protocol') == PROTOCOL:
+            filtered = set(reviewer.git_provider.get_filtered_diff_file_names())
+            raise AgentCoverageError('pr_agent_files_filtered', expected_files=len(expected_paths),
+                                     actual_files=len(actual_paths),
+                                     filtered_paths=sorted(filtered | (expected_paths - actual_paths))[:50])
         raise ValueError('pr_agent_review_incomplete')
     # plain-diff构造器为命令行输出启用发布，这里由Manager统一发布。
     settings.set('config.publish_output', False)
     await reviewer.run()
+    if task.get('pr_agent_protocol') == PROTOCOL:
+        if not reviewer.prediction:
+            raise ValueError('pr_agent_prediction_missing')
+        if (reviewer.remaining_files_list or reviewer.partial_files_list
+                or reviewer.review_failed_chunk_count or reviewer.review_chunk_count != 1):
+            raise AgentCoverageError('pr_agent_chunks_incomplete', chunks=reviewer.review_chunk_count,
+                                     failed_chunks=reviewer.review_failed_chunk_count,
+                                     remaining_files=len(reviewer.remaining_files_list or []),
+                                     partial_files=len(reviewer.partial_files_list or []))
     if (not reviewer.prediction or reviewer.remaining_files_list or reviewer.partial_files_list
             or reviewer.review_failed_chunk_count or reviewer.review_chunk_count != 1):
         raise ValueError('pr_agent_review_incomplete')
@@ -288,8 +303,8 @@ def main():
             cause = cause.__cause__ or cause.__context__
             if cause is None:
                 break
-        emit('error', code=code,
-             exception_type=type(error).__name__)
+        emit('error', code=code, exception_type=type(error).__name__,
+             **({'details': cause.details} if hasattr(cause, 'details') else {}))
         return 1
     return 0
 

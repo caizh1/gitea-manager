@@ -70,6 +70,24 @@ def reap(store):
                 # 领取者可能刚续租，锁内重读，按占位 owner 条件释放。
                 current = store.job(job['id'], evidence=False)
                 if current['status'] == 'queued':
+                    from .model_retries import WAITING_STAGE
+                    if current['stage'] == WAITING_STAGE:
+                        from .native_review import cancel_session
+                        receipt = cancel_session(current['id'], current['session_id'], session_only=True)
+                        if receipt.get('execution_stopped') is not True:
+                            continue
+                        from .batch_store import reset_session
+                        with store.tx() as connection:
+                            released = connection.execute("""UPDATE jobs SET owner='' WHERE id=? AND owner=?
+                                AND status='queued' AND stage=? AND session_id=?""",
+                                (job['id'], job['slot_owner'], WAITING_STAGE, current['session_id'])).rowcount
+                            if released:
+                                reset_session(connection, job['id'])
+                                connection.execute('UPDATE jobs SET session_counters=? WHERE id=?',
+                                                   (json.dumps(current.get('session_counters') or {}), job['id']))
+                                connection.execute('DELETE FROM review_execution_slots WHERE job=? AND owner=?',
+                                                   (job['id'], job['slot_owner']))
+                        continue
                     # 人工继续可能先于回收到达，沿用原名额等待新 owner。
                     with store.tx() as connection:
                         connection.execute("UPDATE review_execution_slots SET owner='' WHERE job=? AND owner=?", (job['id'], job['slot_owner']))

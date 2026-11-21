@@ -111,6 +111,11 @@ def job_progress(job, now=None):
                                      'timeout_seconds':diagnostic['timeout_seconds']}
     if status == 'queued' and (job.get('attention') or {}).get('required'):
         progress.update(label='等待人工处理',stage='attention',detail=job['attention']['reason'])
+    elif status == 'queued' and job.get('stage') == '等待模型额度':
+        available = job.get('available')
+        progress.update(label='等待模型额度', stage='model_rate_limit', retry_at=available)
+        if available and available > now:
+            progress['detail'] = f'等待模型额度，约 {int(available - now) + 1} 秒后自动重试'
     return progress
 
 

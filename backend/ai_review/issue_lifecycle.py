@@ -6,7 +6,7 @@ import time
 
 from .common import ReviewError, PublishUnknown, Stale, AccessRevoked, digest, encode
 from .gitea import assert_version
-from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
+from .pr_agent_encoding import PROTOCOL, uses_local_git
 
 LABELS = {'present': '仍存在', 'fixed': '已修复', 'obsolete': '已失效', 'uncertain': '待确认'}
 
@@ -203,7 +203,7 @@ def check_input(issue, origin, snapshot, candidates):
         if not source:
             return {}
         path = finding.get('path') or (finding.get('anchor') or {}).get('path')
-        if snapshot.get('pr_agent_protocol') == LOCAL_GIT_PROTOCOL:
+        if uses_local_git(snapshot.get('pr_agent_protocol')):
             changes = [finding] if prefix == 'H' else [finding, *candidates]
             anchors = [row.get('anchor') or {} for row in changes if row.get('path') == path]
             locations = {(anchor['side'], anchor['line']) for anchor in anchors
@@ -237,17 +237,45 @@ def uncertain(reason, candidates):
 
 
 def diff_code_references(source):
+    return set(evidence_blocks(source))
+
+
+def evidence_blocks(source):
     in_hunk = False
-    references = set()
+    references = {}
     for ident in sorted(source, key=lambda key: int(key[1:])):
         line = source[ident]
         if line.startswith('diff --git '):
             in_hunk = False
         elif line.startswith('@@ '):
-            in_hunk = True
+            in_hunk = ident
         elif in_hunk and line.startswith(('+', '-', ' ')):
-            references.add(ident)
+            references[ident] = in_hunk
     return references
+
+
+def fixed_evidence(ident, quote, source, groups):
+    if not isinstance(quote, str) or not quote.strip():
+        raise ReviewError('复核引用不属于固定 diff 原文')
+    canonical = source.get(ident)
+    if ident.startswith('S'):
+        if canonical == quote:
+            return ident
+        if (canonical and canonical.lstrip(' \t') == quote.lstrip(' \t')
+                and sum(row.lstrip(' \t') == quote.lstrip(' \t') for row in source.values()) == 1):
+            return ident
+    else:
+        if ident in groups and (canonical == quote or canonical[1:] == quote):
+            return ident
+        group = groups.get(ident)
+        if not group and len(set(groups.values())) == 1:
+            group = next(iter(groups.values()))
+        if group and sum(ch.isalnum() for ch in quote) >= 4:
+            matches = [key for key, hunk in groups.items() if hunk == group
+                       and (source[key] == quote or source[key][1:] == quote)]
+            if len(matches) == 1:
+                return matches[0]
+    raise ReviewError('复核引用不属于固定 diff 原文')
 
 
 def validate_check(raw, payload, snapshot):
@@ -267,12 +295,22 @@ def validate_check(raw, payload, snapshot):
         raise ReviewError('复核证据格式无效')
     prefixes = set()
     confirmed = []
+    corrections = []
     code_references = {}
     for entry in evidence:
         if not isinstance(entry, dict) or set(entry) != {'id', 'quote'} or not isinstance(entry['id'], str):
             raise ReviewError('复核证据必须引用 diff 编号和原文')
         ident = entry['id']; prefix = ident[:1]
         source = payload['historical_diff'] if prefix == 'H' else payload['current_diff'] if prefix == 'C' else payload.get('current_source', {}) if prefix == 'S' else {}
+        if snapshot.get('pr_agent_protocol') == PROTOCOL:
+            if prefix not in code_references:
+                code_references[prefix] = evidence_blocks(source) if prefix in ('H', 'C') else {}
+            resolved = fixed_evidence(ident, entry['quote'], source, code_references[prefix])
+            confirmed.append({'id': resolved, 'quote': source[resolved]})
+            if resolved != ident:
+                corrections.append({'reported': ident, 'confirmed': resolved})
+            prefixes.add(prefix)
+            continue
         canonical = source.get(ident, '')
         if not canonical.strip():
             raise ReviewError('复核引用不属于固定 diff 原文')
@@ -299,6 +337,7 @@ def validate_check(raw, payload, snapshot):
         raise ReviewError('当前定位编号无效')
     return {k: raw.get(k) for k in ('status', 'reason', 'relations', 'anchor_id', 'obsolete_reason')} | {
         'evidence': confirmed,
+        **({'evidence_corrections': corrections} if corrections else {}),
     }
 
 

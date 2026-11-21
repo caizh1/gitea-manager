@@ -25,8 +25,9 @@ def read_coverage(snapshot, reads):
 
     coverage = dict(snapshot["coverage"], scope="repository")
     if snapshot.get('engine') == 'pr_agent':
-        return dict(coverage, scope='diff', files_reviewed=coverage['files_total'],
-                    diff_files_provided=coverage['files_total'],
+        reviewed = coverage.get('files_reviewed', coverage['files_total'])
+        return dict(coverage, scope='diff', files_reviewed=reviewed,
+                    diff_files_provided=reviewed,
                     source_files_read=None, source_read_tracking='pr_agent_diff_context')
     if snapshot.get("codex_tools") == "native":
         return dict(coverage, files_reviewed=0, source_files_read=None,
@@ -104,9 +105,18 @@ P0/P1 仅限当前代码、支持范围内可达且有固定源码证据、严�
 def normalize(raw, snapshot, workspace):
     from .native_review import _text
     from .diff_inline import index
+    from .pr_agent_encoding import PROTOCOL
 
+    fallback_locations = {(anchor['path'], anchor['side'], anchor['line'])
+                          for anchor in snapshot.get('anchors', {}).values()
+                          if anchor.get('gitea_legacy_inline') is False}
     anchors, _ = index(snapshot)
+    for anchor in anchors.values():
+        if (anchor['path'], anchor['side'], anchor['line']) in fallback_locations:
+            anchor['gitea_legacy_inline'] = False
     snapshot["anchors"] = anchors
+    selected_paths = ({file["path"] for file in snapshot["files"]}
+                      if snapshot.get("pr_agent_protocol") == PROTOCOL else None)
     rows = []
     reads = raw.get("_codex_reads", [])
     for finding in raw["findings"]:
@@ -118,6 +128,8 @@ def normalize(raw, snapshot, workspace):
         root = Path(workspace)
         if path.startswith(str(root) + "/"):
             path = path[len(str(root)) + 1 :]
+        if selected_paths is not None and path not in selected_paths:
+            raise ReviewError("模型意见指向未纳入审查的文件")
         git_layout = snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2")
         if git_layout:
             from .git_workspace import read_blob
@@ -291,18 +303,20 @@ def run_phase(store, job, config, snapshot, workspace, phase, candidates=None):
         ),
     )
     from .performance import span
-    with span(store, job["id"], "analysis", phase):
-        raw = execute(
-            store,
-            phase_job,
-            config,
-            workspace,
-            token,
-            diff_snapshot=dict(
-                snapshot, _codex_phase=phase, _pr_agent_input=agent_input,
-                _batch_messages=[{"content": ""}, {"content": instructions or '请审查固定版本的完整 PR。'}]
-            ),
-        )
+    try:
+        with span(store, job["id"], "analysis", phase):
+            raw = execute(
+                store, phase_job, config, workspace, token,
+                diff_snapshot=dict(
+                    snapshot, _codex_phase=phase, _pr_agent_input=agent_input,
+                    _batch_messages=[{"content": ""}, {"content": instructions or '请审查固定版本的完整 PR。'}]
+                ),
+            )
+    except ReviewError:
+        from .model_retries import DeferredModelRetry, defer
+        if defer(store, job, phase, sid, job.get("_codex_deadline", deadline)):
+            raise DeferredModelRetry from None
+        raise
     if job.get("rules_protocol"):
         raw["_rules_identity"] = snapshot["rules_identity"]
     with store.tx() as c:
@@ -329,9 +343,12 @@ def process(store, job):
     from .gitea import assert_version
     from .performance import span
     from .publication import publish
+    from .pr_agent_encoding import PROTOCOL
+    from .model_retries import DeferredModelRetry, deadline
 
     repo, config = store.repo(job["repository"]), store.job_config(job["id"])
-    job = dict(job, _codex_deadline=(job.get("started_at") or time.time()) + config["task_timeout_seconds"])
+    job = dict(job, _codex_deadline=deadline(store, job["id"],
+                    (job.get("started_at") or time.time()) + config["task_timeout_seconds"]))
     client = client_for(store, repo, job)
     stop = threading.Event()
 
@@ -387,7 +404,9 @@ def process(store, job):
             info["total_seconds"] = round(time.monotonic() - preparation_started, 3)
         snapshot["source_cache"] = info
         store.update(job["id"], job["owner"], snapshot=snapshot, workspace_path=workspace)
-        if snapshot.get("pr_agent_protocol") and not snapshot["coverage"]["complete"]:
+        current_protocol = snapshot.get("pr_agent_protocol") == PROTOCOL
+        partial = current_protocol and not snapshot["coverage"]["complete"]
+        if snapshot.get("pr_agent_protocol") and not current_protocol and not snapshot["coverage"]["complete"]:
             skipped = snapshot["coverage"]["skipped"]
             first = skipped[0]
             raise IncompleteReview(f'源码证据存在 {len(skipped)} 项缺口。{first["path"]} · {first["reason"]}')
@@ -415,7 +434,9 @@ def process(store, job):
             )
         if job.get("session_submitted_at") and not phases:
             raise ReviewError("上次 Codex 会话回执未知，需核对原任务，未重放")
-        raw = phases.get("primary") or run_phase(store, job, config, snapshot, workspace, "primary")
+        raw = ({"findings": [], "overall_explanation": "没有可可靠读取的变更文件"}
+               if partial and not snapshot["files"]
+               else phases.get("primary") or run_phase(store, job, config, snapshot, workspace, "primary"))
         findings = normalize(raw, snapshot, workspace)
         blockers = [(i, finding) for i, finding in enumerate(findings) if finding["severity"] in ("P0", "P1")]
         refutations = []
@@ -433,11 +454,12 @@ def process(store, job):
             refutations.append(checked_result)
         findings = [finding for index, finding in enumerate(findings) if index not in rejected]
         store.update(job["id"], job["owner"], snapshot=snapshot)
-        report = "VERDICT: " + ("FAIL" if any(f["severity"] in ("P0", "P1") for f in findings) else "PASS")
+        report = ("部分完成，存在文件覆盖缺口" if partial else
+                  "VERDICT: " + ("FAIL" if any(f["severity"] in ("P0", "P1") for f in findings) else "PASS"))
         report += "\n\n本轮主审成立问题 " + str(len(findings)) + " 项。"
         for finding in findings:
             report += "\n\n" + finding["title"] + "\n" + finding["explanation"]
-        if not snapshot["coverage"]["complete"]:
+        if not partial and not snapshot["coverage"]["complete"]:
             raise IncompleteReview("固定源码存在未支持内容，审查未完成")
         reads = list(raw.get("_codex_reads", []))
         for check in refutations:
@@ -476,16 +498,26 @@ def process(store, job):
             finding = payload.get("original_finding", {})
             source_root = Path(workspace) if snapshot.get("workspace_layout") in ("git-worktree-v1", "git-worktree-v2") else Path(workspace) / "after"
             source = (source_root / finding.get("path", "")).resolve()
+            gap_paths = {item['path'] for item in current_snapshot['coverage'].get('skipped', [])} if partial else set()
+            path_unavailable = finding.get('path') in gap_paths or partial and not current_snapshot['files']
             if (
                 source.is_relative_to(source_root.resolve())
                 and source.is_file()
                 and not source.is_symlink()
+                and not path_unavailable
+                and (not current_protocol or "current_source" not in payload)
             ):
                 if current_snapshot.get("pr_agent_protocol"):
                     from .pr_agent_encoding import decode_blob
                     from .git_workspace import read_blob
                     code = read_blob(source_root, current_snapshot["head"], finding["path"])
-                    text, _ = decode_blob(code, finding["path"], "新侧", current_snapshot["source_encodings"])
+                    try:
+                        text, _ = decode_blob(code, finding["path"], "新侧", current_snapshot["source_encodings"],
+                                              reject_mixed=current_protocol)
+                    except ReviewError:
+                        if not current_protocol:
+                            raise
+                        text = ""
                     lines = text.removesuffix("\n").split("\n") if text else []
                     lines = [line.removesuffix("\r") for line in lines]
                 else:
@@ -495,7 +527,9 @@ def process(store, job):
                 payload["current_source"] = {
                     "S" + str(i): lines[i - 1] for i in range(start, min(len(lines), start + 199) + 1)
                 }
-            if not payload["historical_diff"]:
+            if path_unavailable:
+                value = uncertain("当前文件存在覆盖缺口，保留历史问题待确认", payload["candidates"])
+            elif not payload["historical_diff"]:
                 value = uncertain("历史证据缺失，保留待确认", payload["candidates"])
             else:
                 history_prompt = HISTORY_SYSTEM
@@ -503,10 +537,13 @@ def process(store, job):
                     history_prompt = history_prompt.replace(
                         "不审查源码仓库，没有工具", "可以使用当前固定版本只读源码工具"
                     ).replace("不调用工具，不补查文件", "按需核对当前固定版本源码")
+                if current_protocol:
+                    history_prompt += ("\n证据编号直接复制对应的键，编号可能不连续。"
+                                       "quote 采用对应的代码原文，平台保存原始缩进。")
                 with store.tx() as c:
                     c.execute(
-                        "UPDATE review_issue_checks SET state='started',started=? WHERE job=? AND issue=?",
-                        (time.time(), job["id"], issue_id),
+                        "UPDATE review_issue_checks SET state='started',started=?,input=? WHERE job=? AND issue=?",
+                        (time.time(), encode(payload) if current_protocol else row["input"], job["id"], issue_id),
                     )
                 raw_check = (
                     json.loads(saved[0])
@@ -525,9 +562,22 @@ def process(store, job):
                         },
                     )
                 )
-                value = validate_check(
-                    json.loads(raw_check["overall_explanation"]), payload, current_snapshot
-                )
+                try:
+                    value = validate_check(json.loads(raw_check["overall_explanation"]), payload, current_snapshot)
+                except (ReviewError, ValueError) as exc:
+                    if not current_protocol:
+                        raise
+                    phase = "history-" + issue_id + "-repair"
+                    corrected = phases.get(phase) or run_phase(
+                        store, current_job, config, current_snapshot, workspace, phase, {
+                            "payload": payload,
+                            "instructions": history_prompt + "\n重核本条历史问题，原答复未通过证据校验。"
+                            "只能选择下方证据表中的键，证据不足时返回 uncertain。",
+                        })
+                    try:
+                        value = validate_check(json.loads(corrected["overall_explanation"]), payload, current_snapshot)
+                    except (ReviewError, ValueError):
+                        value = uncertain(f"复核证据仍待确认（{type(exc).__name__}）", payload["candidates"])
             with store.tx() as c:
                 c.execute(
                     "UPDATE review_issue_checks SET state='done',result=?,finished=? WHERE job=? AND issue=?",
@@ -558,7 +608,7 @@ def process(store, job):
             and json.loads(row["finding"]).get("severity") in ("P0", "P1")
             for row in current_issues
         )
-        if pending_blocker:
+        if pending_blocker and not partial:
             result["analysis_complete"] = False
             result["report_markdown"] = "历史 P0/P1 尚待确认，未形成完整审查结论。"
             store.update(job["id"], job["owner"], result=result)
@@ -568,6 +618,8 @@ def process(store, job):
         assert_version(client, job["number"], snapshot)
         with span(store, job["id"], "publication"):
             publish(store, client, dict(job, result=result, snapshot=snapshot), repo)
+    except DeferredModelRetry:
+        pass
     except Stale as exc:
         store.finish(job["id"], job["owner"], "superseded", str(exc))
     except Exception as exc:

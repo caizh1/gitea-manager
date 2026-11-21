@@ -342,16 +342,19 @@ def get_native(session_id):
     return jsonify(row.public())
 
 
-@app.post('/sessions/<session_id>/abort')
-def abort_native(session_id):
+@app.post('/sessions/<session_id>/abort', defaults={'session_only': False})
+@app.post('/sessions/<session_id>/retire', defaults={'session_only': True})
+def abort_native(session_id, session_only):
     if not executor_authorized():
         return jsonify(error='执行器身份无效'), 401
     data = request.get_json(silent=True)
     if isinstance(data, dict) and 'job_id' in data:
         try:
-            return jsonify(native_sessions.abort(session_id, data['job_id']))
+            return jsonify(native_sessions.abort(session_id, data['job_id'], session_only=session_only))
         except NativeError as exc:
             return jsonify(error='取消会话身份校验失败', error_code=exc.code), 409
+    if session_only:
+        return jsonify(error='缺少审查任务身份'), 400
     row = native_sessions.get(session_id)
     if row is None:
         return jsonify(session_id=session_id, status='unknown', error_code='session_not_found'), 404

@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 from .common import ReviewError, safe_path, valid_sha
 from .git_cache import cache_key, cache_root, run_git, write_json, _size, git_credentials
-from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
+from .pr_agent_encoding import uses_local_git
 
 
 def repository_root(repo):
@@ -183,7 +183,7 @@ def _prepare(store, client, repo, job, snapshot):
         raise ReviewError("Gitea 比较基点与 Git 对象不一致")
     for index, sha in enumerate(required):
         run_git(["update-ref", f"refs/review-active/{job['id']}/{index}" if concurrent else f"refs/review-active/{index}", sha], cwd=folder, check=check)
-    if snapshot.get('pr_agent_protocol') == LOCAL_GIT_PROTOCOL:
+    if uses_local_git(snapshot.get('pr_agent_protocol')):
         run_git(["update-ref", f"refs/heads/gm-review-base-{job['id']}", required[2]], cwd=folder, check=check)
     checkout_started = time.monotonic()
     # info/attributes 优先于仓库规则，保持工作目录文本与 Git blob 一致。
@@ -278,6 +278,6 @@ def release_task(store, job):
         if folder.exists():
             for index in range(3):
                 run_git(['update-ref', '-d', f"refs/review-active/{job['id']}/{index}"], cwd=folder)
-            if snapshot.get('pr_agent_protocol') == LOCAL_GIT_PROTOCOL:
+            if uses_local_git(snapshot.get('pr_agent_protocol')):
                 run_git(['update-ref', '-d', f"refs/heads/gm-review-base-{job['id']}"], cwd=folder)
         (root / 'active' / (job['id'] + '.json')).unlink(missing_ok=True)

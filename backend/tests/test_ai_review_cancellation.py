@@ -150,6 +150,45 @@ class CancellationAccessTests(unittest.TestCase):
 
 
 class ExecutorCancellationTests(unittest.TestCase):
+    def test_stopping_rate_limited_session_preserves_parent_for_the_next_attempt(self):
+        sys.path.insert(0, str(Path(__file__).parents[2] / 'review-runtime'))
+        import native_session as native
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job, session = 'job_retry_limited', 'session_retry_limited'
+            workspaces = root / 'workspaces'
+            workspace = workspaces / job
+            workspace.mkdir(parents=True)
+            runtime = root / 'native'
+            batch = runtime / 'batch-jobs' / (job + '.json')
+            binding = runtime / 'bindings' / (job + '.' + session + '.json')
+            data = {'job_id': job, 'session_id': session, 'workspace': str(workspace), 'prompt': '测试审查',
+                    'model': '测试模型', 'deadline_at': time.time()+100, 'timeout': 100,
+                    'event_url': 'http://review-worker:5051/internal/sessions/events',
+                    'event_token': '测试令牌', 'capability': '测试授权', 'batch_protocol': 1, 'review_scope': 'diff'}
+            native.atomic_json(batch, {'job_id': job, 'session_id': session, 'cancelled': False})
+            native.atomic_json(binding, {'job_id': job, 'session_id': session, 'workspace': str(workspace)})
+            native.atomic_json(runtime / 'sessions' / (session + '.json'),
+                               {**data, 'status': 'failed', 'execution_stopped': True})
+            with patch.dict(os.environ, {'AI_REVIEW_NATIVE_ROOT': str(runtime),
+                                        'AI_REVIEW_WORKSPACE_ROOT': str(workspaces)}), \
+                    patch.object(native, 'EventReporter'), patch.object(native.SessionRun, 'run'):
+                registry = native.NativeSessions()
+                self.assertTrue(registry.abort(session, job, session_only=True)['execution_stopped'])
+                self.assertFalse(json.loads(batch.read_text())['cancelled'])
+                self.assertTrue(json.loads(binding.read_text())['cancelled'])
+                with self.assertRaises(native.NativeError) as old:
+                    registry.execute(data)
+                self.assertEqual(old.exception.code, 'authorization_revoked')
+                successor = dict(data, session_id='session_retry_successor')
+                _, created = registry.execute(successor)
+                self.assertTrue(created)
+                with self.assertRaises(native.NativeError):
+                    registry.abort(session, job, session_only=True)
+                self.assertFalse(json.loads(batch.read_text())['cancelled'])
+                registry.abort(successor['session_id'], job)
+                self.assertTrue(json.loads(batch.read_text())['cancelled'])
+
     def test_registered_session_cancelled_before_thread_start_never_spawns(self):
         import threading
         sys.path.insert(0, str(Path(__file__).parents[2] / 'review-runtime'))

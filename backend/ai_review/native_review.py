@@ -365,11 +365,12 @@ def abort(session_id):
         session.close()
 
 
-def cancel_session(job_id, session_id):
-    """持久化取消防止迟到启动；必须拿到执行器的停止证据。"""
+def cancel_session(job_id, session_id, *, session_only=False):
+    """确认实际停止。限流恢复只撤销当前会话的执行权限。"""
     session = requests.Session(); session.trust_env = False
     try:
-        response = _request(session, 'POST', '/sessions/' + session_id + '/abort',
+        action = '/retire' if session_only else '/abort'
+        response = _request(session, 'POST', '/sessions/' + session_id + action,
                             json={'job_id': job_id}, read_timeout=5)
         if response.status_code != 200:
             raise ReviewError('执行器未确认取消请求')

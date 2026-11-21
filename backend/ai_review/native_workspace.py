@@ -366,19 +366,49 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
     旧 capture 的 C/C++ AST 筛选仅服务历史单元引擎；原生会话已可读取
     所有普通文本文件，因此行内定位也必须从同一不可变工作区核对。
     """
+    with contextlib.ExitStack() as cleanup:
+        return _bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at, cleanup)
+
+
+def _bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at, cleanup):
     from .snapshot import SourceFile
 
     root = Path(workspace)
     diff_path = root / 'change.diff' if (root / 'change.diff').exists() else root / '变更.diff'
     git_layout = snapshot.get('workspace_layout') in ('git-worktree-v1', 'git-worktree-v2')
     byte_protocol = snapshot.get('pr_agent_protocol')
+    from .pr_agent_encoding import PROTOCOL, UnreviewableSource, uses_local_git
+    partial = byte_protocol == PROTOCOL
+    git_inventory = {}
     if byte_protocol:
-        from .pr_agent_encoding import LOCAL_GIT_PROTOCOL, blocks, decode_blob, render_block, unpack
+        from .pr_agent_encoding import blocks, decode_blob, render_block, unpack
         raw = unpack(snapshot)
         patch_blocks = blocks(raw)
         if len(patch_blocks) != snapshot['coverage']['files_total']:
             raise ReviewError('固定补丁文件结构与快照不一致')
         records = [(parse_diff(block)[0], block) for block in patch_blocks]
+        if partial:
+            from .git_cache import ObjectReader, run_git
+            pair = ['--no-ext-diff', '--no-textconv', '-M', snapshot['merge_base'], snapshot['head'], '--']
+            check = lambda: store.active(job['id'], job['owner'])
+            metadata = iter(run_git(['diff', '--raw', '--no-abbrev', '-z', *pair],
+                                    cwd=root, check=check).split(b'\0')[:-1])
+            identities = []
+            for entry in metadata:
+                _, _, old_blob, new_blob, status = entry.split()
+                path = next(metadata)
+                if status[:1] in (b'R', b'C'):
+                    path = next(metadata)
+                identities.append((path.decode('utf-8'), old_blob.decode('ascii'), new_blob.decode('ascii')))
+            native_blocks = blocks(run_git(['diff', *pair], cwd=root, check=check))
+            git_inventory = {block.split(b'\n', 1)[0]: identity
+                             for block, identity in zip(native_blocks, identities, strict=True)}
+            if len(git_inventory) != len(patch_blocks) or set(git_inventory) != {
+                    block.split(b'\n', 1)[0] for block in patch_blocks}:
+                raise ReviewError('Gitea 补丁文件范围与固定 Git 提交不一致')
+            # 大 PR 共用一个 cat-file 进程，避免每侧源码启动一次 Git。
+            reader = ObjectReader(root, check)
+            cleanup.callback(reader.close)
     else:
         raw = snapshot['diff'].encode() if git_layout else _read_fixed(diff_path, deadline_at, store, job)
         records = [(patch, None) for patch in parse_diff(raw)]
@@ -389,20 +419,31 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
                   '(job TEXT,path TEXT,side TEXT,code TEXT,PRIMARY KEY(job,path,side))')
     for patch, block in records:
         path = patch.new_path or patch.old_path
+        if partial:
+            fixed_path, old_blob, new_blob = git_inventory[block.split(b'\n', 1)[0]]
+            if path and path != fixed_path:
+                raise ReviewError('Gitea 补丁路径与固定 Git 提交不一致')
+            path = fixed_path
         if not path and block:
             path = block.split(b'\n', 1)[0].decode('utf-8', 'backslashreplace')[:1000]
         try:
             _deadline(deadline_at); store.active(job['id'], job['owner'])
             if patch.unsupported:
+                if partial and patch.unsupported == '二进制文件、符号链接或子模块不产生行内意见':
+                    raise UnreviewableSource(patch.unsupported)
                 raise ReviewError(patch.unsupported)
             if not path or not patch.hunks:
                 skipped.append({'path': path or '非文本变更',
                                 'reason': '纯重命名、模式变更或无文本修改，不做行内定位',
-                                'evidence_gap': bool(byte_protocol)})
+                                'evidence_gap': bool(byte_protocol),
+                                **({'kind': 'metadata_only'} if partial else {})})
                 continue
             old_path = root / 'before' / patch.old_path if patch.old_path else None
             new_path = root / 'after' / patch.new_path if patch.new_path else None
-            if git_layout:
+            if partial:
+                old = reader.read(old_blob) if patch.old_path else b''
+                new = reader.read(new_blob) if patch.new_path else b''
+            elif git_layout:
                 from .git_workspace import read_blob
                 old = read_blob(root, snapshot['merge_base'], patch.old_path) if patch.old_path else b''
                 new = read_blob(root, snapshot['head'], patch.new_path) if patch.new_path else b''
@@ -412,8 +453,8 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
             encodings = None
             if byte_protocol:
                 rules = snapshot['source_encodings']
-                old_text, old_codec = decode_blob(old, patch.old_path or path, '旧侧', rules)
-                new_text, new_codec = decode_blob(new, patch.new_path or path, '新侧', rules)
+                old_text, old_codec = decode_blob(old, patch.old_path or path, '旧侧', rules, reject_mixed=partial)
+                new_text, new_codec = decode_blob(new, patch.new_path or path, '新侧', rules, reject_mixed=partial)
                 encodings = {'old': old_codec, 'new': new_codec}
             try:
                 found = validate_patch(patch, old, new, snapshot['id'], encodings)
@@ -425,7 +466,7 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
                 raise
             if byte_protocol:
                 normalized = render_block(block, patch, encodings)
-                if byte_protocol == LOCAL_GIT_PROTOCOL and set(encodings.values()) != {'utf-8'}:
+                if uses_local_git(byte_protocol) and set(encodings.values()) != {'utf-8'}:
                     unsafe = gitea_legacy_inline_positions(patch)
                     for anchor in found:
                         if (anchor['side'], anchor['line']) in unsafe:
@@ -454,12 +495,15 @@ def bind_snapshot_evidence(store, job, snapshot, workspace, deadline_at=None):
             from .common import Stale
             if isinstance(exc, Stale) or getattr(exc, 'fatal_job', False):
                 raise
+            if partial and not isinstance(exc, UnreviewableSource):
+                raise
             skipped.append({'path': path or '非文本变更',
                             'reason': str(exc) if isinstance(exc, ReviewError) else '源码不是 UTF-8',
-                            'evidence_gap': True})
+                            'evidence_gap': True,
+                            **({'kind': 'unsupported' if patch.unsupported else 'encoding'} if partial else {})})
     snapshot['files'], snapshot['anchors'] = files, anchors
     if byte_protocol:
-        if not skipped:
+        if not skipped and not partial:
             from .git_cache import run_git
             paths = run_git(['diff', '--name-only', '--no-renames', '--no-ext-diff', '--no-textconv', '-z',
                              snapshot['merge_base'], snapshot['head'], '--'], cwd=root,

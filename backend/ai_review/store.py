@@ -21,7 +21,7 @@ DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **PR_AGENT_BUDGETS,
             'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20,
             'execution_revision': 1}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 
 class Store:
@@ -107,6 +107,8 @@ class Store:
             migrate_rules(c)
             from .concurrency import migrate as migrate_concurrency
             migrate_concurrency(c)
+            from .model_retries import migrate as migrate_model_retries
+            migrate_model_retries(c)
             if 'pr_agent_protocol' not in {row[1] for row in c.execute('PRAGMA table_info(jobs)')}:
                 c.execute('ALTER TABLE jobs ADD COLUMN pr_agent_protocol INTEGER NOT NULL DEFAULT 0')
             c.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
@@ -382,6 +384,13 @@ class Store:
                     return None
             target_head = signature.get('head', '') if isinstance(signature, dict) else ''
             signature = encode([signature, execution_revision(config), repo['revision'], bool(closed)])
+            if manual and state and state['signature'] == signature:
+                from .model_retries import WAITING_STAGE
+                pending = c.execute("""SELECT id FROM jobs WHERE repository=? AND number=? AND generation=?
+                                     AND status='queued' AND stage=?""",
+                                    (repository, number, state['generation'], WAITING_STAGE)).fetchone()
+                if pending:
+                    return pending['id']
             if state and state['signature'] == signature and not manual:
                 return None
             if state and not manual and not closed:
@@ -493,7 +502,7 @@ class Store:
             args.append(json.dumps(allowed_jobs))
             where = ' WHERE ' + ' AND '.join(conditions)
         columns = ('batch_protocol,id,repository,number,status,stage,created,updated,config_revision,repo_revision,'
-                   'generation,lease,model_calls,started_at,finished_at,progress_stage,units_completed,'
+                   'generation,lease,model_calls,started_at,finished_at,available,progress_stage,units_completed,'
                    "units_total,target_head,review_id,review_fragment,error,batch_index,batch_calls,plan_units,"
                    "session_id,session_status,current_action,deadline_at,last_heartbeat,log_synced_at,event_count,final_event_seq,"
                    "event_acked_seq,log_stream_closed,"
@@ -547,6 +556,9 @@ class Store:
             from .concurrency import reserve
             if not reserve(self, c, row[0], owner):
                 return None
+            c.execute("""UPDATE review_model_retries SET resume_deadline=?+remaining
+                         WHERE rowid=(SELECT max(rowid) FROM review_model_retries WHERE job=?)
+                         AND resume_deadline IS NULL""", (now, row[0]))
             c.execute("UPDATE jobs SET status='running',stage='读取固定版本',owner=?,lease=?,updated=?,attempts=attempts+1 WHERE id=?", (owner, now+90, now, row[0]))
         return self.job(row[0])
 

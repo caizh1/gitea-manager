@@ -73,8 +73,8 @@ def format_time(value):
 
 def review_scope_note(engine, scope, pr_agent_protocol=None):
     if engine == 'pr_agent':
-        from .pr_agent_encoding import LOCAL_GIT_PROTOCOL
-        if pr_agent_protocol == LOCAL_GIT_PROTOCOL:
+        from .pr_agent_encoding import uses_local_git
+        if uses_local_git(pr_agent_protocol):
             return 'PR-Agent 从固定 Git 工作区生成变更，并按需扩展变更附近的源码上下文。历史问题复审可补充相关源码。'
         return 'PR-Agent 主审使用 PR 变更和相邻上下文。历史问题复审可补充固定版本中的相关源码。'
     if scope == 'repository':

@@ -56,7 +56,7 @@ def test_review_store_upgrades_version_22_without_changing_old_jobs(tmp_path):
     upgraded = Store(store.path)
     assert upgraded.job(old_job)['pr_agent_protocol'] == 0
     new_job = upgraded.enqueue(repo['id'], 2, {'head': 'c' * 40, 'base': 'a' * 40})
-    assert upgraded.job(new_job)['pr_agent_protocol'] == 2
+    assert upgraded.job(new_job)['pr_agent_protocol'] == 3
     assert Store(upgraded.path).job(old_job)['status'] == 'queued'
 
 
@@ -72,6 +72,22 @@ def test_local_pr_agent_uses_frozen_versions_instead_of_packaged_diff():
     assert result['head'] == snapshot['head'] and result['merge_base'] == snapshot['merge_base']
     assert result['source_encodings'] == {'legacy': 'gbk'}
     assert 'diff' not in result and 'expected_changes' not in result
+
+
+def test_version_23_migration_preserves_a_queued_protocol_two_job(tmp_path):
+    store = Store(tmp_path / 'review.db')
+    store.save_config(dict(store.config(), enabled=True, debounce_seconds=0))
+    repo = store.save_repo(1, 1, {'enabled': True, 'repo_name': 'owner/repo'})
+    job = store.enqueue(repo['id'], 1, {'head': 'b' * 40, 'base': 'a' * 40})
+    with store.tx() as c:
+        c.execute('UPDATE jobs SET pr_agent_protocol=2 WHERE id=?', (job,))
+        c.execute('DROP TABLE review_model_retries')
+        c.execute('PRAGMA user_version=23')
+    reopened = Store(store.path)
+    same = reopened.claim()
+    assert same['id'] == job and same['pr_agent_protocol'] == 2
+    with reopened.connect() as c:
+        assert c.execute('SELECT count(*) FROM review_model_retries').fetchone()[0] == 0
 
 
 def test_local_history_limits_large_patch_to_relevant_evidence():
@@ -320,7 +336,7 @@ def test_pr_agent_jobs_keep_engine_and_use_shared_concurrency(tmp_path):
         assert job['id'] in (first, second)
         assert job['batch_protocol'] == 0
         assert job['rules_protocol'] == 1
-        assert job['pr_agent_protocol'] == 2
+        assert job['pr_agent_protocol'] == 3
         assert store.job_config(job['id'])['engine'] == 'pr_agent'
     assert store.claim() is None
     store.save_config(dict(store.config(), engine='codex_cli'))

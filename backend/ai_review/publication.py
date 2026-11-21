@@ -49,6 +49,14 @@ def overview(store, job, result):
     note = review_scope_note(engine, result.get('review_scope'), job['snapshot'].get('pr_agent_protocol'))
     if note:
         body += '\n\n' + note
+    coverage = result.get('coverage') or {}
+    if coverage.get('complete') is False and coverage.get('skipped'):
+        gaps = sorted(coverage['skipped'], key=lambda gap: gap.get('kind') != 'encoding')
+        body += f"\n\n已审 {coverage['files_reviewed']}/{coverage['files_total']} 个变更文件。"
+        for gap in gaps[:20]:
+            body += '\n- ' + prose(gap['path'])[:230] + ' · ' + prose(gap['reason'])[:200]
+        if len(gaps) > 20:
+            body += f'\n- 其余 {len(gaps) - 20} 项见 Manager 覆盖详情。'
     frozen_ids = result.get('_approved_issue_ids')
     for row in observations(store, job):
         if frozen_ids is not None and row['issue'] not in frozen_ids:

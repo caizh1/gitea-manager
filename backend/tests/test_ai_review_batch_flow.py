@@ -225,7 +225,7 @@ def test_refutation_preserves_supplied_outer_caller_protection():
 
 
 def test_schema_17_upgrade_preserves_old_flow(state):
-    from ai_review.store import Store
+    from ai_review.store import SCHEMA_VERSION, Store
     store, job, _ = state
     with store.tx() as db:
         db.execute('ALTER TABLE jobs DROP COLUMN batch_flow_version')
@@ -234,7 +234,7 @@ def test_schema_17_upgrade_preserves_old_flow(state):
     assert reopened.job(job['id'])['batch_flow_version'] == 2
     assert reopened.job(job['id'])['owner'] == job['owner']
     with reopened.connect() as db:
-        assert db.execute('PRAGMA user_version').fetchone()[0] == 21
+        assert db.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
 
 
 def test_v3_vendor_window_failure_does_not_apply_legacy_midpoint_rewrite(state):

@@ -379,6 +379,11 @@ def create_broker(store=None):
             details = {key: value for key, value in envelope.items()
                        if key not in ('raw_b64', 'headers', 'error_code', 'source')}
             headers = envelope.get('headers') or {}
+            if envelope.get('upstream_http_status') == 429:
+                from .model_retries import retry_after
+                seconds = retry_after(headers.get('retry-after'), time.time())
+                if seconds is not None and 0 <= seconds <= 10**9:
+                    details['retry_after_seconds'] = seconds
             request_id = headers.get('x-request-id') or headers.get('request-id')
             trace_id = headers.get('x-trace-id') or headers.get('traceparent') or headers.get('cf-ray')
             details['upstream_request_id'] = (request_id if isinstance(request_id, str)
