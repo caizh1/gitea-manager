@@ -93,6 +93,7 @@ def create_export(client, source, server, backup, journal):
 
 def prepare_export(helper, database, server, marker):
     from config import BACKUP_DIR
+    from services.artifact_io import artifact_binary
     from services.backup_consistency import execute, database_sql
     root = export_path(marker)
     # 主数据可能同时存在原始临时副本、ZIP及独立制品副本，数据库还需要SQL临时空间。
@@ -103,29 +104,29 @@ def prepare_export(helper, database, server, marker):
     os.makedirs(BACKUP_DIR, exist_ok=True)
     if available < required or shutil.disk_usage(BACKUP_DIR).free < required:
         raise RuntimeError(f'备份空间不足，源端和接收端各需至少 {required} 字节可用空间，尚未停止源站')
+    artifact_binary(helper.client)
     execute(helper, ['sh', '-ec', 'umask 077; test ! -e "$1"; mkdir "$1"; chown git:git "$1"; chmod 700 "$1"', 'sh', root])
     return root
 
 
-def freeze_metadata(helper, source, database, server, export, snapshot, tables, requirements, startup, raw, journal):
+def freeze_metadata(helper, source, database, server, export, snapshot, tables, requirements, startup, raw, journal,
+                    progress=None):
     from models import db
     from services.backup_consistency import execute, database_sql
     from services.backup_actions import actions_path
+    from services.artifact_io import collect_artifacts
     from services.diagnostics import register_secret
     root = export_path(export.marker)
     directory = actions_path(raw)
     records = json.loads(database_sql(database, server,
         "SELECT coalesce(json_agg(storage_path),'[]') FROM action_artifact WHERE status=2"))
-    files = ['gitea.zip', 'ssh.tar']
-    exists = execute(helper, ['sh', '-ec', 'if test -d "$1"; then echo yes; else echo no; fi', 'sh', directory]) == 'yes'
-    if exists:
-        if execute(helper, ['readlink', '-f', directory]) != directory:
-            raise RuntimeError('Actions 制品目录不能是符号链接')
-        execute(helper, ['sh', '-ec', 'umask 077; tar -cf "$2" -C "$(dirname "$1")" "$(basename "$1")"',
-                         'sh', directory, root + '/actions.tar'])
-        files.append('actions.tar')
-    elif records:
-        raise RuntimeError('Actions 有有效记录但缺少正文目录')
+    def report(sample, final):
+        progress.show('snapshot_actions', '扫描并计算源端制品摘要', item=sample['item'],
+                      artifacts={k: v for k, v in sample.items() if k != 'item'}, heartbeat=True, force=final)
+
+    files = ['gitea.zip', 'ssh.tar'] + collect_artifacts(helper, directory, root, report if progress else None)
+    if progress:
+        progress.show('freeze_export', '固化密钥、SSH 身份与备份校验基准')
     execute(helper, ['sh', '-ec', 'umask 077; tar -cf "$1" -C /data ssh', 'sh', root + '/ssh.tar'])
     secret, uri = security_values(raw)
     if uri:
@@ -142,7 +143,7 @@ def freeze_metadata(helper, source, database, server, export, snapshot, tables, 
         if not re.fullmatch(r'[0-9a-f]{64}', digest) or size <= 0:
             raise RuntimeError('固定副本大小或摘要无效')
         components[name] = {'sha256': digest, 'size': size}
-    value = {'版本': 1, '导出标识': export.marker, '来源容器': source.id, '来源名称': server.name,
+    value = {'版本': 2, '导出标识': export.marker, '来源容器': source.id, '来源名称': server.name,
              '来源令牌': server.api_token, '配置': base64.b64encode(raw).decode(), '仓库快照': snapshot,
              '数据表': tables, '准入': requirements, '启动依赖': startup, '文件': components,
              '密钥': {'配置摘要': hashlib.sha256(raw).hexdigest(), '数据加密密钥': secret},
@@ -246,17 +247,22 @@ def receive_file(reader, remote, target, expected=None, callback=None):
         return digest.hexdigest()
 
 
-def reader_container(client, export, journal, writable=False):
+def reader_container(client, export, journal, writable=False, tool_scratch=False):
     verify_volume(client, export)
     context = json.loads(export.context_json)
     name = 'manager-spool-reader-' + uuid.uuid4().hex
     spec = {'名称': name, '镜像': context['镜像'], '卷': export.volume, '导出': export.marker, '可写': writable}
+    mounts = [spool_mount(export.volume, not writable),
+              Mount(target='/data', source='', type='tmpfs', read_only=True, tmpfs_size=1048576)]
+    if tool_scratch:
+        # 仅工具助手的容器写层可写。没有业务卷，固定副本始终以只读方式挂载。
+        spec['临时工具写层'] = True
     journal.value['导出读取助手'] = spec
     journal.value['传输收尾完成'] = False
     journal.save('准备导出读取助手')
     reader = client.containers.create(context['镜像'], name=name, entrypoint=['sleep'], command=['infinity'],
-        mounts=[spool_mount(export.volume, not writable), Mount(target='/data', source='', type='tmpfs', read_only=True, tmpfs_size=1048576)],
-        read_only=True, network_mode='none', labels={'gitea.manager.owner': OWNER, 'gitea.manager.export': export.marker})
+        mounts=mounts,
+        read_only=not tool_scratch, network_mode='none', labels={'gitea.manager.owner': OWNER, 'gitea.manager.export': export.marker})
     spec['ID'] = reader.id
     spec['创建时间'] = reader.attrs['Created']
     journal.save('导出读取助手已创建')
@@ -279,13 +285,18 @@ def cleanup_reader(client, journal):
     mounts = attrs.get('Mounts') or []
     spool = [item for item in mounts if item.get('Destination') == MOUNT]
     scratch = [item for item in mounts if item.get('Destination') == '/data']
+    tool = [item for item in mounts if item.get('Destination') == '/tmp']
+    tool_expected = bool(spec.get('临时工具目录'))  # 兼容上一次中断的临时目录助手。
+    writable_layer = bool(spec.get('临时工具写层'))
     if (reader.name != spec['名称'] or attrs['Image'] != spec['镜像']
             or (spec.get('ID') and reader.id != spec['ID'])
             or (spec.get('创建时间') and attrs['Created'] != spec['创建时间'])
-            or attrs['HostConfig'].get('NetworkMode') != 'none' or not attrs['HostConfig'].get('ReadonlyRootfs')
+            or attrs['HostConfig'].get('NetworkMode') != 'none'
+            or bool(attrs['HostConfig'].get('ReadonlyRootfs')) == writable_layer
             or attrs['Config'].get('Entrypoint') != ['sleep'] or attrs['Config'].get('Cmd') != ['infinity']
             or attrs['Config'].get('Labels') != {'gitea.manager.owner': OWNER, 'gitea.manager.export': spec['导出']}
-            or len(mounts) != 2 or len(spool) != 1 or spool[0].get('Name') != spec['卷']
+            or len(mounts) != 2 + tool_expected or len(spool) != 1 or spool[0].get('Name') != spec['卷']
+            or len(tool) != tool_expected or (tool_expected and (tool[0].get('Type') != 'tmpfs' or not tool[0].get('RW')))
             or spool[0].get('RW') != spec.get('可写', False)
             or len(scratch) != 1 or scratch[0].get('Type') != 'tmpfs' or scratch[0].get('RW')):
         raise RuntimeError('读取助手与持久化创建意图不符，拒绝清理')
@@ -294,11 +305,17 @@ def cleanup_reader(client, journal):
     journal.save('导出读取助手已清理')
 
 
-def receive_export(client, export, destination, backup, journal, progress):
+def receive_export(client, export, destination, backup, journal, progress, server=None):
+    from services import backup_chunks
+    from services.artifact_io import INVENTORY
+    from services.large_docker_transfer import PART, receive_in_parts
     root = export_path(export.marker)
-    reader = reader_container(client, export, journal)
+    reuse = (server is not None and server.connection_mode == 'ssh' and backup_chunks.enabled(export.source_server_id))
+    reader = reader_container(client, export, journal, tool_scratch=reuse) if reuse else reader_container(client, export, journal)
     os.makedirs(Path(destination).parent, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='receive-', dir=str(Path(destination).parent)) as temp:
+    from services.backup_replica import pretransfer
+    with tempfile.TemporaryDirectory(prefix='receive-', dir=str(Path(destination).parent)) as temp, \
+            pretransfer(backup) as enqueue:
         folder = Path(temp)
         progress.show('transfer', '接收固定导出元数据', item=METADATA, force=True)
         metadata = folder / METADATA
@@ -308,35 +325,68 @@ def receive_export(client, export, destination, backup, journal, progress):
         with metadata_io('解析固定导出元数据', metadata.stat().st_size), metadata.open('rb') as stream:
             value = json.load(stream)
         context = json.loads(export.context_json)
-        if value.get('版本') != 1 or value.get('导出标识') != export.marker or value.get('来源容器') != context['来源容器']:
+        version = value.get('版本')
+        if version not in (1, 2) or value.get('导出标识') != export.marker or value.get('来源容器') != context['来源容器']:
             raise RuntimeError('导出身份不符')
         files = value['文件']
-        if set(files) not in ({'gitea.zip', 'ssh.tar'}, {'gitea.zip', 'ssh.tar', 'actions.tar'}):
+        core = {'gitea.zip', 'ssh.tar'}
+        if version == 2:
+            core.add(INVENTORY)
+        if version == 2 and not value['制品']['directory'].startswith('/data/gitea/'):
+            allowed = (core | {'actions.tar'},)
+        elif version == 2:
+            allowed = (core,)
+        else:
+            allowed = (core, core | {'actions.tar'})
+        if set(files) not in allowed:
             raise RuntimeError('固定导出文件集合不符')
         if sum(item['size'] for item in files.values()) != export.size:
             raise RuntimeError('固定导出总大小不符')
         base = 0
         for name, expected in files.items():
             def report(count):
+                if name == 'gitea.zip' and 0 < count < expected['size']:
+                    enqueue(folder / name, count, expected['size'])
                 done = base + count
                 progress.show('transfer', '接收源端固定副本', current=done, total=export.size,
                               unit='bytes', item=name, heartbeat=True)
             report(0)
-            receive_file(reader, root + '/' + name, folder / name, expected=expected, callback=report)
+            reused = False
+            if reuse and expected['size'] > PART:
+                try:
+                    reused = backup_chunks.receive(
+                        server, reader, export, name, root + '/' + name, folder / name, expected, progress, report)
+                except Exception as error:
+                    from services.diagnostics import CURRENT, redact
+                    (folder / name).unlink(missing_ok=True)
+                    if CURRENT.get():
+                        CURRENT.get().event('跳过', '内容复用暂不可用，重新接收固定副本', 原因=redact(str(error))[:500])
+                    progress.show('transfer', '内容复用暂不可用，回退完整接收', item=name, force=True)
+            if not reused:
+                if server is not None and server.connection_mode == 'ssh' and expected['size'] > PART:
+                    receive_in_parts(server, reader, root + '/' + name, folder / name, expected, report)
+                else:
+                    receive_file(reader, root + '/' + name, folder / name, expected=expected, callback=report)
+            if name == 'gitea.zip':
+                enqueue(folder / name, expected['size'], expected['size'])
             base += expected['size']
-        assemble_export(folder, value, progress)
+        progress.show('transfer', '固定副本已接收并校验', current=base, total=export.size,
+                      unit='bytes', heartbeat=True, force=True)
+        warning = assemble_export(folder, value, progress)
         os.replace(folder / 'gitea.zip', destination)
         descriptor = os.open(Path(destination).parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+        if warning:
+            backup.actions_warning = warning
 
 
 def assemble_export(folder, value, progress):
     from services.restore_secrets import capture_backup_secret
     from services.backup_dependencies import append_startup_files
-    from services.backup_actions import append_artifacts
+    from services.backup_actions import append_artifacts, append_indexed_artifacts
     from services.backup_manifest import append_manifest
     from services.restore_archive import validate_ssh_archive
     from services.backup_consistency import SNAPSHOT_FILE
@@ -346,7 +396,15 @@ def assemble_export(folder, value, progress):
     capture_backup_secret(None, SimpleNamespace(file_path=path), snapshot=value['密钥'])
     append_startup_files(path, value['启动依赖'])
     artifact = dict(value['制品'], archive_path=str(folder / 'actions.tar') if 'actions.tar' in value['文件'] else None)
-    append_artifacts(path, None, None, None, base64.b64decode(value['配置'], validate=True), progress=progress, staged=artifact)
+    artifact_checks = None
+    warning = None
+    if value.get('版本') == 2:
+        from services.artifact_io import INVENTORY
+        with (folder / INVENTORY).open('rb') as stream:
+            inventory = json.load(stream)
+        artifact_checks, warning = append_indexed_artifacts(path, artifact, inventory, progress)
+    else:
+        append_artifacts(path, None, None, None, base64.b64decode(value['配置'], validate=True), progress=progress, staged=artifact)
     if (folder / 'ssh.tar').stat().st_size > 2 * 1024 * 1024:
         raise RuntimeError('SSH 主机身份归档过大')
     keys = (folder / 'ssh.tar').read_bytes()
@@ -354,9 +412,11 @@ def assemble_export(folder, value, progress):
     with zipfile.ZipFile(path, 'a') as archive:
         write_zip_json(archive, SNAPSHOT_FILE, value['仓库快照'])
         archive.writestr('manager-ssh-hostkeys.tar', keys)
-    append_manifest(path, value['准入'], value['数据表'], SimpleNamespace(name=value['来源名称'], api_token=value['来源令牌']), progress=progress)
+    append_manifest(path, value['准入'], value['数据表'], SimpleNamespace(name=value['来源名称'], api_token=value['来源令牌']),
+                    progress=progress, artifact_checks=artifact_checks)
     with open(path, 'rb') as stream:
         os.fsync(stream.fileno())
+    return warning
 
 
 def retry_export(server, backup, journal):
@@ -379,7 +439,8 @@ def retry_export(server, backup, journal):
         if export.state != 'ready':
             raise RuntimeError('固定副本已不可重新接收')
         try:
-            receive_export(client, export, os.path.join(BACKUP_DIR, backup.filename), backup, journal, progress)
+            receive_export(client, export, os.path.join(BACKUP_DIR, backup.filename), backup, journal, progress,
+                           server=server)
             backup.file_path = os.path.join(BACKUP_DIR, backup.filename)
             backup.file_size = os.path.getsize(backup.file_path)
             db.session.commit()

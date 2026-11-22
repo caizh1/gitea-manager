@@ -17,7 +17,11 @@
       <div class="step-heading"><el-tag :type="step.status === 'failed' ? 'danger' : step.status === 'running' ? 'warning' : 'success'">{{ operationStatus(step) }}</el-tag><strong>{{ step.label }}</strong></div>
       <p v-if="step.detail">{{ step.detail }}</p>
       <p class="step-time">开始：{{ fmt(step.started_at) }} · 完成：{{ fmt(step.completed_at) }}</p>
-      <div v-if="step.metrics" class="step-metrics"><span v-for="(value, key) in step.metrics" :key="key" v-show="value !== null && value !== ''">{{ key }}：{{ value === 'bytes' ? '字节' : value === 'repos' ? '仓库' : value }}</span></div>
+      <p v-if="step.metrics?.实时?.artifacts">{{ artifactProgressText(step.metrics.实时.artifacts) }}</p>
+      <p v-if="step.metrics?.实时?.observed_at" class="step-time">
+        最近上报 {{ fmt(step.metrics.实时.observed_at) }}
+      </p>
+      <div v-if="step.metrics" class="step-metrics"><span v-for="(value, key) in step.metrics" :key="key" v-show="key !== '实时' && value !== null && value !== ''">{{ key }}：{{ value === 'bytes' ? '字节' : value === 'repos' ? '仓库' : value }}</span></div>
       <details v-if="step.stdout_tail || step.stderr_tail"><summary>查看日志摘要</summary><pre>{{ step.stdout_tail }}{{ step.stderr_tail }}</pre></details>
     </section>
     </template>
@@ -29,7 +33,7 @@ import { X } from '@lucide/vue'
 import BackupExecutionSteps from './BackupExecutionSteps.vue'
 import { api } from '../api'
 import { useOperationPolling } from '../composables/useOperationPolling'
-import { operationActive, operationStatus, utcTime } from './operationDisplay'
+import { artifactProgressText, operationActive, operationStatus, utcTime } from './operationDisplay'
 const props = defineProps({ task: { type: Object, required: true }, kind: { type: String, required: true } })
 defineEmits(['close'])
 const steps = ref([])

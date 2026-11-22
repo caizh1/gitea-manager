@@ -1,5 +1,8 @@
 """恢复先准备完整文件与数据库回退点，任何检查失败均停止发布成功状态。"""
+import hashlib
 import io
+from contextlib import ExitStack, nullcontext
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -11,10 +14,11 @@ import uuid
 import zipfile
 
 from services.diagnostics import CURRENT
-from services.operation_progress import ProgressReader, finish_current_step
+from services.operation_progress import finish_current_step
+from services.large_docker_transfer import put_archive
 from services.restore_secrets import SecretTransition, archive_secret, SECRET_URI, read_file, security_values, uri_path
 from services.backup_consistency import check_layout, require_quiet, load_snapshot, repository_snapshot, verify_snapshot
-from services.restore_archive import validate_members, restore_modes, custom_hooks, verify_hooks
+from services.restore_archive import restore_modes, custom_hooks, verify_hooks
 from services.restore_isolation import IsolatedGitea
 
 
@@ -23,17 +27,40 @@ def restore(target, backup, task, progress):
     ensure_ready(target.id)
     from services.docker_service import managed_client
     from services.restore_recovery import lease
-    lock = None
+    from services import backup_replica
+    resources = ExitStack()
     client = managed_client(target)
     try:
         source = client.containers.get(target.gitea_container)
-        lock = lease(target, client=client, source=source)
-        finalizer = _restore(client, target, backup, task, progress, source=source)
+        resources.enter_context(lease(target, client=client, source=source))
+        candidate = resources.enter_context(backup_replica.read_ready(client, target, source, backup))
+        if not candidate:
+            try:
+                def report(current, total):
+                    progress(task, 'prestage_backup', '正在补齐备机全量副本', 8, target.name,
+                             current=current, total=total, unit='bytes')
+
+                backup_replica.prepare(backup, target, report)
+                candidate = resources.enter_context(backup_replica.read_ready(client, target, source, backup))
+            except Exception:
+                progress(task, 'prestage_backup', '备机预传暂不可用，使用 Manager 全量备份', 8, target.name)
+        try:
+            finalizer = _restore(client, target, backup, task, progress, source=source, candidate=candidate)
+        except backup_replica.InvalidReplica as error:
+            if candidate is None:
+                raise
+            try:
+                backup_replica.invalidate(backup, target, candidate, error)
+            except Exception:
+                import logging
+                logging.warning('未能立即清理损坏的备机缓存')
+            progress(task, 'prestage_backup', '备机预传校验失败，使用 Manager 全量备份', 8, target.name)
+            finalizer = _restore(client, target, backup, task, progress, source=source)
         def finish(verified):
             try:
                 return finalizer(verified)
             finally:
-                lock.close()
+                resources.close()
         finish.api_get_json = finalizer.api_get_json
         finish.snapshot_check = finalizer.snapshot_check
         return finish
@@ -41,27 +68,21 @@ def restore(target, backup, task, progress):
         try:
             client.close()
         finally:
-            if lock is not None:
-                lock.close()
+            resources.close()
         raise
 
 
-def _restore(client, target, backup, task, progress, source=None):
+def _restore(client, target, backup, task, progress, source=None, candidate=None):
     gitea = source or client.containers.get(target.gitea_container)
     database = client.containers.get(target.pg_container)
     check_layout(gitea, database, target, restoring=True)
-    from services.backup_manifest import load_manifest, identity, admit, table_snapshot
-    manifest = load_manifest(backup.file_path)
+    from services import cached_restore
+    from services.backup_manifest import read_manifest, check_member, identity, admit, table_snapshot
     requirements = identity(gitea, database, target)
-    admit(manifest, requirements)
     from services.backup_actions import external_path, ARCHIVE_ROOT, switch_command, rollback_command, verify_artifacts
     target_config = read_file(gitea, '/data/gitea/conf/app.ini')[0]
     artifacts = external_path(target_config)
     external_lfs = requirements['存储'].get('lfs', {}).get('path') == '/data/git/lfs'
-    if manifest is None:
-        from services.backup_consistency import database_sql
-        if database_sql(database, target, "SELECT to_regclass('public.governance_namespace') IS NOT NULL") == 't':
-            raise RuntimeError('增强版恢复必须提供灾备准入清单，请重新生成备份；尚未修改目标数据')
     marker = 'manager-restore-' + uuid.uuid4().hex
     stage = '/data/' + marker
     pg_temp = '/tmp/' + marker
@@ -107,36 +128,67 @@ def _restore(client, target, backup, task, progress, source=None):
         workspace = Path(workspace)
         progress(task, 'validate_archive', '正在校验备份文件和空间', 10, backup.filename)
         with zipfile.ZipFile(backup.file_path) as archive:
+            manifest = read_manifest(archive)
+            admit(manifest, requirements)
+            if manifest is None:
+                from services.backup_consistency import database_sql
+                if database_sql(database, target, "SELECT to_regclass('public.governance_namespace') IS NOT NULL") == 't':
+                    raise RuntimeError('增强版恢复必须提供灾备准入清单，请重新生成备份；尚未修改目标数据')
             members = archive.infolist()
             total = sum(x.file_size for x in members)
-            if shutil.disk_usage(workspace).free < total * 2 + 64*1024*1024:
-                raise RuntimeError('Manager 临时空间不足，尚未修改目标数据')
-            validate_members(members)
-            if archive.testzip() is not None:
-                raise RuntimeError('备份 ZIP 校验失败，尚未修改目标数据')
-            actions_snapshot = json.loads(archive.read('manager-actions.json')) if 'manager-actions.json' in archive.namelist() else None
-            progress(task, 'extract_archive', '正在解压备份文件', 15, backup.filename)
-            for index, entry in enumerate(members):
-                progress(task, 'extract_archive', '正在解压备份文件', 15, backup.filename,
-                         current=index, total=len(members), unit='files', item=entry.filename)
-                archive.extract(entry, workspace)
-            restore_modes(workspace, members)
-            progress(task, 'extract_archive', '正在解压备份文件', 15, backup.filename,
-                     current=len(members), total=len(members), unit='files')
-        roots = list(workspace.rglob('gitea-db.sql'))
-        if len(roots) != 1:
-            raise RuntimeError('备份必须包含唯一数据库 SQL，尚未修改目标数据')
-        root = roots[0].parent
-        if manifest is None:
-            import re
-            with roots[0].open(errors='replace') as stream:
-                if any(re.match(r'^CREATE TABLE(?: IF NOT EXISTS)? [\"`]?governance_', line, re.I) for line in stream):
-                    raise RuntimeError('增强版历史备份缺少构建准入清单，拒绝未经匹配的恢复')
-        if not (root/'data').is_dir() or not (root/'repos').is_dir():
-            raise RuntimeError('备份缺少数据或仓库目录，尚未修改目标数据')
-        if artifacts and not (workspace / ARCHIVE_ROOT).is_dir():
-            raise RuntimeError('备份缺少独立 Actions 制品正文，尚未修改目标数据')
-        hooks = custom_hooks(root/'repos')
+            if candidate:
+                root, sql_name = cached_restore.stage_metadata(archive, manifest, workspace)
+            else:
+                if shutil.disk_usage(workspace).free < total * 2 + 64*1024*1024:
+                    raise RuntimeError('Manager 临时空间不足，尚未修改目标数据')
+                progress(task, 'extract_archive', '正在解压并校验备份文件', 15, backup.filename,
+                         current=0, total=total, unit='bytes')
+                expanded = 0
+                for entry in members:
+                    destination = workspace / entry.filename
+                    digest = hashlib.sha256()
+                    if entry.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                    else:
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                    with (archive.open(entry) as body,
+                          (nullcontext() if entry.is_dir() else destination.open('xb')) as output):
+                        for block in iter(lambda: body.read(1024 * 1024), b''):
+                            digest.update(block)
+                            if output is not None:
+                                output.write(block)
+                            expanded += len(block)
+                            if expanded < total:
+                                progress(task, 'extract_archive', '正在解压并校验备份文件', 15, backup.filename,
+                                         current=expanded, total=total, unit='bytes', item=entry.filename)
+                    check_member(entry, digest.hexdigest(), manifest)
+                restore_modes(workspace, members)
+                progress(task, 'extract_archive', '解压和校验完成', 15, backup.filename,
+                         current=expanded, total=total, unit='bytes')
+        actions_file = workspace / 'manager-actions.json'
+        actions_snapshot = json.loads(actions_file.read_text(encoding='utf-8')) if actions_file.is_file() else None
+        if actions_snapshot and actions_snapshot.get('文件'):
+            from services.artifact_io import artifact_binary
+
+            artifact_binary(client)
+        if candidate:
+            repo_prefix = sql_name.removesuffix('gitea-db.sql') + 'repos/'
+            hooks = cached_restore.expected_hooks(manifest, repo_prefix)
+        else:
+            roots = list(workspace.rglob('gitea-db.sql'))
+            if len(roots) != 1:
+                raise RuntimeError('备份必须包含唯一数据库 SQL，尚未修改目标数据')
+            root = roots[0].parent
+            if manifest is None:
+                import re
+                with roots[0].open(errors='replace') as stream:
+                    if any(re.match(r'^CREATE TABLE(?: IF NOT EXISTS)? [\"`]?governance_', line, re.I) for line in stream):
+                        raise RuntimeError('增强版历史备份缺少构建准入清单，拒绝未经匹配的恢复')
+            if not (root/'data').is_dir() or not (root/'repos').is_dir():
+                raise RuntimeError('备份缺少数据或仓库目录，尚未修改目标数据')
+            if artifacts and not (workspace / ARCHIVE_ROOT).is_dir():
+                raise RuntimeError('备份缺少独立 Actions 制品正文，尚未修改目标数据')
+            hooks = custom_hooks(root/'repos')
         snapshot = load_snapshot(backup.file_path)
         progress(task, 'prepare_secret', '正在校验备份密钥与目标启动配置', 18, target.name)
         source_secret = archive_secret(root)
@@ -154,6 +206,7 @@ def _restore(client, target, backup, task, progress, source=None):
         if not common_networks: raise RuntimeError('Gitea 与 PostgreSQL 没有共同网络，尚未修改目标数据')
         helper = client.containers.run(gitea.attrs['Image'], entrypoint=['sleep'], command=['infinity'],
                                       volumes_from=[gitea.id], network=sorted(common_networks)[0], detach=True,
+                                      mounts=[candidate[1]] if candidate else [],
                                       labels={'gitea.manager.operation': marker})
         try:
             execute(helper, ['mkdir', '/data/.manager-restore-lock'], '获取目标实例恢复锁；已有恢复或未完成回退时拒绝并发操作')
@@ -165,31 +218,59 @@ def _restore(client, target, backup, task, progress, source=None):
             business_config.write()
             journal.prepared(transition)
             free = int(execute(helper, ['sh', '-ec', "df -Pk /data | tail -1 | awk '{print $4}'"], '检查目标磁盘空间').strip())*1024
-            if free < total * 2 + 64*1024*1024:
+            if free < total * (1 if candidate else 2) + 64*1024*1024:
                 raise RuntimeError('目标数据盘空间不足，尚未修改目标数据')
-            execute(helper, ['mkdir', '-p', stage], '建立文件暂存区')
-            progress(task, 'prepare_files', '正在准备仓库和数据文件', 20, target.name)
-            with tempfile.TemporaryFile() as stream:
-                with tarfile.open(fileobj=stream, mode='w') as bundle:
-                    bundle.add(root/'data', arcname='new-gitea')
-                    bundle.add(root/'repos', arcname='new-repositories')
-                    if artifacts:
-                        bundle.add(workspace / ARCHIVE_ROOT, arcname='new-actions')
-                stream.seek(0)
-                progress(task, 'transfer_files', '正在传输仓库和数据文件', 25, target.name)
-                reader = ProgressReader(stream, lambda n, total: progress(task, 'transfer_files', '正在传输仓库和数据文件', 25, target.name, current=n, total=total, unit='bytes'))
-                if not helper.put_archive(stage, reader): raise RuntimeError('写入文件暂存区失败')
+            execute(helper, ['mkdir', '-m', '700', stage], '建立文件暂存区')
+            if candidate:
+                progress(task, 'extract_archive', '正在备机本地解包并校验文件', 24, backup.filename)
+
+                def report_unpack(sample, final):
+                    progress(task, 'extract_archive', '正在备机本地解包并校验文件', 24, backup.filename,
+                             current=sample['bytes_done'], total=sample['bytes_total'], unit='bytes',
+                             item=sample['item'], force=final)
+
+                cached_restore.unpack(helper, candidate, backup, stage, report_unpack)
+                if artifacts:
+                    execute(helper, ['test', '-d', stage + '/new-actions'], '确认外置 Actions 数据已暂存')
+                execute(helper, ['mkdir', '-p', stage + '/new-gitea/conf'], '准备目标配置目录')
+                cached_restore.put_configuration(helper, business_config, stage, transition.environment)
+            else:
+                progress(task, 'prepare_files', '正在准备仓库和数据文件', 20, target.name)
+                with tempfile.TemporaryFile() as stream:
+                    with tarfile.open(fileobj=stream, mode='w') as bundle:
+                        bundle.add(root/'data', arcname='new-gitea')
+                        bundle.add(root/'repos', arcname='new-repositories')
+                        if artifacts:
+                            bundle.add(workspace / ARCHIVE_ROOT, arcname='new-actions')
+                    stream.seek(0)
+                    progress(task, 'transfer_files', '正在传输仓库和数据文件', 25, target.name)
+                    def report_files(current, size):
+                        progress(task, 'transfer_files', '正在传输仓库和数据文件', 25, target.name,
+                                 current=current, total=size, unit='bytes')
+                    size = put_archive(target, helper, stage, stream, report_files, execute)
+                    progress(task, 'transfer_files', '仓库和数据文件传输完成', 25, target.name,
+                             current=size, total=size, unit='bytes', force=True)
+            progress(task, 'prepare_permissions', '正在准备目标暂存目录权限', 26, target.name)
             execute(helper, ['sh','-ec', f'chown -R git:git {stage}/new-gitea {stage}/new-repositories'], '校验源业务配置及文件权限，保留明确目标部署参数')
             sql(['mkdir', '-m', '700', pg_temp], '建立数据库暂存区')
-            with tempfile.TemporaryFile() as stream:
-                with tarfile.open(fileobj=stream, mode='w') as bundle:
-                    info = bundle.gettarinfo(str(roots[0]), arcname='incoming.sql')
-                    info.mode = 0o644
-                    with roots[0].open('rb') as source: bundle.addfile(info, source)
-                stream.seek(0)
-                progress(task, 'transfer_database', '正在传输数据库文件', 30, target.pg_dbname)
-                reader = ProgressReader(stream, lambda n, total: progress(task, 'transfer_database', '正在传输数据库文件', 30, target.pg_dbname, current=n, total=total, unit='bytes', item='incoming.sql'))
-                if not database.put_archive(pg_temp, reader): raise RuntimeError('写入数据库暂存区失败')
+            if candidate:
+                progress(task, 'transfer_database', '正在备机本地准备数据库文件', 30, target.pg_dbname)
+                cached_restore.stage_sql(helper, target, database, stage, pg_temp,
+                                         manifest['文件'][sql_name]['摘要'], execute)
+            else:
+                with tempfile.TemporaryFile() as stream:
+                    with tarfile.open(fileobj=stream, mode='w') as bundle:
+                        info = bundle.gettarinfo(str(roots[0]), arcname='incoming.sql')
+                        info.mode = 0o644
+                        with roots[0].open('rb') as source: bundle.addfile(info, source)
+                    stream.seek(0)
+                    progress(task, 'transfer_database', '正在传输数据库文件', 30, target.pg_dbname)
+                    def report_sql(current, size):
+                        progress(task, 'transfer_database', '正在传输数据库文件', 30, target.pg_dbname,
+                                 current=current, total=size, unit='bytes', item='incoming.sql')
+                    size = put_archive(target, database, pg_temp, stream, report_sql, execute)
+                    progress(task, 'transfer_database', '数据库文件传输完成', 30, target.pg_dbname,
+                             current=size, total=size, unit='bytes', item='incoming.sql', force=True)
             progress(task, 'stop_gitea', '停止目标服务并保存回退点', 35, target.name)
             journal.save('停止')
             gitea.stop(timeout=30); stopped = True
@@ -214,8 +295,21 @@ def _restore(client, target, backup, task, progress, source=None):
                 execute(helper, ['sh', '-ec', switch_command(stage, artifacts)], '切换 Actions 制品正文')
             if external_lfs:
                 execute(helper, ['sh', '-ec', f'mkdir -p /data/git/lfs; mv /data/git/lfs {stage}/old-lfs; mkdir -p /data/gitea/lfs; mv /data/gitea/lfs /data/git/lfs; chown -R git:git /data/git/lfs'], '恢复持久 LFS 对象')
-            if actions_snapshot:
-                verify_artifacts(helper, actions_snapshot)
+            def check_actions(percent):
+                if not actions_snapshot:
+                    return
+
+                def report(sample, final):
+                    progress(task, 'verify_actions', '核对恢复后 Actions 制品', percent, target.name,
+                             current=sample['bytes_done'], total=sample['bytes_total'], unit='bytes',
+                             item=sample['item'], force=final,
+                             activity={'artifacts': {k: v for k, v in sample.items() if k != 'item'},
+                                       'observed_at': datetime.utcnow().isoformat() + 'Z'})
+
+                verify_artifacts(helper, actions_snapshot, report)
+
+            if snapshot is None:
+                check_actions(76)
             progress(task, 'configure_secret', '正在同步目标密钥启动配置', 78, target.name)
             journal.save('启动配置')
             gitea = transition.switch()
@@ -241,8 +335,7 @@ def _restore(client, target, backup, task, progress, source=None):
                 isolated.close()
                 require_quiet(database, target)
                 verify_hooks(helper, hooks)
-                if actions_snapshot:
-                    verify_artifacts(helper, actions_snapshot)
+                check_actions(97)
                 verify_snapshot(snapshot, repository_snapshot(helper, database, target), saved_rows)
 
             def finalize(verified):
@@ -294,7 +387,7 @@ def _restore(client, target, backup, task, progress, source=None):
             finalize.snapshot_check = snapshot_check if snapshot is not None else None
             return finalize
         except Exception as primary:
-            if report: report.fail(primary)
+            if report and not isinstance(primary, cached_restore.InvalidReplica): report.fail(primary)
             if not getattr(primary, 'operation_stage', None): primary.operation_stage = task.progress_stage
             try:
                 if isolated is not None: isolated.close()
@@ -323,6 +416,9 @@ def _restore(client, target, backup, task, progress, source=None):
             if helper is not None and not success:
                 try:
                     if locked and rollback_complete:
+                        if candidate and not swapped and not db_changed:
+                            execute(helper, ['rm', '-rf', '--', stage], '清理失败的备机本地暂存')
+                            sql(['rm', '-rf', '--', pg_temp], '清理失败的数据库暂存')
                         execute(helper, ['rm', '-rf', '/data/.manager-restore-lock'], '释放实例恢复锁')
                 finally: helper.remove(force=True)
                 transition.close()

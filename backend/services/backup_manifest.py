@@ -95,53 +95,88 @@ def table_snapshot(database, server, progress=None):
     return dict(zip(names, hashes))
 
 
-def append_manifest(path, requirements, tables, server, progress=None):
+def append_manifest(path, requirements, tables, server, progress=None, artifact_checks=None):
     with zipfile.ZipFile(path, 'a') as archive:
+        from services.restore_archive import validate_members
+
         files = {}
         entries = archive.infolist()
+        validate_members(entries)
         total = sum(entry.file_size for entry in entries)
         current = 0
-        if progress:
-            progress.show('manifest', '计算归档文件摘要', current=current, total=total, unit='bytes')
+        artifact_sample = None
+        if artifact_checks is not None:
+            artifact_sample = dict(files_done=0, files_total=len(artifact_checks), bytes_done=0,
+                                   bytes_total=sum(item['size'] for item in artifact_checks.values()))
+
+        def show(action, item='', **kwargs):
+            if progress:
+                progress.show('manifest', action, current=current, total=total, unit='bytes', item=item,
+                              artifacts=artifact_sample, **kwargs)
+
+        show('计算归档文件摘要')
         for entry in entries:
+            artifact = artifact_checks.get(entry.filename) if artifact_checks is not None else None
+            if artifact and entry.file_size != artifact['size']:
+                raise RuntimeError('备份 ZIP 的 Actions 制品大小与源端不一致：' + entry.filename)
             with archive.open(entry) as stream:
                 digest = hashlib.sha256()
                 for block in iter(lambda: stream.read(1024 * 1024), b''):
                     digest.update(block)
                     current += len(block)
-                    if progress:
-                        progress.show('manifest', '计算归档文件摘要', current=current, total=total,
-                                      unit='bytes', item=entry.filename, heartbeat=True)
-            files[entry.filename] = {'摘要': digest.hexdigest(), '权限': entry.external_attr >> 16, '系统': entry.create_system}
+                    if artifact:
+                        artifact_sample['bytes_done'] += len(block)
+                    show('核对备份内 Actions 制品' if artifact else '计算归档文件摘要', entry.filename, heartbeat=True)
+            result = digest.hexdigest()
+            if artifact:
+                if result != artifact['sha256']:
+                    raise RuntimeError('备份 ZIP 的 Actions 制品摘要与源端不一致：' + entry.filename)
+                artifact_sample['files_done'] += 1
+                show('核对备份内 Actions 制品', entry.filename, heartbeat=True)
+            files[entry.filename] = _member_evidence(entry, result)
         payload = {'版本': 2, '准入': requirements, '数据表': tables,
             '文件': files, '来源名称': server.name, 'API令牌': server.api_token,
             '边界': '同镜像、同 PostgreSQL 主版本、本地持久存储；不包含镜像及 Manager 的其他业务状态'}
-        if progress:
-            progress.show('manifest', '写入备份清单', current=current, total=total, unit='bytes', force=True)
+        if artifact_sample is not None and artifact_sample['files_done'] != artifact_sample['files_total']:
+            raise RuntimeError('备份 ZIP 缺少固定清单中的 Actions 制品')
+        show('写入备份清单', force=True)
         write_zip_json(archive, MANIFEST, payload)
 
 
-def load_manifest(path):
+def _member_evidence(entry, digest):
+    return {'摘要': digest, '权限': entry.external_attr >> 16, '系统': entry.create_system}
+
+
+def read_manifest(archive):
     from services.restore_archive import validate_members
+
+    validate_members(archive.infolist())
+    names = set(archive.namelist())
+    if MANIFEST not in names:
+        return None
+    value = read_zip_json(archive, MANIFEST)
+    if value.get('版本') != 2 or not all(isinstance(value.get(key), dict) for key in ('准入', '数据表', '文件')):
+        raise RuntimeError('灾备清单结构不受支持')
+    if names - {MANIFEST} != value['文件'].keys():
+        raise RuntimeError('灾备清单文件集合不一致')
+    return value
+
+
+def check_member(entry, digest, manifest):
+    if manifest is not None and entry.filename != MANIFEST:
+        if _member_evidence(entry, digest) != manifest['文件'][entry.filename]:
+            raise RuntimeError('灾备文件哈希或权限不一致：' + entry.filename)
+
+
+def load_manifest(path):
     with zipfile.ZipFile(path) as archive:
-        validate_members(archive.infolist())
-        if MANIFEST not in archive.namelist():
+        value = read_manifest(archive)
+        if value is None:
             return None
-        value = read_zip_json(archive, MANIFEST)
-        if value.get('版本') != 2 or not all(isinstance(value.get(key), dict) for key in ('准入', '数据表', '文件')):
-            raise RuntimeError('灾备清单结构不受支持')
-        files = set(archive.namelist()) - {MANIFEST}
-        if files != set(value['文件']):
-            raise RuntimeError('灾备清单文件集合不一致')
-        for name, expected in value['文件'].items():
-            with archive.open(name) as stream:
-                digest = hashlib.sha256()
-                for block in iter(lambda: stream.read(1024 * 1024), b''):
-                    digest.update(block)
+        for name in value['文件']:
             entry = archive.getinfo(name)
-            actual = {'摘要': digest.hexdigest(), '权限': entry.external_attr >> 16, '系统': entry.create_system}
-            if actual != expected:
-                raise RuntimeError('灾备文件哈希或权限不一致：' + name)
+            with archive.open(entry) as stream:
+                check_member(entry, hashlib.file_digest(stream, 'sha256').hexdigest(), value)
         return value
 
 

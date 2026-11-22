@@ -69,6 +69,11 @@ def create_app():
             'ALTER TABLE backups ADD COLUMN transfer_origin_id INTEGER',
             'ALTER TABLE backups ADD COLUMN source_stopped_at DATETIME',
             'ALTER TABLE backups ADD COLUMN source_restored_at DATETIME',
+            'ALTER TABLE backups ADD COLUMN actions_warning JSON',
+            "ALTER TABLE backups ADD COLUMN archive_sha256 VARCHAR(64) NOT NULL DEFAULT ''",
+            'ALTER TABLE backups ADD COLUMN archive_parts JSON',
+            'ALTER TABLE scheduled_tasks ADD COLUMN fast_restore_target_id INTEGER',
+            'ALTER TABLE scheduled_tasks ADD COLUMN reuse_source_chunks BOOLEAN NOT NULL DEFAULT 0',
             'CREATE INDEX IF NOT EXISTS ix_backups_source_export_id ON backups(source_export_id)',
             "ALTER TABLE restore_tasks ADD COLUMN diagnostic_id VARCHAR(100) NOT NULL DEFAULT ''",
             "ALTER TABLE gitea_servers ADD COLUMN connection_mode VARCHAR(20) NOT NULL DEFAULT 'ssh'",
@@ -278,6 +283,8 @@ def create_app():
     from services.scheduler_service import start_scheduler
     if os.environ.get('DISABLE_BACKGROUND_TASKS') != '1':
         start_scheduler(app)
+        from services.backup_replica import start as start_backup_replica
+        start_backup_replica(app)
         from engineering_activity.worker import start as start_engineering_activity
         start_engineering_activity(app)
         from services.policy_tasks import start_policy_worker

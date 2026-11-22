@@ -17,10 +17,13 @@ def import_backup():
     import json
     import tempfile
     import uuid
+    import zipfile
     from config import BACKUP_DIR
     from models import BackupRepoCommit
     from services.backup_metadata import MetadataResourceError, metadata_io
     from services.backup_manifest import load_manifest
+    from services.backup_actions import warning_from_snapshot
+    from services.backup_metadata import read_zip_json
     from services.backup_consistency import load_snapshot, commit_rows
     upload = request.files.get('file')
     if upload is None:
@@ -34,6 +37,9 @@ def import_backup():
             upload.save(temporary)
         manifest = load_manifest(temporary)
         snapshot = load_snapshot(temporary)
+        with zipfile.ZipFile(temporary) as archive:
+            warning = (warning_from_snapshot(read_zip_json(archive, 'manager-actions.json'))
+                       if 'manager-actions.json' in archive.namelist() else None)
         if manifest is None or snapshot is None:
             raise ValueError('独立导入需要含准入清单和停写快照的新备份')
         token = manifest.get('API令牌')
@@ -60,6 +66,7 @@ def import_backup():
                 latest_commit_sha=commits[0] if commits else '', commit_ids=json.dumps(sorted(commits)),
                 commit_ids_hash=hashlib.sha256(','.join(sorted(commits)).encode()).hexdigest(), collected_at=now))
         backup.commit_snapshot_repo_count = len(rows)
+        backup.actions_warning = warning
         os.replace(temporary, destination)
         db.session.commit()
         return jsonify(backup_to_dict(backup)), 201
@@ -77,11 +84,13 @@ def import_backup():
 
 def backup_to_dict(b):
     from services.backup_outcome import outcome_for_response
+    from services.backup_replica import status_for
     server_exists = b.source_server is not None
     server_name = b.source_server_name or (b.source_server.name if server_exists else '未知服务器')
     export = b.source_export
     export_ready = bool(export and export.state == 'ready' and export.exported_at)
     return {
+        'replicas': status_for(b),
         'source_export_state': export.state if export else '',
         'source_export_size': export.size if export else 0,
         'source_export_error': export.error_msg if export else '',

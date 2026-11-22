@@ -2,11 +2,30 @@ import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
-from models import Backup, db, ScheduledTask, ScheduleLog
+from models import Backup, db, GiteaServer, ScheduledTask, ScheduleLog
 from services.schedule_progress import schedule_progress_for_response
 from services.schedule_runner import claim_schedule_task, start_schedule_task_thread
 
 schedule_bp = Blueprint('schedule', __name__)
+
+
+def validate_transfer_settings(data, task=None):
+    source = data.get('source_server_id', task.source_server_id if task else None)
+    targets = data.get('target_ids', json.loads(task.target_ids) if task else [])
+    target = data.get('fast_restore_target_id', task.fast_restore_target_id if task else None)
+    reuse = data.get('reuse_source_chunks', task.reuse_source_chunks if task else False)
+    if type(reuse) is not bool:
+        raise ValueError('跨夜内容复用设置无效')
+    if (task and 'fast_restore_target_id' not in data and isinstance(targets, list)
+            and (target not in targets or target == source)):
+        target = None
+    if target is not None:
+        if type(target) is not int or not isinstance(targets, list) or target not in targets or target == source:
+            raise ValueError('快速恢复备机必须是该任务已选且与源站不同的目标')
+        server = db.session.get(GiteaServer, target)
+        if server is None or server.role != 'backup':
+            raise ValueError('请选择已登记的备机')
+    return target, reuse
 
 
 def task_to_dict(t):
@@ -17,6 +36,8 @@ def task_to_dict(t):
         'source_server_id': t.source_server_id,
         'source_server_name': t.source_server.name if t.source_server else '',
         'target_ids': json.loads(t.target_ids or '[]'),
+        'fast_restore_target_id': t.fast_restore_target_id,
+        'reuse_source_chunks': t.reuse_source_chunks,
         'schedule_hour': t.schedule_hour,
         'schedule_minute': t.schedule_minute,
         'last_run_at': t.last_run_at.isoformat() if t.last_run_at else None,
@@ -42,11 +63,18 @@ def create_schedule():
     if not data:
         return jsonify({'error': 'No data'}), 400
 
+    try:
+        fast_target, reuse = validate_transfer_settings(data)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
     task = ScheduledTask(
         name=data.get('name', ''),
         enabled=data.get('enabled', True),
         source_server_id=data.get('source_server_id', 0),
         target_ids=json.dumps(data.get('target_ids', [])),
+        fast_restore_target_id=fast_target,
+        reuse_source_chunks=reuse,
         schedule_hour=data.get('schedule_hour', 2),
         schedule_minute=data.get('schedule_minute', 0),
         created_at=datetime.utcnow(),
@@ -63,6 +91,11 @@ def update_schedule(tid):
     data = request.get_json()
     if not data:
         return jsonify({'error': 'No data'}), 400
+
+    try:
+        t.fast_restore_target_id, t.reuse_source_chunks = validate_transfer_settings(data, t)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
     fields = ['name', 'enabled', 'source_server_id', 'schedule_hour', 'schedule_minute']
     for f in fields:

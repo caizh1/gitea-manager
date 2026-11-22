@@ -6,10 +6,12 @@
       <div v-else-if="kind !== 'backup'" class="indeterminate" role="progressbar" aria-label="当前步骤执行中，进度暂不可计量"><span /></div>
       <div class="operation-count"><span>{{ quantityText(task) }}<template v-if="active && percent !== null"> · 阶段 {{ percent }}%</template></span><span>耗时 {{ elapsed }}</span></div>
       <div v-if="task.progress_item" class="operation-detail">{{ task.progress_item }}</div>
+      <div v-if="task.artifact_progress" class="operation-detail">{{ artifactProgressText(task.artifact_progress) }}</div>
       <div v-if="task.progress_detail && task.progress_detail !== task.progress_item" class="operation-detail">{{ task.progress_detail }}</div>
       <div v-if="task.progress_updated_at" class="operation-time">最近上报 {{ new Date(utcTime(task.progress_updated_at)).toLocaleTimeString() }}</div>
     </template>
     <BackupRecoveryStatus v-if="kind === 'backup'" :task="task" />
+    <div v-if="task.actions_warning" class="operation-detail">源端已缺失 {{ task.actions_warning.count }} 件 Actions 制品</div>
     <el-button v-if="kind" link type="primary" size="small" @click="details = true">展开详情</el-button>
     <OperationSteps v-if="details" :task="task" :kind="kind" @close="details = false" />
   </div>
@@ -19,7 +21,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { LoaderCircle } from '@lucide/vue'
 import OperationSteps from './OperationSteps.vue'
 import BackupRecoveryStatus from './BackupRecoveryStatus.vue'
-import { operationActive, operationStatus, stagePercent, quantityText, elapsedText, utcTime } from './operationDisplay'
+import { operationActive, operationStatus, stagePercent, quantityText, artifactProgressText, elapsedText, utcTime } from './operationDisplay'
 const props = defineProps({ task: { type: Object, required: true }, kind: { type: String, default: '' } })
 const details = ref(false), now = ref(Date.now())
 const active = computed(() => operationActive(props.task))

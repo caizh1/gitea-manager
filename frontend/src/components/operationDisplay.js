@@ -22,6 +22,13 @@ export function quantityText(task) {
   return `${current}${total != null ? ' / ' + total : ''} ${{ repos: '个仓库', files: '个文件', tables: '张数据表' }[task.progress_unit] || '项'}`
 }
 
+export function artifactProgressText(progress) {
+  if (!progress) return ''
+  if (progress.files_total == null || progress.bytes_total == null) return '正在统计 Actions 制品'
+  const size = quantityText({ progress_current: progress.bytes_done, progress_total: progress.bytes_total, progress_unit: 'bytes' })
+  return `已处理制品 ${progress.files_done} / ${progress.files_total} 件 · ${size}`
+}
+
 export function backupObservationStale(activity, now) {
   const observed = utcTime(activity.observed_at || activity.action_started_at)
   return !Number.isFinite(observed) || now - observed > 20_000

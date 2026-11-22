@@ -121,6 +121,9 @@ class Backup(db.Model):
     transfer_origin_id = db.Column(db.Integer)
     source_stopped_at = db.Column(db.DateTime)
     source_restored_at = db.Column(db.DateTime)
+    archive_sha256 = db.Column(db.String(64), nullable=False, default='')
+    archive_parts = db.Column(db.JSON)
+    actions_warning = db.Column(db.JSON)
     source_api_token = db.Column(db.String(200), default='')
     source_server_name = db.Column(db.String(100), default='')
     commit_snapshot_status = db.Column(db.String(20), default='')
@@ -141,6 +144,21 @@ class Backup(db.Model):
     completed_at = db.Column(db.DateTime, default=None)
 
     source_server = db.relationship('GiteaServer', foreign_keys=[source_server_id], lazy=True)
+
+
+class BackupReplica(db.Model):
+    """目标缓存的持久进度，归档正文在目标 Docker 卷上。"""
+    __tablename__ = 'backup_replicas'
+    backup_id = db.Column(db.Integer, primary_key=True)
+    target_id = db.Column(db.Integer, primary_key=True)
+    source_id = db.Column(db.Integer, nullable=False, index=True)
+    key = db.Column(db.String(32), nullable=False, unique=True)
+    state = db.Column(db.String(20), nullable=False, default='pending')
+    done = db.Column(db.BigInteger, nullable=False, default=0)
+    total = db.Column(db.BigInteger, nullable=False, default=0)
+    error = db.Column(db.Text, nullable=False, default='')
+    binding = db.Column(db.String(64), nullable=False, default='')
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class RestoreTask(db.Model):
@@ -312,6 +330,8 @@ class ScheduledTask(db.Model):
     name = db.Column(db.String(100), nullable=False)
     enabled = db.Column(db.Boolean, default=True)
     source_server_id = db.Column(db.Integer, db.ForeignKey('gitea_servers.id'), nullable=False)
+    fast_restore_target_id = db.Column(db.Integer)
+    reuse_source_chunks = db.Column(db.Boolean, nullable=False, default=False)
     target_ids = db.Column(db.Text, default='[]')
     schedule_hour = db.Column(db.Integer, nullable=False, default=2)
     schedule_minute = db.Column(db.Integer, nullable=False, default=0)

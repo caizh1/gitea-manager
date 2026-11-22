@@ -175,6 +175,7 @@ def outcome_for_response(task):
     stage = task.failure_stage
     return {
         'error_msg': redact(task.error_msg or ''),
+        'actions_warning': getattr(task, 'actions_warning', None),
         'failure_stage': stage,
         'failure_label': STAGES.get(stage, ('备份' if stage else '', 0))[0],
         'failure_at': task.failure_at.isoformat() + 'Z' if task.failure_at else None,

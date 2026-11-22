@@ -97,6 +97,7 @@ class Lab:
         client.connect(self.state['addresses'][node], username=username,
                        key_filename=str(self.root / 'id_rsa'), allow_agent=False, look_for_keys=False,
                        timeout=10, banner_timeout=10, auth_timeout=10)
+        client.get_transport().set_keepalive(15)
         return client
 
     def command(self, node, args, timeout=600, input_data=None, check=True):
@@ -414,10 +415,25 @@ def main():
     parser.add_argument('phase')
     parser.add_argument('--hours', type=float, default=24)
     parser.add_argument('--unreachable', action='store_true')
+    parser.add_argument('--workload', choices=['small', 'full'], default='small')
+    parser.add_argument('--backup-id', type=int)
     args = parser.parse_args()
     lab = Lab()
     lock = (lab.root / 'test-run.lock').open('a')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    if args.phase.startswith('performance-'):
+        from . import performance
+        if args.phase == 'performance-calibrate':
+            performance.calibrate(lab)
+        elif args.phase == 'performance-seed':
+            performance.seed(lab, args.workload == 'full')
+        elif args.phase == 'performance-run':
+            performance.run(lab, args.workload == 'full')
+        elif args.phase == 'performance-retry' and args.backup_id:
+            performance.retry(lab, args.backup_id)
+        else:
+            parser.error('未知的性能测试阶段')
+        return
     if args.phase == 'deploy':
         deploy(lab)
     elif args.phase == 'probe':

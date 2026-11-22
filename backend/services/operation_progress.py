@@ -16,6 +16,17 @@ def progress_for_response(task):
     for key in ('updated_at', 'step_started_at'):
         value = getattr(task, 'progress_' + key, None)
         result['progress_' + key] = value.isoformat() + 'Z' if value else None
+    result['artifact_progress'] = None
+    if getattr(task, 'progress_stage', None) in ('snapshot_actions', 'assemble', 'manifest', 'verify_actions'):
+        model, key = (BackupStepLog, 'backup_id') if isinstance(task, Backup) else (RestoreStepLog, 'restore_task_id')
+        step = model.query.filter_by(**{key: task.id, 'step_key': task.progress_stage}).order_by(model.id.desc()).first()
+        if step:
+            from services.restore_step_service import restore_step_to_dict
+
+            metrics = restore_step_to_dict(step)['metrics']
+            activity = metrics.get('实时') if isinstance(metrics, dict) else None
+            if isinstance(activity, dict):
+                result['artifact_progress'] = activity.get('artifacts')
     return result
 
 

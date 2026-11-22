@@ -24,6 +24,7 @@ STAGES = {
     'snapshot_tables': ('记录数据库校验基准', 15),
     'dump': ('正在导出同一停写点的数据库和文件', 20),
     'snapshot_verify': ('复核仓库与引用', 35),
+    'snapshot_actions': ('生成源端 Actions 制品清单', 39),
     'freeze_export': ('固化源端备份副本', 40),
     'transfer': ('源站已恢复，正在传输固定副本', 55),
     'save_archive': ('保存本地 ZIP', 55),
@@ -69,7 +70,7 @@ class BackupActivity:
             })
 
     def show(self, stage, action, *, current=None, total=None, unit='', item='', force=False,
-             previous_failed=False, heartbeat=False):
+             previous_failed=False, heartbeat=False, artifacts=None):
         counts = dict(current=current, total=total, unit=unit, item=item)
         if stage == 'transfer' and current is not None:
             now = monotonic()
@@ -96,6 +97,7 @@ class BackupActivity:
                     self._publish(self.backup_id, stage, action, started, counts, _utc() if heartbeat else None,
                                   force=True, previous_failed=previous_failed,
                                   **({'state': 'active'} if heartbeat else {}),
+                                  **({'artifacts': artifacts} if artifacts is not None else {}),
                                   **({'bytes_per_second': self.transfer_speed, 'eta_seconds': self.transfer_eta}
                                      if stage == 'transfer' else {}))
                 db.session.expire(self.backup, [

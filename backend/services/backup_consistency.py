@@ -246,9 +246,8 @@ def consistent_backup(server, backup, journal=None):
         require_quiet(database, server)
         if repository_snapshot(helper, database, server, progress, stage='snapshot_verify') != snapshot:
             raise RuntimeError('停写期间仓库状态发生变化，拒绝发布备份')
-        progress.show('freeze_export', '固化 Actions 制品、密钥与校验基准')
         backup_staging.freeze_metadata(helper, gitea, database, server, export,
-            snapshot, tables, requirements, startup_files, source_config, journal)
+            snapshot, tables, requirements, startup_files, source_config, journal, progress=progress)
         require_quiet(database, server)
         from services.backup_recovery import recover_source
         progress.source = 'recovering' if was_running else 'stopped'
@@ -266,7 +265,7 @@ def consistent_backup(server, backup, journal=None):
         finish_current_step(backup, stage='resume_source')
         local = os.path.join(BACKUP_DIR, backup.filename)
         with backup_staging.export_lease(export.id):
-            backup_staging.receive_export(client, export, local, backup, journal, progress)
+            backup_staging.receive_export(client, export, local, backup, journal, progress, server=server)
         backup.file_path = local
         final_size = os.path.getsize(local)
         db.session.commit()

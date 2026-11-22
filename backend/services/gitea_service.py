@@ -318,7 +318,12 @@ def _perform_backup(backup_id, journal):
         db.session.commit()
         progress.show('commit_snapshot', 'Commit 校验记录已保存',
                       current=count, total=count, unit='repos', force=True)
+        from services.backup_replica import targets
+        from services.large_docker_transfer import PART
         digest = hashlib.sha256()
+        parts = [] if targets(backup.source_server_id) else None
+        part_digest = hashlib.sha256()
+        part_size = 0
         size = os.path.getsize(backup.file_path)
         count = 0
         progress.show('checksum', '计算备份 ZIP 的 SHA-256', current=count, total=size,
@@ -326,6 +331,13 @@ def _perform_backup(backup_id, journal):
         with open(backup.file_path, 'rb') as stream:
             for block in iter(lambda: stream.read(1024 * 1024), b''):
                 digest.update(block)
+                if parts is not None:
+                    part_digest.update(block)
+                    part_size += len(block)
+                    if part_size == PART or count + len(block) == size:
+                        parts.append({'name': f'{len(parts):08d}-' + part_digest.hexdigest(), 'size': part_size})
+                        part_digest = hashlib.sha256()
+                        part_size = 0
                 count += len(block)
                 progress.show('checksum', '计算备份 ZIP 的 SHA-256', current=count, total=size,
                               unit='bytes', item=backup.filename, heartbeat=True)
@@ -336,6 +348,8 @@ def _perform_backup(backup_id, journal):
         backup = Backup.query.get(backup_id)
         if backup:
             backup.status = 'success'
+            backup.archive_sha256 = digest.hexdigest()
+            backup.archive_parts = parts
             backup.error_msg = ''
             backup.completed_at = datetime.utcnow()
             update_backup_progress(backup, 'completed', '备份完成', 100, backup.filename)

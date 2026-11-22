@@ -22,7 +22,7 @@
         <el-form-item label="选择备份">
           <el-select v-model="selectedBackupId" placeholder="选择已完成且 Commit 快照通过的备份" style="width:100%">
             <el-option v-for="b in successBackups" :key="b.id"
-              :label="`${b.filename} (${formatSize(b.file_size)} | ${fmt(b.started_at)})`"
+              :label="`${b.filename} (${formatSize(b.file_size)} | ${fmt(b.started_at)}) ${replicaLabel(b)}`"
               :value="b.id" />
           </el-select>
         </el-form-item>
@@ -32,6 +32,15 @@
               :label="`${s.name} (${s.host}:${s.gitea_port})`"
               :value="s.id" />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="selectedTargetId && retainedBackups.length" label="备机副本">
+          {{ retainedBackups.filter(b => b.replicas?.[selectedTargetId]?.state === 'ready').length }} / 7 份就绪
+          <template v-if="selectedReplica?.state === 'receiving'">
+            · 已接收 {{ formatSize(selectedReplica.done) }}
+            <template v-if="selectedReplica.total"> / {{ formatSize(selectedReplica.total) }}</template>
+            · {{ fmt(selectedReplica.updated_at) }}
+          </template>
+          <span v-if="selectedReplica?.state === 'retry'" class="replica-error"> · {{ selectedReplica.error }}</span>
         </el-form-item>
         <el-form-item>
           <el-popconfirm title="确认恢复? 此操作不可逆!"
@@ -148,6 +157,18 @@ export default {
     const backups = ref([]), servers = ref([]), tasks = ref([]), restoring = ref(false)
     const selectedBackupId = ref(null), selectedTargetId = ref(null)
     const verifyDialogVisible = ref(false), verifyData = ref(null)
+    const retainedBackups = computed(() => {
+      const scope = backups.value.find(b => b.id === selectedBackupId.value)?.source_server_id
+        ?? backups.value.find(b => b.replicas?.[selectedTargetId.value])?.source_server_id
+      return successBackups.value.filter(b => b.source_server_id === scope && b.replicas?.[selectedTargetId.value])
+    })
+    const selectedReplica = computed(() => backups.value.find(b => b.id === selectedBackupId.value)
+      ?.replicas?.[selectedTargetId.value])
+    function replicaLabel(backup) {
+      if (!selectedTargetId.value) return ''
+      const state = backup.replicas?.[selectedTargetId.value]?.state
+      return { ready: '可快速恢复', receiving: '预传中', pending: '等待预传', retry: '需补传' }[state] || ''
+    }
     const successBackups = computed(() => backups.value.filter(b => b.status === 'success' && b.commit_snapshot_status === 'success'))
     const backupServers = computed(() => servers.value.filter(s => s.role === 'backup'))
     const criticalAlert = computed(() => tasks.value.some(t => t.status === 'failed' && t.error_msg?.includes('PostgreSQL')) ? '检测到 PostgreSQL 相关恢复失败，请查看执行详情核对目标状态。' : '')
@@ -184,7 +205,7 @@ export default {
     function formatSize(bytes) { return bytes ? `${(bytes / 1048576).toFixed(1)} MB` : '—' }
     const fmt = d => d ? new Date(utcTime(d)).toLocaleString() : '—'
     const displayCount = n => n ?? '—'
-    return { backups, servers, tasks, restoring, selectedBackupId, selectedTargetId, successBackups, backupServers, criticalAlert,
+    return { backups, servers, tasks, restoring, selectedBackupId, selectedTargetId, selectedReplica, replicaLabel, retainedBackups, successBackups, backupServers, criticalAlert,
       load, pollError, doRestore, recoverRestore, triggerVerify, showVerify, verifyDialogVisible, verifyData, formatSize, fmt, displayCount }
   },
 }

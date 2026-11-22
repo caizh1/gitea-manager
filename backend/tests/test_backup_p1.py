@@ -33,11 +33,13 @@ class BackupP1Tests(unittest.TestCase):
                 validate_external(path)
 
     def test_actions_body_mismatch_and_escape_are_rejected(self):
-        with patch('services.backup_consistency.execute', return_value='b' * 64):
+        with patch('services.artifact_io.verify_artifact_files', side_effect=RuntimeError('正文不一致')) as verify:
             with self.assertRaisesRegex(RuntimeError, '不一致'):
                 verify_artifacts(None, {'路径': '/data/actions-external', '文件': {'body': 'a' * 64}})
+            verify.reset_mock()
             with self.assertRaisesRegex(RuntimeError, '不安全'):
                 verify_artifacts(None, {'路径': '/data/actions-external', '文件': {'../escape': 'a' * 64}})
+            verify.assert_not_called()
 
     def test_startup_secret_installed_before_start_and_survives_restore(self):
         body = '固定外置启动秘密'.encode()

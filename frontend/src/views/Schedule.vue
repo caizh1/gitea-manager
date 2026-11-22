@@ -38,6 +38,9 @@
                 <el-table-column prop="detail" label="详情" min-width="300">
                   <template #default="{ row: lr }">
                     <div>{{ lr.detail }}</div>
+                    <div v-if="lr.backupOutcome?.actions_warning">
+                      源端已缺失 {{ lr.backupOutcome.actions_warning.count }} 件 Actions 制品
+                    </div>
                     <BackupRecoveryStatus v-if="lr.backupOutcome" :task="lr.backupOutcome" />
                   </template>
                 </el-table-column>
@@ -109,6 +112,15 @@
             <el-option v-for="s in backupServers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="快速恢复备机">
+          <el-select v-model="form.fast_restore_target_id" clearable
+            :empty-values="[null, undefined, '']" :value-on-clear="null" placeholder="选择后预传最近七份备份" style="width:100%">
+            <el-option v-for="id in form.target_ids" :key="id" :value="id" :label="serverNameMap[id] || id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="跨夜内容复用">
+          <el-switch v-model="form.reuse_source_chunks" />
+        </el-form-item>
         <el-form-item label="执行时间">
           <el-select v-model="form.schedule_hour" style="width:100px">
             <el-option v-for="h in 24" :key="h-1" :label="pad(h-1)" :value="h-1" />
@@ -158,7 +170,7 @@ export default {
     const clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
 
     const defaultForm = {
-      name: '', source_server_id: null, target_ids: [],
+      name: '', source_server_id: null, target_ids: [], fast_restore_target_id: null, reuse_source_chunks: false,
       schedule_hour: 2, schedule_minute: 0, enabled: true,
     }
     const form = ref({ ...defaultForm })
@@ -224,6 +236,7 @@ export default {
     function saveTask() {
       saving.value = true
       const data = { ...form.value }
+      if (!data.target_ids.includes(data.fast_restore_target_id)) data.fast_restore_target_id = null
       const req = isEdit.value
         ? api.put(`/schedules/${editingId.value}`, data)
         : api.post('/schedules', data)

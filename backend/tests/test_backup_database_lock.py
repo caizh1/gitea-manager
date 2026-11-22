@@ -79,7 +79,7 @@ class BackupDatabaseLockTests(unittest.TestCase):
                         self.assertFalse(thread.is_alive(), '备份阶段阻塞真实登录请求')
                         self.assertEqual(results, [200, True])
                         phases.append(phase)
-                    def secret_stage(*args):
+                    def secret_stage(*args, **kwargs):
                         if external_secret:
                             _ = server.host  # 与外置密钥的 managed_client 配置读取一致。
                         login_write('密钥文件处理期间')
@@ -104,7 +104,7 @@ class BackupDatabaseLockTests(unittest.TestCase):
                         stack.enter_context(patch('services.backup_staging.spool_mount'))
                         stack.enter_context(patch('services.backup_staging.prepare_export', return_value='/tmp/export'))
                         stack.enter_context(patch('services.backup_staging.freeze_metadata', side_effect=secret_stage))
-                        def receive(*args):
+                        def receive(*args, **kwargs):
                             artifact_stage()
                             target = Path(args[2])
                             target.parent.mkdir(parents=True, exist_ok=True)

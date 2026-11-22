@@ -85,9 +85,13 @@ def preflight(root):
     ids = output(['docker', 'network', 'ls', '-q']).splitlines()
     networks = json.loads(output(['docker', 'network', 'inspect', *ids])) if ids else []
     occupied = [item['Subnet'] for network in networks for item in (network.get('IPAM', {}).get('Config') or []) if item.get('Subnet')]
-    routes = output(['netstat', '-rn', '-f', 'inet'])
-    for line in routes.splitlines():
-        value = line.split()[0] if line.split() else ''
+    if sys.platform.startswith('linux'):
+        routes = output(['ip', '-j', '-4', 'route', 'show'])
+        destinations = [route.get('dst', '') for route in json.loads(routes)]
+    else:
+        routes = output(['netstat', '-rn', '-f', 'inet'])
+        destinations = [line.split()[0] for line in routes.splitlines() if line.split()]
+    for value in destinations:
         normalized = route_network(value)
         if normalized:
             occupied.append(normalized)
@@ -167,9 +171,8 @@ def exec_service(root, name, command, capture=False, stdin=None):
     return run(['docker', 'exec', '-i', identifier, *command], capture=capture, stdin=stdin)
 
 
-def generate(root, pre):
-    images = {'gitea': image_id('gitea-enhanced:enhanced-20261020-r9'),
-              'postgres': image_id('postgres:16.8-bookworm')}
+def generate(root, pre, gitea_image='gitea-enhanced:enhanced-20261020-r9'):
+    images = {'gitea': image_id(gitea_image), 'postgres': image_id('postgres:16.8-bookworm')}
     secret_file = root / 'private.json'
     if secret_file.exists():
         return json.loads(secret_file.read_text())
@@ -216,7 +219,7 @@ def build(root):
                [('manager', manager), ('frontend', frontend), ('host', host_image), ('driver', driver_image)]})
 
 
-def topology(root, state):
+def topology(root, state, shared_bridge=False):
     built = json.loads((root / 'images.json').read_text())
     labels = {LABEL: root.name}
     net_names = ('management', 'source', 'target')
@@ -259,6 +262,13 @@ def topology(root, state):
     config = {'name': 'gm-remote-' + root.name, 'services': services,
               'networks': {name: {'labels': labels, 'ipam': {'config': [{'subnet': net}]}}
                            for name, net in zip(net_names, nets)}, 'volumes': volumes}
+    if shared_bridge:
+        del config['services']['router']
+        for node, offset in (('a', 20), ('b', 30)):
+            state['addresses'][node] = str(ipaddress.ip_network(nets[0]).network_address + offset)
+            services['host-' + node]['networks'] = {'management': {'ipv4_address': state['addresses'][node]}}
+        config['networks'] = {'management': config['networks']['management']}
+        write_json(root / 'private.json', state)
     write_json(root / 'compose.json', config)
     return routes
 
@@ -479,6 +489,10 @@ def configure_routes(root, state, routes):
             firewall.append('iptables -A FORWARD -s %s -d %s -p tcp -m multiport --dports 1389,1025,8081 -j ACCEPT' %
                             (address, state['addresses']['integration']))
     exec_service(root, 'router', ['sh', '-ec', '; '.join(firewall)])
+    trust_test_hosts(root, state)
+
+
+def trust_test_hosts(root, state):
     for node in ('a', 'b'):
         deadline = time.monotonic() + 90
         while True:

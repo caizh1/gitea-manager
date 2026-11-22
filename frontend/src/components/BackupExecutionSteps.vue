@@ -23,6 +23,7 @@
                          :aria-label="step.label + '进度'" />
           </div>
 
+          <p v-if="activity.artifacts">{{ artifactProgressText(activity.artifacts) }}</p>
           <div class="live-details">
             <div>
               <template v-if="counts.item">
@@ -74,6 +75,7 @@
             <span v-else-if="step.status === 'failed'" class="failed-icon">失败</span>
             <span v-else-if="step.completed_at" class="timing">{{ elapsedText(step.started_at, utcTime(step.completed_at)) }}</span>
           </div>
+          <p v-if="step.metrics?.实时?.artifacts">{{ artifactProgressText(step.metrics.实时.artifacts) }}</p>
           <p v-if="step.status === 'failed' && step.detail" class="failure-detail">{{ step.detail }}</p>
         </section>
       </li>
@@ -102,6 +104,14 @@
         </details>
       </li>
     </ol>
+    <el-alert v-if="task.actions_warning" type="warning" :closable="false"
+              :title="`源端已缺失 ${task.actions_warning.count} 件 Actions 制品`">
+      <details>
+        <summary>查看缺失明细</summary>
+        <ul><li v-for="path in task.actions_warning.examples" :key="path">{{ path }}</li></ul>
+        <p v-if="task.actions_warning.count > task.actions_warning.examples.length">完整清单随备份保存</p>
+      </details>
+    </el-alert>
     <el-alert v-if="task.error_msg" :title="task.error_msg" type="error" :closable="false" class="task-error">
       <template v-if="task.failure_label || task.failure_at">
         {{ task.failure_label }}<span v-if="task.failure_at"> · {{ clockTime(task.failure_at) }}</span>
@@ -115,7 +125,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, Circle, CircleAlert, CircleCheck, LoaderCircle } from '@lucide/vue'
 import BackupRecoveryStatus from './BackupRecoveryStatus.vue'
-import { backupObservationText, backupObservationStale, elapsedText, operationActive, quantityText, stagePercent, utcTime } from './operationDisplay'
+import { artifactProgressText, backupObservationText, backupObservationStale, elapsedText, operationActive, quantityText, stagePercent, utcTime } from './operationDisplay'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -130,6 +140,7 @@ const stages = [
   ['snapshot_tables', '记录数据库校验基准'],
   ['dump', '导出同一停写点的数据库和文件'],
   ['snapshot_verify', '复核仓库与引用'],
+  ['snapshot_actions', '生成源端 Actions 制品清单'],
   ['freeze_export', '固化源端备份副本'],
   ['resume_source', '恢复源站服务'],
   ['transfer', '源站已恢复，传输固定副本'],

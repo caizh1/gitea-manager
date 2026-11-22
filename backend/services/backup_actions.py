@@ -131,9 +131,11 @@ def append_artifacts(path, source, database, server, raw, progress=None, staged=
                             inventory[relative] = digest
                         if inside:
                             if member.isfile():
-                                if name not in archive.namelist():
-                                    raise RuntimeError('dump 遗漏 Actions 制品正文：' + relative)
-                                with archive.open(name) as body:
+                                try:
+                                    entry = archive.getinfo(name)
+                                except KeyError:
+                                    raise RuntimeError('dump 遗漏 Actions 制品正文：' + relative) from None
+                                with archive.open(entry) as body:
                                     if _digest_artifact(body, progress, relative) != digest:
                                         raise RuntimeError('Actions 制品正文与停写点不一致')
                             continue
@@ -160,23 +162,121 @@ def append_artifacts(path, source, database, server, raw, progress=None, staged=
         write_zip_json(archive, 'manager-actions.json', {'版本': 1, '路径': directory, '文件': inventory})
 
 
+def _safe_relative(name):
+    if not isinstance(name, str):
+        return False
+    path = PurePosixPath(name)
+    return (not path.is_absolute() and '..' not in path.parts and str(path) == name and name != '.'
+            and '\\' not in name and '\x00' not in name)
+
+
+def _append_external_artifacts(archive, directory, path, inventory, progress):
+    seen = set()
+    added = set()
+    count = 0
+    total = sum(item['size'] for item in inventory.values())
+
+    def show(item='', force=False):
+        if progress:
+            progress.show('assemble', '写入外置 Actions 制品', item=item, heartbeat=True, force=force,
+                          artifacts=dict(files_done=len(added), files_total=len(inventory),
+                                         bytes_done=count, bytes_total=total))
+
+    show(force=True)
+    with tarfile.open(path, mode='r|') as contents:
+        for member in contents:
+            item = PurePosixPath(member.name)
+            if (not _safe_relative(member.name) or item.parts[0] != PurePosixPath(directory).name
+                    or member.name in seen or not (member.isfile() or member.isdir())):
+                raise RuntimeError('Actions 制品 TAR 包含重复或非普通条目')
+            seen.add(member.name)
+            relative = '/'.join(item.parts[1:])
+            name = ARCHIVE_ROOT + ('/' + relative if relative else '')
+            if member.isdir():
+                name += '/'
+            elif not relative or relative not in inventory or member.size != inventory[relative]['size']:
+                raise RuntimeError('外置 Actions 制品与固定清单的文件名或大小不一致')
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3
+            info.external_attr = ((stat.S_IFDIR if member.isdir() else stat.S_IFREG) | (member.mode & 0o777)) << 16
+            if member.isdir():
+                archive.writestr(info, '')
+            else:
+                with contents.extractfile(member) as body, archive.open(info, 'w', force_zip64=True) as output:
+                    for block in iter(lambda: body.read(1024 * 1024), b''):
+                        output.write(block)
+                        count += len(block)
+                        show(relative)
+                added.add(relative)
+                show(relative)
+    if added != inventory.keys():
+        raise RuntimeError('外置 Actions 制品 TAR 缺少固定清单中的文件')
+    if not seen:
+        archive.writestr(ARCHIVE_ROOT + '/', '')
+    show(force=True)
+
+
+def warning_from_snapshot(snapshot):
+    missing = snapshot.get('源端缺失', [])
+    if not isinstance(missing, list) or any(not isinstance(name, str) for name in missing):
+        raise RuntimeError('Actions 制品告警清单格式无效')
+    return {'count': len(missing), 'examples': missing[:20]} if missing else None
+
+
+def append_indexed_artifacts(path, staged, inventory, progress=None):
+    from services.backup_metadata import write_zip_json
+
+    if not isinstance(inventory, dict) or any(
+        not _safe_relative(name) or not isinstance(item, dict)
+        or type(item.get('size')) is not int or item['size'] < 0
+        or not isinstance(item.get('sha256'), str) or not re.fullmatch('[0-9a-f]{64}', item['sha256'])
+        for name, item in inventory.items()
+    ):
+        raise RuntimeError('源端 Actions 制品清单格式无效')
+    records = staged['records']
+    if not isinstance(records, list) or any(not isinstance(name, str) for name in records):
+        raise RuntimeError('源端 Actions 制品数据库清单格式无效')
+    missing = sorted(set(records) - inventory.keys())
+    directory = staged['directory']
+    with zipfile.ZipFile(path, 'a') as archive:
+        if directory.startswith('/data/gitea/'):
+            if '..' in PurePosixPath(directory).parts:
+                raise RuntimeError('Actions 制品目录无效')
+            sql = next(name for name in archive.namelist() if name.endswith('gitea-db.sql'))
+            prefix = str(PurePosixPath(sql).parent / 'data' / PurePosixPath(directory).relative_to('/data/gitea'))
+        else:
+            validate_external(directory)
+            prefix = ARCHIVE_ROOT
+            _append_external_artifacts(archive, directory, staged['archive_path'], inventory, progress)
+        checks = {prefix + '/' + name: item for name, item in inventory.items()}
+        actual = {entry.filename for entry in archive.infolist()
+                  if entry.filename.startswith(prefix + '/') and not entry.is_dir()}
+        if actual != checks.keys():
+            raise RuntimeError('备份 ZIP 的 Actions 制品文件集合与源端清单不一致')
+        snapshot = {'版本': 1, '路径': directory, '文件': {name: item['sha256'] for name, item in inventory.items()},
+                    '源端缺失': missing}
+        write_zip_json(archive, 'manager-actions.json', snapshot)
+    return checks, warning_from_snapshot(snapshot)
+
+
 def switch_command(stage, path):
     path = shlex.quote(validate_external(path))
     return f'mkdir -p {path}; mv {path} {stage}/old-actions; mv {stage}/new-actions {path}; chown -R git:git {path}'
 
 
-def verify_artifacts(helper, snapshot):
-    from services.backup_consistency import execute
+def verify_artifacts(helper, snapshot, report=None):
+    from services.artifact_io import verify_artifact_files
     directory = snapshot['路径']
-    if not directory.startswith('/data/gitea/'):
+    if directory.startswith('/data/gitea/'):
+        if not _safe_relative(directory.removeprefix('/data/gitea/')):
+            raise RuntimeError('Actions 制品目录无效')
+    else:
         validate_external(directory)
-    for relative, digest in snapshot['文件'].items():
-        path = PurePosixPath(relative)
-        if path.is_absolute() or '..' in path.parts or str(path) == '.':
+    files = snapshot['文件']
+    for relative, digest in files.items():
+        if not _safe_relative(relative) or not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest):
             raise RuntimeError('Actions 正文快照路径不安全')
-        actual = execute(helper, ['sha256sum', '--', str(PurePosixPath(directory) / path)])[:64]
-        if actual != digest:
-            raise RuntimeError('恢复后 Actions 正文与停写点不一致：' + relative)
+    verify_artifact_files(helper, directory, files, report)
 
 
 def rollback_command(stage, path):
