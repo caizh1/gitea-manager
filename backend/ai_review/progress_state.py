@@ -1,5 +1,4 @@
 """任务进度与事务内通知；只投影业务状态，不创建新的审查任务。"""
-import json
 import re
 import time
 from .performance import TARGET_SECONDS
@@ -117,10 +116,3 @@ def job_progress(job, now=None):
         if available and available > now:
             progress['detail'] = f'等待模型额度，约 {int(available - now) + 1} 秒后自动重试'
     return progress
-
-
-def closed_state(state):
-    try:
-        return bool(json.loads(state['signature'])[3])
-    except (ValueError, IndexError, TypeError):
-        return False

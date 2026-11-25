@@ -156,6 +156,15 @@
         "vendor/pr-agent-assets/9b5ad71b2ce5302211f9c61530b329a4922fc6a4": "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7",
         "vendor/pr-agent-assets/fb374d419588a4632f3f557e76b4b70aebbca790": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
       }
+    },
+    {
+      "组件": "Gitea SDK",
+      "版本": "1.0.8",
+      "文件": "review-runtime/vendor/giteapy-1.0.8-py3-none-any.whl",
+      "SHA256": "bf99a5eba8218c93823cea257626c1d49ed851927ecc8a4d2b5f40a58796e61e",
+      "说明": "由 PyPI 官方源包构建",
+      "源码来源": "https://files.pythonhosted.org/packages/79/41/1c5643897ab6bcba33d48a7535738f758d85b0c8ecb9ba0d1dbea0881a64/giteapy-1.0.8.tar.gz",
+      "源码SHA256": "2078c802a4626bf311e911c969c34b7d19fbe9175e2910e1965b24ff69221470"
     }
   ]
 }

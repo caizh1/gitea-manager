@@ -57,6 +57,8 @@ class Gitea:
         self.session.trust_env = False
         self.session.headers.update({'Authorization': 'token ' + token, 'Accept': 'application/json'})
         self.repo_name, self.repo_id, self.guard = repo_name, repo_id, guard
+        self.review_version = {}
+        self.git_token = token
         self.page_limit = None
         self.response_total = None
         if repo_name:
@@ -202,6 +204,58 @@ class Gitea:
             raise ReviewError('PR 不属于配置的目标仓库')
         return value
 
+    def pull_ref_head(self, number):
+        ref = f'refs/pull/{number}/head'
+        rows = self.request('GET', self.prefix + '/git/' + ref, missing=True)
+        for row in rows if isinstance(rows, list) else [rows] if rows else []:
+            if row.get('ref') == ref:
+                return row.get('object', {}).get('sha')
+        return None
+
+    def fixed_diff(self, number, version):
+        """按入队 SHA 取码，覆盖合并、删除分支和关闭后继续推送。"""
+        from .git_cache import GitFailure, git_credentials, run_git
+
+        deadline = time.monotonic() + self.request_timeout(120)
+
+        def check():
+            self.check_active()
+            if time.monotonic() >= deadline:
+                raise ReviewError('读取原审查版本超过时限')
+
+        with tempfile.TemporaryDirectory(prefix='review-fixed-') as root, git_credentials(self.git_token) as env:
+            def git(args, output_limit=1024 * 1024):
+                check()
+                return run_git(args, cwd=root, env=env, check=check,
+                               timeout=max(.1, deadline - time.monotonic()), output_limit=output_limit)
+
+            git(['init', '--bare', '.'])
+            url = self.url + '/' + quote(self.repo_name, safe='/') + '.git'
+            commits = list(dict.fromkeys(version.values()))
+            fetch = ['-c', 'fetch.fsckObjects=true', 'fetch', '--no-tags', url]
+            try:
+                git(fetch + commits)
+            except GitFailure:
+                # 一些服务只接受可见 ref。先取 PR 固定 ref，再核对原对象。
+                git(fetch + [f'refs/pull/{number}/head'])
+                for sha in commits:
+                    try:
+                        git(['cat-file', '-e', sha + '^{commit}'])
+                    except GitFailure:
+                        git(fetch + [sha])
+            bases = git(['merge-base', '--all', version['base'], version['head']]).decode().split()
+            merge_base = version.get('merge_base')
+            if merge_base:
+                if merge_base not in bases:
+                    raise ReviewError('原审查基点与固定提交不一致')
+            elif len(bases) == 1:
+                merge_base = valid_sha(bases[0])
+            else:
+                raise ReviewError('无法唯一还原原审查比较基点')
+            raw = git(['diff', '--no-ext-diff', '--no-textconv', '-M', merge_base, version['head'], '--'],
+                      output_limit=64 * 1024 * 1024)
+            return dict(version, merge_base=merge_base), raw
+
     def file(self, path, sha):
         if path is None:
             return b''
@@ -307,15 +361,68 @@ class Gitea:
         raise ReviewError('Gitea 分页超过上限，不能把部分列表当成完整结果')
 
 
+def pr_status(pr):
+    if pr.get('merged'):
+        return 'merged'
+    return 'closed' if pr.get('state') == 'closed' else 'open'
+
+
+def observed_version(pr):
+    value = {'head': valid_sha(pr['head']['sha']), 'base': valid_sha(pr['base']['sha'])}
+    if pr.get('merge_base'):
+        value['merge_base'] = valid_sha(pr['merge_base'])
+    return value
+
+
+def observe_pr(store, repository, number, pr, *, delivery=None, action=None):
+    from datetime import datetime
+
+    status = pr_status(pr)
+    closed = status != 'open' or action == 'closed'
+    try:
+        event_at = datetime.fromisoformat(pr.get('updated_at', '').replace('Z', '+00:00')).timestamp()
+    except (AttributeError, ValueError, OverflowError):
+        event_at = 0
+    return store.enqueue(repository, number, {} if closed else observed_version(pr),
+                         delivery=delivery, closed=closed, merged=status == 'merged',
+                         reopened=action == 'reopened', event_at=event_at)
+
+
 def version_of(pr):
-    if pr.get('state') != 'open' or pr.get('merged'):
-        raise Stale('PR 已关闭或合并')
-    return {'base': valid_sha(pr['base']['sha']), 'head': valid_sha(pr['head']['sha']),
-            'merge_base': valid_sha(pr['merge_base'])}
+    if pr_status(pr) != 'open':
+        raise Stale('PR 已关闭或合并，请从原任务补审')
+    version = observed_version(pr)
+    version['merge_base'] = valid_sha(pr.get('merge_base'))
+    return version
+
+
+def capture_version(client, pr):
+    expected = getattr(client, 'review_version', None)
+    if not isinstance(expected, dict):
+        expected = {}
+    if pr_status(pr) != 'open':
+        if not all(expected.get(key) for key in ('head', 'base')):
+            raise ReviewError('任务未保留原审查提交，无法恢复关闭或合并前的代码版本')
+        return {key: valid_sha(expected[key]) for key in ('head', 'base', 'merge_base') if expected.get(key)}
+    current = version_of(pr)
+    if any(expected.get(key) and expected[key] != current[key] for key in ('head', 'base')):
+        raise Stale('PR 代码版本已更新')
+    return current
 
 
 def assert_version(client, number, snapshot):
-    current = version_of(client.pr(number))
-    if any(current[key] != snapshot[key] for key in current):
-        raise Stale('PR 代码版本已更新，禁止发布旧定位结果')
-    return current
+    pr = client.pr(number)
+    if pr_status(pr) == 'open':
+        current = version_of(pr)
+        if any(current[key] != snapshot[key] for key in current):
+            raise Stale('PR 代码版本已更新，禁止发布旧定位结果')
+    return pr
+
+
+def inline_available(client, number, snapshot):
+    pr = assert_version(client, number, snapshot)
+    if pr_status(pr) == 'open':
+        return True
+    # Gitea 行评的补丁使用 PR 引用与 Gitea 记录的基点。
+    return (pr.get('merge_base') == snapshot['merge_base']
+            and client.pull_ref_head(number) == snapshot['head'])

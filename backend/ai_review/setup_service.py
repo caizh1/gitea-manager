@@ -126,8 +126,9 @@ def submit(store, data, fallback_url):
         seen.add(marker)
         targets.append(dict(row, gitea_url=gitea_address(target.gitea_url)))
         hosts.append(gitea_address(target.gitea_url))
-    previous = [r.get('webhook_url', '').split('/api/ai-review/webhooks/')[0] for r in store.repos(public=True)
-                if r['server_id'] in {r['server_id'] for r in targets} and r.get('webhook_url')]
+    previous = [r['webhook_url'].split('/pr-agent/')[0].split('/api/ai-review/webhooks/')[0]
+                for r in store.repos(public=True)
+                if r['server_id'] == data['server_id'] and r.get('webhook_url')]
     callback = address(data.get('manager_url') or (previous[0] if previous and len(set(previous)) == 1 else fallback_url))[0]
     # 提交按钮即是管理员对这些明确地址的授权；不从 webhook 载荷追加名单。
     approve({'AI_REVIEW_GITEA_HOSTS': hosts, 'AI_REVIEW_MODEL_HOSTS': [api_url], 'AI_REVIEW_WEBHOOK_HOSTS': [callback]})
@@ -334,6 +335,7 @@ def _execute(store, job, pool):
     from models import db, GiteaServer
     from .assets.install import Installer
     from .progress_assets import build_assets
+    from .pr_agent_channel import available as native_available
     from routes.ai_review_routes import repository_values, ensure_webhook
     ident = job['id']; value = json.loads(job['value'])
     update(store, ident, stage='检查内网模型实际调用', needs_callback=False, error='', results=[], steps=[])
@@ -344,6 +346,7 @@ def _execute(store, job, pool):
     if old['revision'] != value['config_revision']:
         raise ReviewError('模型配置在检查期间发生变化，请继续检查以验证当前保存配置')
     expected_revision = old['revision']
+    native_channel = native_available() and old['engine'] == 'pr_agent'
     wanted = {k: value[k] for k in ('api_base_url', 'model')}
     same = all(old[k] == wanted[k] for k in wanted) and old['api_key'] and store.unseal(old['api_key']) == store.unseal(value['api_key'])
     if not same:
@@ -400,18 +403,20 @@ def _execute(store, job, pool):
             bind_review_repository(store, repo['id'], actual, actor=value.get('access_actor', {}))
             installed = ensure_webhook(store, repo['id'], value['manager_url'])
             stage(selection['name'], '验证 Webhook 实际投递')
-            if not actual.get('empty'):
+            native_hook = installed.get('native_pr_agent') == 'ready'
+            if not native_hook and not actual.get('empty'):
                 verify_delivery(store, admin, path, repo['id'], installed['hook_id'], actual['default_branch'])
-            else:
+            elif not native_hook:
                 raise ReviewError('空仓库尚无提交，无法验证 Webhook，请有首个提交后继续接入')
             done(selection['name'], 'Webhook 安装及投递')
-            stage(selection['name'], '安装并热重载 PR 进度组件')
-            rows = [r for r in store.repos(public=True) if not r.get('access_archived') and r.get('gitea_url', '').rstrip('/') == gitea_address(target.gitea_url)]
-            with tempfile.TemporaryDirectory(prefix='审查组件-') as folder:
-                with zipfile.ZipFile(build_assets(rows)) as archive: archive.extractall(folder)
-                installer.asset_root = folder
-                installer.execute()
-            done(selection['name'], 'PR 进度组件')
+            if not native_channel:
+                stage(selection['name'], '安装并热重载 PR 进度组件')
+                rows = [r for r in store.repos(public=True) if not r.get('access_archived') and r.get('gitea_url', '').rstrip('/') == gitea_address(target.gitea_url)]
+                with tempfile.TemporaryDirectory(prefix='审查组件-') as folder:
+                    with zipfile.ZipFile(build_assets(rows)) as archive: archive.extractall(folder)
+                    installer.asset_root = folder
+                    installer.execute()
+                done(selection['name'], 'PR 进度组件')
             current = store.repo(repo['id'])
             if current['revision'] != repo['revision']:
                 raise ReviewError('仓库配置在接入期间发生变化，未覆盖管理员的新设置')

@@ -5,7 +5,7 @@ import shutil
 import re
 from .common import ReviewError, digest
 from .diff import parse_diff, validate_patch
-from .gitea import version_of, assert_version
+from .gitea import assert_version, capture_version, pr_status
 
 SOURCE_SUFFIXES = ('.c', '.h', '.cc', '.cpp', '.hpp', '.cxx', '.hxx')
 ANALYSIS_VERSION = 4
@@ -39,13 +39,21 @@ def capture(client, number, config, store=None, job=None):
     client.max_file_bytes = 32*1024*1024
     server_version=client.version()
     client.repository()
-    version = version_of(client.pr(number))
+    pr = client.pr(number)
+    version = capture_version(client, pr)
+    fixed_patches = None
+    if pr_status(pr) != 'open':
+        version, raw = client.fixed_diff(number, version)
+        fixed_patches = parse_diff(raw)
     identity = dict(version, repository=client.repo_id, number=number, config_revision=config.get('execution_revision', config['revision']),server_version=server_version, analysis_version=ANALYSIS_VERSION)
     snapshot = dict(version, repository=client.repo_id, plan_complete=False,
                     analysis_version=ANALYSIS_VERSION, server_version=server_version,
                     id=digest(identity), files=[], anchors={},
                     coverage={'files_total': 0, 'files_reviewed': 0, 'skipped': []})
-    patches = client.diff_patches(number) if hasattr(type(client),'diff_patches') else parse_diff(client.request('GET', client.prefix + f'/pulls/{number}.diff', raw=True, limit=64*1024*1024))
+    if fixed_patches is not None:
+        patches = fixed_patches
+    else:
+        patches = client.diff_patches(number) if hasattr(type(client),'diff_patches') else parse_diff(client.request('GET', client.prefix + f'/pulls/{number}.diff', raw=True, limit=64*1024*1024))
     if store:
         with store.tx() as c:
             c.execute('CREATE TABLE IF NOT EXISTS review_snapshot_sources (job TEXT,path TEXT,side TEXT,code TEXT,PRIMARY KEY(job,path,side))')

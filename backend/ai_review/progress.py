@@ -10,9 +10,10 @@ import time
 from urllib.parse import unquote, urlsplit
 
 from .common import AccessRevoked, ReviewError, WriteRejected, encode
-from .gitea import Gitea
-from .progress_state import LABELS, RUNNING, closed_state, job_progress
+from .gitea import Gitea, pr_status
+from .progress_state import LABELS, RUNNING, job_progress
 from .publish import prose, marker
+from .pr_agent_channel import owns_review
 from .store import Store
 
 SUMMARY_MARK = '<!-- ai-review:summary:v1 -->'
@@ -41,11 +42,11 @@ def payload_for(repo, state, job, enabled, pr, now=None):
     # 仅兼容评论传输格式，Manager 的原生任务计数仍保持 None。
     if progress.get('native_session'):
         progress['units_completed'] = 0
-    stopped = not enabled or not repo['enabled'] or closed_state(state) or pr.get('state') != 'open' or pr.get('merged')
-    current_head = pr['head']['sha']
-    if stopped:
-        progress.update(status='stopped', label=LABELS['stopped'], detail='PR 已关闭、合并或 AI Review 已关闭')
-    elif progress['head'] and progress['head'] != current_head:
+    lifecycle_status = pr_status(pr)
+    current_head = (pr.get('head') or {}).get('sha') or ''
+    if not enabled or not repo['enabled']:
+        progress.update(status='stopped', label=LABELS['stopped'], detail='AI Review 已关闭')
+    elif lifecycle_status == 'open' and progress['head'] and progress['head'] != current_head:
         progress.update(status='outdated', label=LABELS['outdated'], detail='下方任务属于历史版本，当前提交等待审查')
     elif progress['status'] == 'incomplete':
         # 已安装的 v1 模板能展示 failed 和原因；新版同时识别任务的准确状态。
@@ -59,7 +60,7 @@ def payload_for(repo, state, job, enabled, pr, now=None):
                 if coverage and (not diff_only or job.get('batch_protocol')) else None)
     return dict(progress, attention=job.get('attention'), version=1, repository_id=repo['repo_id'], repository=repo['repo_name'], number=job['number'],
                 job=job['id'], generation=state['generation'], job_generation=job['generation'], sequence=state['progress_seq'],
-                enabled=bool(enabled and repo['enabled']), current_head=current_head, checked_at=now,
+                enabled=bool(enabled and repo['enabled']), pr_status=lifecycle_status, current_head=current_head, checked_at=now,
                 findings=len(result.get('findings', [])) if result and job['status'] == 'succeeded' and not diff_only else None,
                 review_scope='diff' if diff_only else 'repository', review_engine=engine, coverage=coverage,
                 pr_agent_protocol=snapshot.get('pr_agent_protocol', job.get('pr_agent_protocol')),
@@ -86,7 +87,8 @@ def review_scope_note(engine, scope, pr_agent_protocol=None):
 
 def comment_body(payload):
     encoded = base64.urlsafe_b64encode(encode(payload).encode()).decode()
-    text = SUMMARY_MARK + '\n' + DATA_PREFIX + encoded + ' -->\n### AI Code Review · ' + payload['label']
+    lifecycle = {'merged': 'PR 已合并 · ', 'closed': 'PR 已关闭 · '}.get(payload.get('pr_status'), '')
+    text = SUMMARY_MARK + '\n' + DATA_PREFIX + encoded + ' -->\n### AI Code Review · ' + lifecycle + payload['label']
     text += '\n\n' + prose(payload['detail'])
     text += '\n\n审查版本：`' + (payload['head'] or '等待读取') + '`。'
     text += '\n\n接收：' + format_time(payload['received_at'])
@@ -141,12 +143,17 @@ class ProgressSync:
     def pending(self, now=None):
         now = time.time() if now is None else now
         with contextlib.closing(self.store.connect()) as c:
+            engine = self.store.config(connection=c)['engine']
             return [dict(r) for r in c.execute(f'''SELECT p.repository,p.number FROM pr_state p
                 WHERE p.progress_next<=? AND (p.progress_seq>p.progress_synced OR EXISTS
                 (SELECT 1 FROM jobs j WHERE j.repository=p.repository AND j.number=p.number
                  AND j.generation=p.generation AND j.status IN ('running','publishing','recovering') AND p.progress_sent_at<=?))
+                AND EXISTS (SELECT 1 FROM jobs j WHERE j.repository=p.repository AND j.number=p.number)
+                AND NOT EXISTS (SELECT 1 FROM repositories r WHERE r.id=p.repository
+                    AND (json_extract(r.value,'$.native_pr_agent')='switching'
+                         OR (?='pr_agent' AND json_extract(r.value,'$.native_pr_agent')='ready')))
                 AND NOT {SUMMARY_RESERVED}
-                ORDER BY p.progress_next,p.progress_sent_at LIMIT 50''', (now, now-30))]
+                ORDER BY p.progress_next,p.progress_sent_at LIMIT 50''', (now, now-30, engine))]
 
     def owned(self, row, repo):
         return isinstance(row, dict) and row.get('user', {}).get('id') == repo['bot_id'] and row.get('body', '').startswith(SUMMARY_MARK)
@@ -211,6 +218,8 @@ class ProgressSync:
                 if not job or state['summary_reserved'] or state['progress_next'] > time.time():
                     return False
                 repo = self.store.repo(repository)
+                if owns_review(repo, self.store.config()['engine']):
+                    return False
                 client = self.factory(repo)
                 client.repository()
                 pr = client.pr(number)
@@ -260,7 +269,8 @@ class ProgressSync:
                             body += '\n\n**上一次已发布的审查结果**\n\n' + previous[report.start():]
                 # 每次外部写入前重新核对 head/base，不能以缓存 PR 冒充最新版本。
                 latest_pr = client.pr(number)
-                if any(latest_pr[k]['sha'] != pr[k]['sha'] for k in ('head', 'base')):
+                if (pr_status(latest_pr) != pr_status(pr) or
+                        (pr_status(pr) == 'open' and any(latest_pr[k]['sha'] != pr[k]['sha'] for k in ('head', 'base')))):
                     return False
                 with self.store.tx() as c:
                     latest = c.execute('SELECT * FROM pr_state WHERE repository=? AND number=?', (repository, number)).fetchone()
@@ -292,7 +302,8 @@ class ProgressSync:
                 if not self.owned(actual, repo) or not self.belongs(actual, repo, number) or actual.get('body') != body:
                     raise ReviewError('总体评论回读校验失败')
                 latest_pr = client.pr(number)
-                changed_version = any(latest_pr[k]['sha'] != pr[k]['sha'] for k in ('head', 'base'))
+                changed_version = (pr_status(latest_pr) != pr_status(pr) or
+                                   (pr_status(pr) == 'open' and any(latest_pr[k]['sha'] != pr[k]['sha'] for k in ('head', 'base'))))
                 now = time.time()
                 with self.store.tx() as c:
                     c.execute('UPDATE review_issue_summaries SET body=?,pending=NULL WHERE repository=? AND number=?', (body, repository, number))

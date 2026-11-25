@@ -5,6 +5,7 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:?AI Review 部署必须配置独立强随机会话密钥}
       INIT_PASSWORD: ${INIT_PASSWORD:?AI Review 部署必须配置初始管理员密码}
+      PR_AGENT_CHANNEL_DIR: /app/pr-agent-channels
       AI_REVIEW_DB: /app/review/review.db
       AI_REVIEW_HOST_POLICY_FILE: /app/review/hosts.json
       AI_REVIEW_MASTER_KEY_FILE: /run/secrets/review_master
@@ -15,6 +16,7 @@ services:
       AI_REVIEW_WEBHOOK_HOSTS: ${AI_REVIEW_WEBHOOK_HOSTS:-}
     volumes:
       - review-data:/app/review
+      - pr-agent-channels:/app/pr-agent-channels
     secrets: [review_master, access_authorization]
   review-worker:
     platform: linux/amd64
@@ -104,10 +106,30 @@ services:
     mem_limit: 4g
     cpus: 4.0
     restart: unless-stopped
+  review-pr-agent:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: review-runtime/Dockerfile
+    command: [/opt/pr-agent-runtime/bin/python3.12, -m, uvicorn, pr_agent_webhook:app, --host, 0.0.0.0, --port, "5054"]
+    environment:
+      LD_LIBRARY_PATH: /opt/pr-agent-runtime/lib
+      HOME: /tmp
+      TIKTOKEN_CACHE_DIR: /opt/pr-agent-assets
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes: [pr-agent-channels:/app/pr-agent-channels:ro, review-data:/app/review-maintenance:ro]
+    read_only: true
+    tmpfs: ["/tmp:size=192m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    restart: unless-stopped
 networks:
   review-execution:
     internal: true
 volumes:
+  pr-agent-channels:
   review-workspaces:
   review-native:
   review-data:

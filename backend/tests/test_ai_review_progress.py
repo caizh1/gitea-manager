@@ -306,11 +306,21 @@ class ProgressTests(unittest.TestCase):
         self.send(); self.assertEqual(decode_body(self.client.rows[0])['status'], 'queued')
 
     def test_closed_and_disabled_pr(self):
-        self.store.enqueue(self.repo, 1, {'head': 'a'*40}, closed=True)
-        self.send(); self.assertEqual(decode_body(self.client.rows[0])['status'], 'stopped')
-        self.store.enqueue(self.repo, 1, {'head': 'a'*40})
+        self.client.state = 'closed'
+        self.store.enqueue(self.repo, 1, {}, closed=True)
+        self.send()
+        payload = decode_body(self.client.rows[0])
+        self.assertEqual(payload['status'], 'queued')
+        self.assertEqual(payload['pr_status'], 'closed')
+        self.assertEqual(payload['job'], self.id)
+        self.assertIn('PR 已关闭 · 已排队', self.client.rows[0]['body'])
         self.store.save_config({'revision': self.store.config()['revision'], 'enabled': False})
         self.send(); self.assertFalse(decode_body(self.client.rows[0])['enabled'])
+
+    def test_close_without_review_does_not_fill_progress_queue(self):
+        for number in range(2, 53):
+            self.store.enqueue(self.repo, number, {}, closed=True)
+        self.assertEqual(self.sync.pending(), [{'repository': self.repo, 'number': 1}])
 
     def test_missing_webhook_detects_version_mismatch(self):
         self.client.head = 'd'*40

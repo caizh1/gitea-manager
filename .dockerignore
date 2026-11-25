@@ -29,6 +29,7 @@ review-runtime/*
 !review-runtime/pr_agent_session.py
 !review-runtime/pr_agent_runner.py
 !review-runtime/pr_agent_local.py
+!review-runtime/pr_agent_webhook.py
 !review-runtime/pr-agent-requirements.txt
 !review-runtime/vendor/pr-agent-wheels/**
 !review-runtime/vendor/pr-agent-assets/**

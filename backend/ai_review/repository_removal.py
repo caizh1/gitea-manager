@@ -14,6 +14,12 @@ def remove_repository(state, repository, revision, target):
         return _remove_repository(state, repository, revision, target)
 
 
+def _owns_callback(repo, callback):
+    from .pr_agent_channel import callback_path
+    expected = callback_path(repo['id']) if repo.get('native_pr_agent') else f"/api/ai-review/webhooks/{repo['id']}"
+    return urlsplit(callback).path.rstrip('/').endswith(expected)
+
+
 def _unverified_binding(binding):
     """只有本组件持久记录的创建回执可以跳过投递验证进行移除。"""
     return (binding.get('phase') in ('creating', 'verifying')
@@ -61,6 +67,8 @@ def _remove_repository(state, repository, revision, target):
             connection.execute('UPDATE review_native_bindings SET active=0 WHERE job IN (SELECT id FROM jobs WHERE repository=?)', (repository,))
             connection.execute('UPDATE pr_state SET progress_seq=progress_seq+1 WHERE repository=?', (repository,))
     # 不持有 SQLite 事务等待远端；进程中断后保留可重试状态，旧事件不能继续入队。
+    from .pr_agent_channel import sync
+    sync(state, repository)
     try:
         cleanup_webhook(old, target, state)
     except ReviewError as exc:
@@ -80,7 +88,7 @@ def cleanup_webhook(repo, target, state):
     if not unverified:
         if type(hook_id) is not int or hook_id <= 0 or not isinstance(callback, str):
             raise ReviewError('缺少可核对的事件通知记录，请先在 Gitea 核对该接入，未删除任何通知')
-        if urlsplit(callback).path.rstrip('/') != f"/api/ai-review/webhooks/{repo['id']}":
+        if not _owns_callback(repo, callback):
             raise ReviewError('事件通知记录不匹配，未删除任何通知')
     if gitea_address(target.gitea_url) != gitea_address(repo['gitea_url']):
         raise ReviewError('服务器连接已变化，未操作其他实例')
@@ -106,7 +114,7 @@ def cleanup_webhook(repo, target, state):
             callback = (actual.get('config') or {}).get('url')
             if (actual.get('type') != 'gitea' or actual.get('name') != binding['name']
                     or not isinstance(callback, str)
-                    or urlsplit(callback).path.rstrip('/') != f"/api/ai-review/webhooks/{repo['id']}"
+                    or not _owns_callback(repo, callback)
                     or binding_fingerprint(repo, callback, state.unseal(repo['webhook_secret'])) != binding['fingerprint']):
                 raise ReviewError('未验证通知的身份与创建记录不匹配，未删除任何通知')
         if actual.get('id') != hook_id or actual.get('config', {}).get('url') != callback:

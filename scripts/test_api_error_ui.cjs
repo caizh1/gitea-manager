@@ -78,6 +78,21 @@ async function main() {
       assert.ok(await page.locator('.el-alert', { hasText: 'PR 已关闭或合并' }).isVisible())
       await page.screenshot({ path: path.join(output, 'review-error.png') })
     })
+    task.pr_status = 'merged'
+    rerunAccepted = true
+    try {
+      await run('已合并任务补审：展示原 PR 状态并提交原任务编号', '/ai-reviews?task=test-task', async page => {
+        const detail = page.getByRole('region', { name: '审查任务详情' })
+        await detail.getByText('PR 已合并', { exact: true }).waitFor()
+        const sent = page.waitForRequest(request => request.url().endsWith('/repositories/1/rerun'))
+        await detail.getByRole('button', { name: '补审此版本', exact: true }).click()
+        assert.deepEqual((await sent).postDataJSON(), { number: 7, source_job: task.id })
+        await page.locator('.el-message--success', { hasText: '审查任务已排队' }).waitFor()
+      })
+    } finally {
+      delete task.pr_status
+      rerunAccepted = false
+    }
     await run('任务详情重审：当前详情展示原因', '/ai-reviews?task=test-task', async page => {
       await page.getByRole('region', { name: '审查任务详情' }).getByRole('button', { name: '重新审查', exact: true }).click()
       await popup(page, 'PR 已关闭或合并')

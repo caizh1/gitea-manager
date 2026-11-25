@@ -5,7 +5,7 @@ import re
 import time
 
 from .common import ReviewError, PublishUnknown, Stale, AccessRevoked, digest, encode
-from .gitea import assert_version
+from .gitea import assert_version, pr_status
 from .pr_agent_encoding import PROTOCOL, uses_local_git
 
 LABELS = {'present': '仍存在', 'fixed': '已修复', 'obsolete': '已失效', 'uncertain': '待确认'}
@@ -472,7 +472,8 @@ def overview(store, repo, job, pr):
     text = '\n\n### 问题状态台账\n\n'
     text += '共 ' + str(data['total']) + ' 个历史问题。状态仅对所列版本有效；待确认不代表已修复。\n\n'
     for item in data['items']:
-        stale = item['stale'] or item['head'] != pr['head']['sha'] or item['base'] != pr['base']['sha']
+        stale = item['stale'] or (pr_status(pr) == 'open' and
+                                  (item['head'] != pr['head']['sha'] or item['base'] != pr['base']['sha']))
         state = '上一版本：' + item['label'] + '；当前待复核' if stale else item['label']
         text += '- `' + item['id'][:12] + '` **' + state + '** · ' + prose(item['title'][:100])
         text += ' · 依据 `' + item['head'][:12] + '`'

@@ -21,7 +21,7 @@ DEFAULTS = {**BATCH_DEFAULTS, **THINKING_DEFAULTS, **PR_AGENT_BUDGETS,
             'api_key': '', 'revision': 1, 'max_concurrent_reviews': 5, 'debounce_seconds': 20,
             'execution_revision': 1}
 ACTIVE = ('queued', 'running', 'publishing', 'recovering')
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 
 class Store:
@@ -111,6 +111,20 @@ class Store:
             migrate_model_retries(c)
             if 'pr_agent_protocol' not in {row[1] for row in c.execute('PRAGMA table_info(jobs)')}:
                 c.execute('ALTER TABLE jobs ADD COLUMN pr_agent_protocol INTEGER NOT NULL DEFAULT 0')
+            if 'review_version' not in {row[1] for row in c.execute('PRAGMA table_info(jobs)')}:
+                c.execute("ALTER TABLE jobs ADD COLUMN review_version TEXT NOT NULL DEFAULT '{}'")
+                c.execute('''UPDATE jobs SET review_version=COALESCE(
+                    (SELECT json_extract(p.signature,'$[0]') FROM pr_state p
+                     WHERE p.repository=jobs.repository AND p.number=jobs.number AND p.generation=jobs.generation
+                       AND json_extract(p.signature,'$[0].head') IS NOT NULL), '{}')
+                    WHERE status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')''')
+            if 'source_job' not in {row[1] for row in c.execute('PRAGMA table_info(jobs)')}:
+                c.execute('ALTER TABLE jobs ADD COLUMN source_job TEXT')
+            if 'pr_status' not in {row[1] for row in c.execute('PRAGMA table_info(pr_state)')}:
+                c.execute("ALTER TABLE pr_state ADD COLUMN pr_status TEXT NOT NULL DEFAULT 'open'")
+                c.execute("UPDATE pr_state SET pr_status='closed' WHERE json_extract(signature,'$[3]')=1")
+            if 'pr_event_at' not in {row[1] for row in c.execute('PRAGMA table_info(pr_state)')}:
+                c.execute('ALTER TABLE pr_state ADD COLUMN pr_event_at REAL NOT NULL DEFAULT 0')
             c.execute(f'PRAGMA user_version={SCHEMA_VERSION}')
             c.commit()
         os.chmod(self.path, 0o600)
@@ -273,6 +287,10 @@ class Store:
                 c.execute("UPDATE jobs SET status='superseded',error='配置已变更',updated=? WHERE status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')", (time.time(),))
                 c.execute('UPDATE repositories SET last_reconcile=0')
                 c.execute('UPDATE pr_state SET progress_seq=progress_seq+1')
+        from .pr_agent_channel import available, sync
+        if available():
+            for repo in self.repos():
+                sync(self, repo['id'])
         return self.config(public=True)
 
     def repo(self, repository, connection=None, public=False):
@@ -337,6 +355,8 @@ class Store:
                 except sqlite3.IntegrityError:
                     raise ReviewError('该仓库已配置，请编辑现有配置') from None
                 repository = cur.lastrowid
+        from .pr_agent_channel import sync
+        sync(self, repository)
         return self.repo(repository, public=True)
 
     def archive_repo(self, repository):
@@ -350,6 +370,9 @@ class Store:
             c.execute('UPDATE repositories SET enabled=0,value=? WHERE id=?', (encode(value), repository))
             c.execute("UPDATE jobs SET status=CASE WHEN status IN ('publishing','recovering') THEN 'publish_unknown' ELSE 'superseded' END, error='原组织归属已失效，任务已封存', updated=? WHERE repository=? AND status IN ('queued','running','publishing','recovering')", (time.time(), repository))
 
+        from .pr_agent_channel import sync
+        sync(self, repository)
+
     def repo_status(self, repository, **values):
         with self.tx() as c:
             row = c.execute('SELECT value FROM repositories WHERE id=?', (repository,)).fetchone()
@@ -358,9 +381,10 @@ class Store:
             value = json.loads(row[0]); value.update(values)
             c.execute('UPDATE repositories SET value=? WHERE id=?', (encode(value), repository))
 
-    def enqueue(self, repository, number, signature, delivery=None, closed=False, manual=False, access_actor=None):
+    def enqueue(self, repository, number, signature, delivery=None, closed=False, manual=False, access_actor=None, merged=False, source_job=None, event_at=0, reopened=False):
+        from .pr_agent_channel import owns_review
         from .runtime_status import available
-        if not available() and not closed:
+        if not available() and (not closed or manual):
             if manual: raise ReviewError('AI 执行器不可用，请查看安装与运行诊断')
             return None
         now = time.time()
@@ -372,18 +396,49 @@ class Store:
                 if not inserted:
                     return None
                 c.execute('UPDATE repositories SET last_event=? WHERE id=?', (now, repository))
+            if owns_review(repo, config['engine']):
+                if manual:
+                    raise ReviewError('请在 Gitea PR 评论中输入 /review 发起原生审查')
+                return None
             if not config['enabled'] or not repo['enabled']:
                 return None
             state = c.execute('SELECT * FROM pr_state WHERE repository=? AND number=?', (repository, number)).fetchone()
+            pr_status = 'merged' if merged else 'closed' if closed else 'open'
+            if state:
+                if not manual and event_at and event_at < state['pr_event_at']:
+                    return None
+                if delivery and not closed and state['pr_status'] != 'open' and (
+                        not reopened or event_at and event_at <= state['pr_event_at']):
+                    return None
+                c.execute('''UPDATE pr_state SET pr_status=?,pr_event_at=max(pr_event_at,?),
+                    progress_seq=progress_seq+(pr_status!=?) WHERE repository=? AND number=?''',
+                    (pr_status, event_at, pr_status, repository, number))
+            if closed and not manual:
+                if not state:
+                    c.execute('INSERT INTO pr_state(repository,number,generation,signature,pr_status,pr_event_at) VALUES (?,?,0,?,?,?)',
+                              (repository, number, encode([{}, 0, 0, True]), pr_status, event_at))
+                return None
+            if source_job:
+                # 补审只能接替同一 PR 当前可恢复的版本，避免覆盖较新版本的台账。
+                latest = c.execute('''SELECT id,source_job,status FROM jobs
+                    WHERE repository=? AND number=? ORDER BY generation DESC LIMIT 1''',
+                    (repository, number)).fetchone()
+                if not latest or (latest['id'] != source_job and latest['source_job'] != source_job):
+                    raise ReviewError('该 PR 已有更新的审查任务，请从最新任务详情补审')
+                if latest['status'] in (*ACTIVE, 'publish_unknown', 'cancelling'):
+                    raise ReviewError('该 PR 已有审查或发布正在进行')
             if state and not manual and not closed:
                 current_version = json.loads(state['signature'])[0]
                 cancelled = c.execute("SELECT 1 FROM jobs WHERE repository=? AND number=? AND generation=? AND cancel_requested_at IS NOT NULL LIMIT 1",
                                       (repository, number, state['generation'])).fetchone()
-                if cancelled and current_version == signature:
+                if cancelled and all(current_version.get(k) == signature.get(k) for k in ('head', 'base')):
                     # 人工取消绑定代码版本；模型/凭据/开关变化不能悄悄重启这个版本。
                     return None
-            target_head = signature.get('head', '') if isinstance(signature, dict) else ''
-            signature = encode([signature, execution_revision(config), repo['revision'], bool(closed)])
+            target_head = signature.get('head', '')
+            review_version = encode(signature)
+            # 代次标识沿用 head/base，比较基点随任务单独保存。
+            version_key = {key: signature[key] for key in ('head', 'base') if key in signature} if target_head else signature
+            signature = encode([version_key, execution_revision(config), repo['revision'], False])
             if manual and state and state['signature'] == signature:
                 from .model_retries import WAITING_STAGE
                 pending = c.execute("""SELECT id FROM jobs WHERE repository=? AND number=? AND generation=?
@@ -411,19 +466,17 @@ class Store:
                                       (actual, repository, number, state['generation']))
                             return None
             generation = (state['generation'] if state else 0) + 1
-            c.execute('''INSERT INTO pr_state(repository,number,generation,signature) VALUES (?,?,?,?)
+            c.execute('''INSERT INTO pr_state(repository,number,generation,signature,pr_status,pr_event_at) VALUES (?,?,?,?,?,?)
                        ON CONFLICT(repository,number) DO UPDATE SET generation=excluded.generation,signature=excluded.signature''',
-                      (repository, number, generation, signature))
-            c.execute("UPDATE jobs SET status='superseded',error='PR 已更新或关闭',updated=? WHERE repository=? AND number=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')", (now, repository, number))
-            if closed:
-                return None
+                      (repository, number, generation, signature, pr_status, event_at))
+            c.execute("UPDATE jobs SET status='superseded',error='PR 代码版本已更新或发起了重审',updated=? WHERE repository=? AND number=? AND status IN ('queued','running','awaiting_cost','budget_paused','incomplete','awaiting_publication')", (now, repository, number))
             job = secrets.token_hex(16)
             c.execute('''INSERT INTO jobs(id,repository,number,generation,status,stage,created,available,updated,config_revision,repo_revision,manual,target_head,batch_protocol)
                          VALUES (?,?,?,?,'queued','等待执行',?,?,?,?,?,?,?,1)''',
                       (job, repository, number, generation, now, now + (0 if manual else config['debounce_seconds']), now,
                        config['revision'], repo['revision'], int(manual), target_head))
-            c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=8 WHERE id=?',
-                      (encode(repo.get('access_scope') or {}), encode(access_actor or {}), job))
+            c.execute('UPDATE jobs SET access_scope=?,access_actor=?,batch_flow_version=8,review_version=?,source_job=? WHERE id=?',
+                      (encode(repo.get('access_scope') or {}), encode(access_actor or {}), review_version, source_job, job))
             if config.get('engine') in ('codex_cli', 'pr_agent'):
                 c.execute('UPDATE jobs SET batch_protocol=0,rules_protocol=1 WHERE id=?', (job,))
             if config.get('engine') == 'pr_agent':
@@ -463,6 +516,10 @@ class Store:
             from .review_state import aggregate
             value['result'] = aggregate(self, value, evidence=evidence)
         if public:
+            with contextlib.closing(self.connect()) as c:
+                pr = c.execute('SELECT pr_status FROM pr_state WHERE repository=? AND number=?',
+                               (value['repository'], value['number'])).fetchone()
+            value['pr_status'] = pr['pr_status'] if pr else 'open'
             from .repository_rules import public as public_rules
             value['review_rules'] = public_rules(value)
             if value.get('batch_protocol'):
@@ -476,6 +533,7 @@ class Store:
             value.pop('owner', None)
             value.pop('event_token_hash', None)
             value.pop('native_result_sha256', None)
+            value.pop('review_version', None)
             if value['snapshot']:
                 value['snapshot'] = {k: value['snapshot'][k] for k in (
                     'id', 'base', 'head', 'merge_base', 'coverage', 'analysis_version',
@@ -506,6 +564,7 @@ class Store:
                    "units_total,target_head,review_id,review_fragment,error,batch_index,batch_calls,plan_units,"
                    "session_id,session_status,current_action,deadline_at,last_heartbeat,log_synced_at,event_count,final_event_seq,"
                    "event_acked_seq,log_stream_closed,"
+                   "(SELECT p.pr_status FROM pr_state p WHERE p.repository=jobs.repository AND p.number=jobs.number) AS pr_status,"
                    "json_extract(result,'$.coverage.complete') AS coverage_complete,"
                    "json_extract(result,'$.units_failed') AS units_failed,"
                    "json_extract(result,'$.units_processed') AS units_processed")
@@ -544,13 +603,17 @@ class Store:
             c.execute("UPDATE jobs SET status='publish_unknown',owner='',updated=?,error='执行中断，等待核对实际发布结果' WHERE status IN ('publishing','recovering') AND lease<? AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=jobs.id)", (now, now))
             c.execute("UPDATE jobs SET status='failed',stage='中断次数达到上限',error='已中断三次，请排查环境后人工重审',updated=? WHERE status='running' AND lease<? AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=jobs.id) AND attempts>=3", (now, now))
             c.execute("UPDATE jobs SET status='queued',owner='',available=?,updated=?,stage='中断后重新领取' WHERE status='running' AND lease<? AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=jobs.id)", (now, now, now))
-            if not self.config(connection=c)['enabled']:
+            config = self.config(connection=c)
+            if not config['enabled']:
                 return None
             row = c.execute("""SELECT j.id FROM jobs j WHERE j.status='queued' AND j.available<=?
+                               AND NOT EXISTS (SELECT 1 FROM repositories r WHERE r.id=j.repository
+                                   AND (json_extract(r.value,'$.native_pr_agent')='switching'
+                                        OR (?='pr_agent' AND json_extract(r.value,'$.native_pr_agent')='ready')))
                                AND NOT EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.repository=j.repository AND s.number=j.number AND NOT (s.job=j.id AND s.owner=''))
                                AND (json_extract((SELECT value FROM configuration_history WHERE revision=j.config_revision),'$.engine') IN ('codex_cli','pr_agent') OR NOT EXISTS
                                    (SELECT 1 FROM jobs x WHERE x.repository=j.repository AND x.number=j.number AND x.status='publish_unknown'))
-                               ORDER BY CASE WHEN EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=j.id AND s.owner='') THEN 0 ELSE 1 END,j.available,j.created LIMIT 1""", (now,)).fetchone()
+                               ORDER BY CASE WHEN EXISTS (SELECT 1 FROM review_execution_slots s WHERE s.job=j.id AND s.owner='') THEN 0 ELSE 1 END,j.available,j.created LIMIT 1""", (now, config['engine'])).fetchone()
             if not row:
                 return None
             from .concurrency import reserve
@@ -600,6 +663,8 @@ class Store:
                 signature = encode([{'head':snapshot['head'], 'base':snapshot['base']}, self.execution_revision_for(row['config_revision'], c), row['repo_revision'], False])
                 c.execute('UPDATE pr_state SET signature=? WHERE repository=? AND number=? AND generation=?',
                           (signature, row['repository'], row['number'], row['generation']))
+                version = {key: snapshot[key] for key in ('head', 'base', 'merge_base') if key in snapshot}
+                c.execute('UPDATE jobs SET review_version=? WHERE id=?', (encode(version), job))
 
     def finish(self, job, owner, status, error=''):
         with self.tx() as c:

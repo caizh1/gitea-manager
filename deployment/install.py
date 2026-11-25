@@ -158,6 +158,7 @@ def configuration(state, manifest, root):
                'SECRET_KEY': state['secret_key'], 'INIT_PASSWORD': state['admin_password'], 'INTEGRATION_ENABLED': 'false',
                'TRUSTED_PROXY_HOSTS': 'frontend',
                'AI_REVIEW_DB': '/app/review/review.db', 'AI_REVIEW_HOST_POLICY_FILE': '/app/review/hosts.json',
+               'PR_AGENT_CHANNEL_DIR': '/app/pr-agent-channels',
                'AI_REVIEW_MASTER_KEY_FILE': '/run/secrets/review_master',
                'AI_REVIEW_AUTHORIZATION_URL': 'http://backend:5000/api/internal/authorization/check',
                'AI_REVIEW_AUTHORIZATION_TOKEN_FILE': '/run/secrets/access_authorization',
@@ -165,7 +166,8 @@ def configuration(state, manifest, root):
                'SSH_KEY_PATH': '/run/manager-ssh/id_rsa', 'SSH_KNOWN_HOSTS': '/run/manager-ssh/known_hosts'}
         mount = '/var/run/docker.sock:/var/run/docker.sock'
         services['backend'] = spec(images['backend']['tag'], environment=env,
-            volumes=['manager-data:/app/data', 'diagnostic-data:/app/data/diagnostics', 'review-data:/app/review', mount,
+            volumes=['manager-data:/app/data', 'diagnostic-data:/app/data/diagnostics', 'review-data:/app/review',
+                     'pr-agent-channels:/app/pr-agent-channels', mount,
                      f'{root}/state/ssh:/run/manager-ssh', f'{root}/state/runtime:/run/manager-runtime:ro',
                      f'{root}/state/diagnostics:/app/install-diagnostics:ro'], secrets=['review_master', 'access_authorization'])
         services['approval-view'] = spec(images['backend']['tag'],
@@ -211,8 +213,17 @@ def configuration(state, manifest, root):
             secrets=['review_executor'], networks=['review-execution'], dns=['127.0.0.1'],
             read_only=True, tmpfs=['/tmp:size=768m,mode=1777'], cap_drop=['ALL'],
             security_opt=['no-new-privileges:true'], pids_limit=512, mem_limit='4g', cpus=4.0)
+        services['review-pr-agent'] = spec(images['executor']['tag'],
+            command=['/opt/pr-agent-runtime/bin/python3.12', '-m', 'uvicorn', 'pr_agent_webhook:app',
+                     '--host', '0.0.0.0', '--port', '5054'],
+            environment={'LD_LIBRARY_PATH': '/opt/pr-agent-runtime/lib', 'HOME': '/tmp',
+                         'TIKTOKEN_CACHE_DIR': '/opt/pr-agent-assets', 'LITELLM_LOCAL_MODEL_COST_MAP': 'True',
+                         'PYTHONDONTWRITEBYTECODE': '1'},
+            volumes=['pr-agent-channels:/app/pr-agent-channels:ro', 'review-data:/app/review-maintenance:ro'],
+            read_only=True, tmpfs=['/tmp:size=192m,mode=1777'], cap_drop=['ALL'],
+            security_opt=['no-new-privileges:true'], mem_limit='2g')
         common['networks'] = {'review-execution': {'internal': True}}
-        common['volumes'] = {'manager-data': {}, 'review-data': {}, 'executor-data': {}, 'review-workspaces': {}, 'diagnostic-data': {}}
+        common['volumes'] = {'manager-data': {}, 'review-data': {}, 'executor-data': {}, 'review-workspaces': {}, 'diagnostic-data': {}, 'pr-agent-channels': {}}
         common['secrets'] = {'review_master': {'file': str(root / 'state/master.key')},
                              'review_executor': {'file': str(root / 'state/executor.token')},
                              'access_authorization': {'file': str(root / 'state/access-authorization.token')}}
@@ -475,6 +486,10 @@ class Installer:
                 if REPORT: REPORT.event('检查','后台心跳',实际=values,预期='各进程小于 90 秒')
                 return all(0 <= value < 90 for value in values.values())
             wait_for(heartbeat, '审查后台心跳')
+            channel_probe = ("import requests; r=requests.get('http://review-pr-agent:5054/health',timeout=3); "
+                             "assert r.status_code==200 and r.json().get('ready')")
+            wait_for(lambda: self.compose('exec', '-T', 'backend', 'python', '-c', channel_probe) is not None,
+                     '原生 PR-Agent Webhook 服务', seconds=75)
             wait_for(lambda: bool(self.compose('exec', '-T', 'git-migration-worker', 'python', '-m',
                                               'git_migration.worker', '--check')),
                      'Git 来源独立发现执行器', seconds=60)

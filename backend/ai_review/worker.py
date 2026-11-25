@@ -17,6 +17,7 @@ from .publish import Publisher
 from .snapshot import capture, work_items
 from .store import Store
 from .performance import span, record
+from .pr_agent_channel import owns_review
 
 
 def client_for(store, repo, job=None):
@@ -25,11 +26,14 @@ def client_for(store, repo, job=None):
 
 
 def reconcile_repositories(store):
-    if not store.config()['enabled']:
+    config = store.config()
+    if not config['enabled']:
         return
+    from .gitea import observe_pr
+
     now = time.time()
     for repo in store.repos():
-        if not repo['enabled'] or repo['last_reconcile'] > now-300:
+        if not repo['enabled'] or owns_review(repo, config['engine']) or repo['last_reconcile'] > now-300:
             continue
         with store.tx() as c:
             c.execute('UPDATE repositories SET last_reconcile=? WHERE id=?', (now, repo['id']))
@@ -37,16 +41,18 @@ def reconcile_repositories(store):
         try:
             client.repository()
             rows = client.pages(client.prefix+'/pulls?state=open')
+            with contextlib.closing(store.connect()) as c:
+                tracked = dict(c.execute('SELECT number,pr_status FROM pr_state WHERE repository=?', (repo['id'],)).fetchall())
             opened = set()
             for pr in rows:
-                if pr.get('state') != 'open' or pr.get('merged'):
-                    continue
-                number = pr['number']; opened.add(number)
-                store.enqueue(repo['id'], number, {'head': pr['head']['sha'], 'base': pr['base']['sha']})
-            with contextlib.closing(store.connect()) as c:
-                tracked = [r[0] for r in c.execute('SELECT number FROM pr_state WHERE repository=?', (repo['id'],))]
-            for number in set(tracked)-opened:
-                store.enqueue(repo['id'], number, {'closed': True}, closed=True)
+                number = pr['number']
+                opened.add(number)
+                if tracked.get(number, 'open') != 'open':
+                    pr = client.pr(number)
+                observe_pr(store, repo['id'], number, pr)
+            for number in set(tracked) - opened:
+                if tracked[number] == 'open':
+                    observe_pr(store, repo['id'], number, client.pr(number))
             store.repo_status(repo['id'], reconcile_error='')
         except ReviewError as exc:
             store.repo_status(repo['id'], reconcile_error=str(exc))
@@ -326,17 +332,8 @@ def refresh_pr(store, repo, job):
     client = client_for(store, repo)
     try:
         pr = client.pr(job['number'])
-        closed = pr.get('state') != 'open' or bool(pr.get('merged'))
-        signature = {'head': pr['head']['sha'], 'base': pr['base']['sha']}
-        actual = store.job(job['id'])
-        snapshot = actual.get('snapshot')
-        if not closed and actual['status']=='succeeded' and snapshot and all(snapshot[k]==signature[k] for k in signature):
-            # 人工触发使用独立代次，完成后确认该代次读取的真实版本，避免再排入
-            # 一条仅用于去重的空任务，也避免 UI 指向更早的同版本 Review。
-            with store.tx() as c:
-                c.execute('UPDATE pr_state SET signature=? WHERE repository=? AND number=? AND generation=?',
-                          (encode([signature,store.execution_revision_for(job['config_revision'], c),job['repo_revision'],False]),repo['id'],job['number'],job['generation']))
-        store.enqueue(repo['id'], job['number'], signature, closed=closed)
+        from .gitea import observe_pr
+        observe_pr(store, repo['id'], job['number'], pr)
     except ReviewError:
         pass  # 定期核对继续补偿；已完成的 Review 不能因此被改成失败。
     finally:

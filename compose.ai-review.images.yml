@@ -27,3 +27,6 @@ services:
   review-executor:
     image: gitea-review-executor:offline
     pull_policy: never
+  review-pr-agent:
+    image: gitea-review-executor:offline
+    pull_policy: never

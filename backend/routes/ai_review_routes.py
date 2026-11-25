@@ -298,13 +298,17 @@ def install_webhook(repository):
     state = store()
     manager_url = body().get('manager_url')
     from ai_review.host_policy import path, approve
-    if path(): approve({'AI_REVIEW_WEBHOOK_HOSTS': [manager_url]})
+    if manager_url and path(): approve({'AI_REVIEW_WEBHOOK_HOSTS': [manager_url]})
     return jsonify(ensure_webhook(state, repository, manager_url))
 
 
 def ensure_webhook(state, repository, manager_url):
     # 跨 Gunicorn worker 串行核对创建与清理回执，避免并发生成重复勾子。
     with state.lock('webhook-install-' + str(repository), blocking=True):
+        from ai_review import pr_agent_channel
+        repo = state.repo(repository)
+        if pr_agent_channel.available() and (pr_agent_channel.active(repo) or state.config()['engine'] == 'pr_agent'):
+            return pr_agent_channel.install(state, repository, manager_url, server(repo['server_id']))
         return _ensure_webhook(state, repository, manager_url)
 
 
@@ -633,7 +637,11 @@ def task_context_reads(job):
 
 @ai_review_bp.post('/repositories/<int:repository>/rerun')
 def rerun(repository):
-    state = store(); number = positive(body().get('number'))
+    payload = body()
+    state = store(); number = positive(payload.get('number'))
+    source_job = payload.get('source_job')
+    if source_job is not None and (not isinstance(source_job, str) or not re.fullmatch('[a-f0-9]{32}', source_job)):
+        raise ReviewError('原审查任务编号无效')
     repo = state.repo(repository)
     if not state.config()['enabled'] or not repo['enabled']:
         raise ReviewError('请先启用全局和该仓库的 AI Review')
@@ -642,12 +650,32 @@ def rerun(repository):
     target = server(repo['server_id'])
     client = Gitea(target.gitea_url, state.unseal(repo['bot_token']), repo['repo_name'], repo['repo_id'])
     try:
-        from ai_review.gitea import version_of
-        version = version_of(client.pr(number))
+        from ai_review.gitea import pr_status, version_of
         from access.scopes import actor_snapshot, current_binding, check_task_actor
         actor = actor_snapshot(current_binding())
         check_task_actor(actor, repo['server_id'], repo['repo_id'])
-        job = state.enqueue(repository, number, {'head': version['head'], 'base': version['base']}, manual=True, access_actor=actor)
+        pr = client.pr(number)
+        status = pr_status(pr)
+        if source_job:
+            source = state.job(source_job, evidence=False)
+            if source['repository'] != repository or source['number'] != number:
+                raise ReviewError('原任务不属于该仓库和 PR')
+            from access.organization_api import review_job_ids
+            allowed = review_job_ids(state)
+            if allowed is not None and source_job not in allowed:
+                raise ReviewError('当前账号无法读取原审查任务')
+            saved = source['snapshot'] or json.loads(source['review_version'])
+            if not all(saved.get(key) for key in ('head', 'base')):
+                raise ReviewError('原任务未保留足够的提交信息，无法补审此版本')
+            version = {key: valid_sha(saved[key]) for key in ('head', 'base', 'merge_base') if saved.get(key)}
+            if status == 'open':
+                current = version_of(pr)
+                if any(current[key] != sha for key, sha in version.items()):
+                    raise ReviewError('PR 已有新版本，请审查当前版本')
+        else:
+            version = version_of(pr)
+        job = state.enqueue(repository, number, version, manual=True, access_actor=actor,
+                            closed=status != 'open', merged=status == 'merged', source_job=source_job)
     finally:
         client.close()
     return jsonify(job=job), 202
@@ -722,8 +750,8 @@ def webhook(repository):
         number = positive(pr['number'])
         if pr['base']['repo']['id'] != repo['repo_id']:
             raise ReviewError('事件 PR 不属于目标仓库')
-        signature = {'head': valid_sha(pr['head']['sha']), 'base': valid_sha(pr['base']['sha'])}
-        job = state.enqueue(repository, number, signature, delivery=delivery, closed=action == 'closed')
+        from ai_review.gitea import observe_pr
+        job = observe_pr(state, repository, number, pr, delivery=delivery, action=action)
         return jsonify(accepted=True, job=job), 202
     except (ValueError, TypeError, KeyError):
         raise ReviewError('事件内容格式错误') from None

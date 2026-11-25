@@ -29,8 +29,8 @@ test('浏览器能在同步器中断时自行识别过期 Worker 租约', () => 
  assert.equal(effectiveStatus(payload, { state: 'open', head: { sha: payload.head } }, 101), 'interrupted');
  assert.equal(effectiveStatus({ ...payload, status: 'publishing' }, { state: 'open', head: { sha: payload.head } }, 101), 'publish_unknown');
 });
-test('关闭 PR 和禁用功能显示停止', () => {
- assert.equal(effectiveStatus(payload, { state: 'closed', head: { sha: payload.head } }), 'stopped');
+test('关闭 PR 继续展示审查状态，禁用功能显示停止', () => {
+ assert.equal(effectiveStatus(payload, { state: 'closed', head: { sha: '' } }, 99), 'running');
  assert.equal(effectiveStatus({ ...payload, enabled: false }, { state: 'open', head: { sha: payload.head } }), 'stopped');
 });
 

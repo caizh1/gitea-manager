@@ -19,8 +19,8 @@ import time
 import docker
 from docker.types import Mount
 
-SERVICES = ('backend', 'frontend', 'review-worker', 'review-executor', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker', 'git-migration-worker')
-WRITERS = ('backend', 'review-worker', 'review-progress', 'review-feedback', 'approval-view', 'svn-migration-worker', 'git-migration-worker')
+SERVICES = ('backend', 'frontend', 'review-worker', 'review-executor', 'review-progress', 'review-feedback', 'review-pr-agent', 'approval-view', 'svn-migration-worker', 'git-migration-worker')
+WRITERS = ('backend', 'review-worker', 'review-progress', 'review-feedback', 'review-pr-agent', 'approval-view', 'svn-migration-worker', 'git-migration-worker')
 STATE = Path('/state')
 CHECK_KEY = '''
 from pathlib import Path
@@ -438,6 +438,7 @@ class Upgrade:
             return mount
         workspace = runtime_mount('review-worker', '/app/review-workspaces', 'review-workspaces')
         native = runtime_mount('review-executor', '/app/review-native', 'review-native')
+        channels = runtime_mount('backend', '/app/pr-agent-channels', 'pr-agent-channels')
         for key in ('AI_REVIEW_GITEA_HOSTS', 'AI_REVIEW_MODEL_HOSTS', 'AI_REVIEW_WEBHOOK_HOSTS'):
             hosts = {h.strip().lower() for attrs in self.info['original'].values() for h in environment(attrs).get(key, '').split(',') if h.strip()}
             env[key] = ','.join(sorted(hosts))
@@ -511,6 +512,8 @@ class Upgrade:
         common = {k: v for k, v in env.items() if k.startswith('AI_REVIEW_') and (k.endswith('_HOSTS') or k in ('AI_REVIEW_DB', 'AI_REVIEW_HOST_POLICY_FILE', 'AI_REVIEW_MASTER_KEY_FILE', 'AI_REVIEW_RUNTIME_STATUS', 'AI_REVIEW_AUTHORIZATION_URL', 'AI_REVIEW_AUTHORIZATION_TOKEN_FILE'))}
         common.update(GM_UPGRADE_MAINTENANCE_FILE=env['GM_UPGRADE_MAINTENANCE_FILE'], PYTHONDONTWRITEBYTECODE='1')
         backend['volumes'] = [m for m in backend.get('volumes', []) if m['target'] not in (self.info.get('review_mount', {}).get('target'), '/app/review', master['target'], authorization['target'])] + [review, master, authorization]
+        env['PR_AGENT_CHANNEL_DIR'] = '/app/pr-agent-channels'
+        backend['volumes'] = [m for m in backend['volumes'] if m['target'] != channels['target']] + [channels]
         # 保留原业务网络并复用实际网络名，避免另起项目导致数据或连接失联。
         default_networks = backend.get('networks') or {'default': None}
         for key in default_networks:
@@ -556,6 +559,16 @@ class Upgrade:
                     tmpfs=['/tmp:size=768m,mode=1777'], cap_drop=['ALL'], security_opt=['no-new-privileges:true'], pids_limit=512, mem_limit='4g', cpus=4.0)
         if 'review-executor' in self.info['original']: spec['container_name'] = self.info['original']['review-executor']['Name'].lstrip('/')
         current['services']['review-executor'] = spec
+        current['services']['review-pr-agent'] = dict(
+            image=images['executor'], platform='linux/amd64', pull_policy='never', restart='unless-stopped',
+            command=['/opt/pr-agent-runtime/bin/python3.12', '-m', 'uvicorn', 'pr_agent_webhook:app',
+                     '--host', '0.0.0.0', '--port', '5054'],
+            environment={'LD_LIBRARY_PATH': '/opt/pr-agent-runtime/lib', 'HOME': '/tmp',
+                         'TIKTOKEN_CACHE_DIR': '/opt/pr-agent-assets', 'LITELLM_LOCAL_MODEL_COST_MAP': 'True',
+                         'PYTHONDONTWRITEBYTECODE': '1'},
+            volumes=[dict(channels, read_only=True), dict(review, target='/app/review-maintenance', read_only=True)],
+            networks=default_networks, read_only=True, tmpfs=['/tmp:size=192m,mode=1777'], cap_drop=['ALL'],
+            security_opt=['no-new-privileges:true'], mem_limit='2g')
         # 展示复用实际 Manager 数据卷，参与升级冻结和恢复。
         spec=approval_view_spec(backend,images['backend'],default_networks)
         if 'approval-view' in self.info['original']:spec['container_name']=self.info['original']['approval-view']['Name'].lstrip('/')
@@ -605,7 +618,7 @@ class Upgrade:
             rows = self.containers()
             if all(name in rows and rows[name].attrs['State']['Running'] for name in SERVICES):
                 result = rows['backend'].exec_run(['python', '-c', "import requests,re; r=requests.get('http://127.0.0.1:5000/api/session',timeout=3); assert r.status_code==200; r=requests.get('http://frontend/api/session',timeout=3); assert r.status_code==200 and 'authenticated' in r.json(); page=requests.get('http://frontend/',timeout=3); assert page.status_code==200; asset=re.search(r'src=\"(/assets/[^\"]+\\.js)\"',page.text); assert asset and requests.get('http://frontend'+asset[1],timeout=3).status_code==200"])
-                health = rows['review-worker'].exec_run(['python', '-c', "import requests,time; from ai_review.store import Store; h=Store().health_status(); assert all(any(x['name']==n and time.time()-x['updated']<30 for x in h) for n in ('worker','progress','feedback')); r=requests.get('http://review-executor:5052/health',timeout=3); assert r.status_code==200 and r.json().get('ready')"])
+                health = rows['review-worker'].exec_run(['python', '-c', "import requests,time; from ai_review.store import Store; h=Store().health_status(); assert all(any(x['name']==n and time.time()-x['updated']<30 for x in h) for n in ('worker','progress','feedback')); r=requests.get('http://review-executor:5052/health',timeout=3); assert r.status_code==200 and r.json().get('ready'); assert requests.get('http://review-pr-agent:5054/health',timeout=3).json().get('ready')"])
                 view_health=rows['approval-view'].exec_run(['python','-c',"import requests; r=requests.get('http://127.0.0.1:5000/health',timeout=3); assert r.status_code==200 and r.json().get('role')=='approval-view'; blocked=requests.get('http://127.0.0.1:5000/api/session',timeout=3); assert blocked.status_code==503 and blocked.json().get('error')=='正在升级并核对数据，请稍后访问'; from approval.view_app import create_app; assert '/api/session' not in {r.rule for r in create_app().url_map.iter_rules()}"])
                 gate_health = rows['backend'].exec_run(['python', '-c', "from ai_review.runtime_status import available,status; assert available(), status().get('reason')"])
                 svn_health = rows['svn-migration-worker'].exec_run(['python', '-m', 'svn_migration.worker', '--check'])

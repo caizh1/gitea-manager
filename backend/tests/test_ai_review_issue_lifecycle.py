@@ -91,6 +91,31 @@ class LifecycleTests(unittest.TestCase):
         self.store.finish(self.job['id'], self.job['owner'], 'succeeded')
         return result
 
+    def test_closed_pr_with_changed_ref_keeps_report_without_misplaced_inline(self):
+        from ai_review.publication import publish
+
+        self.client.pr = lambda _: dict(state='closed', merged=True, merge_base=self.snapshot['merge_base'])
+        self.client.pull_ref_head = lambda _: 'c'*40
+        self.repo_value['gitea_url'] = 'http://gitea'
+        request = self.client.request
+
+        def request_with_summary(method, path, data=None, **kwargs):
+            result = request(method, path, data, **kwargs)
+            if method == 'POST' and path.endswith('/issues/1/comments'):
+                self.client.summaries[0]['pull_request_url'] = 'http://gitea/test/code/pulls/1'
+            return result
+
+        self.client.request = request_with_summary
+        result = reconcile(self.store, self.client, self.job, self.repo_value, self.snapshot, self.report())
+        publish(self.store, self.client, dict(self.job, result=result, snapshot=self.snapshot), self.repo_value)
+        task = self.store.job(self.job['id'])
+        self.assertEqual(task['status'], 'succeeded')
+        self.assertEqual(self.client.reviews, [])
+        self.assertEqual(len(self.client.summaries), 1)
+        self.assertIn('code.c · 第 1 行', self.client.summaries[0]['body'])
+        self.assertIn('原始意见不应被覆盖', self.client.summaries[0]['body'])
+        self.assertIsNotNone(task['result']['findings'][0]['anchor'])
+
     def test_more_than_ten_versions_title_changes_reuse_one_comment(self):
         self.apply()
         for i in range(12):

@@ -1,4 +1,5 @@
 """独立审查服务调用 Manager 当前权限判定，不挂载管理员数据库或凭据。"""
+import json
 import os
 from pathlib import Path
 import requests
@@ -41,5 +42,7 @@ def guarded_client(store, repo, job=None):
         if job:
             store.active(job['id'], job['owner'])
     client = Gitea(repo['gitea_url'], store.unseal(repo['bot_token']), repo['repo_name'], repo['repo_id'], guard)
+    if job:
+        client.review_version = json.loads(job.get('review_version') or '{}')
     client.access_authorize = lambda action: authorize(repo, job, action)
     return client

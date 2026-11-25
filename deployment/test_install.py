@@ -78,7 +78,15 @@ class InstallTests(unittest.TestCase):
         installer = self.fresh()
         config = json.loads((self.root / 'compose.install.json').read_text())
         services = config['services']
-        self.assertEqual(len(services), 8)
+        self.assertEqual(len(services), 9)
+        native = services['review-pr-agent']
+        self.assertEqual(native['image'], 'executor')
+        self.assertIn('pr_agent_webhook:app', native['command'])
+        self.assertNotIn('ports', native)
+        self.assertTrue(native['read_only'])
+        mounts = {m['target']: m for m in native['volumes']}
+        self.assertTrue(mounts['/app/pr-agent-channels']['read_only'])
+        self.assertFalse(any(m['source'] == '/var/run/docker.sock' for m in native['volumes']))
         self.assertEqual(services['backend']['environment']['INTEGRATION_ENABLED'], 'false')
         self.assertNotIn('INTEGRATION_SERVICE_TOKEN', services['backend']['environment'])
         self.assertNotIn('ports', services['backend'])

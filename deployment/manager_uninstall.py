@@ -7,13 +7,14 @@ from pathlib import Path
 import re
 
 SERVICES = {'backend', 'frontend', 'review-worker', 'review-feedback', 'review-progress',
-            'review-executor', 'approval-view', 'svn-migration-worker', 'git-migration-worker'}
+            'review-executor', 'review-pr-agent', 'approval-view', 'svn-migration-worker', 'git-migration-worker'}
 LABEL = 'com.docker.compose.project'
 UPGRADE_REVIEW_LABEL = 'io.gitea-manager.review-data'
 # 与 upgrade_runtime.py 生成的独立卷及其固定挂载位置一致。
 UPGRADE_VOLUMES = {'review-data': '/app/review',
                    'review-workspaces': '/app/review-workspaces',
-                   'review-native': '/app/review-native'}
+                   'review-native': '/app/review-native',
+                   'pr-agent-channels': '/app/pr-agent-channels'}
 # 旧版直接运行 Compose，使用目录名或显式项目名；新版安装器附加随机后缀。
 PROJECT_PATTERN = re.compile(r'gitea-manager(?:[-_][a-z0-9_-]+)?')
 

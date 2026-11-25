@@ -3,8 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from .common import ReviewError, digest
-from .gitea import assert_version, version_of
+from .common import AccessRevoked, ReviewError, Stale, digest
+from .gitea import assert_version, capture_version, pr_status
 from . import diff_inline
 
 SYSTEM = '''你是代码审查员。只根据用户提供的 PR 标题、描述和完整 diff 做审查。
@@ -30,9 +30,23 @@ def capture(client, number, config, batched=False, *, byte_encodings=None, pr_ag
     server_version = client.version()
     client.repository()
     pr = client.pr(number)
-    version = version_of(pr)
-    raw = client.request('GET', client.prefix + f'/pulls/{number}.diff', raw=True, limit=64 * 1024 * 1024)
-    assert_version(client, number, version)
+    version = capture_version(client, pr)
+    raw = None
+    if pr_status(pr) == 'open':
+        try:
+            raw = client.request('GET', client.prefix + f'/pulls/{number}.diff',
+                                 raw=True, limit=64 * 1024 * 1024)
+        except (AccessRevoked, Stale):
+            raise
+        except ReviewError:
+            if pr_status(assert_version(client, number, version)) == 'open':
+                raise
+        else:
+            if pr_status(assert_version(client, number, version)) != 'open':
+                raw = None
+    if raw is None:
+        version, raw = client.fixed_diff(number, version)
+        assert_version(client, number, version)
     byte_snapshot = {}
     if byte_encodings is not None:
         from .batch_flow import PR_AGENT_MAX_CHANGED_LINES, validate_single_size

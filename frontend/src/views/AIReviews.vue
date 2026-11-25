@@ -32,7 +32,7 @@
             <el-table-column label="代码版本" min-width="135"><template #default="{ row }"><code>{{ row.progress?.head?.slice(0, 12) || '等待读取' }}</code></template></el-table-column>
             <el-table-column label="状态" min-width="135"><template #default="{ row }"><el-tag :type="statusType(row.status)">{{ row.progress?.label || statusLabel(row.status) }}</el-tag></template></el-table-column>
             <el-table-column label="当前阶段 / 成本确认" min-width="330"><template #default="{ row }">
-              <div>{{ row.stage }}</div><div v-if="row.progress?.units_total != null" class="muted">完成单元 {{ row.progress.units_completed }}/{{ row.progress.units_total }}</div><div v-if="row.progress?.sync_error" class="failure">状态同步：{{ row.progress.sync_error }}</div>
+              <div>{{ row.stage }}<span v-if="closedTask(row)" class="muted"> · {{ row.pr_status === 'merged' ? 'PR 已合并' : 'PR 已关闭' }}</span></div><div v-if="row.progress?.units_total != null" class="muted">完成单元 {{ row.progress.units_completed }}/{{ row.progress.units_total }}</div><div v-if="row.progress?.sync_error" class="failure">状态同步：{{ row.progress.sync_error }}</div>
               <div v-if="row.status === 'awaiting_cost' && row.cost_summary" class="cost-summary" data-testid="cost-summary">
                 <strong>基础调用 {{ row.cost_summary.base_calls }} 次，最多 {{ row.cost_summary.max_calls }} 次</strong>
                 <span>主审 {{ row.cost_summary.primary }} 批 · 关联复核 {{ row.cost_summary.association }} 批 · 历史问题 {{ row.cost_summary.history }} 项 · 已授权 {{ row.cost_summary.authorized_calls }} 次</span>
@@ -46,12 +46,12 @@
             </template></el-table-column>
             <el-table-column label="执行耗时 / 批次" min-width="150"><template #default="{ row }">{{ row.timing ? Math.round(row.timing.execution_seconds) + ' 秒' : '历史记录' }}<div class="muted" v-if="row.batch_protocol">{{ row.progress?.units_completed || 0 }} / {{ row.progress?.units_total ?? '预检中' }}</div></template></el-table-column>
             <el-table-column label="创建时间 ↓" min-width="195"><template #default="{ row }">{{ fmt(row.created) }}<div class="muted">更新：{{ fmt(row.updated) }}</div></template></el-table-column>
-            <el-table-column label="操作" min-width="250"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-button v-if="!repoArchived(row.repository) && ['queued', 'running'].includes(row.status)" link type="danger" :loading="cancellingId === row.id" :disabled="Boolean(cancellingId)" @click="cancelTask(row)">强制取消</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><el-button link :disabled="!config.enabled || row.status === 'cancelling'" @click="rerun(row.repository, row.number)">重新审查</el-button></div></template></el-table-column>
+            <el-table-column label="操作" min-width="250"><template #default="{ row }"><div class="review-actions"><el-button link type="primary" @click="openTask(row.id)">详情</el-button><el-button v-if="!repoArchived(row.repository) && ['queued', 'running'].includes(row.status)" link type="danger" :loading="cancellingId === row.id" :disabled="Boolean(cancellingId)" @click="cancelTask(row)">强制取消</el-button><el-tag v-if="repoArchived(row.repository)" type="info">已归档</el-tag><el-button link :disabled="!config.enabled || row.status === 'cancelling'" @click="rerunTask(row)">{{ closedTask(row) ? '补审此版本' : '重新审查' }}</el-button></div></template></el-table-column>
             <template #empty><el-empty description="启用仓库后，创建或更新 PR 即可自动审查。" /></template>
           </el-table>
           <el-pagination v-model:current-page="page" :page-size="20" :total="total" layout="prev, pager, next, total" @current-change="changePage" />
         </div>
-    <ReviewTaskDetail v-if="detailVisible" :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :cancelling="cancellingId === detail?.id" :can-cancel="!repoArchived(detail?.repository)" @cancel="cancelTask(detail)" @refresh="fetchDetail(selectedTask)" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail"><template #actions><template v-if="detail && !repoArchived(detail.repository)"><el-button size="small" :disabled="!config.enabled || detail.status === 'cancelling'" :loading="rerunning" @click="rerun(detail.repository, detail.number)">重新审查</el-button></template></template></ReviewTaskDetail>
+    <ReviewTaskDetail v-if="detailVisible" :open="detailVisible" :task="detail" :loading="detailLoading" :error="detailError" :cancelling="cancellingId === detail?.id" :can-cancel="!repoArchived(detail?.repository)" @cancel="cancelTask(detail)" @refresh="fetchDetail(selectedTask)" :repository="repositories.find(r => r.id === detail?.repository)?.repo_name || '仓库'" :instance="repositories.find(r => r.id === detail?.repository)?.server_name || ''" @close="closeDetail"><template #actions><template v-if="detail && !repoArchived(detail.repository)"><el-button size="small" :disabled="!config.enabled || detail.status === 'cancelling'" :loading="rerunning" @click="rerunTask(detail)">{{ closedTask(detail) ? '补审此版本' : '重新审查' }}</el-button></template></template></ReviewTaskDetail>
       </div>
     </section>
     <ReviewRepositories v-else-if="tab === 'repositories'" :repositories="repositories" :servers="servers" :config="config" :refreshing="refreshing" @refresh="refresh" @configure="editRepo" @webhook="row => { hookRepo = row; hookVisible = true }" @review="row => { manualRepo = row; manualVisible = true }" @download="row => downloadProgress(row.server_id)" />
@@ -59,7 +59,7 @@
     <section v-else-if="tab === 'config' && isPlatformAdmin">
         <div class="glass-card panel">
           <el-alert v-if="configError" :title="configError" type="error" show-icon :closable="false" /><el-form label-position="top" @submit.prevent="saveConfig">
-            <el-alert :title="reviewLimitTitle" :description="['codex_cli', 'pr_agent'].includes(config.engine) ? '首次获取仓库，后续增量更新。P0/P1 独立反证，审查完成后自动发布行内评论与总览。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
+            <el-alert :title="reviewLimitTitle" :description="config.engine === 'pr_agent' ? '通过仓库管理接入后，由 PR-Agent 自动分块，直接在 Gitea 发布结果。' : config.engine === 'codex_cli' ? '首次获取仓库，后续增量更新。P0/P1 独立反证，审查完成后自动发布行内评论与总览。' : '所有变更纳入审查，P0/P1 保留独立反证。'" type="info" :closable="false" />
             <div class="review-grid">
               <el-form-item label="源码缓存"><div><el-button @click="loadSourceCache">查看缓存</el-button><span v-if="sourceCache"> {{ Math.round(sourceCache.bytes/1048576) }} / {{ Math.round(sourceCache.limit_bytes/1048576) }} MiB</span><div v-for="row in sourceCache?.repositories || []" :key="row.repository">{{ repoName(row.repository) }} · {{ Math.round(row.bytes/1048576) }} MiB <el-button link type="danger" @click="clearSourceCache(row.repository)">清理</el-button></div></div></el-form-item>
               <el-form-item v-if="['codex_cli', 'pr_agent'].includes(config.engine)" label="同时审查 PR 数量">
@@ -68,7 +68,6 @@
               </el-form-item>
               <el-form-item label="全局启用"><el-switch v-model="config.enabled" aria-label="全局启用 AI Review" /></el-form-item>
               <el-form-item label="执行引擎"><el-select v-model="config.engine" aria-label="执行引擎" @change="applyEngineBudget"><el-option label="Codex 原生 Review（Linux amd64）" value="codex_cli" /><el-option label="PR-Agent 原生审查（Linux amd64）" value="pr_agent" /><el-option label="原生 OpenCode 会话（已弃用）" value="opencode_native" /></el-select><span v-if="config.engine === 'opencode_native'" class="secondary">OpenCode 执行器已弃用，后续新功能支持 Codex 和 PR-Agent。</span></el-form-item>
-              <p v-if="config.engine === 'pr_agent' && changedLineLimits.pr_agent" class="secondary">PR-Agent 支持新增与删除合计最多 {{ changedLineLimits.pr_agent.toLocaleString('en-US') }} 行。完整变更还须放入模型的输入额度。</p>
               <el-form-item label="内部 New API 地址"><el-input v-model="config.api_base_url" placeholder="填写包含 API 前缀的内网地址" autocomplete="off" /></el-form-item>
               <el-form-item label="模型"><el-input v-model="config.model" placeholder="填写内部实际可用的模型标识" autocomplete="off" /></el-form-item>
               <el-form-item :label="config.api_key_configured ? 'API Key（已配置，留空保留）' : 'API Key（尚未配置）'"><el-input v-model="apiKey" type="password" autocomplete="new-password" placeholder="仅在新增或更换密钥时填写" /></el-form-item>
@@ -176,7 +175,7 @@ const engineBudgets = ref({}), changedLineLimits = ref({})
 const reviewLimitTitle = computed(() => {
   const engine = config.value.engine
   const title = ({ pr_agent: 'PR-Agent 原生差异审查', codex_cli: 'Codex 自主检索审查' })[engine] || '新任务单次审查'
-  const limit = changedLineLimits.value[engine]
+  const limit = engine === 'pr_agent' ? 0 : changedLineLimits.value[engine]
   return limit ? `${title}，新增与删除合计最多 ${limit.toLocaleString('en-US')} 行` : title
 })
 
@@ -203,7 +202,8 @@ const statistics = ref(null), statisticsError = ref(''), statisticsLoading = ref
 const lastSelected = ref(String(route.query.last_task || route.query.task || ''))
 let listChartsCollapsed = false
 const selectedTask = computed(() => String(route.query.task || ''))
-const availableRepos = computed(() => repositories.value.filter(r => r.enabled && !r.access_archived))
+const availableRepos = computed(() => repositories.value.filter(r => r.enabled && !r.access_archived &&
+  r.native_pr_agent !== 'switching' && (r.native_pr_agent !== 'ready' || config.value.engine !== 'pr_agent')))
 const sourceCache = ref(null)
 async function loadSourceCache() { try { sourceCache.value = (await api.get('/ai-review/source-cache')).data } catch(e) { showError(e) } }
 async function clearSourceCache(id) { try { await write('delete', '/source-cache/'+id); await loadSourceCache() } catch(e) { showError(e) } }
@@ -296,7 +296,12 @@ async function saveRepo() {
   } catch (e) { if (!disposed && current === repoGeneration) repoError.value = errorMessage(e) } finally { busy.value = false }
 }
 async function installHook() { if (busy.value) return; busy.value = true; hookError.value = ''; const request = hookGeneration; const target = hookRepo.value.id; try { await write('post', `/repositories/${target}/webhook`, { manager_url: managerURL.value }); if (request !== hookGeneration) return; hookVisible.value = false; ElMessage.success('事件通知已安装并验证'); await reloadRepositories() } catch (e) { if (request === hookGeneration) hookError.value = errorMessage(e) } finally { busy.value = false } }
-async function rerun(repository, number) { if (rerunning.value) return; rerunning.value = true; manualError.value = ''; try { await write('post', `/repositories/${repository}/rerun`, { number }); manualVisible.value = false; page.value = 1; if (tab.value !== 'tasks') await router.push({ path: '/ai-reviews', query: listQuery() }); else await loadTasks(); ElMessage.success('审查任务已排队') } catch (e) { if (manualVisible.value) manualError.value = errorMessage(e); else showError(e) } finally { rerunning.value = false } }
+const closedTask = task => ['closed', 'merged'].includes(task.pr_status)
+function rerunTask(task) {
+  return rerun(task.repository, task.number, closedTask(task) ? task.id : undefined)
+}
+
+async function rerun(repository, number, sourceJob) { if (rerunning.value) return; rerunning.value = true; manualError.value = ''; try { await write('post', `/repositories/${repository}/rerun`, { number, source_job: sourceJob }); manualVisible.value = false; page.value = 1; if (tab.value !== 'tasks') await router.push({ path: '/ai-reviews', query: listQuery() }); else await loadTasks(); ElMessage.success('审查任务已排队') } catch (e) { if (manualVisible.value) manualError.value = errorMessage(e); else showError(e) } finally { rerunning.value = false } }
 
 async function confirmCost(row) {
   if (!row?.cost_summary?.plan_hash || confirmingIds.value.has(row.id)) return

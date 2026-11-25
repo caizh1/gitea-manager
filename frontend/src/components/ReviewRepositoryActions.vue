@@ -5,9 +5,9 @@
       <el-dropdown trigger="click" placement="bottom-end" @command="command => $emit('command', command, row)">
         <el-button class="more-button" :aria-label="`${row.repo_name} 的更多操作`"><EllipsisVertical :size="18" /></el-button>
         <template #dropdown><el-dropdown-menu>
-          <el-dropdown-item command="review" :disabled="!row.enabled || !enabled"><CodeXml :size="16" />审查 PR</el-dropdown-item>
+          <el-dropdown-item v-if="!nativeReview" command="review" :disabled="!row.enabled || !enabled"><CodeXml :size="16" />审查 PR</el-dropdown-item>
           <el-dropdown-item v-if="isPlatformAdmin" command="webhook"><Bell :size="16" />事件通知</el-dropdown-item>
-          <el-dropdown-item v-if="isPlatformAdmin" command="download"><Download :size="16" />下载进度组件</el-dropdown-item>
+          <el-dropdown-item v-if="isPlatformAdmin && !nativeReview" command="download"><Download :size="16" />下载进度组件</el-dropdown-item>
           <el-dropdown-item v-if="isPlatformAdmin" command="remove" divided class="remove-menu-item"><Trash2 :size="16" />移除接入</el-dropdown-item>
         </el-dropdown-menu></template>
       </el-dropdown>
@@ -18,9 +18,11 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { Bell, CodeXml, Download, EllipsisVertical, Trash2 } from '@lucide/vue'
 import { isPlatformAdmin } from '../composables/accessState'
-defineProps({ row: { type: Object, required: true }, enabled: Boolean })
+const props = defineProps({ row: { type: Object, required: true }, enabled: Boolean, engine: String })
+const nativeReview = computed(() => props.row.native_pr_agent === 'switching' || (props.engine === 'pr_agent' && props.row.native_pr_agent === 'ready'))
 defineEmits(['command'])
 </script>
 

@@ -175,6 +175,78 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(sum(v is not None for v in results), 1)
         self.assertEqual(self.store.jobs()['total'], 1)
 
+    def test_closed_delivery_keeps_original_generation_and_ignores_late_push(self):
+        version = {'head': 'a'*40, 'base': 'b'*40, 'merge_base': 'c'*40}
+        ident = self.store.enqueue(self.repo, 1, version, delivery='opened', event_at=10)
+        job = self.store.claim()
+        self.assertEqual(job['id'], ident)
+        for delivery in ('merged', 'duplicate-merge'):
+            self.assertIsNone(self.store.enqueue(self.repo, 1, {}, delivery=delivery,
+                                                closed=True, merged=True, event_at=20))
+        changed = dict(version, head='d'*40)
+        self.assertIsNone(self.store.enqueue(self.repo, 1, changed, delivery='late-push', event_at=19))
+        self.store.active(ident, job['owner'])
+        current = self.store.job(ident, public=True)
+        self.assertEqual(json.loads(self.store.job(ident)['review_version']), version)
+        self.assertEqual(current['pr_status'], 'merged')
+        self.assertEqual(current['status'], 'running')
+        self.assertEqual(self.store.jobs()['total'], 1)
+
+    def test_closed_pr_reopened_with_new_head_uses_a_new_generation(self):
+        first = self.store.enqueue(self.repo, 1, {'head': 'a', 'base': 'b'}, event_at=10)
+        self.store.enqueue(self.repo, 1, {}, closed=True, event_at=20)
+        self.assertIsNone(self.store.enqueue(self.repo, 1, {'head': 'a', 'base': 'b'},
+                                             delivery='reopen-same', reopened=True, event_at=30))
+        self.assertIsNone(self.store.enqueue(self.repo, 1, {}, delivery='late-close', closed=True, event_at=20))
+        next_job = self.store.enqueue(self.repo, 1, {'head': 'c', 'base': 'b'}, delivery='push', event_at=31)
+        self.assertTrue(next_job)
+        self.assertEqual(self.store.job(first)['status'], 'superseded')
+        self.assertEqual(self.store.job(next_job, public=True)['pr_status'], 'open')
+
+    def test_queue_upgrade_backfills_original_commits_before_close(self):
+        version = {'head': 'a'*40, 'base': 'b'*40}
+        ident = self.store.enqueue(self.repo, 1, version)
+        with self.store.tx() as connection:
+            connection.execute('ALTER TABLE jobs DROP COLUMN review_version')
+            connection.execute('ALTER TABLE jobs DROP COLUMN source_job')
+            connection.execute('ALTER TABLE pr_state DROP COLUMN pr_status')
+            connection.execute('ALTER TABLE pr_state DROP COLUMN pr_event_at')
+            connection.execute('PRAGMA user_version=24')
+        upgraded = Store(self.store.path)
+        upgraded.enqueue(self.repo, 1, {}, closed=True, merged=True)
+        job = upgraded.claim()
+        self.assertEqual(job['id'], ident)
+        self.assertEqual(json.loads(job['review_version']), version)
+        self.assertEqual(upgraded.job(ident, public=True)['pr_status'], 'merged')
+
+    def test_supplement_review_uses_saved_version_and_rejects_missing_history(self):
+        from routes.ai_review_routes import rerun
+        version = {'head': 'a'*40, 'base': 'b'*40, 'merge_base': 'c'*40}
+        ident = self.store.enqueue(self.repo, 1, version)
+        job = self.store.claim()
+        self.store.finish(ident, job['owner'], 'superseded', 'PR 已更新或关闭')
+        lost = self.store.enqueue(self.repo, 2, {'head': 'a'*40})
+        fake_pr = mock_patch('routes.ai_review_routes.Gitea')
+        app = Flask('补审旧任务')
+        with mock_patch('routes.ai_review_routes.store', return_value=self.store), \
+                mock_patch('routes.ai_review_routes.server'), fake_pr as client, \
+                mock_patch('access.scopes.current_binding', return_value=None), \
+                mock_patch('access.scopes.actor_snapshot', return_value={}), \
+                mock_patch('access.scopes.check_task_actor'), \
+                mock_patch('access.organization_api.review_job_ids', return_value=None):
+            client.return_value.pr.return_value = {'state': 'closed', 'merged': True}
+            with app.test_request_context(json={'number': 1, 'source_job': ident}):
+                response, code = rerun(self.repo)
+                self.assertEqual(code, 202)
+            new = self.store.job(response.json['job'], public=True)
+            self.assertEqual(json.loads(self.store.job(new['id'])['review_version']), version)
+            self.assertEqual(new['source_job'], ident)
+            self.assertEqual(new['pr_status'], 'merged')
+            self.assertEqual(self.store.job(ident)['status'], 'superseded')
+            with app.test_request_context(json={'number': 2, 'source_job': lost}):
+                with self.assertRaisesRegex(ReviewError, '未保留足够'):
+                    rerun(self.repo)
+
     def test_new_generation_fences_old_owner(self):
         self.enqueue(); old = self.store.claim(); self.enqueue('c')
         with self.assertRaises(Stale): self.store.update(old['id'], old['owner'], stage='错误复活')
@@ -330,6 +402,16 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(response.status_code, 202); self.assertTrue(response.json['job'])
             self.assertIsNone(client.post(url,data=raw,headers=headers).json['job'])
             self.assertEqual(client.post(url,data=raw+b' ',headers=headers).status_code, 403)
+            ident = response.json['job']
+            value['action'] = 'closed'
+            value['pull_request']['merged'] = True
+            value['pull_request']['head'] = {}
+            closed = encode(value).encode()
+            headers['X-Gitea-Signature'] = hmac.new('签名测试秘密'.encode(), closed, hashlib.sha256).hexdigest()
+            headers['X-Gitea-Delivery'] = 'delivery-close'
+            self.assertEqual(client.post(url, data=closed, headers=headers).status_code, 202)
+            self.assertEqual(self.store.job(ident)['status'], 'queued')
+            self.assertEqual(self.store.job(ident, public=True)['pr_status'], 'merged')
         login_platform(client)
         token = client.get('/api/ai-review/csrf').json['token']
         self.assertEqual(client.put('/api/ai-review/config',json={}).status_code,403)

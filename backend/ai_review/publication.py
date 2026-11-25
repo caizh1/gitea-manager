@@ -66,6 +66,9 @@ def overview(store, job, result):
     fallback = [f for f in result['findings'] if not f.get('anchor') or len(f.get('comment_markdown', '') + f.get('explanation', '')) > 9000]
     for finding in fallback:
         body += '\n\n- **' + prose(finding.get('severity', '')) + ' ' + prose(finding['title'])[:300] + '**'
+        location = finding.get('historical_anchor')
+        if location:
+            body += '\n  ' + prose(location['path']) + ' · 第 ' + str(location['line']) + ' 行'
         body += '\n  ' + prose(finding.get('explanation') or finding.get('comment_markdown', ''))[:600]
         if finding.get('fallback_reason'):
             body += '\n  ' + prose(finding['fallback_reason'])
@@ -174,6 +177,24 @@ def publish_summary(store, client, job, repo):
     with contextlib.closing(store.connect()) as c:
         op = dict(c.execute("SELECT * FROM review_issue_operations WHERE job=? AND key='summary'", (job['id'],)).fetchone())
     payload = json.loads(op['payload'])
+    if op['state'] == 'queued':
+        with contextlib.closing(store.connect()) as c:
+            fallback = {row[0] for row in c.execute('''SELECT value FROM review_issue_operations o,
+                json_each(o.receipt,'$.inline_fallback') WHERE o.job=? AND o.kind='create' ''', (job['id'],))}
+            saved = c.execute('SELECT value FROM review_publication_plans WHERE job=?', (job['id'],)).fetchone()
+        if fallback and saved:
+            plan = json.loads(saved['value'])
+            result = deepcopy(plan['result'])
+            for finding in result['findings']:
+                if finding.get('issue_id') in fallback:
+                    finding['historical_anchor'] = finding.pop('anchor', None)
+                    finding['fallback_reason'] = '原审查差异已无法在 Gitea 文件页核准，意见保留在本报告中。'
+            payload['body'] = plan['overview'] = overview(store, job, result)
+            with store.tx() as c:
+                store._active(c, job['id'], job['owner'])
+                c.execute("UPDATE review_issue_operations SET payload=? WHERE job=? AND key='summary'",
+                          (encode(payload), job['id']))
+                c.execute('UPDATE review_publication_plans SET value=? WHERE job=?', (encode(plan), job['id']))
     rows = client.pages(client.prefix + f"/issues/{job['number']}/comments")
     sync = ProgressSync(store)
     matches = [r for r in rows if r.get('body') == payload['body'] and sync.owned(r, repo) and sync.belongs(r, repo, job['number'])]

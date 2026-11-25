@@ -1,6 +1,6 @@
 <template>
   <section class="setup-panel" :class="embedded ? 'setup-embedded' : 'glass-card'" aria-labelledby="setup-title">
-    <div class="setup-heading"><div><h4 id="setup-title">快速接入 AI 审查</h4><p>选择一个 Gitea 实例及其仓库，系统准备机器人、事件通知和 PR 进度。</p></div><el-button v-if="configured && !embedded" text @click="expanded = !expanded">{{ expanded ? '收起配置' : '接入更多仓库' }}</el-button></div>
+    <div class="setup-heading"><div><h4 id="setup-title">快速接入 AI 审查</h4><p>选择 Gitea 实例和仓库，系统自动准备机器人并验证事件通知。</p></div><el-button v-if="configured && !embedded" text @click="expanded = !expanded">{{ expanded ? '收起配置' : '接入更多仓库' }}</el-button></div>
     <el-alert v-if="error || catalogError || pollError" :title="error || catalogError || pollError" type="error" :closable="false" show-icon />
     <el-alert v-if="!available" title="当前部署尚未启用自动接入，请先运行一键升级脚本。" type="info" :closable="false" />
     <el-form v-if="embedded || expanded || !configured || job?.detail?.needs_callback" label-position="top" @submit.prevent="submit">

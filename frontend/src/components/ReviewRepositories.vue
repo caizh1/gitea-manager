@@ -33,12 +33,12 @@
           <div class="hook-status" :class="hookState(row).type"><component :is="hookState(row).icon" :size="18" /><span>{{ hookState(row).label }}</span></div>
           <div class="event-caption" :title="row.removal_error || row.reconcile_error || row.hook_status">{{ row.removal_error || row.reconcile_error || (row.removal_complete ? '历史审查已保留' : relativeEvent(row.last_event)) }}</div>
         </template></el-table-column>
-        <el-table-column label="操作" width="125"><template #default="{ row }"><ReviewRepositoryActions :row="row" :enabled="config.enabled" @command="handleCommand" /></template></el-table-column>
+        <el-table-column label="操作" width="125"><template #default="{ row }"><ReviewRepositoryActions :row="row" :enabled="config.enabled" :engine="config.engine" @command="handleCommand" /></template></el-table-column>
       </el-table>
 
       <div class="repository-mobile-list" aria-label="审查仓库列表">
         <article v-for="row in pageRepositories" :key="row.id" class="repository-mobile-row">
-          <div class="mobile-row-heading"><strong class="repository-name">{{ row.repo_name }}</strong><ReviewRepositoryActions :row="row" :enabled="config.enabled" @command="handleCommand" /></div>
+          <div class="mobile-row-heading"><strong class="repository-name">{{ row.repo_name }}</strong><ReviewRepositoryActions :row="row" :enabled="config.enabled" :engine="config.engine" @command="handleCommand" /></div>
           <div class="mobile-row-meta"><span class="instance-label">{{ row.server_name }}</span><span class="review-status" :class="statusClass(row)"><Circle :size="10" fill="currentColor" />{{ statusLabel(row) }}</span><span>{{ row.bot_name || '尚未配置机器人' }}</span></div>
           <div class="hook-status" :class="hookState(row).type"><component :is="hookState(row).icon" :size="17" /><span>{{ hookState(row).label }}</span><span class="mobile-event-time">{{ relativeEvent(row.last_event) }}</span></div>
           <p v-if="row.removal_error || row.reconcile_error" class="mobile-row-error">{{ row.removal_error || row.reconcile_error }}</p>

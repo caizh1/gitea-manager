@@ -621,7 +621,9 @@ def process(store, job):
     except DeferredModelRetry:
         pass
     except Stale as exc:
-        store.finish(job["id"], job["owner"], "superseded", str(exc))
+        current = store.job(job["id"], evidence=False)
+        status = "publish_unknown" if current["status"] in ("publishing", "recovering") else "superseded"
+        store.finish(job["id"], job["owner"], status, str(exc))
     except Exception as exc:
         from .common import PublishUnknown, AccessRevoked, WriteRejected
 

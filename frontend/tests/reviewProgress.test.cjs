@@ -10,4 +10,4 @@ test('当前 PR 的真实阻塞字段可读取且保留 queued 状态',()=>{ con
 test('拒绝跨 PR 的待办载荷',()=>assert.equal(parse(row({...payload,attention:{required:true,pending_count:1,number:2,reason:'核对'}}),identity,[9]),null))
 test('拒绝非可信机器人伪造待办',()=>assert.equal(parse(row(payload,8),identity,[9]),null))
 test('拒绝非法待办计数与过长说明',()=>{for(const attention of [{required:true,pending_count:-1,number:1,reason:'核对'},{required:true,pending_count:1,number:1,reason:'长'.repeat(1001)}]) assert.equal(parse(row({...payload,attention}),identity,[9]),null)})
-test('已关闭 PR 保留停止语义',()=>assert.equal(effectiveStatus(payload,{state:'closed',head:{sha:payload.head}}),'stopped'))
+test('已关闭 PR 保留任务实际状态',()=>assert.equal(effectiveStatus(payload,{state:'closed',head:{sha:''}}),'queued'))

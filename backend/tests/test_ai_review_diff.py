@@ -139,7 +139,7 @@ class DiffReviewTests(unittest.TestCase):
                                       current, True, self.client.metadata)
                 self.assertIsNone(payload['findings'])
                 self.assertIsNone(payload['coverage'])
-                self.assertIn('仅审查 PR diff', comment_body(payload))
+                self.assertIn('本次以 PR 变更为审查依据', comment_body(payload))
                 self.assertNotIn('发现 0 项问题', comment_body(payload))
 
     def test_worker_uses_diff_contract_without_source_download(self):

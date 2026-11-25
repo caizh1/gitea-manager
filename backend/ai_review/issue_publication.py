@@ -4,7 +4,7 @@ import json
 import time
 
 from .common import ReviewError, Stale, AccessRevoked, PublishUnknown, WriteRejected, encode
-from .gitea import assert_version
+from .gitea import assert_version, inline_available
 from .issue_lifecycle import LABELS, issue_marker, snapshot_for
 from .publish import finding_body, marker, prose, verify_hunk
 
@@ -99,7 +99,8 @@ def publish_new(publisher, recovery):
     for op in planned:
         key = op['key']
         payload = op['payload']
-        if op['state'] == 'done' and json.loads(op.get('receipt') or '{}').get('reused'):
+        receipt = json.loads(op.get('receipt') or '{}')
+        if op['state'] == 'done' and (receipt.get('reused') or receipt.get('inline_fallback')):
             continue
         mark = marker(job) + '\n<!-- ai-review:publication:' + job['id'] + ':' + key + ' -->'
         reviews = publisher.client.pages(publisher.path)
@@ -117,7 +118,10 @@ def publish_new(publisher, recovery):
                 raise PublishUnknown('新增问题创建结果尚未找到，未重复发送')
             if any(r.get('state') == 'PENDING' and r.get('user', {}).get('id') == publisher.repo['bot_id'] for r in reviews):
                 raise PublishUnknown('机器人存在待处理草稿，未混入当前问题')
-            assert_version(publisher.client, job['number'], snapshot)
+            if not inline_available(publisher.client, job['number'], snapshot):
+                change_operation(store, job, key, 'done',
+                                 {'inline_fallback': [row['issue'] for row in payload['comments']]})
+                continue
             store.update(job['id'], job['owner'], status='publishing', stage='发布首次问题意见')
             change_operation(store, job, key, 'started')
             try:
@@ -185,6 +189,8 @@ def recover(publisher):
     for op in operations:
         if op['state'] in ('queued', 'abandoned'):
             incomplete = incomplete or op['state'] == 'queued'
+            continue
+        if json.loads(op['receipt'] or '{}').get('inline_fallback'):
             continue
         payload = json.loads(op['payload'])
         matches = [r for r in reviews if r.get('body') == payload['body'] and r.get('user', {}).get('id') == publisher.repo['bot_id']]

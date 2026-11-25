@@ -23,6 +23,7 @@
           !(integer(p.units_completed) || (p.native_session === true && p.units_completed === null && p.units_total === null)) ||
           !(p.units_total === null || (integer(p.units_total) && integer(p.units_completed) && p.units_completed <= p.units_total)) ||
           ![p.received_at, p.started_at, p.finished_at, p.lease_until, p.checked_at].every(timeValue) ||
+          (p.pr_status !== undefined && !['open', 'closed', 'merged'].includes(p.pr_status)) ||
           typeof p.enabled !== 'boolean' || typeof p.detail !== 'string' || p.detail.length > 1000 ||
           typeof p.error !== 'string' || p.error.length > 1000 || typeof p.stage !== 'string' || p.stage.length > 80 ||
           !(p.findings === null || integer(p.findings)) || !(p.review_id === null || integer(p.review_id)) ||
@@ -51,8 +52,9 @@
     return raw.slice(start, end + endMark.length);
   }
   function effectiveStatus(p, pr, now = Date.now() / 1000) {
-    if (!p.enabled || pr.state !== 'open' || pr.merged) return 'stopped';
-    if ((p.head && p.head !== pr.head.sha) || (!p.head && p.status === 'succeeded')) return 'outdated';
+    if (!p.enabled) return 'stopped';
+    const closed = pr.state !== 'open' || pr.merged;
+    if (!closed && ((p.head && p.head !== pr.head.sha) || (!p.head && p.status === 'succeeded'))) return 'outdated';
     if (['running', 'publishing', 'recovering'].includes(p.status) && p.lease_until && p.lease_until < now) {
       return p.status === 'running' ? 'interrupted' : 'publish_unknown';
     }
@@ -88,7 +90,10 @@
   const fmt = value => value ? new Date(value * 1000).toLocaleString('zh-CN') : '尚无';
   function textMetric(label, value) { const span = document.createElement('span'); span.textContent = `${label}：${value}`; metrics.append(span); }
   function render(p, pr) {
-    const state = effectiveStatus(p, pr); card.dataset.status = state; status.textContent = labels[state];
+    const state = effectiveStatus(p, pr);
+    const lifecycle = pr.state === 'open' ? '' : p.pr_status === 'merged' ? 'PR 已合并 · ' : 'PR 已关闭 · ';
+    card.dataset.status = state;
+    status.textContent = lifecycle + labels[state];
     const failure = ['failed', 'incomplete'].includes(state) && p.error;
     detail.textContent = state === 'outdated' ? '当前 PR 已有新提交，下方审查结果属于历史版本。' : state === 'interrupted' ? labels[state] : failure || p.detail;
     metrics.replaceChildren(); textMetric('审查版本', p.head ? p.head.slice(0, 12) : '等待读取');

@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 from .common import ReviewError, Stale, PublishUnknown, digest
 from .diff import file_lines, quote_text
-from .gitea import assert_version
+from .gitea import assert_version, inline_available
 
 
 def marker(job):
@@ -90,6 +90,9 @@ def summary(job, snapshot, result):
             if row.get('existing_review_id'):
                 text += f"\n\n该问题已在历史 Review #{row['existing_review_id']} 中提出；本次重新核对仍成立，不重复添加行内意见。"
             elif not row.get('anchor'):
+                location = row.get('historical_anchor')
+                if location:
+                    text += f"\n\n原审查定位：{'新' if location['side']=='new' else '旧'}侧第 {location['line']} 行。"
                 text += '\n\n定位：' + prose(row.get('fallback_reason') or '无法可靠映射，作为普通意见保留') + '。'
             else:
                 text += f"\n\n定位：{'新' if row['anchor']['side']=='new' else '旧'}侧第 {row['anchor']['line']} 行。"
@@ -302,8 +305,16 @@ class Publisher:
                 self.store.update(self.job['id'], self.job['owner'], stage='校验本地行内位置', progress_stage='location')
                 self.validate_local()
                 self.prior_findings()
+                fallback = bool(expected_comments(self.job, self.result)) and not inline_available(
+                    self.client, self.job['number'], self.snapshot)
+                if fallback:
+                    self.result = dict(self.result, findings=[
+                        dict(item, historical_anchor=item['anchor'], anchor=None,
+                             fallback_reason='Gitea 文件页无法核准原位置，意见保留在报告中') if item.get('anchor') else item
+                        for item in self.result['findings']])
                 # 冻结实际提交内容，恢复只能核对这份结果，不重新计算历史去重。
-                self.store.update(self.job['id'], self.job['owner'], result=dict(self.full_result, publication=self.result) if 'publication_limit' in self.full_result else self.result)
+                saved = dict(self.full_result, publication=self.result) if fallback or 'publication_limit' in self.full_result else self.result
+                self.store.update(self.job['id'], self.job['owner'], result=saved)
                 assert_version(self.client, self.job['number'], self.snapshot)
                 self.store.update(self.job['id'], self.job['owner'], status='publishing', stage='发布正式 Review 和行内评论')
                 self.store.active(self.job['id'], self.job['owner'])
@@ -366,6 +377,8 @@ class Publisher:
                     if page['state']!='pending':
                         raise PublishUnknown('分页请求结果不确定，未重放；已保留先前发布页')
                     self.client.version()
+                    if page['comments'] and not inline_available(self.client, self.job['number'], self.snapshot):
+                        page['comments'] = []
                     page['state']='sending'
                     self.store.update(self.job['id'],self.job['owner'],status='publishing',result=self.full_result,
                                       stage='正在发布审查结果分页',progress_stage='publishing',batch_started=__import__('time').time())
