@@ -642,6 +642,10 @@ def rerun(repository):
     source_job = payload.get('source_job')
     if source_job is not None and (not isinstance(source_job, str) or not re.fullmatch('[a-f0-9]{32}', source_job)):
         raise ReviewError('原审查任务编号无效')
+    comparison = payload.get('pr_comparison')
+    if comparison is not None and (not source_job or not isinstance(comparison, dict)
+                                   or set(comparison) != {'head', 'merge_base'}):
+        raise ReviewError('需要确认同一原任务的 PR 比较版本')
     repo = state.repo(repository)
     if not state.config()['enabled'] or not repo['enabled']:
         raise ReviewError('请先启用全局和该仓库的 AI Review')
@@ -657,18 +661,29 @@ def rerun(repository):
         pr = client.pr(number)
         status = pr_status(pr)
         if source_job:
-            source = state.job(source_job, evidence=False)
-            if source['repository'] != repository or source['number'] != number:
-                raise ReviewError('原任务不属于该仓库和 PR')
             from access.organization_api import review_job_ids
             allowed = review_job_ids(state)
             if allowed is not None and source_job not in allowed:
                 raise ReviewError('当前账号无法读取原审查任务')
-            saved = source['snapshot'] or json.loads(source['review_version'])
-            if not all(saved.get(key) for key in ('head', 'base')):
-                raise ReviewError('原任务未保留足够的提交信息，无法补审此版本')
-            version = {key: valid_sha(saved[key]) for key in ('head', 'base', 'merge_base') if saved.get(key)}
-            if status == 'open':
+            version = state.supplement_version(repository, number, source_job)
+            if comparison is not None and version.get('head') and version.get('base'):
+                raise ReviewError('已找回原任务提交范围，请重新点击补审此版本')
+            if not (version.get('head') and version.get('base')):
+                if status == 'open':
+                    raise ReviewError('PR 当前已打开，请从任务列表审查当前版本')
+                if comparison is None and payload.get('offer_pr_comparison') is not True:
+                    raise ReviewError('无法还原原任务的提交范围，请在 Manager 任务页面选择审查 PR 保留的差异')
+                head = client.pull_ref_head(number)
+                if not head or not pr.get('merge_base'):
+                    raise ReviewError('原任务缺少提交记录，Gitea 也未保留完整的 PR 比较引用，无法还原差异')
+                retained = {'head': valid_sha(head), 'merge_base': valid_sha(pr['merge_base'])}
+                if comparison is None:
+                    return jsonify(pr_comparison=retained, original_head=version.get('head')), 200
+                if comparison != retained:
+                    raise ReviewError('Gitea 保留的 PR 差异已变化，请重新点击补审并核对提交')
+                # 已确认的范围就是 PR 的比较基点到 PR 引用，不使用可能已前移的目标分支。
+                version = dict(retained, base=retained['merge_base'])
+            elif status == 'open':
                 current = version_of(pr)
                 if any(current[key] != sha for key, sha in version.items()):
                     raise ReviewError('PR 已有新版本，请审查当前版本')

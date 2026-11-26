@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const http = require('node:http')
 const fs = require('node:fs')
 const path = require('node:path')
-const { chromium } = require('playwright')
+const { chromium } = require('node:module').createRequire(path.join(__dirname, '../frontend/package.json'))('playwright')
 const root = path.resolve(__dirname, '..')
 const output = path.join(root, 'work/api-error-ui')
 fs.mkdirSync(output, { recursive: true })
@@ -14,13 +14,23 @@ const task = { id: 'test-task', repository: 1, number: 7, status: 'superseded', 
 const repositories = [{ id: 1, server_id: 1, server_name: '隔离测试服务器', repo_name: '测试组织/测试仓库', enabled: true }]
 const session = { authenticated: true, user: { id: 1, username: '隔离测试管理员', is_platform_admin: true }, csrf_token: '隔离测试令牌', organizations: [], capabilities: ['dashboard', 'servers', 'backups', 'restore', 'mirrors', 'statistics', 'schedules', 'settings', 'ai_reviews', 'commit_gates'] }
 const requests = [], results = []
-let failPolling = false, rerunAccepted = false
+let failPolling = false, rerunAccepted = false, offerComparison = false
+const comparison = { head: 'a'.repeat(40), merge_base: 'b'.repeat(40) }
 function json(response, data, status = 200) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); response.end(JSON.stringify(data)) }
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, 'http://localhost'), p = url.pathname
   if (p.startsWith('/api/')) {
     requests.push({ method: request.method, path: p })
     if (p === '/api/session') return json(response, session)
+    if (p === '/api/ai-review/repositories/1/rerun' && offerComparison) {
+      let body = ''
+      request.on('data', chunk => { body += chunk })
+      request.on('end', () => {
+        if (JSON.parse(body).pr_comparison) return json(response, { job: 'confirmed' }, 202)
+        json(response, { pr_comparison: comparison, original_head: 'd'.repeat(40) })
+      })
+      return
+    }
     if (p === '/api/ai-review/repositories/1/rerun') return rerunAccepted ? json(response, { job: 'new-test-task' }, 202) : json(response, { error: 'PR 已关闭或合并' }, 400)
     if (p === '/api/servers/1/delete-info') return json(response, { error: '删除影响检查失败，已停止删除' }, 503)
     if (request.method !== 'GET') return json(response, { error: '隔离验证：操作被服务拒绝' }, 409)
@@ -86,10 +96,28 @@ async function main() {
         await detail.getByText('PR 已合并', { exact: true }).waitFor()
         const sent = page.waitForRequest(request => request.url().endsWith('/repositories/1/rerun'))
         await detail.getByRole('button', { name: '补审此版本', exact: true }).click()
-        assert.deepEqual((await sent).postDataJSON(), { number: 7, source_job: task.id })
+        assert.deepEqual((await sent).postDataJSON(), { number: 7, source_job: task.id, offer_pr_comparison: true })
+        await page.locator('.el-message--success', { hasText: '审查任务已排队' }).waitFor()
+      })
+      offerComparison = true
+      await run('历史版本缺失：取消不会创建任务，确认只提交所选 SHA', '/ai-reviews?task=test-task', async page => {
+        const button = page.getByRole('button', { name: '补审此版本', exact: true }).last()
+        const dialog = page.getByRole('dialog', { name: '选择补审范围' })
+        await button.click()
+        await dialog.getByText(/bbbbbbbbbbbb → aaaaaaaaaaaa/).waitFor()
+        const count = requests.filter(r => r.path.endsWith('/rerun')).length
+        await dialog.getByRole('button', { name: '取消' }).click()
+        await dialog.waitFor({ state: 'hidden' })
+        assert.equal(requests.filter(r => r.path.endsWith('/rerun')).length, count)
+        assert.equal(await page.locator('.el-message--success').count(), 0)
+        await button.click()
+        const sent = page.waitForRequest(req => req.url().endsWith('/rerun') && req.postDataJSON()?.pr_comparison)
+        await dialog.getByRole('button', { name: '审查这份 PR 差异' }).click()
+        assert.deepEqual((await sent).postDataJSON().pr_comparison, comparison)
         await page.locator('.el-message--success', { hasText: '审查任务已排队' }).waitFor()
       })
     } finally {
+      offerComparison = false
       delete task.pr_status
       rerunAccepted = false
     }
@@ -154,7 +182,8 @@ async function main() {
       await popup(page, '隔离验证：操作被服务拒绝')
     })
     await run('组件下载 Blob 错误显示服务端原因', '/ai-reviews/repositories', async page => {
-      await page.getByRole('button', { name: '下载 PR 进度组件', exact: true }).click()
+      await page.getByRole('button', { name: /的更多操作$/ }).click()
+      await page.getByRole('menuitem', { name: '下载进度组件' }).click()
       await popup(page, '隔离验证：无权下载组件')
     })
     await run('后台轮询失败仅显示区域错误，不连续弹窗', '/ai-reviews', async page => {

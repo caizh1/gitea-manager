@@ -219,13 +219,21 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(json.loads(job['review_version']), version)
         self.assertEqual(upgraded.job(ident, public=True)['pr_status'], 'merged')
 
-    def test_supplement_review_uses_saved_version_and_rejects_missing_history(self):
+    def test_supplement_review_recovers_legacy_jobs_and_pins_confirmed_pr_diff(self):
         from routes.ai_review_routes import rerun
         version = {'head': 'a'*40, 'base': 'b'*40, 'merge_base': 'c'*40}
         ident = self.store.enqueue(self.repo, 1, version)
         job = self.store.claim()
         self.store.finish(ident, job['owner'], 'superseded', 'PR 已更新或关闭')
-        lost = self.store.enqueue(self.repo, 2, {'head': 'a'*40})
+        # v24 关闭事件提高代次且覆盖 pr_state；原任务和入队回执共用创建时刻。
+        legacy = self.store.enqueue(self.repo, 2, version, delivery='legacy-open')
+        lost = self.store.enqueue(self.repo, 3, {'head': 'd'*40})
+        with self.store.tx() as c:
+            c.execute("UPDATE jobs SET review_version='{}',status='superseded' WHERE id IN (?,?)", (legacy, lost))
+            c.execute("UPDATE pr_state SET generation=generation+1,signature=?,pr_status='closed' WHERE number IN (2,3)",
+                      (json.dumps([{'head': 'd'*40, 'base': 'e'*40}, 1, 1, True]),))
+            c.execute("UPDATE deliveries SET signature=? WHERE delivery='legacy-open'",
+                      (json.dumps({'version': {'head': version['head'], 'base': version['base']}, 'closed': False}),))
         fake_pr = mock_patch('routes.ai_review_routes.Gitea')
         app = Flask('补审旧任务')
         with mock_patch('routes.ai_review_routes.store', return_value=self.store), \
@@ -243,9 +251,59 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(new['source_job'], ident)
             self.assertEqual(new['pr_status'], 'merged')
             self.assertEqual(self.store.job(ident)['status'], 'superseded')
-            with app.test_request_context(json={'number': 2, 'source_job': lost}):
-                with self.assertRaisesRegex(ReviewError, '未保留足够'):
-                    rerun(self.repo)
+            with app.test_request_context(json={'number': 2, 'source_job': legacy}):
+                response, code = rerun(self.repo)
+                self.assertEqual(code, 202)
+                self.assertEqual(json.loads(self.store.job(response.json['job'])['review_version']),
+                                 {'head': version['head'], 'base': version['base']})
+            client.return_value.pr.return_value.update(merge_base='b'*40, base={'sha': 'e'*40})
+            client.return_value.pull_ref_head.return_value = 'f'*40
+            payload = {'number': 3, 'source_job': lost, 'offer_pr_comparison': True}
+            before = self.store.jobs()['total']
+            with app.test_request_context(json=payload):
+                response, code = rerun(self.repo)
+                self.assertEqual(code, 200)
+                comparison = response.json['pr_comparison']
+                self.assertEqual(comparison, {'head': 'f'*40, 'merge_base': 'b'*40})
+            self.assertEqual(self.store.jobs()['total'], before)
+            payload['pr_comparison'] = comparison
+            client.return_value.pull_ref_head.return_value = 'a'*40
+            with app.test_request_context(json=payload), self.assertRaisesRegex(ReviewError, '已变化'):
+                rerun(self.repo)
+            self.assertEqual(self.store.jobs()['total'], before)
+            client.return_value.pull_ref_head.return_value = comparison['head']
+            with app.test_request_context(json=payload):
+                response, code = rerun(self.repo)
+                self.assertEqual(code, 202)
+                self.assertEqual(json.loads(self.store.job(response.json['job'])['review_version']),
+                                 dict(comparison, base=comparison['merge_base']))
+            with app.test_request_context(json=payload), self.assertRaisesRegex(ReviewError, '正在进行'):
+                rerun(self.repo)
+
+    def test_supplement_only_uses_version_evidence_bound_to_the_original_job(self):
+        head, base = 'a'*40, 'b'*40
+        job = self.store.enqueue(self.repo, 1, {'head': head, 'base': base}, delivery='original')
+        with self.store.tx() as c:
+            c.execute("UPDATE jobs SET review_version='{}',status='superseded' WHERE id=?", (job,))
+        self.assertEqual(self.store.supplement_version(self.repo, 1, job), {'head': head, 'base': base})
+        with self.store.tx() as c:
+            c.execute('UPDATE pr_state SET generation=generation+1,signature=?',
+                      (json.dumps([{'head': head, 'base': 'c'*40}, 1, 1, True]),))
+            c.execute("""INSERT INTO deliveries SELECT repository,'other-delivery',created,signature
+                FROM deliveries WHERE delivery='original'""")
+        self.assertEqual(self.store.supplement_version(self.repo, 1, job), {'head': head})
+        with self.store.tx() as c:
+            c.execute("DELETE FROM deliveries WHERE delivery='other-delivery'")
+            c.execute("UPDATE deliveries SET signature=?", (json.dumps({'version': {'head': head, 'base': base}, 'closed': True}),))
+        self.assertEqual(self.store.supplement_version(self.repo, 1, job), {'head': head})
+        with self.store.tx() as c:
+            c.execute('UPDATE jobs SET snapshot=?,review_version=? WHERE id=?',
+                      (json.dumps({'id': 'partial', 'head': head}), json.dumps({'base': base}), job))
+        self.assertEqual(self.store.supplement_version(self.repo, 1, job), {'head': head, 'base': base})
+        with self.store.tx() as c:
+            c.execute('UPDATE jobs SET target_head=? WHERE id=?', ('d'*40, job))
+        with self.assertRaisesRegex(ReviewError, '互相冲突'):
+            self.store.supplement_version(self.repo, 1, job)
 
     def test_new_generation_fences_old_owner(self):
         self.enqueue(); old = self.store.claim(); self.enqueue('c')

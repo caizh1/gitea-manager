@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .token_budget import DEFAULTS as BATCH_DEFAULTS
 from .thinking import DEFAULTS as THINKING_DEFAULTS
-from .common import ReviewError, Stale, encode, secret_file
+from .common import ReviewError, Stale, encode, secret_file, valid_sha
 from .budgets import (TIME_FIELDS, CONTEXT_DEFAULTS, DEFAULT_CODEX_MODEL, DEFAULT_PR_AGENT_MODEL,
                       PR_AGENT_BUDGETS, MODEL_TIMEOUT_DEFAULT, REVIEW_TIMEOUT_DEFAULT, execution_revision)
 import json
@@ -381,6 +381,59 @@ class Store:
             value = json.loads(row[0]); value.update(values)
             c.execute('UPDATE repositories SET value=? WHERE id=?', (encode(value), repository))
 
+    @staticmethod
+    def _check_supplement(c, repository, number, source_job):
+        # 补审只能接替同一 PR 当前可恢复的版本，避免覆盖较新版本的台账。
+        latest = c.execute('''SELECT id,source_job,status FROM jobs
+            WHERE repository=? AND number=? ORDER BY generation DESC LIMIT 1''',
+            (repository, number)).fetchone()
+        if not latest or (latest['id'] != source_job and latest['source_job'] != source_job):
+            raise ReviewError('该 PR 已有更新的审查任务，请从最新任务详情补审')
+        if latest['status'] in (*ACTIVE, 'publish_unknown', 'cancelling'):
+            raise ReviewError('该 PR 已有审查或发布正在进行')
+
+    def supplement_version(self, repository, number, source_job):
+        """只取绑定到原任务的 SHA，避免读取整份历史源码、补丁或模型输出。"""
+        with contextlib.closing(self.connect()) as c:
+            row = c.execute("""SELECT review_version,target_head,generation,created,manual,
+                json_extract(snapshot,'$.head') AS head,json_extract(snapshot,'$.base') AS base,
+                json_extract(snapshot,'$.merge_base') AS merge_base FROM jobs
+                WHERE id=? AND repository=? AND number=?""", (source_job, repository, number)).fetchone()
+            if not row:
+                raise ReviewError('原任务不属于该仓库和 PR')
+            self._check_supplement(c, repository, number, source_job)
+            version = {}
+
+            def include(record):
+                for key in ('head', 'base', 'merge_base'):
+                    if record.get(key):
+                        sha = valid_sha(record[key])
+                        if key in version and version[key] != sha:
+                            raise ReviewError('原任务保存的提交记录互相冲突，无法确认原版本')
+                        version[key] = sha
+
+            include(dict(row))
+            include(json.loads(row['review_version']))
+            include({'head': row['target_head']})
+            if 'base' not in version or 'head' not in version:
+                state = c.execute("""SELECT signature FROM pr_state
+                    WHERE repository=? AND number=? AND generation=?""",
+                    (repository, number, row['generation'])).fetchone()
+                if state:
+                    signature = json.loads(state['signature'])
+                    if not signature[3]:
+                        include(signature[0])
+            if 'head' in version and 'base' not in version and not row['manual']:
+                # 旧版 webhook 与任务在同一事务使用同一个 now；排除关闭回执及时间碰撞。
+                args = (repository, row['created'])
+                receipts = c.execute('SELECT signature FROM deliveries WHERE repository=? AND created=? LIMIT 2', args).fetchall()
+                if len(receipts) == 1 and receipts[0][0] and c.execute(
+                        'SELECT COUNT(*) FROM jobs WHERE repository=? AND created=?', args).fetchone()[0] == 1:
+                    receipt = json.loads(receipts[0][0])
+                    if receipt.get('closed') is False and receipt['version'].get('head') == version['head']:
+                        include(receipt['version'])
+            return version
+
     def enqueue(self, repository, number, signature, delivery=None, closed=False, manual=False, access_actor=None, merged=False, source_job=None, event_at=0, reopened=False):
         from .pr_agent_channel import owns_review
         from .runtime_status import available
@@ -419,14 +472,7 @@ class Store:
                               (repository, number, encode([{}, 0, 0, True]), pr_status, event_at))
                 return None
             if source_job:
-                # 补审只能接替同一 PR 当前可恢复的版本，避免覆盖较新版本的台账。
-                latest = c.execute('''SELECT id,source_job,status FROM jobs
-                    WHERE repository=? AND number=? ORDER BY generation DESC LIMIT 1''',
-                    (repository, number)).fetchone()
-                if not latest or (latest['id'] != source_job and latest['source_job'] != source_job):
-                    raise ReviewError('该 PR 已有更新的审查任务，请从最新任务详情补审')
-                if latest['status'] in (*ACTIVE, 'publish_unknown', 'cancelling'):
-                    raise ReviewError('该 PR 已有审查或发布正在进行')
+                self._check_supplement(c, repository, number, source_job)
             if state and not manual and not closed:
                 current_version = json.loads(state['signature'])[0]
                 cancelled = c.execute("SELECT 1 FROM jobs WHERE repository=? AND number=? AND generation=? AND cancel_requested_at IS NOT NULL LIMIT 1",

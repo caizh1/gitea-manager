@@ -301,7 +301,39 @@ function rerunTask(task) {
   return rerun(task.repository, task.number, closedTask(task) ? task.id : undefined)
 }
 
-async function rerun(repository, number, sourceJob) { if (rerunning.value) return; rerunning.value = true; manualError.value = ''; try { await write('post', `/repositories/${repository}/rerun`, { number, source_job: sourceJob }); manualVisible.value = false; page.value = 1; if (tab.value !== 'tasks') await router.push({ path: '/ai-reviews', query: listQuery() }); else await loadTasks(); ElMessage.success('审查任务已排队') } catch (e) { if (manualVisible.value) manualError.value = errorMessage(e); else showError(e) } finally { rerunning.value = false } }
+async function rerun(repository, number, sourceJob) {
+  if (rerunning.value) return
+  rerunning.value = true
+  manualError.value = ''
+  try {
+    const path = `/repositories/${repository}/rerun`
+    const payload = sourceJob ? { number, source_job: sourceJob, offer_pr_comparison: true } : { number }
+    let response = await write('post', path, payload)
+    const comparison = response.data?.pr_comparison
+    if (comparison) {
+      const original = response.data.original_head
+      const reason = original ? `原任务记录的提交为 ${original.slice(0, 12)}，缺少完整比较范围。` : '原任务没有保留完整提交记录。'
+      await ElMessageBox.confirm(
+        `${reason} 要审查 Gitea 为 PR #${number} 保留的差异（${comparison.merge_base.slice(0, 12)} → ${comparison.head.slice(0, 12)}）吗？结果将发回该 PR。`,
+        '选择补审范围', { confirmButtonText: '审查这份 PR 差异', cancelButtonText: '取消', appendTo: document.fullscreenElement || document.body },
+      )
+      if (disposed) return
+      response = await write('post', path, { ...payload, pr_comparison: comparison })
+    }
+    if (!response.data?.job) throw new Error('未收到审查任务编号，请刷新任务列表核对')
+    manualVisible.value = false
+    page.value = 1
+    if (tab.value !== 'tasks') await router.push({ path: '/ai-reviews', query: listQuery() })
+    else await loadTasks()
+    ElMessage.success('审查任务已排队')
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    if (manualVisible.value) manualError.value = errorMessage(e)
+    else showError(e)
+  } finally {
+    rerunning.value = false
+  }
+}
 
 async function confirmCost(row) {
   if (!row?.cost_summary?.plan_hash || confirmingIds.value.has(row.id)) return
