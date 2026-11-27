@@ -59,7 +59,7 @@
       <p class="remove-repository-name">{{ removalTarget?.server_name }} / {{ removalTarget?.repo_name }}</p>
       <p class="remove-explanation">停止新审查并清理该接入的事件通知。历史审查、Gitea 仓库、机器人账号及共享的进度组件均保留。</p>
       <el-alert v-if="removeError" :title="removeError" type="error" :closable="false" show-icon />
-      <p class="remove-explanation">有运行中或发布待核对的任务时，需要先在审查工作区处理。若通知清理失败，仓库保持停止接入，可继续重试。</p>
+      <p class="remove-explanation">有运行中或发布待核对的任务时，需要先在「PR 审查」页面处理。若通知清理失败，仓库保持停止接入，可继续重试。</p>
       <template #footer><el-button :disabled="removing" @click="removeVisible = false">取消</el-button><el-button type="danger" :loading="removing" @click="removeRepository">{{ removalTarget?.removal_pending ? '重试移除' : '移除接入' }}</el-button></template>
     </el-dialog>
   </section>

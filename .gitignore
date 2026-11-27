@@ -28,3 +28,5 @@ offline/
 /review-runtime/vendor/pr-agent-wheels/
 /review-runtime/vendor/pr-agent-assets/
 /review-runtime/vendor/pr-agent-source.tar.gz
+
+/review-runtime/vendor/ocr-linux-amd64

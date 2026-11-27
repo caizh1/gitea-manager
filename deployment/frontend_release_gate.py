@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import socket
 import tempfile
 import time
 from urllib.request import ProxyHandler, build_opener
@@ -59,12 +60,16 @@ def verify_frontend(image):
         report['镜像ID'] = info['Id']
         # Docker containerd 的平台检查返回子清单 ID，启动使用本地可寻址的索引 ID。
         local_id = json.loads(command(['docker', 'image', 'inspect', image]))[0]['Id']
+        # 选择宿主机可用端口，避免多个 Colima 实例各自分配同一个来宾端口。
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0))
+            host_port = probe.getsockname()[1]
         container = command([
             'docker', 'run', '-d', '--rm', '--platform', 'linux/amd64',
             '--label', 'io.gitea-manager.frontend-release-test=true',
             '--read-only', '--tmpfs', '/tmp:rw,mode=1777',
             '--tmpfs', '/var/cache/nginx:rw,mode=1777', '--tmpfs', '/var/run:rw,mode=1777',
-            '-p', '127.0.0.1::80', '--pull', 'never', local_id,
+            '-p', f'127.0.0.1:{host_port}:80', '--pull', 'never', local_id,
         ]).strip()
         runtime = json.loads(command(['docker', 'inspect', container]))[0]
         binding = runtime['NetworkSettings']['Ports']['80/tcp'][0]

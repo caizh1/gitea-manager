@@ -38,11 +38,33 @@ def check():
     if len(expected) < 32 or not hmac.compare_digest(expected.encode('utf-8'), supplied.encode('utf-8')):
         raise AccessError('服务身份无效', 401)
     data = request.get_json(silent=True)
-    if not isinstance(data, dict) or set(data) - {'job_id', 'repository_id', 'action'}:
+    if not isinstance(data, dict) or set(data) - {'job_id', 'repository_id', 'action', 'ocr_target'}:
         raise AccessError('判定参数无效')
     if data.get('action') not in ('read', 'write', 'publish'):
         raise AccessError('判定动作无效')
     from ai_review.store import Store
+    if data.get('ocr_target'):
+        from ai_review.ocr_store import ScanStore
+        from ai_review.common import ReviewError
+        try:
+            scans = ScanStore(current_app.config.get('AI_REVIEW_DB'))
+            target = scans.target(data['ocr_target'])
+            repo = scans.repo(target['repository'])
+        except ReviewError:
+            raise AccessError('扫描目标不存在', 404) from None
+        if not repo['enabled'] or repo.get('access_archived'):
+            raise AccessError('仓库服务已停用', 403)
+        binding = check_task_actor(target['actor'], repo['server_id'], repo['repo_id'])
+        instance = db.session.get(GiteaServer, repo['server_id'])
+        if not instance or target['specification']['epochs'].get(str(repo['server_id'])) != server_epoch(instance):
+            raise AccessError('源实例代次已变化', 403)
+        if binding:
+            scope = ResourceScope.query.filter_by(kind='ai_repository', resource_key=str(repo['id']),
+                                                   archived=False, binding_id=binding.id,
+                                                   instance_epoch=binding.instance_epoch).first()
+            if not scope:
+                raise AccessError('扫描仓库归属已失效', 403)
+        return jsonify(allowed=True)
     state = Store(current_app.config.get('AI_REVIEW_DB'))
     task = state.job(data['job_id'], public=False, evidence=False) if data.get('job_id') else None
     rid = task['repository'] if task else data.get('repository_id')

@@ -165,6 +165,13 @@
       "说明": "由 PyPI 官方源包构建",
       "源码来源": "https://files.pythonhosted.org/packages/79/41/1c5643897ab6bcba33d48a7535738f758d85b0c8ecb9ba0d1dbea0881a64/giteapy-1.0.8.tar.gz",
       "源码SHA256": "2078c802a4626bf311e911c969c34b7d19fbe9175e2910e1965b24ff69221470"
+    },
+    {
+      "组件": "Open Code Review",
+      "版本": "v1.14.4",
+      "文件": "review-runtime/vendor/ocr-linux-amd64",
+      "来源": "https://github.com/alibaba/open-code-review/releases/download/v1.14.4/opencodereview-linux-amd64",
+      "SHA256": "1dc6b1ea37611a2c10d61cb755ab03f07dc3c1a88872963669443937211e7f3a"
     }
   ]
 }

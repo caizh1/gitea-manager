@@ -14,6 +14,7 @@ MACHINE = {'ai_review.webhook', 'ai_review.setup_probe', 'approval_internal.gate
            'approval_internal.installed', 'approval_internal.uninstall_ready', 'approval_view.view',
            'engineering_activity.event', 'integrations.health', 'integrations.events', 'integrations.task_detail', 'access_internal.check'}
 PLATFORM = {
+    'ocr_scan': 'save_profile test_profile',
     'git_migration': 'status sources source rotate_credentials rotate_target_credentials discoveries discovery inventories inventory runs run_detail resume_run abandon_run target_groups principals principal_details account_mappings account_mapping mapping_accounts preflights preflight_detail start_preflight acknowledge_preflight_compatibility cancel_preflight preflight_target_credentials resume_preflight',
     'svn_migration': 'status targets target_groups target_paths create_target_group sources source test_source discover_projects discovery_result enroll_projects detect_layouts layout_detection repositories repository plans plan preflight preflight_detail runs run control events report cleanup',
     'servers': 'get_server add_server delete_info update_server delete_server check_server refresh_server get_server_detail_route',
@@ -27,6 +28,7 @@ PLATFORM = {
     'approval': 'native_governance native_governance_server bundle native_import_preview native_import_apply native_uninstall_bundle',
 }
 ORGANIZATION = {
+    'ocr_scan': 'branches profiles start_preview batch_detail start_batch tasks task_detail stop_task resume_task report download plans plan_times save_plan set_plan',
     'access_context': 'context',
     'repository_policies': 'csrf schema servers organizations candidate_users candidate_teams repositories repository_rules templates create_template update_template delete_template verify_template_identities preview_batch apply_batch batches batch_detail',
     'commit_gate': 'list_rules create_rule update_rule delete_rule list_repos apply_gate remove_gate_route test_rule',

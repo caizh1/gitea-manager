@@ -92,6 +92,7 @@ def main():
         shutil.copy2(ROOT / 'docs/oneclick-installation.md', directory / 'README.md')
         if product == 'manager':
             shutil.copy2(ROOT / 'docs/organization-access-ldap.md', directory / 'organization-access-ldap.md')
+            shutil.copy2(ROOT / 'docs/ocr-repository-scanning.md', directory / 'ocr-repository-scanning.md')
             shutil.copy2(ROOT / 'docs/svn-migration.md', directory / 'svn-migration.md')
             shutil.copy2(ROOT / 'docs/git-migration-implementation.md', directory / 'git-migration-implementation.md')
             shutil.copy2(ROOT / 'docs/svn-layout-detection.md', directory / 'svn-layout-detection.md')

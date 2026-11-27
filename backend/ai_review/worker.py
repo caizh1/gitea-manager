@@ -425,11 +425,14 @@ def main():
     broker = create_broker(store)
     from .session_events import register
     register(broker, store)
-    server = make_server('0.0.0.0', 5051, broker, threaded=True)
+    from .ocr_worker import register as register_ocr, run as run_ocr
+    register_ocr(broker, store)
+    server = make_server('0.0.0.0', int(os.environ.get('AI_REVIEW_BROKER_PORT', '5051')), broker, threaded=True)
     serving = threading.Thread(target=server.serve_forever, daemon=True); serving.start()
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
+    threading.Thread(target=run_ocr, args=(store, stop), daemon=True, name='整仓扫描调度').start()
     def runtime_health():
         from .runtime_status import refresh
         while not stop.is_set():

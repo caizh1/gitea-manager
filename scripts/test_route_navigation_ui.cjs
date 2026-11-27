@@ -37,6 +37,10 @@ const preflightTask = { id: 'navigation-preflight-details', repository: 1, numbe
 const datasetItem = { id: 'navigation-sample', revision: 1, status: 'active', reference_ready: true,
   label: 'confirmed_defect', original: { title: '隔离导航样本', explanation: '固定样本用于核对页面加载与切换。' },
   path: 'example.py', correction: '隔离验证说明' }
+const ocrTaskId = '1'.repeat(32)
+const ocrTarget = { id: ocrTaskId, batch: ocrTaskId, branch: 'main', sha: 'a'.repeat(40), state: 'complete',
+  repository_name: '隔离导航仓库', created: 1700000000, updated: 1700000010,
+  completed: 1, total: 1, excluded: 0, failures: 0, findings: 0, formats: ['html'], tokens: 10, scope: [] }
 let browser, server, vite, session = admin, delayServers = 0, delayReview = 0, failServers = false
 const results = [], unknown = new Set(), errors = [], transitionWarnings = []
 let serverReads = 0, documentLoads = 0
@@ -59,6 +63,14 @@ function fixture(url, method, payload) {
       task_timeout_seconds: 3600, review_timeout_seconds: 3600, model_request_timeout_seconds: 3600,
       thinking_protocol: 'deepseek', thinking_enabled: true, reasoning_effort: 'high' } },
   }
+  if (p === '/api/ai-review/ocr/profiles') return { custom: { model: '', api_base_url: '', configured: false },
+    inherited: { model: 'navigation-test-model', configured: true } }
+  if (p === '/api/ai-review/ocr/tasks') return { items: [ocrTarget], now: 1700000010 }
+  if (p === '/api/ai-review/ocr/plans') return { items: [] }
+  if (p === '/api/ai-review/ocr/tasks/' + ocrTaskId) return { task: ocrTarget, events: [], now: 1700000010 }
+  if (p === '/api/ai-review/ocr/batches/' + ocrTaskId) return { items: [ocrTarget] }
+  if (p === '/api/ai-review/ocr/tasks/' + ocrTaskId + '/report') return { repository: ocrTarget.repository_name,
+    branch: 'main', sha: ocrTarget.sha, completed: 1, total: 1, excluded: 0, findings: [], scope: [], seconds: 10, tokens: 10 }
   if (p === '/api/ai-review/repositories') return repositories
   if (p === '/api/ai-review/servers') return servers
   if (p === '/api/ai-review/statistics') return null
@@ -142,11 +154,28 @@ async function serverReady(page) {
 }
 
 async function reviewReady(page, target) {
-  const headings = { '/ai-reviews': 'AI Code Review', '/ai-reviews/repositories': '审查仓库',
+  if (target.startsWith('/ai-reviews/ocr')) {
+    const heading = target.endsWith('/report') ? '扫描报告' : target.includes('/tasks/') ? '扫描进度' :
+      target.endsWith('/new') ? '扫描配置' : target.endsWith('/models') ? '模型配置' : '整仓扫描'
+    await ready(page, heading)
+    await page.getByRole('heading', { name: heading, exact: true }).waitFor()
+    if (target.endsWith('/report')) {
+      await page.getByRole('region', { name: '报告概览' }).getByText('1 / 1', { exact: true }).waitFor()
+    }
+    if (target.includes('/tasks/') && !target.endsWith('/report')) {
+      await page.getByRole('region', { name: '扫描概览' }).getByText('1 / 1 个文件', { exact: true }).waitFor()
+      await page.getByRole('region', { name: '批次目标' }).getByText('1 / 1', { exact: true }).waitFor()
+    }
+    return
+  }
+  const headings = { '/ai-reviews': 'PR 审查', '/ai-reviews/repositories': '审查仓库',
     '/ai-reviews/settings': '模型与设置', '/ai-reviews/dataset': '审查经验数据集' }
   await ready(page, headings[target])
   await page.waitForFunction(target => location.pathname === target, target)
-  if (target === '/ai-reviews/settings') {
+  if (target === '/ai-reviews') {
+    await page.getByRole('heading', { name: 'PR 审查', exact: true }).waitFor()
+    await page.locator('.app-header .breadcrumb-current').filter({ hasText: /^PR 审查$/ }).waitFor()
+  } else if (target === '/ai-reviews/settings') {
     await page.getByLabel('模型', { exact: true }).waitFor()
     await page.waitForFunction(() => [...document.querySelectorAll('.review-page input')]
       .some(input => input.value === 'navigation-test-model'))
@@ -183,7 +212,7 @@ async function main() {
   await serverReady(page)
 
   const reviewMenus = [
-    ['审查工作区', '/ai-reviews'], ['模型与设置', '/ai-reviews/settings'],
+    ['PR 审查', '/ai-reviews'], ['模型与设置', '/ai-reviews/settings'],
     ['经验数据集', '/ai-reviews/dataset'], ['仓库管理', '/ai-reviews/repositories'],
   ]
   const initialLoads = documentLoads
@@ -270,9 +299,15 @@ async function main() {
   const navigationLoads = documentLoads
   const paths = await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$router.getRoutes()
     .filter(route => !route.redirect).map(route => route.path.replace(/:name\b/g, '测试作者').replace(/:\w+/g, '1')))
+  for (let index = 0; index < paths.length; index++) {
+    paths[index] = paths[index].replace('/ai-reviews/ocr/tasks/1', '/ai-reviews/ocr/tasks/' + ocrTaskId)
+  }
   for (const target of paths) {
     await navigate(page, target + (target.startsWith('/statistics') ? '?server_id=1' : ''))
-    await ready(page)
+    try {
+      if (target.startsWith('/ai-reviews/ocr')) await reviewReady(page, target)
+      else await ready(page)
+    } catch (error) { throw new Error(`导航入口 ${target}：${error.message}`) }
     // 留出正常的异步回填时间，确保不是只检查尚未完成加载的骨架。
     await page.waitForTimeout(150)
     await navigate(page, '/servers')
@@ -298,7 +333,7 @@ async function main() {
     await page.emulateMedia({ reducedMotion })
     for (const gap of [0, 25, 120, 300]) {
       for (let round = 0; round < 3; round++) {
-        for (const name of ['审查工作区', '模型与设置', '经验数据集', '仓库管理', '备份管理', '恢复操作', '系统设置', '定时任务', '服务器管理']) {
+        for (const name of ['PR 审查', '模型与设置', '经验数据集', '仓库管理', '备份管理', '恢复操作', '系统设置', '定时任务', '服务器管理']) {
           await page.getByRole('menuitem', { name, exact: true }).evaluate(node => node.click())
           if (gap) await page.waitForTimeout(gap)
         }

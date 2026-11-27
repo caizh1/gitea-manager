@@ -33,3 +33,6 @@ review-runtime/*
 !review-runtime/pr-agent-requirements.txt
 !review-runtime/vendor/pr-agent-wheels/**
 !review-runtime/vendor/pr-agent-assets/**
+
+!review-runtime/ocr_scan.py
+!review-runtime/ocr-LICENSE.txt

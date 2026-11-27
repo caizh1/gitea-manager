@@ -236,6 +236,8 @@ def create_app():
     app.register_blueprint(commit_gate_bp, url_prefix='/api')
     app.register_blueprint(integration_bp, url_prefix='/api/integrations/v1')
     app.register_blueprint(policy_bp, url_prefix='/api/repository-policies')
+    from routes.ocr_scan_routes import ocr_scan_bp
+    app.register_blueprint(ocr_scan_bp, url_prefix="/api/ai-review/ocr")
     app.register_blueprint(ai_review_bp, url_prefix='/api/ai-review')
     app.register_blueprint(approval_bp, url_prefix='/api/approval-rules')
     app.register_blueprint(approval_internal_bp, url_prefix='/api/approval-internal')

@@ -78,8 +78,9 @@
           </el-menu-item>
           <el-sub-menu v-if="hasCapability('ai_reviews')" index="ai-review-navigation" aria-label="AI Code Review" @click="openReviewMenu" class="review-submenu" popper-class="review-submenu-popup">
             <template #title><el-icon><NavReview /></el-icon><span>AI Code Review</span></template>
-            <el-menu-item index="/ai-reviews" :route="reviewNavigationTarget('/ai-reviews')" aria-label="审查工作区"><el-icon><NavReview /></el-icon><template #title>审查工作区</template></el-menu-item>
+            <el-menu-item index="/ai-reviews" :route="reviewNavigationTarget('/ai-reviews')" aria-label="PR 审查"><el-icon><NavReview /></el-icon><template #title>PR 审查</template></el-menu-item>
             <el-menu-item index="/ai-reviews/repositories" :route="reviewNavigationTarget('/ai-reviews/repositories')" aria-label="仓库管理"><el-icon><NavFolder /></el-icon><template #title>仓库管理</template></el-menu-item>
+            <el-menu-item index="/ai-reviews/ocr" aria-label="整仓扫描"><el-icon><NavReview /></el-icon><template #title>整仓扫描</template></el-menu-item>
             <el-menu-item index="/ai-reviews/dataset" :route="reviewNavigationTarget('/ai-reviews/dataset')" aria-label="经验数据集"><el-icon><NavDatabase /></el-icon><template #title>经验数据集</template></el-menu-item>
             <el-menu-item v-if="isPlatformAdmin" index="/ai-reviews/settings" :route="reviewNavigationTarget('/ai-reviews/settings')" aria-label="模型与设置"><el-icon><NavSettings /></el-icon><template #title>模型与设置</template></el-menu-item>
           </el-sub-menu>
@@ -196,7 +197,6 @@ const breadcrumbMap = {
   '/commit-gates': '提交门禁',
   '/repository-policies': '仓库策略中心',
   '/approval-rules': '审批规则',
-  '/ai-reviews': 'AI Code Review',
   '/statistics': '统计分析',
   '/engineering-activity': '研发上库',
   '/settings': '系统设置',
@@ -256,6 +256,7 @@ export default {
 
     const activeMenu = computed(() => {
       const path = route.path
+      if (path.startsWith('/ai-reviews/ocr')) return '/ai-reviews/ocr'
       if (path.startsWith('/servers/')) return '/servers'
       if (path.startsWith('/statistics')) return '/statistics'
       if (path.startsWith('/svn-migrations/runs/')) return '/svn-migrations/runs'
@@ -290,9 +291,9 @@ export default {
           ...(route.meta.svnPage === 'run' ? [{ label: '执行记录', to: { path: '/svn-migrations/runs' } }] : []),
           { label: pages[route.meta.svnPage] || '迁移工作台' }]
       }
-      if (path.startsWith('/ai-reviews/')) {
-        const titles = { '/ai-reviews/repositories': '仓库管理', '/ai-reviews/dataset': '经验数据集', '/ai-reviews/settings': '模型与设置' }
-        return [{ label: '首页' }, { label: 'AI Code Review', to: reviewNavigationTarget('/ai-reviews') }, { label: titles[path] || '审查管理' }]
+      if (path === '/ai-reviews' || path.startsWith('/ai-reviews/')) {
+        const titles = { '/ai-reviews': 'PR 审查', '/ai-reviews/ocr': '整仓扫描', '/ai-reviews/repositories': '仓库管理', '/ai-reviews/dataset': '经验数据集', '/ai-reviews/settings': '模型与设置' }
+        return [{ label: '首页' }, { label: 'AI Code Review', to: reviewNavigationTarget('/ai-reviews') }, { label: titles[path] || (path.startsWith('/ai-reviews/ocr/') ? '整仓扫描' : '审查管理') }]
       }
 
       if (path === '/statistics') {

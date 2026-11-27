@@ -166,7 +166,7 @@ import { errorMessage, statusType } from '../components/reviewDisplay'
 
 const route = useRoute(), router = useRouter()
 const tab = computed(() => route.meta.reviewSection || 'tasks')
-const sectionTitle = computed(() => ({ tasks:'AI Code Review', repositories:'审查仓库', dataset:'审查经验数据集', config:'模型与设置' })[tab.value])
+const sectionTitle = computed(() => ({ tasks:'PR 审查', repositories:'审查仓库', dataset:'审查经验数据集', config:'模型与设置' })[tab.value])
 const refreshing = ref(false)
 const error = ref(''), tasksError = ref(''), busy = ref(false), testing = ref(false), csrf = ref('')
 const concurrency = ref(null)

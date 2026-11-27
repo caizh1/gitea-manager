@@ -309,7 +309,9 @@ threading.Thread(target=initialize_runtime, daemon=True, name='运行时自检')
 
 @app.get('/health')
 def health():
-    return jsonify(ok=runtime_status.get('ready', False), capacity=native_sessions.capacity(), **runtime_status), (200 if runtime_status.get('ready') else 503)
+    ocr = Path(os.environ.get('AI_REVIEW_OCR_BINARY', '/opt/review/ocr'))
+    return jsonify(ok=runtime_status.get('ready', False), capacity=native_sessions.capacity(),
+                   ocr_ready=ocr.is_file() and os.access(ocr, os.X_OK), **runtime_status), (200 if runtime_status.get('ready') else 503)
 
 
 def executor_authorized():
@@ -317,6 +319,10 @@ def executor_authorized():
     supplied = request.headers.get('Authorization', '').removeprefix('Bearer ')
     return hmac.compare_digest(expected, supplied)
 
+
+from ocr_scan import register as register_ocr
+
+register_ocr(app, executor_authorized)
 
 @app.post('/execute')
 def execute_native():
