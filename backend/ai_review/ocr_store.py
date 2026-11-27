@@ -13,6 +13,8 @@ from .store import Store
 
 FORMATS = ('html', 'md', 'json', 'txt', 'sarif', 'native')
 ACTIVE = ('previewing', 'queued', 'running', 'retry', 'exporting', 'stopping')
+DEFAULT_INPUT_TOKENS = 58_888
+MAX_INPUT_TOKENS = (1 << 53) - 1
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ocr_batches (
  id TEXT PRIMARY KEY, created REAL NOT NULL, actor TEXT NOT NULL, specification TEXT NOT NULL, plan TEXT);
@@ -87,6 +89,12 @@ def update(c, ident, **fields):
     c.execute(f'UPDATE ocr_targets SET {clause} WHERE id=?', (*fields.values(), ident))
 
 
+def validate_input_tokens(value):
+    if type(value) is not int or not 1 <= value <= MAX_INPUT_TOKENS:
+        raise ReviewError('OCR 输入上限必须是有效的正整数')
+    return value
+
+
 class ScanStore(Store):
     def __init__(self, path=None):
         super().__init__(path)
@@ -101,8 +109,11 @@ class ScanStore(Store):
         return json.loads(row[0]) if row else {}
 
     def model(self, mode, c=None):
-        profile = self.profile(c) if mode == 'custom' else self.config(connection=c)
-        return {key: profile.get(key, '') for key in ('api_base_url', 'model', 'api_key', 'thinking_protocol', 'thinking_enabled')}
+        settings = self.profile(c)
+        profile = settings if mode == 'custom' else self.config(connection=c)
+        model = {key: profile.get(key, '') for key in ('api_base_url', 'model', 'api_key', 'thinking_protocol', 'thinking_enabled')}
+        model['max_input_tokens'] = settings.get('input_limits', {}).get(mode, DEFAULT_INPUT_TOKENS)
+        return model
 
     def target(self, ident, c=None):
         if c is None:
@@ -118,6 +129,8 @@ class ScanStore(Store):
         # 兼容旧任务和旧计划的持久数据，读取后按当前规则执行。
         value['specification'].pop('budget', None)
         value['config'].pop('resume_budget', None)
+        if value['config']:
+            value['config'].setdefault('max_input_tokens', DEFAULT_INPUT_TOKENS)
         return value
 
     def create(self, c, spec, actor, plan=None):

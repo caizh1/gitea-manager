@@ -18,7 +18,7 @@ from .common import AccessRevoked, ReviewError, endpoint, valid_sha
 from .git_cache import git_credentials, run_git
 from .model_retries import retry_after
 from .native_review import _request
-from .ocr_store import ScanStore, event, update
+from .ocr_store import DEFAULT_INPUT_TOKENS, ScanStore, event, update
 
 TEMPORARY = {408, 425, 429, 500, 502, 503, 504}
 MAX_RESPONSE = 64 * 1024 * 1024
@@ -156,7 +156,7 @@ def prepare(store, task, repo):
         return
     with store.tx() as c:
         event(c, ident, '枚举候选文件')
-    preview = executor(ident, 'preview', {})
+    preview = executor(ident, 'preview', {'max_input_tokens': task['config'].get('max_input_tokens')})
     if not isinstance(preview.get('files'), list):
         raise ReviewError('OCR 预览结果格式无效')
     # 对照 Git 树，保留原生预览未列出的文件及其排除状态。
@@ -225,6 +225,7 @@ def reuse_previous(c, task):
     for row in prior:
         prior_config = json.loads(row['config'])
         prior_config.pop('resume_budget', None)
+        prior_config.setdefault('max_input_tokens', DEFAULT_INPUT_TOKENS)
         if prior_config != task['config']:
             continue
         if row['state'] != 'complete' or not task['specification'].get('force'):
@@ -300,7 +301,8 @@ def advance(store, task):
     if not acquired:
         return
     attempt, capability = acquired
-    executor(ident, 'launch', {'attempt': attempt, 'token': capability, 'model': task['config']['model']})
+    executor(ident, 'launch', {'attempt': attempt, 'token': capability, 'model': task['config']['model'],
+                               'max_input_tokens': task['config'].get('max_input_tokens')})
 
 
 def run(store, stop):

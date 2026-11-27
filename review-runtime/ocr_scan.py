@@ -138,9 +138,17 @@ def prepare_resume(folder):
     return ['--resume', 'manager-resume']
 
 
-def preview(folder, path):
+def validate_input_tokens(value):
+    if value is not None and (type(value) is not int or not 1 <= value < (1 << 53)):
+        raise ValueError('OCR 输入上限无效')
+    return value
+
+
+def preview(folder, path, max_input_tokens=None):
     target = folder / 'preview.json'
-    run(folder, path, 'scan', '--preview', '--format', 'json', '--output', str(target))
+    limit = validate_input_tokens(max_input_tokens)
+    override = ['--max-tokens', str(limit)] if limit is not None else []
+    run(folder, path, 'scan', '--preview', '--format', 'json', '--output', str(target), *override)
     return load(target)
 
 
@@ -161,6 +169,7 @@ def launch(folder, path, data):
     model = data['model']
     if not isinstance(model, str) or not 1 <= len(model) <= 128:
         raise ValueError('扫描模型无效')
+    limit = validate_input_tokens(data.get('max_input_tokens'))
     with mutex:
         if stop_marker(folder).exists() or folder.name in processes:
             return
@@ -173,7 +182,7 @@ def launch(folder, path, data):
             config = folder / 'home/.opencodereview'
             config.mkdir(mode=0o700, parents=True, exist_ok=True)
             broker = os.environ.get('AI_REVIEW_BROKER_URL', 'http://review-worker:5051/v1')
-            write(config / 'config.json', {'provider': 'manager', 'language': 'zh-CN',
+            write(config / 'config.json', {'provider': 'manager', 'language': 'zh-CN', 'max_tokens': limit or 0,
                   'custom_providers': {'manager': {'url': broker.removesuffix('/v1') + '/ocr/v1',
                   'protocol': 'openai', 'api_key': data['token'], 'model': model}}})
             resume = prepare_resume(folder)
@@ -283,8 +292,11 @@ def register(app, authorized):
             if not path.is_dir() or path.is_symlink():
                 return jsonify(error='缺少扫描源码'), 404
             if request.method == 'POST' and action == 'preview':
+                data = request.get_json(silent=True)
+                if data is not None and not isinstance(data, dict):
+                    raise ValueError('OCR 预览配置无效')
                 folder.mkdir(parents=True, exist_ok=True)
-                return jsonify(preview(folder, path))
+                return jsonify(preview(folder, path, (data or {}).get('max_input_tokens')))
             if request.method == 'POST' and action == 'launch':
                 launch(folder, path, request.get_json())
                 return jsonify(ok=True)

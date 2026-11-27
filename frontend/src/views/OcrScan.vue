@@ -176,6 +176,9 @@
           </summary>
           <div class="ocr-scope-body">
             <div v-if="row.sha" class="ocr-scope-sha"><span>固定提交</span><code>{{ row.sha }}</code></div>
+            <div v-if="row.max_input_tokens" class="ocr-scope-sha">
+              <span>OCR 输入上限</span><strong>{{ usageNumber.format(row.max_input_tokens) }} Token</strong>
+            </div>
             <el-alert v-if="row.error" :title="row.error" type="warning" :closable="false" />
             <OcrFileScope v-if="row.scope?.length" :files="row.scope" />
           </div>
@@ -197,9 +200,14 @@
               <el-form-item label="模型 ID"><el-input v-model="modelForm.model" aria-label="模型 ID" /></el-form-item>
               <el-form-item label="API Key"><el-input v-model="modelForm.api_key" type="password" autocomplete="new-password" aria-label="API Key" :placeholder="profileData.custom?.configured ? '已保存，留空保留' : '输入密钥'" /></el-form-item>
             </template>
+            <el-form-item label="OCR 输入上限（Token）">
+              <el-input-number v-model="modelLimits[mode]" :min="1" :max="Number.MAX_SAFE_INTEGER"
+                               :precision="0" :controls="false" aria-label="OCR 输入上限" />
+              <span class="ocr-input-limit-help">按模型上下文填写。OCR 用此值的 80% 筛选单文件。</span>
+            </el-form-item>
             <div class="ocr-actions">
               <el-button :loading="busy" @click="testModel">测试连接</el-button>
-              <el-button v-if="mode === 'custom'" type="primary" :loading="busy" @click="saveModel">保存配置</el-button>
+              <el-button type="primary" :loading="busy" :disabled="!validModelLimit" @click="saveModel">保存配置</el-button>
             </div>
           </el-form>
         </section>
@@ -363,6 +371,8 @@ const selected = ref([]), instance = ref(null), branches = reactive({}), branchO
 const mode = ref('inherit'), formats = ref(['html'])
 const rule = reactive({ frequency: 'manual', weekday: 0, time: '09:00', timezone: 'Asia/Shanghai', force: false })
 const nextRuns = ref([]), profileData = ref({}), modelForm = reactive({ api_base_url: '', model: '', api_key: '' })
+const modelLimits = reactive({ inherit: null, custom: null })
+const validModelLimit = computed(() => Number.isSafeInteger(modelLimits[mode.value]) && modelLimits[mode.value] > 0)
 const tested = ref(null), previewBatch = ref(''), previewItems = ref([])
 const task = ref(null), report = ref(null), siblings = ref([]), timeline = ref([]), confirmStop = ref(false)
 
@@ -458,9 +468,14 @@ const setPlan = (row, enabled) => action(async () => {
   await refresh()
 })
 const saveModel = () => action(async () => {
-  const { data } = await api.put(urls + '/profiles', modelForm)
+  const source = mode.value
+  const config = source === 'custom' ? { ...modelForm } : {}
+  const { data } = await api.put(urls + '/profiles', {
+    ...config, mode: source, max_input_tokens: modelLimits[source]
+  })
   profileData.value = data
-  modelForm.api_key = ''
+  modelLimits[source] = data[modelSources[source].profile].max_input_tokens
+  if (source === 'custom') modelForm.api_key = ''
   tested.value = null
   ElMessage.success('模型配置已保存')
 })
@@ -548,6 +563,8 @@ async function setup() {
       repos.value = repositoryData.data
       servers.value = serverData.data
       profileData.value = profiles.data
+      modelLimits.inherit = profiles.data.inherited.max_input_tokens
+      modelLimits.custom = profiles.data.custom.max_input_tokens
       instance.value ??= servers.value[0]?.id
       Object.assign(modelForm, { api_base_url: profiles.data.custom.api_base_url, model: profiles.data.custom.model, api_key: '' })
     } catch (error) { if (epoch === routeEpoch) connection.value = error.response?.data?.error || '无法加载扫描配置' }
@@ -586,6 +603,7 @@ onUnmounted(() => { ++routeEpoch; clearInterval(timer) })
   --ocr-control-active: #edf5ff;
 }
 .ocr-config-form { container-type: inline-size; }
+.ocr-input-limit-help { flex-basis: 100%; color: #52637c; font-size: 13px; line-height: 1.5; margin-top: 6px; }
 .ocr-config-form :deep(.el-form-item) { margin-bottom: 12px; }
 .ocr-config-form :deep(.el-form-item:last-child) { margin-bottom: 0; }
 .ocr-config-form :deep(.el-form-item__label) {

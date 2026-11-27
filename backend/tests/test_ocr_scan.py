@@ -13,7 +13,7 @@ from flask import Flask
 from werkzeug.serving import make_server
 
 from ai_review import ocr_worker
-from ai_review.ocr_store import ScanStore, occurrences, recurrence, update
+from ai_review.ocr_store import DEFAULT_INPUT_TOKENS, ScanStore, occurrences, recurrence, update
 
 
 def runtime():
@@ -75,6 +75,62 @@ def test_stop_marker_blocks_late_executor_request(tmp_path, monkeypatch):
         assert not module.root(task).exists()
 
 
+def test_ocr_input_limit_profiles_and_task_snapshot(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    from ai_review import host_policy
+    from routes import ocr_scan_routes as routes
+
+    key_file = tmp_path / 'master.key'
+    key_file.write_bytes(Fernet.generate_key())
+    monkeypatch.setenv('AI_REVIEW_MASTER_KEY_FILE', str(key_file))
+    store = ScanStore(tmp_path / 'review.db')
+    monkeypatch.setattr(routes, 'store', lambda: store)
+    monkeypatch.setattr(routes, 'task_for', lambda *args: None)
+    monkeypatch.setattr(routes, 'endpoint', lambda address, _: address)
+    monkeypatch.setattr(host_policy, 'path', lambda: None)
+    app = Flask(__name__)
+    app.register_blueprint(routes.ocr_scan_bp)
+    spec = {'mode': 'custom', 'formats': ['html'], 'targets': [{'repository': 1, 'branch': 'main'}]}
+    provider = {'api_base_url': 'https://example.com/v1', 'model': 'fixture', 'api_key': 'fixture-key'}
+
+    with app.test_client() as client:
+        assert client.get('/profiles').json['custom']['max_input_tokens'] == DEFAULT_INPUT_TOKENS
+        for invalid in (True, 0, -1, 5.5, '1000000', None, 1 << 53):
+            assert client.put('/profiles', json={'mode': 'inherit', 'max_input_tokens': invalid}).status_code == 400
+        assert client.put('/profiles', json={'mode': 'inherit', 'max_input_tokens': 300_000}).status_code == 200
+        response = client.put('/profiles', json=dict(provider, max_input_tokens=1_000_000))
+        assert response.json['inherited']['max_input_tokens'] == 300_000
+        assert response.json['custom']['max_input_tokens'] == 1_000_000
+        assert 'api_key' not in response.json['custom']
+        assert store.profile()['api_key'] != provider['api_key']
+        assert store.unseal(store.profile()['api_key']) == provider['api_key']
+        with store.tx() as connection:
+            batch = store.create(connection, spec, {})
+            task = connection.execute('SELECT id FROM ocr_targets WHERE batch=?', (batch,)).fetchone()[0]
+            update(connection, task, state='attention', sha='1' * 40, preview={'reviewable_count': 1})
+        assert store.target(task)['config']['max_input_tokens'] == 1_000_000
+        assert client.put('/profiles', json=dict(provider, api_key='rotated', max_input_tokens=600_000)).status_code == 200
+        assert client.post(f'/tasks/{task}/resume').status_code == 202
+        continued = store.target(task)
+        assert continued['config']['max_input_tokens'] == 1_000_000
+        assert store.unseal(continued['config']['api_key']) == 'rotated'
+
+        with store.tx() as connection:
+            update(connection, task, state='complete')
+            batch = store.create(connection, spec, {}, plan='fixture')
+            scheduled = connection.execute('SELECT id FROM ocr_targets WHERE batch=?', (batch,)).fetchone()[0]
+            update(connection, scheduled, sha=continued['sha'])
+            row = store.target(scheduled, connection)
+            assert row['config']['max_input_tokens'] == 600_000
+            assert ocr_worker.reuse_previous(connection, row) is None
+            legacy_config = dict(row['config'])
+            legacy_config.pop('max_input_tokens')
+            update(connection, task, config=legacy_config)
+            assert store.target(task, connection)['config']['max_input_tokens'] == DEFAULT_INPUT_TOKENS
+            row['config']['max_input_tokens'] = DEFAULT_INPUT_TOKENS
+            assert ocr_worker.reuse_previous(connection, row) == task
+
+
 def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
     binary = os.environ.get('OCR_TEST_BINARY')
     if not binary:
@@ -93,14 +149,16 @@ def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
     with store.tx() as connection:
         spec = {'mode': 'custom', 'formats': ['html', 'txt', 'sarif', 'native'],
                 'targets': [{'repository': 1, 'branch': 'main'}]}
-        profile = {'api_base_url': 'https://example.com', 'model': 'fixture', 'api_key': store.seal('test-key')}
+        profile = {'api_base_url': 'https://example.com', 'model': 'fixture', 'api_key': store.seal('test-key'),
+                   'input_limits': {'custom': 1_000_000}}
         connection.execute('INSERT INTO ocr_profiles VALUES (1,?)', (json.dumps(profile),))
         batch = store.create(connection, spec, {})
         task = connection.execute('SELECT id FROM ocr_targets WHERE batch=?', (batch,)).fetchone()[0]
         # 模拟旧计划已有预算以及曾经接近旧上限的检查点数据。
         connection.execute('UPDATE ocr_batches SET specification=? WHERE id=?',
                            (json.dumps(dict(spec, budget=1)), batch))
-        update(connection, task, state='queued', tokens=99_999_990, config=dict(profile, resume_budget=2))
+        config = store.model('custom', connection)
+        update(connection, task, state='queued', tokens=99_999_990, config=dict(config, resume_budget=2))
     repo = {'repo_name': 'qa/ocr-test', 'gitea_url': 'https://gitea.example.test'}
     monkeypatch.setattr(store.__class__, 'repo', lambda *_: repo)
     source = module.source(task)
@@ -109,14 +167,18 @@ def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
     for index in range(5):
         (source / f'sample_{index}.py').write_text(
             f'def sample_{index}(values):\n    first = values[0]\n    last = values[-1]\n    return first + last\n')
+    with (source / 'sample_4.py').open('a') as stream:
+        stream.write(('#' + ' alpha beta gamma delta epsilon zeta eta theta' * 120 + '\n') * 96)
+    (source / 'above_byte_limit.py').write_text('#' * (2 * 1024 * 1024 + 1))
     subprocess.run(['git', 'add', '.'], cwd=source, check=True)
     subprocess.run(['git', '-c', 'user.name=验收', '-c', 'user.email=test@example.invalid',
                     'commit', '-qm', '验收样本'], cwd=source, check=True)
     folder = module.root(task)
     folder.mkdir(parents=True)
-    preview = module.preview(folder, source)
+    baseline = {entry['path']: entry for entry in module.preview(folder, source)['files']}
+    assert baseline['sample_4.py']['exclude_reason'] == 'too_large'
     with store.tx() as connection:
-        update(connection, task, preview=preview, sha='1' * 40)
+        update(connection, task, sha='1' * 40)
     calls, failures, dedup = [], [], []
     errors = iter([500, 429, 500, 429, 500, 429, 500, 429])
     allow_finish = threading.Event()
@@ -170,6 +232,8 @@ def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
 
     def execute(ident, action, data=None, destination=None):
         assert ident == task
+        if action == 'preview':
+            return module.preview(folder, source, data['max_input_tokens'])
         if action == 'status':
             return module.snapshot(folder)
         if action == 'launch':
@@ -177,6 +241,8 @@ def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
         destination.write_bytes(module.export(folder, source, action).read_bytes())
 
     monkeypatch.setattr(ocr_worker, 'executor', execute)
+    monkeypatch.setattr(ocr_worker, 'prepare_source', lambda *_: True)
+    monkeypatch.setattr(ocr_worker, 'workspace', lambda *_: source.parent)
 
     def tick():
         current = store.target(task)
@@ -186,6 +252,11 @@ def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
         return store.target(task)
 
     try:
+        ocr_worker.prepare(store, store.target(task), repo)
+        preview = store.target(task)['preview']
+        expanded = {entry['path']: entry for entry in preview['files']}
+        assert expanded['sample_4.py']['will_review']
+        assert expanded['above_byte_limit.py']['exclude_reason'] == 'OCR 枚举阶段排除'
         tick()
         assert failure_seen.wait(25)
         snapshot = wait_for(lambda: (found if len(found := module.snapshot(folder)['files']) == 4 else None))
@@ -202,13 +273,14 @@ def test_real_ocr_resumes_after_multiple_gateway_errors(tmp_path, monkeypatch):
         assert final['tokens'] > 100_000_000
         assert all(final['progress']['files'][file] == digest for file, digest in snapshot.items())
         assert not set(calls[count:]) & {0, 1, 2, 3}
+        assert 4 in calls[count:]
         assert {429, 500}.issubset(failures)
         output = store.report_dir(task)
         assert dedup == [False] * 4
         assert len(json.loads((output / 'result.json').read_text())['comments']) == 20
         assert (output / 'native.html').stat().st_size > 0
-        assert (output / 'result.sarif').stat().st_size > 0
-        assert (output / 'result.txt').stat().st_size > 0
+        assert 'sample_4.py' in (output / 'result.sarif').read_text()
+        assert 'sample_4.py' in (output / 'result.txt').read_text()
         assert (output / 'report.html').stat().st_size > 0
         with store.tx() as connection:
             assert connection.execute('SELECT 1 FROM ocr_events WHERE target=? AND kind=?',

@@ -41,6 +41,10 @@ const ocrTaskId = '1'.repeat(32)
 const ocrTarget = { id: ocrTaskId, batch: ocrTaskId, branch: 'main', sha: 'a'.repeat(40), state: 'complete',
   repository_name: '隔离导航仓库', created: 1700000000, updated: 1700000010,
   completed: 1, total: 1, excluded: 0, failures: 0, findings: 0, formats: ['html'], tokens: 10, scope: [] }
+const ocrProfiles = {
+  custom: { model: '', api_base_url: '', configured: false, max_input_tokens: 58888 },
+  inherited: { model: 'navigation-test-model', configured: true, max_input_tokens: 58888 },
+}
 let browser, server, vite, session = admin, delayServers = 0, delayReview = 0, failServers = false
 const results = [], unknown = new Set(), errors = [], transitionWarnings = []
 let serverReads = 0, documentLoads = 0
@@ -63,8 +67,13 @@ function fixture(url, method, payload) {
       task_timeout_seconds: 3600, review_timeout_seconds: 3600, model_request_timeout_seconds: 3600,
       thinking_protocol: 'deepseek', thinking_enabled: true, reasoning_effort: 'high' } },
   }
-  if (p === '/api/ai-review/ocr/profiles') return { custom: { model: '', api_base_url: '', configured: false },
-    inherited: { model: 'navigation-test-model', configured: true } }
+  if (p === '/api/ai-review/ocr/profiles') {
+    if (method === 'PUT') {
+      assert.deepEqual(payload, { mode: 'inherit', max_input_tokens: 1000000 })
+      ocrProfiles.inherited.max_input_tokens = payload.max_input_tokens
+    }
+    return ocrProfiles
+  }
   if (p === '/api/ai-review/ocr/tasks') return { items: [ocrTarget], now: 1700000010 }
   if (p === '/api/ai-review/ocr/plans') return { items: [] }
   if (p === '/api/ai-review/ocr/tasks/' + ocrTaskId) return { task: ocrTarget, events: [], now: 1700000010 }
@@ -315,6 +324,24 @@ async function main() {
     results.push({ 场景: '页面往返', 地址: target, 结果: '通过' })
   }
   console.log(`${mode}：${paths.length} 个路由入口往返通过`)
+
+  const ocrModelsPath = '/ai-reviews/ocr/models'
+  await navigate(page, ocrModelsPath); await reviewReady(page, ocrModelsPath)
+  const inputLimit = page.getByRole('spinbutton', { name: 'OCR 输入上限' })
+  await page.locator('input[aria-label="OCR 输入上限"]').waitFor()
+  assert.equal(await inputLimit.inputValue(), '58888')
+  await inputLimit.fill('1000000')
+  await inputLimit.press('Tab')
+  const savedOcrProfile = page.waitForResponse(response =>
+    response.url().endsWith('/api/ai-review/ocr/profiles') && response.request().method() === 'PUT')
+  await page.getByRole('button', { name: '保存配置' }).click()
+  assert.equal((await savedOcrProfile).status(), 200)
+  await navigate(page, '/servers'); await serverReady(page)
+  await navigate(page, ocrModelsPath); await reviewReady(page, ocrModelsPath)
+  await page.waitForFunction(() => document.querySelector('input[aria-label="OCR 输入上限"]')?.value === '1000000')
+  await page.locator('label.el-radio').filter({ has: page.getByRole('radio', { name: 'OCR 专用' }) }).click()
+  assert.equal(await inputLimit.inputValue(), '58888')
+  results.push({ 场景: 'OCR 模型输入上限独立保存并重新载入', 结果: '通过' })
 
   for (const reviewPath of ['/ai-reviews/settings', '/ai-reviews/dataset']) {
     await navigate(page, reviewPath); await reviewReady(page, reviewPath)

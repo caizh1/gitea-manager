@@ -13,7 +13,7 @@ from access.organization_api import review_repository_ids
 from access.scopes import actor_snapshot, current_binding, require_resource, server_epoch
 from ai_review.authorization import guarded_client
 from ai_review.common import ReviewError, endpoint, validate_model_id
-from ai_review.ocr_store import ACTIVE, FORMATS, ScanStore, event, occurrences, recurrence, update
+from ai_review.ocr_store import ACTIVE, FORMATS, ScanStore, event, occurrences, recurrence, update, validate_input_tokens
 from ai_review.ocr_worker import NATIVE_FILES, forward
 from models import GiteaServer, db
 
@@ -71,6 +71,7 @@ def public_task(task, repo, detail=False):
         result['scope'] = task['preview'].get('files', [])
         result['checkpoints'] = task['progress'].get('files', {})
         result['uncompleted'] = task['progress'].get('failures', [])
+        result['max_input_tokens'] = task['config'].get('max_input_tokens')
     return result
 
 
@@ -127,31 +128,57 @@ def profiles():
     custom = state.model('custom')
     inherited = state.model('inherit')
     return jsonify(custom={'model': custom['model'], 'api_base_url': custom['api_base_url'],
+                           'max_input_tokens': custom['max_input_tokens'],
                            'configured': bool(custom['api_key'])},
-                   inherited={'model': inherited['model'], 'configured': bool(inherited['api_key'])})
+                   inherited={'model': inherited['model'], 'max_input_tokens': inherited['max_input_tokens'],
+                              'configured': bool(inherited['api_key'])})
 
 
 @ocr_scan_bp.put('/profiles')
 def save_profile():
     state, data = store(), payload()
-    old = state.profile()
+    mode = data.get('mode', 'custom')
+    if mode not in ('inherit', 'custom'):
+        raise ReviewError('扫描模型配置无效')
+    input_tokens = validate_input_tokens(data['max_input_tokens']) if 'max_input_tokens' in data else None
+    if mode == 'inherit' and input_tokens is None:
+        raise ReviewError('请输入 OCR 输入上限')
+    custom = custom_profile_patch(state, data) if mode == 'custom' else {}
+    with state.tx() as c:
+        settings = state.profile(c)
+        if custom:
+            if 'api_key' not in custom:
+                require_saved_profile_key(settings, custom['api_base_url'])
+            settings.update(custom)
+        if input_tokens is not None:
+            settings.setdefault('input_limits', {})[mode] = input_tokens
+        c.execute('INSERT OR REPLACE INTO ocr_profiles VALUES (1,?)', (json.dumps(settings, ensure_ascii=False),))
+    return profiles()
+
+
+def require_saved_profile_key(settings, address):
+    if settings.get('api_base_url') != address:
+        raise ReviewError('更换端点时需要输入该端点的密钥')
+    if not settings.get('api_key'):
+        raise ReviewError('请输入模型 API Key')
+
+
+def custom_profile_patch(state, data):
     from ai_review.host_policy import address as validate_address, approve, path
 
     address, _ = validate_address(data.get('api_base_url'))
     model = validate_model_id(data.get('model'))
     supplied = data.get('api_key')
-    if not supplied and old.get('api_base_url') != address:
-        raise ReviewError('更换端点时需要输入该端点的密钥')
-    key = state.seal(supplied) if supplied else old.get('api_key')
-    if not key:
-        raise ReviewError('请输入模型 API Key')
+    key = state.seal(supplied) if supplied else None
+    if key is None:
+        require_saved_profile_key(state.profile(), address)
     if path():
         approve({'AI_REVIEW_MODEL_HOSTS': [address]})
     address = endpoint(address, 'AI_REVIEW_MODEL_HOSTS')
-    with state.tx() as c:
-        c.execute('INSERT OR REPLACE INTO ocr_profiles VALUES (1,?)',
-                  (json.dumps({'api_base_url': address, 'model': model, 'api_key': key}, ensure_ascii=False),))
-    return profiles()
+    result = {'api_base_url': address, 'model': model}
+    if key is not None:
+        result['api_key'] = key
+    return result
 
 
 @ocr_scan_bp.post('/profiles/test')
@@ -296,7 +323,8 @@ def resume_task(ident):
         old = task['config']
         if any(current.get(key) != old.get(key) for key in ('api_base_url', 'model', 'thinking_protocol', 'thinking_enabled')):
             raise ReviewError('模型或端点已变化，请新建扫描')
-        update(c, ident, config=current, state='queued', ready=0, broker=None, error='', retry_at=0, http=0)
+        update(c, ident, config=dict(old, api_key=current['api_key']), state='queued', ready=0, broker=None,
+               error='', retry_at=0, http=0)
         event(c, ident, '人工处理后续扫')
     return jsonify(ok=True), 202
 
