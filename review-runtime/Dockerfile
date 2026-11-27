@@ -10,9 +10,6 @@ WORKDIR /opt/review
 COPY backend/wheels/ /tmp/wheels/
 RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels flask==3.0.0 requests==2.31.0 gunicorn==21.2.0 && rm -rf /tmp/wheels
 FROM ${BASE_IMAGE}
-ARG OPENCODE_BINARY=opencode-linux-x64
-ARG OPENCODE_VERSION=1.18.7
-ENV OPENCODE_EXPECTED_VERSION=${OPENCODE_VERSION}
 WORKDIR /opt/review
 COPY --from=dependencies /usr/local /usr/local
 COPY --from=pr_agent /usr/local /opt/pr-agent-runtime
@@ -20,7 +17,6 @@ COPY review-runtime/vendor/pr-agent-assets/ /opt/pr-agent-assets/
 RUN apt-get update && apt-get install -y --no-install-recommends git=1:2.47.3-0+deb13u1 ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 10001 --create-home reviewer
 RUN LD_LIBRARY_PATH=/opt/pr-agent-runtime/lib LITELLM_LOCAL_MODEL_COST_MAP=True /opt/pr-agent-runtime/bin/python3.12 -c "from importlib.metadata import version; from pr_agent.commands.pr_reviewer import PRReviewer; from pr_agent.git_providers.gitea_provider import GiteaProvider; assert version('pr-agent') == '0.49.0'"
-COPY --chmod=555 review-runtime/vendor/${OPENCODE_BINARY} /opt/review/opencode
 COPY --chmod=555 review-runtime/vendor/codex-linux-x64 /opt/review/codex
 COPY --chmod=555 review-runtime/vendor/ocr-linux-amd64 /opt/review/ocr
 COPY review-runtime/ocr-LICENSE.txt /opt/review/ocr-LICENSE.txt
@@ -32,11 +28,16 @@ COPY review-runtime/pr_agent_local.py /opt/review/
 COPY backend/ai_review/__init__.py backend/ai_review/common.py backend/ai_review/diff.py backend/ai_review/pr_agent_encoding.py /opt/review/ai_review/
 COPY review-runtime/native_session.py review-runtime/native_gateway.py review-runtime/raw_diagnostics.py review-runtime/runtime_diagnostics.py review-runtime/runtime_probe.py review-runtime/legacy_adapter.py review-runtime/review_result_schema.json review-runtime/StructuredOutput.js /opt/review/
 RUN python -c "import native_session, runtime_probe; native_session.load_review_result_schema()"
-RUN test "$(/opt/review/opencode --version)" = "$OPENCODE_EXPECTED_VERSION"
 RUN test "$(/opt/review/codex --version)" = "codex-cli 0.169.0"
 RUN sha256sum /opt/review/ocr | grep -q '^1dc6b1ea37611a2c10d61cb755ab03f07dc3c1a88872963669443937211e7f3a ' \
     && /opt/review/ocr version | grep -q 'v1.14.4'
 RUN rg --version | grep -q '^ripgrep 14.1.1'
+# 两种执行器共用上面的固定运行时与二进制层。
+ARG OPENCODE_BINARY=opencode-linux-x64
+ARG OPENCODE_VERSION=1.18.7
+ENV OPENCODE_EXPECTED_VERSION=${OPENCODE_VERSION}
+COPY --chmod=555 review-runtime/vendor/${OPENCODE_BINARY} /opt/review/opencode
+RUN test "$(/opt/review/opencode --version)" = "$OPENCODE_EXPECTED_VERSION"
 USER 10001:10001
 EXPOSE 5052
 CMD ["gunicorn", "--bind", "0.0.0.0:5052", "--workers", "1", "--threads", "32", "--timeout", "190", "--access-logfile", "/dev/null", "executor:app"]
